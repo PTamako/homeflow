@@ -2,16 +2,27 @@
 
 家庭、个人、豆沙、旅行、心愿和回忆的一体化生活 PWA。
 
-## 当前阶段
+## 当前进度：Stage 0
 
-阶段 0：初始化 GitHub、Cloudflare Worker / D1 及基础工程。此仓库暂不包含真实家庭数据。
+- Vue 3 + TypeScript + Vite 前端骨架。
+- Cloudflare Worker + 独立生产、预览 D1 数据库。
+- 安全默认：个人 API 在完整登录与权限验证完成之前一律返回 401。
+- 初始数据库 schema、回归测试与 GitHub Actions CI。
+- 当前尚未开放真实家庭数据、用户注册、照片上传与推送通知。
+
+## 本地
+
+要求 Node.js 22.16+。使用 npm install、npm run dev、npm run check 检查前端。
+Worker 可通过 npm run worker:dev 启动（先完成本地迁移与数据库身份配置）。
+部署使用 npx wrangler deploy；预览使用 npx wrangler deploy --env preview。
 
 ## 安全边界
 
-- 私有仓库；禁止提交密码、API Token、家庭照片或财务明细。
-- Cloudflare Production 与 Preview 使用不同的 D1 数据库。
-- 所有个人 API 默认拒绝访问，直到实现并验证认证授权。
-- 不直接读取或修改 `kakebo_jp` 数据库；后续通过最小权限的独立 API 联动。
-- 生产 D1 仅执行经验证的增量迁移。
+- 生产 D1：homeflow；预览 D1：homeflow-preview。
+- 不重用家計簿 / 知学平台的登录凭据或数据库。
+- 不提交任何密码、Token、家庭照片、实际交易、R2 密钥。
+- Cloudflare Secret 需由 GitHub 仓库管理员配置，尚未配置时部署 CI 会明确跳过。
+- 生产 migration 必须先在 Preview 验证。
+- 目前公开仅有不含个人数据的健康接口和基础静态界面。
 
-详细开发说明随第一阶段脚手架 PR 提交。
+参见 docs/STAGE_0.md 和 docs/ROADMAP.md。
