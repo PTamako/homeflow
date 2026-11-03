@@ -2,7 +2,7 @@
 import {ref,watch,onBeforeUnmount} from 'vue'
 import {getLocalPhoto,saveLocalPhoto} from '../local-media'
 
-const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string}>()
+const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false)
@@ -166,7 +166,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
             <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
             <select v-model="routineRepeat"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
             <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
-            <button :disabled="busy">＋ 定期任务</button>
+            <select v-model="routineSubject" aria-label="关联成员或宠物"><option value="">不关联成员</option><option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select><button :disabled="busy">＋ 定期任务</button>
           </form>
         </section>
         <section class="life-card">
@@ -247,6 +247,26 @@ watch(()=>props.mode,fetchMode,{immediate:true})
                 <label v-for="it in d.items" :key="it.externalId" class="trip-item">
                   <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
                   <span>{{ it.startTime||'待定' }} · {{ it.title }}</span></label></div>
+              <div v-if="tripDetail.plan.trip.tasks?.length" class="trip-day">
+                <b>✅ 出发前待办</b>
+                <label v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" class="trip-item">
+                  <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
+                  <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
+                </label>
+              </div>
+              <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
+                <b>🧳 行李清单 · {{ list.owner }}</b>
+                <label v-for="piece in list.items" :key="piece.externalId" class="trip-item">
+                  <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
+                  <span>{{ piece.label }} × {{ piece.quantity }}</span>
+                </label>
+              </div>
+              <div v-if="tripDetail.plan.trip.bookings?.length" class="trip-day">
+                <b>🏨 交通和预订</b>
+                <div v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" class="trip-item">
+                  <span>{{ booking.title }} · {{ booking.status }}</span>
+                </div>
+              </div>
             </template>
             <p v-else class="life-caption">尚未导入行程，可以在下方导入 ChatGPT 制定的 JSON。</p>
           </div>

@@ -4,6 +4,8 @@ import {tasksRoute} from './tasks.js'
 import {lifeRoute} from './life.js'
 import {tripsRoute} from './trips.js'
 import {mediaRoute} from './media.js'
+import {remindersRoute} from './reminders.js'
+import {backupRoute} from './backup.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -27,6 +29,8 @@ export default {
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
+        if(path==='/api/reminders')return remindersRoute(request,env.DB,session)
+        if(path==='/api/export')return backupRoute(request,env.DB,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session)
         if(path==='/api/trips'||path.startsWith('/api/trips/')||/^\/api\/wishes\/[0-9a-f-]{36}\/start-trip$/.test(path))

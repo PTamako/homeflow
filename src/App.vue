@@ -154,7 +154,7 @@ onMounted(refresh)
         </section>
       </template>
       <template v-else-if="tab==='family'">
-        <section class="panel"><h2>家庭成员</h2><div class="profiles"><div v-for="p in profiles" :key="p.id" class="profile">
+        <section class="panel"><h2>家庭成员</h2><p><a href="/api/export" download class="text-button">导出当前账户可查看的数据备份（JSON）</a></p><div class="profiles"><div v-for="p in profiles" :key="p.id" class="profile">
           <span>{{ p.type==='pet'?'🐾':'♡' }}</span><div><b>{{ p.displayName }}</b>
           <p>{{ p.type==='pet'?'宠物':'家庭成员' }} · {{ p.birthday||'未填写生日' }}</p></div></div></div></section>
         <section v-if="user.role==='owner'" class="panel">
@@ -181,7 +181,7 @@ onMounted(refresh)
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
-      <LifePanel :mode="tab" :user-id="user.id" />
+      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
