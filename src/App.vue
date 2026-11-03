@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
+import LifePanel from './components/LifePanel.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;completedAt:string|null}
@@ -177,9 +178,10 @@ onMounted(refresh)
           <p class="hint">生日：{{ p.birthday||'未填' }}　到家：{{ p.adoptedOn||'未填' }}</p></section>
         <p v-if="!pets.length" class="panel empty">先在家庭页面创建豆沙的档案吧。</p>
       </template>
-      <section v-else class="hero"><div><span>COMING NEXT</span>
+      <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
-        <p>该模块的数据接口和页面将在后续提交中逐步开放。</p></div></section>
+        <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
+      <LifePanel :mode="tab" :user-id="user.id" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
