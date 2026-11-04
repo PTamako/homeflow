@@ -40,7 +40,7 @@ function database(){
    sqlite.exec('BEGIN')
    const out=[]
    try{
-    for(const st of statements)out.push(/^\\s*SELECT/i.test(st._sql)?await st.all():await st.run())
+    for(const st of statements)out.push(/^\s*SELECT/i.test(st._sql)?await st.all():await st.run())
     sqlite.exec('COMMIT')
    }catch(e){sqlite.exec('ROLLBACK');throw e}
    return out
@@ -75,7 +75,6 @@ test('portable full restore retains savings cadence, adjustments, dates and remi
    const result=await portableRoute(request,target.db,'/api/portable/restore',session)
    assert.equal(result.status,200,dataset+': '+await result.text())
   }
-  assert.deepEqual([...target.sqlite.prepare('SELECT goal_mode,start_on,target_on FROM goals WHERE id=?').get(goal)].slice(0,0),[])
   const restoredGoal=target.sqlite.prepare('SELECT goal_mode,start_on,target_on FROM goals WHERE id=?').get(goal)
   assert.equal(restoredGoal.goal_mode,'monthly')
   assert.equal(restoredGoal.start_on,'2026-11-01')
@@ -109,11 +108,11 @@ test('tasks history endpoint is bounded and returns keyset cursors',async()=>{
 test('first paint and timeline do not show unrelated data while loading',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
- assert.match(app,/const authReady=ref\\(false\\)/)
+ assert.match(app,/const authReady=ref\(false\)/)
  assert.match(app,/<main v-if="!authReady"/)
  assert.match(app,/<main v-else-if="!user"/)
  assert.ok(app.includes(':key="user.id+\':\'+tab"'))
- assert.match(life,/listLoading=ref\\(false\\)/)
- assert.match(life,/if\\(requestId!==activeFetch\\)return/)
+ assert.match(life,/listLoading=ref\(false\)/)
+ assert.match(life,/if\(requestId!==activeFetch\)return/)
  assert.match(life,/role="status">正在读取时光轴/)
 })
