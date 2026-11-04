@@ -426,11 +426,16 @@ onBeforeUnmount(()=>{
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
           <div class="row-between">
-            <b>待办与定期事项</b>
+            <b>事项分类</b>
             <label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label>
           </div>
-          <p class="today-unified-hint">待办和定期任务统一显示。定期事项每天更新，未完成按原规则顺延。</p>
-          <div v-if="!unifiedToday.length" class="empty">今天没有待完成的事项。</div>
+          <div class="today-category-tabs" role="group" aria-label="今日待办分类">
+            <button v-for="category in todayCategories" :key="category.id" type="button"
+              :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
+              @click="todayCategory=category.id">{{ category.label }}</button>
+          </div>
+          <p class="today-unified-hint">默认显示今天的所有事项；到期未完成的计划继续顺延，完成的定期事项第二天重置。</p>
+          <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
           <template v-for="row in unifiedToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
               :allow-edit="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
@@ -438,14 +443,15 @@ onBeforeUnmount(()=>{
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
               @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
               <div class="task-row today-unified-row">
-                <input type="checkbox" :checked="row.done"
-                  :disabled="!!row.routine&&routineBusy"
+                <input v-if="row.task||row.routine||row.plan?.kind==='shopping'" type="checkbox" :checked="row.done"
+                  :disabled="(!!row.routine&&routineBusy)||shoppingBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
-                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
+                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):row.plan?toggleShoppingPlan(row.plan):undefined"/>
+                <AppIcon v-else :name="row.plan?.kind==='wish'?'heart':row.plan?.kind==='goal'?'wallet':'plane'" :size="19" />
                 <div class="task-detail">
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
-                    <span class="today-kind-label">{{ row.kind==='routine'?'定期':'待办' }}</span>
+                    <span class="today-kind-label">{{ todayKindLabels[row.kind] }}</span>
                     <template v-if="row.task">
                       <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
@@ -457,8 +463,15 @@ onBeforeUnmount(()=>{
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                     </template>
+                    <template v-else-if="row.plan">
+                      {{ row.done?'今天已完成':row.plan.overdue?'逾期未完成 · 顺延':'今天的计划' }} · {{ row.plan.dueOn }}
+                      <template v-if="row.plan.destination"> · {{ row.plan.destination }}</template>
+                    </template>
                   </small>
                 </div>
+                <button v-if="row.plan" type="button" class="text-button today-plan-link"
+                  :aria-label="'打开'+todayKindLabels[row.kind]+'计划：'+row.title"
+                  @click="openPlans(row.plan.kind)">查看计划</button>
               </div>
             </SwipeActions>
             <form v-if="row.task&&editingTask?.id===row.task.id" class="task-edit-form" @submit.prevent="saveTaskEdit">
