@@ -676,7 +676,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-for="t in trips" :key="t.id">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="edit('trips',t)" @delete="removeItem('trips',t)">
-              <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
+              <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
                 <div class="trip-card-actions">
