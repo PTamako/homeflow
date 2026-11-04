@@ -542,13 +542,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
-          <p class="life-caption">预留金额不等于银行余额，也不会被当成家計簿支出。</p>
+          <p class="life-caption">原有预留金额作为期初储蓄额保留；下方家計簿联动可计算期间收支差额和手动调整额。</p>
           <template v-for="g in goals" :key="g.id">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
-              <div class="life-row" :class="{'detail-completed':Number(g.reserved_amount)>=Number(g.target_amount)}">
+              <div class="life-row">
                 <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                  <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
+                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
