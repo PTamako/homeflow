@@ -68,6 +68,26 @@ async function send(env,path,method='GET',body,cookie,csrf=true){
  return {status:response.status,cookie:response.headers.get('set-cookie'),body:result}
 }
 function extractCookie(header) {return header?.split(';')[0]||''}
+// Mock the private, READ-ONLY Kakebo ledger. All assertions exercise the
+// production-only verification gate, never a real user database or network.
+function mockedProductionLedger(db,sqlite,secret='example-secret-for-test-012345678901234'){
+ sqlite.prepare("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'").run()
+ const amount={net:20000,expenses:[{id:123,date:'2026-11-04',type:'expense',amount:3500,merchant:'测试购物',category:'购物'}]}
+ const env={APP_ENV:'production',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:secret,
+   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',
+   KAKEBO_LEDGER_SERVICE:{fetch:async input=>{
+     const url=new URL(input)
+     if(url.searchParams.get('summary')==='net'){
+       return new Response(JSON.stringify({income:Math.max(0,amount.net),expense:Math.max(0,-amount.net),net:amount.net}),
+         {status:200,headers:{'content-type':'application/json'}})
+     }
+     const ids=url.searchParams.get('ids')
+     return new Response(JSON.stringify({entries:ids?amount.expenses.filter(x=>ids.split(',').includes(String(x.id))):amount.expenses,nextCursor:null}),
+       {status:200,headers:{'content-type':'application/json'}})
+   }}
+ }
+ return {env,amount}
+}
 
 test('client password derivation uses exactly 100000 PBKDF2 iterations with 16-byte random salt',async()=>{
   const proof=await registerPassword('a-long-password-for-homeflow')
@@ -353,9 +373,9 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  sqlite.close()
 })
 
-test('dated shopping, wishes and savings goals carry forward until explicitly completed',async()=>{
+test('dated shopping, wishes and savings goals carry forward until verified completion',async()=>{
  const {db,sqlite}=makeDb()
- const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const {env,amount}=mockedProductionLedger(db,sqlite)
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
  const ownerRegistered=await ask('/api/auth/bootstrap','POST',{
    loginName:'followup-owner',password:'another-long-test-password-123',
@@ -396,14 +416,23 @@ test('dated shopping, wishes and savings goals carry forward until explicitly co
 
  const wishDone=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:true},owner)
  assert.equal(wishDone.status,200,JSON.stringify(wishDone.body))
+ amount.net=0
+ const notFunded=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
+ assert.equal(notFunded.status,409,'a manual click must not mark insufficient savings as complete')
+ assert.equal(notFunded.body.error,'goal_not_funded')
+ amount.net=20000
  const saved=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
  assert.equal(saved.status,200,JSON.stringify(saved.body))
  const onceDone=await ask('/api/plans/complete','POST',{
    kind:'goal',id:once.body.id,completed:true},owner)
  assert.equal(onceDone.status,200,JSON.stringify(onceDone.body))
- const bought=await ask('/api/shopping/'+shopping.body.id+'/toggle','POST',{completed:true},owner)
- assert.equal(bought.status,200)
+ const invalidBuy=await ask('/api/shopping/'+shopping.body.id+'/toggle','POST',{completed:true},owner)
+ assert.equal(invalidBuy.status,409)
+ assert.equal(invalidBuy.body.error,'link_ledger_to_complete')
+ const bought=await ask('/api/finance/shopping/'+shopping.body.id+'/link','POST',{entryId:123},owner)
+ assert.equal(bought.status,200,JSON.stringify(bought.body))
  rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
  assert.equal(get('wish',wish.body.id).done,true)
  assert.equal(get('goal',saving.body.id).done,true)
@@ -429,7 +458,7 @@ test('dated shopping, wishes and savings goals carry forward until explicitly co
 
 test('finished savings goals archive and expired unfinished trips stay active',async()=>{
  const {db,sqlite}=makeDb()
- const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const {env}=mockedProductionLedger(db,sqlite)
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
  const user=await ask('/api/auth/bootstrap','POST',{
    loginName:'archive-owner',password:'another-long-test-password-123',
@@ -802,7 +831,8 @@ test('completed wishes and past shopping move to history; in-progress items stay
  const done=await send(env,'/api/wishes/'+wishes[0],'PATCH',{
    title:'心愿 0',wishType:'other',status:'completed',
    estimatedAmount:0,currency:'JPY',visibility:'household'},cookie)
- assert.equal(done.status,200,JSON.stringify(done.body))
+ assert.equal(done.status,409,'manual status edit may not bypass completion verification')
+ sqlite.prepare("UPDATE wishes SET status='completed' WHERE id=?").run(wishes[0])
  const active=await send(env,'/api/wishes?scope=active&limit=3','GET',undefined,cookie)
  assert.equal(active.body.items.length,3)
  assert.ok(active.body.nextCursor)
@@ -815,8 +845,9 @@ test('completed wishes and past shopping move to history; in-progress items stay
  const open=await send(env,'/api/shopping','POST',{
    title:'下次买猫砂',quantity:1,visibility:'household'},cookie)
  assert.equal(older.status,201);assert.equal(open.status,201)
- assert.equal((await send(env,'/api/shopping/'+older.body.id+'/toggle','POST',{completed:true},cookie)).status,200)
+ assert.equal((await send(env,'/api/shopping/'+older.body.id+'/toggle','POST',{completed:true},cookie)).status,409)
  const yesterday=new Date(Date.now()-2*86400000).toISOString()
+ // Historical manual completion predates the new verified-ledger rule.
  sqlite.prepare('UPDATE shopping_items SET completed_at=? WHERE id=?').run(yesterday,older.body.id)
  const current=await send(env,'/api/shopping?scope=active&limit=6','GET',undefined,cookie)
  assert.equal(current.body.items.some(x=>x.id===older.body.id),false)
@@ -858,10 +889,11 @@ test('pet health and travel history can be filtered by month and paged',async()=
    '明年的旅行','京都','2027-05-10','2027-05-12','planning')
  const active=await send(env,'/api/trips?scope=active&limit=6','GET',undefined,cookie)
  const history=await send(env,'/api/trips?scope=history&year=2024&limit=6','GET',undefined,cookie)
- assert.equal(active.body.items.length,1,JSON.stringify(active.body))
- assert.equal(active.body.items[0].title,'明年的旅行')
- assert.equal(history.body.items.length,1,JSON.stringify(history.body))
- assert.equal(history.body.items[0].title,'过去的旅行')
+ assert.equal(active.body.items.length,2,JSON.stringify(active.body))
+ assert.ok(active.body.items.some(x=>x.title==='明年的旅行'))
+ assert.ok(active.body.items.some(x=>x.title==='过去的旅行'),
+   'travel that was never explicitly finished remains active')
+ assert.equal(history.body.items.length,0,JSON.stringify(history.body))
  sqlite.close()
 })
 
