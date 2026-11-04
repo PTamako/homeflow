@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {onMounted,ref} from 'vue'
+import AppIcon from './AppIcon.vue'
 const props=defineProps<{petId:string;name:string}>()
 type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
@@ -32,7 +33,7 @@ onMounted(read)
 </script>
 <template>
   <section class="pet-card">
-    <h2>🐾 {{ name }}的健康与护理记录</h2>
+    <h2 class="pet-title"><AppIcon name="paw" :size="20" /> {{ name }}的健康与护理记录</h2>
     <p class="sub">驱虫、疫苗、体重、就诊和日常护理都记录在这里；需要下次提醒时可设置日期。</p>
     <form class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
@@ -55,10 +56,10 @@ onMounted(read)
 </template>
 <style scoped>
 .pet-card{background:#fff;border:1px solid #eeeae4;border-radius:18px;padding:20px;margin:15px 0}
-.pet-card h2{font-size:17px;margin:0}.sub{color:#819187;font-size:12px;line-height:1.7}
-.pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:14px 0}
-.pet-form label{display:grid;gap:5px;font-size:12px;color:#64796b}
-.pet-form input,.pet-form select{width:100%;min-width:0;min-height:42px;border:1px solid #dce6dc;border-radius:10px;padding:9px;font-size:13px;background:white}
+.pet-card h2{font-size:17px;margin:0}.pet-title{display:flex;align-items:center;gap:9px}.sub{color:#819187;font-size:12px;line-height:1.7}
+.pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:14px 0;min-width:0}
+.pet-form label{display:grid;gap:5px;font-size:12px;color:#64796b;min-width:0;max-width:100%}
+.pet-form input,.pet-form select{width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:42px;border:1px solid #dce6dc;border-radius:10px;padding:9px;font-size:13px;background:white}
 .pet-form .full{grid-column:1/-1}
 .pet-form button{background:#43866a;color:white;border:0;padding:11px;border-radius:11px;font-weight:700}
 .record{padding:12px 0;border-top:1px solid #f1eee8;font-size:13px}
@@ -68,4 +69,10 @@ onMounted(read)
 .error{color:#a24e38;background:#fff0e8;padding:10px;border-radius:10px}
 .ok{color:#3d8562;background:#e9f5e9;padding:10px;border-radius:10px}
 .empty{text-align:center;padding:24px;color:#85958b;font-size:12px}
+@media(max-width:720px){
+  .pet-form{grid-template-columns:minmax(0,1fr)}
+  .pet-form .full{grid-column:1}
+  .pet-card{padding:16px}
+  .pet-form input[type="date"]{min-inline-size:0}
+}
 </style>
