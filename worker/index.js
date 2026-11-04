@@ -12,6 +12,7 @@ import {pushRoute,runPushSchedule} from './webpush.js'
 import {petsRoute} from './pets.js'
 import {financeRoute} from './finance.js'
 import {goalPeriodsRoute,runGoalSettlementSchedule} from './goal-settlements.js'
+import {goalPeriodArchiveRoute} from './goal-period-archive.js'
 import {portableRoute} from './portable.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
@@ -51,6 +52,8 @@ export default {
           return tripsRoute(request,env.DB,path,session)
         if(path==='/api/media'||path.startsWith('/api/media/'))
           return mediaRoute(request,env,path,session)
+        if(path==='/api/goals/period-archive')
+          return goalPeriodArchiveRoute(request,env.DB,session)
         if(/^\/api\/goals\/[0-9a-f-]{36}\/periods(?:\/settle)?$/i.test(path))
           return goalPeriodsRoute(request,env,path,session)
         if(/^\/api\/(anniversaries|routines|wishes|goals|shopping|memories)(\/|$)/.test(path))
