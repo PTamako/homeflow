@@ -24,6 +24,19 @@ const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
+function planRequestKinds(type:PlanType){
+ if(type==='routine')return ['routines','tasks']
+ if(type==='wish')return ['wishes','goals']
+ if(type==='goal')return ['goals']
+ if(type==='shopping')return ['shopping']
+ if(type==='trip')return ['trips']
+ return ['wishes','goals','shopping','trips','routines','tasks']
+}
+function selectPlanType(type:PlanType){
+ if(type===planType.value)return
+ planType.value=type
+ if(props.mode==='plans')void fetchMode()
+}
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
 const goalCompletionMarks=ref<string[]>([])
 const focusError=ref('')
@@ -374,10 +387,14 @@ async function fetchMode(){
       items.value=data.items||[]
       listCursors.value.anniversaries=past?data.nextCursor||null:null
     }else if(props.mode==='plans'){
-      const kinds=['wishes','goals','shopping','trips','routines','tasks']
+      // Only read the category that the user actually opened. The full view
+      // still fetches all six; wishes also need goals for linked funding labels.
+      const selected=planType.value
+      const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
       const pages=await Promise.all(paths.map(path=>api(path)))
-      if(requestId!==activeFetch||props.mode!=='plans'||paths.some((path,i)=>path!==listPath(kinds[i])))return
+      if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
+         paths.some((path,i)=>path!==listPath(kinds[i])))return
       kinds.forEach((kind,i)=>{
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
@@ -670,7 +687,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'shopping',label:'购物'},
           {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
           :key="tab.id" type="button" :class="{selected:planType===tab.id}"
-          :aria-pressed="planType===tab.id" @click="planType=tab.id as PlanType">
+          :aria-pressed="planType===tab.id" @click="selectPlanType(tab.id as PlanType)">
           {{ tab.label }}</button>
       </div>
       <div class="archive-toolbar">
