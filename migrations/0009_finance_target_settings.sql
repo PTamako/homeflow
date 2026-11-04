@@ -14,3 +14,18 @@ CREATE TABLE IF NOT EXISTS finance_target_settings (
   CHECK((period_start IS NULL AND period_end IS NULL) OR
         (period_start IS NOT NULL AND period_end IS NOT NULL AND period_start<=period_end))
 );
+
+-- Remove only HomeFlow settings when their parent item is deleted.
+-- No extra D1 read queries or external ledger writes.
+CREATE TRIGGER IF NOT EXISTS cleanup_finance_trip AFTER DELETE ON trips BEGIN
+  DELETE FROM finance_target_settings WHERE household_id=OLD.household_id
+    AND target_type='trip' AND target_id=OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS cleanup_finance_goal AFTER DELETE ON goals BEGIN
+  DELETE FROM finance_target_settings WHERE household_id=OLD.household_id
+    AND target_type='goal' AND target_id=OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS cleanup_finance_shopping AFTER DELETE ON shopping_items BEGIN
+  DELETE FROM finance_target_settings WHERE household_id=OLD.household_id
+    AND target_type='shopping' AND target_id=OLD.id;
+END;
