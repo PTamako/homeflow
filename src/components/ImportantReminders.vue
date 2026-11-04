@@ -216,7 +216,7 @@ onBeforeUnmount(()=>{requestId++})
         <option value="3">提前 3 天</option><option value="7">提前 7 天</option>
        </select>
       </label>
-      <small>仅影响当前账号，不修改计划截止日期；可用“单项设置”覆盖默认值，纪念日仍使用自己的提醒策略。</small>
+      <small>仅当前账号生效；单项设置优先。</small>
       <div class="quiet-controls">
        <label class="quiet-toggle"><input v-model="quietEnabled" type="checkbox"/> 启用推送安静时段</label>
        <div v-if="quietEnabled" class="quiet-hours">
@@ -224,7 +224,7 @@ onBeforeUnmount(()=>{requestId++})
         <label>结束<select v-model="quietEnd"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
        </div>
        <button class="snooze-button" type="button" :disabled="savingAdvance" @click="saveQuiet">保存安静时段</button>
-       <small>每日 06:00（日本时间）推送。若 06:00 位于安静时段内，当天不发锁屏推送，但应用内提醒仍保留。</small>
+       <small>每日 06:00 推送；安静时段内跳过当天锁屏通知。</small>
       </div>
     </div>
     <div v-if="snoozed.length" class="snoozed-items">
