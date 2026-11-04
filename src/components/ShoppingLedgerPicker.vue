@@ -79,8 +79,8 @@ onMounted(()=>{void check();void loadSettings()})
   <p class="hint">请从交易记录中选择，不自动猜测购物内容；选中后自动完成，不会再次记账。</p>
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
-    家計簿只读联动尚未启用，请在 HomeFlow 和家計簿的 Cloudflare 加密 Secrets 中配置相同的专用只读密钥。
-    暂时仍可手动勾选完成购物。
+    家計簿只读联动暂不可用。当前通过 Cloudflare 私有 Service Binding 访问，
+    不需要在这两个应用中重复配置旧版公共接口密钥。请先检查内部桥接 Worker 状态；仍可手动勾选完成购物。
   </p>
   <template v-else>
    <div class="ledger-dates">
