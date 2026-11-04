@@ -122,6 +122,11 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .today-category-tabs button.selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
 .today-category-tabs button:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .today-plan-link{flex:none;font-size:11px;white-space:nowrap;padding:7px 5px}
+.today-goal-action{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  min-width:39px;height:34px;padding:0 4px;border:1px solid #b7d5c0;
+  border-radius:9px;background:#edf5ef;color:#377a5c;font-size:11px;font-weight:700}
+.today-goal-action:disabled{opacity:.5}
+.today-goal-action:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .today-unified-row>.app-icon{flex:none;color:#43866a;margin-right:6px}
 .today-unified-row>.task-detail{min-width:0;flex:1}
 .today-unified-row .task-detail>div{overflow-wrap:anywhere}
