@@ -20,3 +20,27 @@ CREATE TABLE IF NOT EXISTS goal_period_settlements (
 );
 CREATE INDEX IF NOT EXISTS idx_goal_settlements_goal_period
   ON goal_period_settlements(household_id,goal_id,period_key DESC);
+
+-- Saving or changing a period correction invalidates the prior snapshot and
+-- any old success mark. The original ledger is never changed; a new verification
+-- can safely capture the new estimate. Triggers save a second application write.
+CREATE TRIGGER IF NOT EXISTS invalidate_goal_settlement_adjustment_insert
+AFTER INSERT ON goal_period_adjustments BEGIN
+  UPDATE goal_period_settlements
+     SET status='pending',actual_amount=NULL,difference_amount=NULL,
+         settled_at=NULL,updated_at=CURRENT_TIMESTAMP
+   WHERE household_id=NEW.household_id AND goal_id=NEW.goal_id
+     AND period_key=NEW.period_key;
+  DELETE FROM plan_completion_marks WHERE household_id=NEW.household_id
+    AND plan_type='goal' AND plan_id=NEW.goal_id AND period_key=NEW.period_key;
+END;
+CREATE TRIGGER IF NOT EXISTS invalidate_goal_settlement_adjustment_update
+AFTER UPDATE OF adjustment_amount ON goal_period_adjustments BEGIN
+  UPDATE goal_period_settlements
+     SET status='pending',actual_amount=NULL,difference_amount=NULL,
+         settled_at=NULL,updated_at=CURRENT_TIMESTAMP
+   WHERE household_id=NEW.household_id AND goal_id=NEW.goal_id
+     AND period_key=NEW.period_key;
+  DELETE FROM plan_completion_marks WHERE household_id=NEW.household_id
+    AND plan_type='goal' AND plan_id=NEW.goal_id AND period_key=NEW.period_key;
+END;
