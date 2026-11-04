@@ -1,3 +1,16 @@
+export function addDays(date,days){
+  const time=Date.parse(date+'T00:00:00Z')
+  return Number.isFinite(time)&&Number.isInteger(days)?new Date(time+days*86400000).toISOString().slice(0,10):''
+}
+
+export function canCompleteEarly(rule,date){
+  if(!rule?.enabled||rule.repeat_type!=='interval'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<rule.anchor_date)return false
+  let c={}
+  try{c=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return false}
+  return c.anchor==='completion'&&Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
+    &&date<(rule.next_due_on||addDays(rule.anchor_date,c.days))
+}
+
 import {isJapaneseWorkday} from './jp-holidays.js'
 export function daysBetween(a,b){
   const [y1,m1,d1]=a.split('-').map(Number)
@@ -19,8 +32,10 @@ export function dueOn(rule,date) {
     case 'monthly': return Number(c.day)===Number(date.slice(8,10))
     case 'interval': {
       if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
-      if(c.anchor==='completion')return date>=(rule.next_due_on||rule.anchor_date)
-      return age%c.days===0
+      // anchor_date is the baseline, not a due occurrence. A first dose is
+      // expected after one full interval; later doses follow actual completion.
+      if(c.anchor==='completion')return date>=(rule.next_due_on||addDays(rule.anchor_date,c.days))
+      return age>0&&age%c.days===0
     }
     default: return false
   }
@@ -71,7 +86,8 @@ export function lastScheduledBefore(rule,date){
     try{config=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return null}
     if(config.anchor==='completion')return null // next_due_on already carries over.
     const days=Number(config.days)
-    if(!Number.isInteger(days)||days<1||days>3650)return null
+    if(!Number.isInteger(days)||days<1||days>3650||age<=days)return null
+    // Only occurrences after the first interval can be carried forward.
     const scheduled=age-1-((age-1)%days)
     const d=new Date(rule.anchor_date+'T00:00:00Z')
     d.setUTCDate(d.getUTCDate()+scheduled)
