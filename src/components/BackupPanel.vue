@@ -8,7 +8,7 @@ import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
-  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks']
+  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','reminderSnoozes']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
