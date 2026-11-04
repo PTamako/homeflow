@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
+import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import FinancePanel from './FinancePanel.vue'
 import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
@@ -106,6 +107,7 @@ async function loadMore(kind:string){
 
 function toggleLedger(id:string){ledgerPickerId.value=ledgerPickerId.value===id?null:id;editing.value=null}
 
+function milestone(item:Row){return anniversaryMilestoneLabel(item,displayedDay.value)}
 function countdown(date:string){
   const days=Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(today()+'T00:00:00Z'))/86400000)
   if(!Number.isFinite(days))return ''
@@ -127,7 +129,7 @@ function refreshOnResume(){
   const current=today()
   if(displayedDay.value!==current){
     displayedDay.value=current
-    if(props.mode==='today'||props.mode==='plans')void fetchMode()
+    if(props.mode==='today'||props.mode==='family'||props.mode==='plans')void fetchMode()
   }
 }
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
@@ -384,7 +386,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
           <p v-if="!items.length" class="life-empty">暂无即将到来的纪念日，可在「家庭」添加。</p>
           <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row upcoming-anniversary">
-            <b>{{ e.title }}</b>
+            <div class="anniversary-subject"><b>{{ e.title }}</b>
+              <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
+            </div>
             <div class="anniversary-countdown">
               <strong>{{ countdown(e.nextOn) }}</strong>
               <time :datetime="e.nextOn">{{ e.nextOn }}</time>
@@ -420,6 +424,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             :allow-edit="canEdit(e)||canEditBirthday(e)" :allow-delete="canEdit(e)"
             @edit="editAnniversary(e)" @delete="removeItem('anniversaries',e)">
             <div class="life-row"><div class="life-details"><b>{{ e.title }}</b>
+              <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
               <small>{{ e.nextOn||e.event_date }}</small></div></div>
           </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
@@ -761,6 +766,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .today-routine-row.routine-completed .routine-name{text-decoration:line-through;color:#9daaa1}
 .today-routine-row.routine-completed small{color:#7b9d86}
 .upcoming-anniversary{align-items:center}
+.anniversary-subject{min-width:0;display:grid;gap:3px;align-content:center}
+.anniversary-subject b{overflow-wrap:anywhere}
+.life-row .anniversary-milestone{display:block;color:#43866a;font-size:11px;font-weight:650;line-height:1.4;margin-top:3px}
 .anniversary-countdown{display:grid;justify-items:end;gap:4px;text-align:right;flex:none}
 .anniversary-countdown strong{font-size:13px;color:#43866a}
 .anniversary-countdown time{font-size:12px;color:#85958b}
