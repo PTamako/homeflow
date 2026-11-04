@@ -497,6 +497,53 @@ test('finished savings goals archive and expired unfinished trips stay active',a
  sqlite.close()
 })
 
+test('linked wish and savings cannot be completed without verified funding; outages fail closed',async()=>{
+ const {db,sqlite}=makeDb()
+ const {env,amount}=mockedProductionLedger(db,sqlite)
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'linked-savings-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const yesterday=new Date(Date.now()+9*3600000-86400000).toISOString().slice(0,10)
+ const created=await ask('/api/wishes','POST',{
+   title:'想买电脑',visibility:'household',wishType:'purchase',estimatedAmount:100000,
+   currency:'JPY',targetOn:yesterday,createSavingsGoal:true,
+   goalTargetOn:yesterday,goalStartOn:yesterday},owner)
+ assert.equal(created.status,201,JSON.stringify(created.body))
+ const goalId=created.body.goalId
+ amount.net=90000
+ const bypass=await ask('/api/wishes/'+created.body.id,'PATCH',{
+   title:'想买电脑',visibility:'household',wishType:'purchase',estimatedAmount:100000,
+   currency:'JPY',targetOn:yesterday,status:'completed'},owner)
+ assert.equal(bypass.status,409,'editing status must not bypass savings verification')
+ const wished=await ask('/api/plans/complete','POST',{
+   kind:'wish',id:created.body.id,completed:true},owner)
+ assert.equal(wished.status,409)
+ assert.equal(wished.body.error,'goal_not_funded')
+ assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(created.body.id).status,'wished')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM plan_completion_marks').get().n,0)
+ const short=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:goalId,completed:true},owner)
+ assert.equal(short.status,409,'explicit goal completion also checks balance')
+
+ const originalService=env.KAKEBO_LEDGER_SERVICE
+ delete env.KAKEBO_LEDGER_SERVICE
+ const offline=await ask('/api/plans/complete','POST',{
+   kind:'wish',id:created.body.id,completed:true},owner)
+ assert.equal(offline.status,503,'outage cannot cause a false completed mark')
+ env.KAKEBO_LEDGER_SERVICE=originalService
+ amount.net=120000
+ const goalDone=await ask('/api/plans/complete','POST',{kind:'goal',id:goalId,completed:true},owner)
+ assert.equal(goalDone.status,200,JSON.stringify(goalDone.body))
+ const wishDone=await ask('/api/plans/complete','POST',{kind:'wish',id:created.body.id,completed:true},owner)
+ assert.equal(wishDone.status,200,JSON.stringify(wishDone.body))
+ assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(created.body.id).status,'completed')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM plan_completion_marks').get().n,2)
+ sqlite.close()
+})
+
 test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
