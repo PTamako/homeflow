@@ -8,6 +8,9 @@ const entries=ref<Entry[]>([]),cursor=ref<string|null>(null)
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const month=()=>new Date(Date.now()-30*86400000+9*3600000).toISOString().slice(0,10)
 const start=ref(month()),end=ref(today())
+const adjustment=ref('0'),linkedAmount=ref<number|null>(null),savedMessage=ref('')
+const adjustedTotal=()=>Number(linkedAmount.value||0)+Number(adjustment.value||0)
+const signed=(n:number)=>(n<0?'−':n>0?'+':'')+'¥'+Math.abs(n).toLocaleString('ja-JP')
 async function call(path:string,method='GET',body?:any){
  const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
   ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
@@ -47,7 +50,27 @@ async function unlink(){
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-onMounted(check)
+async function loadSettings(){
+ try{
+  const q=new URLSearchParams({type:'shopping',targetId:props.shoppingId})
+  const data=await call('/finance/settings?'+q)
+  adjustment.value=String(data.adjustmentAmount||0)
+  linkedAmount.value=Number.isSafeInteger(data.linkedAmount)?data.linkedAmount:null
+ }catch(e){error.value=(e as Error).message}
+}
+async function saveAdjustment(){
+ if(busy.value)return
+ const value=Number(adjustment.value)
+ if(!/^-?\d+$/.test(adjustment.value.trim())||!Number.isSafeInteger(value)||Math.abs(value)>100000000000){
+  error.value='调整额请输入整数日元';return
+ }
+ busy.value=true;error.value='';savedMessage.value=''
+ try{
+  await call('/finance/settings','PUT',{type:'shopping',targetId:props.shoppingId,adjustmentAmount:value})
+  savedMessage.value='调整额已保存，原始账目未改变'
+ }catch(e){error.value=(e as Error).message}finally{busy.value=false}
+}
+onMounted(()=>{void check();void loadSettings()})
 </script>
 <template>
  <section class="shopping-ledger">
@@ -72,6 +95,20 @@ onMounted(check)
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <button v-if="linkedId" type="button" class="ledger-unlink" :disabled="busy" @click="unlink">取消已有关联</button>
   </template>
+  <div class="shopping-adjustment">
+   <b>购物金额调整</b>
+   <div class="adjustment-breakdown">
+    <span>关联消费 {{ linkedAmount===null?'尚未关联':signed(linkedAmount) }}</span>
+    <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
+    <strong>调整后金额 {{ signed(adjustedTotal()) }}</strong>
+   </div>
+   <label>手动调整额（円，可输入正负数）
+    <input v-model="adjustment" type="number" step="1" inputmode="numeric"/>
+   </label>
+   <button type="button" :disabled="busy" @click="saveAdjustment">保存调整额</button>
+   <small>调整额只保存在 HomeFlow，不会修改家計簿。未关联时显示调整额本身。</small>
+   <small v-if="savedMessage" role="status">{{ savedMessage }}</small>
+  </div>
   <p v-if="error" role="alert" class="ledger-error">{{ error }}</p>
   <button type="button" class="ledger-close" @click="emit('close')">关闭</button>
  </section>
@@ -87,6 +124,11 @@ onMounted(check)
 .shopping-ledger button{border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
 .shopping-ledger button:disabled{opacity:.5}.shopping-ledger .ledger-close{background:#e4eee7;color:#3e775a}
 .shopping-ledger .ledger-unlink{background:#fff;color:#ac5e4c;border:1px solid #edc8bf}
+.shopping-adjustment{border-top:1px solid #d9eadf;padding-top:12px;display:grid;gap:9px}
+.shopping-adjustment>b{font-size:13px}.shopping-adjustment label{display:grid;gap:5px;font-size:12px;color:#607c6d}
+.shopping-adjustment input{width:100%;max-width:100%;box-sizing:border-box;min-height:41px;border:1px solid #cadbd1;border-radius:9px;background:#fff;padding:9px}
+.adjustment-breakdown{display:grid;gap:5px;font-size:12px;color:#607c6d}.adjustment-breakdown strong{font-size:15px;color:#264b3b}
+.shopping-adjustment small{font-size:11px;color:#718e7c}
 .ledger-error{color:#a14d37;font-size:12px}
 @media(max-width:420px){.ledger-dates{grid-template-columns:minmax(0,1fr)}}
 </style>
