@@ -9,6 +9,7 @@ import {backupRoute} from './backup.js'
 import {pushRoute,runPushSchedule} from './webpush.js'
 import {petsRoute} from './pets.js'
 import {financeRoute} from './finance.js'
+import {portableRoute} from './portable.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -36,6 +37,7 @@ export default {
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
         if(path==='/api/reminders')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
+        if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
         if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session)
