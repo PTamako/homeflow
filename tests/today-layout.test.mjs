@@ -52,7 +52,7 @@ test('Today includes dated plans in the single default All checklist with catego
  }
  assert.ok(app.includes("key:'plan:'+plan.kind+':'+plan.id"))
  assert.ok(app.includes("api('/plans/today?date='"))
- assert.ok(app.includes('v-for="category in todayCategories"'))
+ assert.ok(app.includes('v-for="category in visibleTodayCategories"'))
  assert.ok(app.includes('v-for="row in visibleToday"'))
  assert.ok(app.includes('const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))'))
  assert.ok(app.includes('toggleShoppingPlan(row.plan)'))
