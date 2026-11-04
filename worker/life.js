@@ -237,7 +237,7 @@ export async function lifeRoute(request,db,path,session){
     if(table==='wishes'&&b.createSavingsGoal===true){
       // Create both records atomically using the existing goals.wish_id link.
       if(!Number.isSafeInteger(b.estimatedAmount)||b.estimatedAmount<=0||
-         b.estimatedAmount>100000000000)return bad()
+         b.estimatedAmount>100000000000||(b.goalTargetOn&&!ymd(b.goalTargetOn)))return bad()
       const goalId=crypto.randomUUID()
       await db.batch([
         db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals),
@@ -274,6 +274,17 @@ export async function lifeRoute(request,db,path,session){
       await db.prepare('UPDATE routines SET enabled=0,updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4')
         .bind(iso(),id,session.household_id,session.user_id).run()
       return json({ok:true,archived:true})
+    }
+    if(table==='wishes'){
+      // Keep existing savings and trip records. Removing a wish merely unlinks
+      // its optional goal/trip: never silently delete linked financial records.
+      await db.batch([
+        db.prepare('UPDATE goals SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
+        db.prepare('UPDATE trips SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
+        db.prepare('DELETE FROM wishes WHERE id=?1 AND household_id=?2 AND created_by=?3')
+          .bind(id,session.household_id,session.user_id)
+      ])
+      return json({ok:true,unlinked:true})
     }
     try{
       await db.prepare('DELETE FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
