@@ -1,5 +1,6 @@
 import {json,readBody,validDate,iso} from './security.js'
 import {goalPeriod} from './goal-period.js'
+import {verifiedGoalProgress} from './finance.js'
 import {earliestUnfinishedGoalPeriod,jstDayOf} from './today-periods.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
@@ -7,7 +8,7 @@ const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 
 // Explicitly complete one wish or one savings period. These acknowledgements
 // never change balances or write to kakebo; goal periods stay independent.
-async function completePlan(request,db,session){
+async function completePlan(request,db,session,env){
   if(request.method!=='POST')return json({error:'method_not_allowed'},405)
   const body=await readBody(request),kind=body?.kind,id=body?.id
   if(!['wish','goal'].includes(kind)||!idOk(id)||typeof body?.completed!=='boolean')
@@ -32,7 +33,30 @@ async function completePlan(request,db,session){
   const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
     WHERE household_id=?1 AND plan_type=?2 AND plan_id=?3 AND period_key=?4`)
     .bind(session.household_id,kind,id,periodKey).first()
-  if(body.completed){
+  if(body.completed&&!found){
+    // Money is never marked as saved just because the user clicked a button.
+    // Verify against the real Kakebo read-only ledger on each completion.
+    if(kind==='goal'||kind==='wish'){
+      let linked=[]
+      if(kind==='wish'){
+        const response=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND wish_id=?2`)
+          .bind(session.household_id,id).all()
+        linked=response.results||[]
+      }
+      const goals=kind==='goal'?[row]:linked
+      if(goals.length){
+        if(session.role!=='owner')return json({error:'owner_required_for_ledger_verification'},403)
+        for(const goal of goals){
+          const key=(goal.goal_mode||'once')==='once'?'once':
+            goal.goal_mode==='yearly'?today.slice(0,4):today.slice(0,7)
+          try{
+            const amount=await verifiedGoalProgress(env,goal,kind==='goal'?periodKey:key,today)
+            if(!amount.ok)return json({error:amount.error,current:amount.amount,target:amount.target},
+              amount.error==='goal_not_funded'?409:503)
+          }catch{return json({error:'ledger_verification_unavailable'},503)}
+        }
+      }
+    }
     if(kind==='wish'){
       if(row.status==='completed')return found?json({ok:true,unchanged:true}):json({error:'already_completed'},409)
       await db.batch([
@@ -71,15 +95,16 @@ async function completePlan(request,db,session){
 
 // Date-scoped digest of overdue and today-due plans; period marks are read in
 // the same D1 batch. No additional ledger access on page load.
-export async function todayPlansRoute(request,db,session,path='/api/plans/today'){
-  if(path==='/api/plans/complete')return completePlan(request,db,session)
+export async function todayPlansRoute(request,db,session,path='/api/plans/today',env){
+  if(path==='/api/plans/complete')return completePlan(request,db,session,env)
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
   const date=new URL(request.url).searchParams.get('date')||tokyoToday()
   if(!validDate(date)||!date)return json({error:'invalid_input'},400)
   const h=session.household_id,u=session.user_id
   const startOfDayUtc=new Date(date+'T00:00:00+09:00').toISOString()
   const batch=await db.batch([
-    db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt FROM shopping_items
+    db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt,
+      ledger_entry_id AS ledgerEntryId FROM shopping_items
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
         AND (completed_at IS NULL OR completed_at>=?4)
         AND due_on IS NOT NULL AND due_on<=?3
@@ -106,6 +131,7 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
     kind,id:row.id,title:row.title,dueOn:row.dueOn,
     done,overdue:row.dueOn<date&&!done,
     ...(periodKey?{periodKey}:{}),
+    ...(kind==='shopping'?{ledgerEntryId:row.ledgerEntryId||null}:{}),
     ...(row.destination?{destination:row.destination}:{}),
     ...(kind==='trip'&&row.endOn&&row.endOn<date?{tripEnded:true}: {})
   })
