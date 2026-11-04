@@ -699,3 +699,27 @@ test('pet health and travel history can be filtered by month and paged',async()=
  assert.equal(history.body.items[0].title,'过去的旅行')
  sqlite.close()
 })
+
+test('old one-time anniversaries are in history; recurring birthdays stay upcoming',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-bootstrap-secret-unit-test-012345'}
+ const owner=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'anniv-history',displayName:'主人',password:'test-long-history-password-2026',
+   householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(owner.status,201)
+ const cookie=extractCookie(owner.cookie)
+ const old=await send(env,'/api/anniversaries','POST',{
+   title:'毕业纪念',eventDate:'2024-08-15',repeatMode:'once',visibility:'household'},cookie)
+ const annual=await send(env,'/api/anniversaries','POST',{
+   title:'结婚纪念日',eventDate:'2022-06-01',repeatMode:'yearly',visibility:'household'},cookie)
+ assert.equal(old.status,201);assert.equal(annual.status,201)
+ const upcoming=await send(env,'/api/anniversaries/upcoming','GET',undefined,cookie)
+ assert.equal(upcoming.body.items.some(x=>x.id===old.body.id),false)
+ assert.equal(upcoming.body.items.some(x=>x.id===annual.body.id),true)
+ const past=await send(env,'/api/anniversaries?scope=history&year=2024&month=08&limit=6','GET',undefined,cookie)
+ assert.equal(past.status,200,JSON.stringify(past.body))
+ assert.equal(past.body.items.length,1)
+ assert.equal(past.body.items[0].id,old.body.id)
+ assert.equal((await send(env,'/api/anniversaries?scope=history&year=2023&limit=6','GET',undefined,cookie)).body.items.length,0)
+ sqlite.close()
+})

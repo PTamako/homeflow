@@ -43,13 +43,22 @@ const listCursors=ref<Record<string,string|null>>({})
 const pageBusy=ref<Record<string,boolean>>({})
 const pageLimit=6
 const anniversaryExpanded=ref(false)
-const upcomingAnniversaries=computed(()=>anniversaryExpanded.value?items.value:items.value.slice(0,5))
+const anniversaryView=ref<'upcoming'|'past'>('upcoming')
+const anniversaryYear=ref(''),anniversaryMonth=ref('')
+const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
+  anniversaryExpanded.value?items.value:items.value.slice(0,5))
 const visibleShopping=computed(()=>other.value)
 
 function listPath(kind:string,cursor?:string|null){
   const q=new URLSearchParams({limit:String(pageLimit)})
   if(kind==='memories'){
     if(memoryYear.value){q.set('year',memoryYear.value);if(memoryMonth.value)q.set('month',memoryMonth.value)}
+  }else if(kind==='anniversaries'){
+    q.set('scope','history')
+    if(anniversaryYear.value){
+      q.set('year',anniversaryYear.value)
+      if(anniversaryMonth.value)q.set('month',anniversaryMonth.value)
+    }
   }else{
     q.set('scope',planScope.value)
     if(planScope.value==='history'&&planYear.value){
@@ -60,7 +69,7 @@ function listPath(kind:string,cursor?:string|null){
   return '/'+kind+'?'+q.toString()
 }
 function assignRows(kind:string,rows:Row[],append=false){
-  const target=kind==='wishes'||kind==='memories'?items:
+  const target=kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
   target.value=append?[...target.value,...rows]:rows
 }
@@ -74,7 +83,8 @@ async function loadMore(kind:string){
     // Ignore responses for a filter that changed while the request was running.
     if(endpoint!==listPath(kind,cursor)||
       (kind==='memories'&&props.mode!=='memories')||
-      (kind!=='memories'&&props.mode!=='plans'))return
+      (kind==='anniversaries'&&(props.mode!=='family'||anniversaryView.value!=='past'))||
+      (kind!=='memories'&&kind!=='anniversaries'&&props.mode!=='plans'))return
     assignRows(kind,data.items||[],true)
     listCursors.value[kind]=data.nextCursor||null
     if(kind==='memories')await loadPhotos()
@@ -123,7 +133,13 @@ async function fetchMode(){
       const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
       routines.value=r.items||[];items.value=a.items||[]
     }else if(props.mode==='family'){
-      items.value=(await api('/anniversaries/upcoming')).items||[]
+      const past=anniversaryView.value==='past'
+      const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
+      const data=await api(path)
+      if(props.mode!=='family'||past!==(anniversaryView.value==='past')||
+        (past&&path!==listPath('anniversaries')))return
+      items.value=data.items||[]
+      listCursors.value.anniversaries=past?data.nextCursor||null:null
     }else if(props.mode==='plans'){
       const kinds=['wishes','goals','shopping','trips','routines']
       const paths=kinds.map(kind=>listPath(kind))
@@ -305,6 +321,11 @@ onBeforeUnmount(()=>{
 watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 watch([planScope,planYear,planMonth],()=>{if(props.mode==='plans')void fetchMode()})
 watch([memoryYear,memoryMonth],()=>{if(props.mode==='memories')void fetchMode()})
+watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
+  anniversaryExpanded.value=false
+  if(props.mode==='family')void fetchMode()
+})
+watch(anniversaryYear,value=>{if(!value)anniversaryMonth.value=''})
 watch(planYear,value=>{if(!value)planMonth.value=''})
 watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </script>
@@ -358,9 +379,26 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     <template v-else-if="mode==='family'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
-        <p class="life-caption">家庭成员或宠物档案中填写的生日会自动显示、每年提醒，无需重复创建。这里可添加结婚纪念日或其他特殊日期。</p>
+        <p class="life-caption">档案生日会自动每年提醒。过去的一次性纪念日保存在历史中，可以按年月查询。</p>
+        <div class="archive-tabs" role="group" aria-label="重要日子筛选">
+          <button type="button" :class="{selected:anniversaryView==='upcoming'}"
+            :aria-pressed="anniversaryView==='upcoming'" @click="anniversaryView='upcoming'">即将到来</button>
+          <button type="button" :class="{selected:anniversaryView==='past'}"
+            :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
+        </div>
+        <div v-if="anniversaryView==='past'" class="archive-date-filters">
+          <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
+            <option value="">全部年份</option>
+            <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
+          </select></label>
+          <label>月份<select v-model="anniversaryMonth" :disabled="!anniversaryYear" aria-label="纪念日历史月份">
+            <option value="">全年</option>
+            <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
+          </select></label>
+        </div>
+        <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
-          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn }}</small></div>
+          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn||e.event_date }}</small></div>
             <div v-if="canEdit(e)" class="detail-actions">
               <button type="button" class="life-link" @click="edit('anniversaries',e)">编辑</button>
               <button type="button" class="life-link life-danger" @click="removeItem('anniversaries',e)">删除</button>
@@ -369,9 +407,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
         </template>
-        <button v-if="items.length>5" type="button" class="life-more" @click="anniversaryExpanded=!anniversaryExpanded">
+        <button v-if="anniversaryView==='upcoming'&&items.length>5" type="button" class="life-more" @click="anniversaryExpanded=!anniversaryExpanded">
           {{ anniversaryExpanded?'收起重要日子':'查看全部重要日子（'+items.length+'）' }}
         </button>
+        <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
+          :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <form class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
@@ -407,7 +447,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
           <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
-            <div class="life-row"><div class="life-details"><b>{{ r.title }}</b><small>{{ routineLabel(r) }}</small></div>
+            <div class="life-row" :class="{'detail-completed':r.enabled===0}">
+              <div class="life-details"><b class="detail-name">{{ r.title }}</b><small>{{ r.enabled===0?'已停用':routineLabel(r) }}</small></div>
               <div v-if="canEdit(r)" class="detail-actions">
                 <button type="button" class="life-link" @click="edit('routines',r)">编辑</button>
                 <button type="button" class="life-link life-danger" @click="removeItem('routines',r)">删除</button>
@@ -438,7 +479,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <template v-for="w in items" :key="w.id">
-            <div class="life-row" :class="{'detail-completed':w.status==='completed'}">
+            <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
               <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
               <div class="detail-actions">
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'" type="button" class="life-link" @click="convertWish(w)">计划</button>
@@ -515,7 +556,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
-            <div class="life-row" :class="{'detail-completed':t.status==='completed'}">
+            <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
               <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                 <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
               <div class="detail-actions">

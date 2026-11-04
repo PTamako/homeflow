@@ -21,6 +21,8 @@ test('timeline and family archive controls are accessible and paginated',()=>{
  const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
  const pet=readFileSync(new URL('../src/components/PetHealthPanel.vue',import.meta.url),'utf8')
  assert.ok(life.includes('计划记录筛选'))
+ assert.ok(life.includes('纪念日历史年份'))
+ assert.ok(life.includes("loadMore('anniversaries')"))
  assert.ok(life.includes('回忆年份'))
  assert.ok(life.includes('loadMore('))
  assert.ok(life.includes('listCursors.memories'))
