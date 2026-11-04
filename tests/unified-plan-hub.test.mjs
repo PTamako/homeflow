@@ -94,7 +94,7 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  assert.deepEqual(new Set(result.items.map(x=>x.kind)),new Set(['shopping','wish','goal','trip']))
  assert.equal(result.items.find(x=>x.kind==='wish').overdue,true)
  assert.equal(db.batches.length,1)
- assert.equal(db.batches[0].length,5)
+ assert.equal(db.batches[0].length,6)
  assert.ok(db.batches[0].slice(0,4).every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
  assert.equal(db.batches[0][4].values[0],'family')
  assert.ok(db.batches[0].every(q=>!q.sql.includes('finance_links')&&!q.sql.includes('kakebo_')),
