@@ -34,6 +34,11 @@ const authReady=ref(false)
 const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
+const listPageSize=5
+const todayVisibleCount=ref(listPageSize)
+const pendingVisibleCount=ref(listPageSize)
+const peopleVisibleCount=ref(listPageSize)
+const petsVisibleCount=ref(listPageSize)
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const settingsOpen=ref(false)
@@ -84,6 +89,8 @@ const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
 const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
   allToday.value.filter(row=>row.kind===todayCategory.value))
 const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
+const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))
+const visiblePendingTasks=computed(()=>pendingTasks.value.slice(0,pendingVisibleCount.value))
 function recurringLabel(r:Routine){
   return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
     r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
@@ -99,6 +106,9 @@ function changedEditingSubject(){
  if(editingTask.value)editingTask.value.healthRecordType=isPet(editingTask.value.subjectProfileId)?'other':''
 }
 const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
+const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
+const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
+watch([todayCategory,showDone,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
@@ -106,6 +116,14 @@ async function openBirthdayProfileEditor(id:string){
   const profile=profiles.value.find(p=>p.id===id)
   if(!profile||!canEditProfile(profile))return
   tab.value='family'
+  await nextTick()
+  const list=profile.type==='pet'?pets.value:people.value
+  const index=list.findIndex(p=>p.id===id)
+  if(index>=0){
+    const count=Math.ceil((index+1)/listPageSize)*listPageSize
+    if(profile.type==='pet')petsVisibleCount.value=Math.max(petsVisibleCount.value,count)
+    else peopleVisibleCount.value=Math.max(peopleVisibleCount.value,count)
+  }
   editProfileId.value=id
   if(profile.type==='pet')openPetId.value=id
   await nextTick()
@@ -377,8 +395,13 @@ watch(tab,value=>{
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
+    todayVisibleCount.value=listPageSize
+    pendingVisibleCount.value=listPageSize
     todayCategory.value='all'
     if(user.value)void reloadToday()
+  }else if(value==='family'){
+    peopleVisibleCount.value=listPageSize
+    petsVisibleCount.value=listPageSize
   }
 })
 onMounted(async()=>{
@@ -487,11 +510,13 @@ onBeforeUnmount(()=>{
           <div v-if="pendingTasks.length" class="pending">
             <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
               <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
-            <div v-for="op in pendingTasks" :key="op.id" class="task-row">
+            <div v-for="op in visiblePendingTasks" :key="op.id" class="task-row">
               <AppIcon name="archive" :size="18" /><div class="task-detail">{{ op.payload.title }}
                 <small>{{ op.status==='conflict'?'其他设备已修改，需要重新确认':'待网络恢复后同步' }}</small></div>
               <button class="text-button" @click="discardPending(op.id)">取消</button>
             </div>
+            <button v-if="pendingTasks.length>visiblePendingTasks.length" class="outline" type="button"
+              @click="pendingVisibleCount+=listPageSize">加载更多待同步任务（每次 5 条）</button>
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
           <div class="row-between">
@@ -503,9 +528,9 @@ onBeforeUnmount(()=>{
               :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
               @click="todayCategory=category.id">{{ category.label }}</button>
           </div>
-          <p class="today-unified-hint">默认显示今天的所有事项；到期未完成的计划继续顺延，完成的定期事项第二天重置。</p>
+          <p class="today-unified-hint">默认显示各类今日事项，每次展示 5 条；到期未完成的计划继续顺延，完成的定期事项第二天重置。</p>
           <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
-          <template v-for="row in unifiedToday" :key="row.key">
+          <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
               :allow-edit="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
               :allow-delete="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
@@ -572,6 +597,8 @@ onBeforeUnmount(()=>{
               kind="routines" :item="row.routine" :profiles="profiles"
               @saved="routineSaved" @cancel="editingRoutine=null"/>
           </template>
+          <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
+            @click="todayVisibleCount+=listPageSize">加载更多今日待办（每次 5 条）</button>
         </section>
       </template>
       <template v-else-if="tab==='family'">
@@ -582,7 +609,7 @@ onBeforeUnmount(()=>{
           </div>
           <p class="hint">点击自己的档案即可补充或修改生日。填写后自动加入每年生日提醒。</p>
           <div v-if="people.length" class="profiles">
-            <div v-for="p in people" :key="p.id" :id="'profile-'+p.id" class="profile-entry">
+            <div v-for="p in visiblePeople" :key="p.id" :id="'profile-'+p.id" class="profile-entry">
               <button v-if="canEditProfile(p)" type="button" class="profile profile-button"
                 :aria-expanded="editProfileId===p.id" @click="toggleProfileEdit(p.id)">
                 <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
@@ -601,7 +628,9 @@ onBeforeUnmount(()=>{
                 :profile="p" @saved="profileSaved" @close="editProfileId=null"/>
             </div>
           </div>
-          <p v-else class="empty">还没有家庭成员档案</p>
+          <button v-if="people.length>visiblePeople.length" class="outline" type="button"
+            @click="peopleVisibleCount+=listPageSize">加载更多家庭成员（每次 5 条）</button>
+          <p v-if="!people.length" class="empty">还没有家庭成员档案</p>
         </section>
         <section class="panel">
           <div class="family-section-heading">
@@ -609,7 +638,7 @@ onBeforeUnmount(()=>{
             <span class="section-hint">{{ pets.length }} 只宠物</span>
           </div>
           <p class="hint">点击宠物卡片，查看体重、驱虫、疫苗和护理记录。</p>
-          <div v-for="p in pets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
+          <div v-for="p in visiblePets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
             <button type="button" class="pet-profile-trigger" :aria-expanded="openPetId===p.id"
               :aria-controls="'pet-health-'+p.id" @click="togglePet(p.id)">
               <span class="profile-symbol"><AppIcon name="paw" :size="22" /></span>
@@ -628,6 +657,8 @@ onBeforeUnmount(()=>{
               <PetHealthPanel :pet-id="p.id" :name="p.displayName" :user-id="user.id" />
             </div>
           </div>
+          <button v-if="pets.length>visiblePets.length" class="outline" type="button"
+            @click="petsVisibleCount+=listPageSize">加载更多宠物档案（每次 5 条）</button>
           <p v-if="!pets.length" class="empty">尚无宠物档案，可以在下方添加豆沙。</p>
         </section>
         <section v-if="user.role==='owner'" class="panel">
