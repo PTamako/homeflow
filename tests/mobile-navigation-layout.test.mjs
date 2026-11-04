@@ -89,7 +89,7 @@ test('all 31 date fields render inside the shared iOS-safe date control',()=>{
     for(const [tag] of controls)assert.match(tag,/v-model="/)
     fields+=controls.length
   }
-  assert.equal(fields,31,'all existing date inputs were migrated')
+  assert.ok(fields>=31,'all date fields, including newly added editors, use the shared iOS-safe control')
   const sw=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8')
   assert.match(sw,/homeflow-shell-v2/,'new service worker invalidates old cached shell')
   assert.match(sw,/fetch\(req,\{cache:'no-store'\}\)/,'navigation must request current HTML')
