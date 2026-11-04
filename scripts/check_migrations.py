@@ -17,6 +17,7 @@ MIGRATIONS=[
     "0010_task_pet_care.sql",
     "0011_unified_plan_hub.sql",
     "0012_savings_goal_cadence.sql",
+    "0013_plan_completion_marks.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -29,7 +30,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
@@ -47,6 +48,8 @@ assert "source_task_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_heal
 assert "remind_enabled" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
 assert "goal_mode" in {x[1] for x in db.execute("PRAGMA table_info(goals)")}
 assert "goal_period_adjustments" in tables
+assert {"plan_type","plan_id","period_key","completed_at"}.issubset(
+    {x[1] for x in db.execute("PRAGMA table_info(plan_completion_marks)")})
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")
 db.execute("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u-1','demo','x','y')")
