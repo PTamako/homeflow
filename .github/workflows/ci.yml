@@ -16,5 +16,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run tests and typechecked build
         run: npm run check
+      - name: Verify D1 migrations and schema
+        run: python3 scripts/check_migrations.py
       - name: Verify Worker bundle
         run: npx wrangler deploy --dry-run --outdir .wrangler/dryrun

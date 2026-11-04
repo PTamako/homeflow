@@ -7,6 +7,9 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
+[triggers]
+crons = ["0 23 * * *"] # Daily 08:00 Asia/Tokyo
+
 [vars]
 APP_ENV = "production"
 
@@ -18,6 +21,9 @@ migrations_dir = "migrations"
 
 [env.preview]
 name = "homeflow-preview"
+
+[env.preview.triggers]
+crons = []
 
 [env.preview.vars]
 APP_ENV = "preview"

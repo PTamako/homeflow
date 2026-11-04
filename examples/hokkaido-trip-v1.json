@@ -1,0 +1,106 @@
+{
+  "format": "homeflow.trip",
+  "schemaVersion": 1,
+  "importSourceId": "demo-hokkaido-2027",
+  "trip": {
+    "externalId": "hokkaido-2027",
+    "title": "北海道冬季旅行",
+    "destination": "北海道",
+    "startDate": "2027-01-22",
+    "endDate": "2027-01-24",
+    "timeZone": "Asia/Tokyo",
+    "participants": [
+      "adult-a",
+      "adult-b"
+    ],
+    "currency": "JPY",
+    "budget": {
+      "amount": 200000,
+      "currency": "JPY",
+      "status": "estimate"
+    },
+    "days": [
+      {
+        "date": "2027-01-22",
+        "items": [
+          {
+            "externalId": "arrive-sapporo",
+            "title": "前往札幌",
+            "startTime": null,
+            "endTime": null,
+            "category": "transport",
+            "bookingStatus": "not_booked",
+            "place": {
+              "name": "札幌"
+            },
+            "verification": {
+              "status": "unverified"
+            }
+          }
+        ]
+      },
+      {
+        "date": "2027-01-23",
+        "items": [
+          {
+            "externalId": "sapporo-walk",
+            "title": "市区散步",
+            "startTime": null,
+            "endTime": null,
+            "category": "sightseeing",
+            "bookingStatus": "not_booked",
+            "place": {
+              "name": "札幌市区"
+            },
+            "verification": {
+              "status": "unverified"
+            }
+          }
+        ]
+      },
+      {
+        "date": "2027-01-24",
+        "items": [
+          {
+            "externalId": "return-tokyo",
+            "title": "返回东京",
+            "startTime": null,
+            "endTime": null,
+            "category": "transport",
+            "bookingStatus": "not_booked",
+            "place": {
+              "name": "东京"
+            },
+            "verification": {
+              "status": "unverified"
+            }
+          }
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "externalId": "check-tickets",
+        "title": "检查交通与住宿预订",
+        "dueDate": "2027-01-15",
+        "assignee": "adult-a",
+        "visibility": "private"
+      }
+    ],
+    "packingLists": [
+      {
+        "externalId": "shared-pack",
+        "owner": "adult-a",
+        "items": [
+          {
+            "externalId": "cable",
+            "label": "充电线",
+            "quantity": 2
+          }
+        ]
+      }
+    ],
+    "bookings": [],
+    "reminders": []
+  }
+}
