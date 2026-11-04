@@ -12,6 +12,7 @@ crons = ["0 23 * * *"] # Daily 08:00 Asia/Tokyo
 
 [vars]
 APP_ENV = "production"
+KAKEBO_LEDGER_API_URL = "https://kakeibo-f17.pages.dev/api/homeflow-ledger"
 
 [[d1_databases]]
 binding = "DB"
