@@ -48,14 +48,16 @@ const queries=[
        AND g.household_id=m.household_id AND g.created_by=?2)))
     ORDER BY m.completed_at,m.plan_type,m.plan_id,m.period_key LIMIT 501`],
   ['reminderSnoozes',"SELECT kind,item_id,until_on FROM reminder_snoozes "+
-    "WHERE household_id=?1 AND user_id=?2 ORDER BY updated_at LIMIT 501"]
+    "WHERE household_id=?1 AND user_id=?2 ORDER BY updated_at LIMIT 501"],
+  ['reminderPreferences',"SELECT advance_days FROM reminder_preferences "+
+    "WHERE household_id=?1 AND user_id=?2 LIMIT 501"]
 ]
 export const RESTORE_ORDER=queries.map(([key])=>key)
 const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   switch(key){
@@ -193,6 +195,11 @@ function normalized(key,r,h,u) {
         "SELECT ?1,?2,?3,?4 WHERE EXISTS(SELECT 1 FROM shopping_items "+
         "WHERE household_id=?1 AND id=?2 AND created_by=?4)",
         [h,r.shopping_id,String(r.external_entry_id),u]]
+    }
+    case 'reminderPreferences': {
+      if(![0,1,3,7].includes(r.advance_days))return null
+      return ["INSERT OR IGNORE INTO reminder_preferences (household_id,user_id,advance_days) VALUES(?1,?2,?3)",
+        [h,u,r.advance_days]]
     }
     case 'reminderSnoozes': {
       if(!['task','routine','anniversary','trip'].includes(r.kind)||

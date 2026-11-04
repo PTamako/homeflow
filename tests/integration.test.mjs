@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -420,6 +420,61 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
    dataset:'reminderSnoozes',items:saved,confirm:true},owner)
  assert.equal(repeated.status,200)
  assert.equal(repeated.body.inserted,0)
+ sqlite.close()
+})
+
+test('per-user advance reminder and custom snooze preserve due dates and backup',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'reminder-ahead-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const invite=await ask('/api/auth/invitations','POST',{},owner)
+ assert.equal(invite.status,201)
+ const registered2=await ask('/api/auth/join','POST',{
+   loginName:'reminder-ahead-member',password:'another-long-password-321',displayName:'家人',
+   invitationCode:invite.body.invitationCode})
+ assert.equal(registered2.status,201)
+ const member=extractCookie(registered2.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=n=>new Date(Date.parse(today+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const future=await ask('/api/tasks','POST',{
+   title:'三天后任务',dueOn:plus(3),visibility:'household',notes:'',remindEnabled:true},owner)
+ assert.equal(future.status,201,JSON.stringify(future.body))
+ const path='/api/reminders?date='+today
+ const before=await ask(path,'GET',undefined,owner)
+ assert.equal(before.status,200)
+ assert.equal(before.body.items.some(x=>x.id===future.body.id),false)
+ const configure=await ask('/api/reminders/preferences','PUT',{advanceDays:3},owner)
+ assert.equal(configure.status,200)
+ assert.equal((await ask('/api/reminders/preferences','PUT',{advanceDays:2},owner)).status,400)
+ const ownerNow=await ask(path,'GET',undefined,owner)
+ assert.equal(ownerNow.status,200,JSON.stringify(ownerNow.body))
+ assert.equal(ownerNow.body.advanceDays,3)
+ assert.equal(ownerNow.body.items.find(x=>x.id===future.body.id)?.daysBefore,3)
+ assert.equal((await ask(path,'GET',undefined,member)).body.items.some(x=>x.id===future.body.id),false)
+ const snooze=await ask('/api/reminders/snooze','POST',{
+   kind:'task',id:future.body.id,untilOn:plus(2)},owner)
+ assert.equal(snooze.status,200)
+ const suppressed=await ask(path,'GET',undefined,owner)
+ assert.equal(suppressed.body.items.some(x=>x.id===future.body.id),false)
+ assert.equal(suppressed.body.snoozed.find(x=>x.id===future.body.id)?.untilOn,plus(2))
+ const cancel=await ask('/api/reminders/snooze','DELETE',{kind:'task',id:future.body.id},owner)
+ assert.equal(cancel.status,200)
+ assert.ok((await ask(path,'GET',undefined,owner)).body.items.some(x=>x.id===future.body.id))
+ const backup=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(backup.status,200)
+ assert.deepEqual(backup.body.records.reminderPreferences,[{advance_days:3}])
+ sqlite.exec('DELETE FROM reminder_preferences')
+ const restored=await ask('/api/portable/restore','POST',{
+   dataset:'reminderPreferences',items:backup.body.records.reminderPreferences,confirm:true},owner)
+ assert.equal(restored.status,200,JSON.stringify(restored.body))
+ assert.equal(restored.body.inserted,1)
+ assert.equal(sqlite.prepare('SELECT advance_days AS days FROM reminder_preferences').get().days,3)
+ assert.equal(sqlite.prepare('SELECT due_on AS dueOn FROM tasks WHERE id=?').get(future.body.id).dueOn,plus(3))
  sqlite.close()
 })
 
