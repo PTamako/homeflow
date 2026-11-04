@@ -11,14 +11,16 @@ import AppIcon from './components/AppIcon.vue'
 import SwipeActions from './components/SwipeActions.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
-type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;completedAt:string|null;updatedAt:string}
+type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
-const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref('')
+const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref(''),taskCareType=ref('')
+const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
+  assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
 const error=ref(''),invitation=ref(''),showDone=ref(false)
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
@@ -38,6 +40,14 @@ const visibleTasks=computed(()=>tasks.value.filter(t=>{
    !t.dueOn||t.dueOn<=now
 }))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
+const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
+const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
+const newTaskPet=computed(()=>isPet(subjectId.value))
+const editTaskPet=computed(()=>isPet(editingTask.value?.subjectProfileId))
+watch(subjectId,id=>{taskCareType.value=isPet(id)?'other':''})
+function changedEditingSubject(){
+ if(editingTask.value)editingTask.value.healthRecordType=isPet(editingTask.value.subjectProfileId)?'other':''
+}
 const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
@@ -140,27 +150,36 @@ async function addTask(){
   error.value='';loading.value=true;syncMessage.value=''
   try{
     const outcome=await sendOrQueueTask(user.value.id,'create',{title:title.value,notes:'',
-      visibility:visibility.value,dueOn:due.value||null,subjectProfileId:subjectId.value||null})
-    title.value='';due.value='';subjectId.value=''
+      visibility:visibility.value,dueOn:due.value||null,subjectProfileId:subjectId.value||null,
+      healthRecordType:newTaskPet.value?taskCareType.value||null:null})
+    title.value='';due.value='';subjectId.value='';taskCareType.value=''
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
     else await loadTasks()
     pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
-async function editTask(t:Task){
+function editTask(t:Task){
   if(!user.value||t.creatorUserId!==user.value.id)return
-  const name=prompt('修改任务内容',t.title)
-  if(name===null)return
-  const newTitle=name.trim()
-  if(!newTitle||newTitle.length>150){error.value='任务名称必须在 1～150 字符内';return}
+  editingTask.value=editingTask.value?.id===t.id?null:{
+    id:t.id,title:t.title,notes:t.notes||'',visibility:t.visibility,dueOn:t.dueOn||'',
+    assigneeUserId:t.assigneeUserId,subjectProfileId:t.subjectProfileId||'',
+    healthRecordType:t.healthRecordType||'',expectedUpdatedAt:t.updatedAt
+  }
+}
+async function saveTaskEdit(){
+  if(!user.value||!editingTask.value)return
+  const t=editingTask.value
+  if(!t.title.trim()||t.title.length>150){error.value='任务名称必须在 1～150 字符内';return}
   error.value=''
   try{
     const outcome=await sendOrQueueTask(user.value.id,'edit',{
-      title:newTitle,notes:t.notes||'',visibility:t.visibility,dueOn:t.dueOn,
-      assigneeUserId:t.assigneeUserId,subjectProfileId:t.subjectProfileId,
-      expectedUpdatedAt:t.updatedAt},t.id)
+      title:t.title.trim(),notes:t.notes||'',visibility:t.visibility,dueOn:t.dueOn||null,
+      assigneeUserId:t.assigneeUserId,subjectProfileId:t.subjectProfileId||null,
+      healthRecordType:editTaskPet.value?t.healthRecordType||null:null,
+      expectedUpdatedAt:t.expectedUpdatedAt},t.id)
     if(outcome==='queued')syncMessage.value='修改已离线保存，稍后同步'
     else await loadTasks()
+    editingTask.value=null
     pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}
 }
@@ -272,7 +291,14 @@ onBeforeUnmount(()=>{
               <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
                 <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
               </select></label>
-            <p class="task-object-hint">只是说明这件事与谁有关，不会指派任务，也不会改变「仅自己／家庭共享」权限。</p>
+            <label v-if="newTaskPet" class="task-object">完成后同步到宠物护理记录
+              <select v-model="taskCareType" aria-label="普通任务完成时护理记录类型">
+                <option value="">不自动记录</option><option value="other">日常护理（默认）</option>
+                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
+                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
+              </select>
+            </label>
+            <p class="task-object-hint">关联豆沙等宠物后，默认勾选完成就记录护理历史；也可以关闭。不会改变家庭共享权限。</p>
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
           <div v-if="pendingTasks.length" class="pending">
@@ -287,16 +313,46 @@ onBeforeUnmount(()=>{
           </div>
           <div class="row-between"><b>今日待办</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label></div>
           <div v-if="!visibleTasks.length" class="empty">今天没有任务，添加一件小事吧。</div>
-          <SwipeActions v-for="t in visibleTasks" :key="t.id" :id="t.id" scope="today-tasks"
+          <template v-for="t in visibleTasks" :key="t.id">
+          <SwipeActions :id="t.id" scope="today-tasks"
             :allow-edit="t.creatorUserId===user.id" :allow-delete="t.creatorUserId===user.id"
             @edit="editTask(t)" @delete="deleteTask(t)">
             <div class="task-row">
               <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
               <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
                 <small class="task-meta"><AppIcon :name="t.visibility==='private'?'shield':'house'" :size="14" />
-                  {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
+                  {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}
+                  <template v-if="nameForProfile(t.subjectProfileId)"> · {{ nameForProfile(t.subjectProfileId) }}</template>
+                  <template v-if="t.healthRecordType&&isPet(t.subjectProfileId)"> · 完成后记护理</template>
+                </small></div>
             </div>
           </SwipeActions>
+          <form v-if="editingTask?.id===t.id" class="task-edit-form" @submit.prevent="saveTaskEdit">
+            <b>编辑任务</b>
+            <label>名称<input v-model="editingTask.title" required maxlength="150"/></label>
+            <label>可见范围<select v-model="editingTask.visibility">
+              <option value="private">仅自己</option><option value="household">家庭共享</option>
+            </select></label>
+            <label>截止日期<input v-model="editingTask.dueOn" type="date"/></label>
+            <label>关联对象（可选）
+              <select v-model="editingTask.subjectProfileId" @change="changedEditingSubject">
+                <option value="">不关联任何人或宠物</option>
+                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+              </select>
+            </label>
+            <label v-if="editTaskPet">完成后同步到宠物护理记录
+              <select v-model="editingTask.healthRecordType">
+                <option value="">不自动记录</option><option value="other">日常护理</option>
+                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
+                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
+              </select>
+            </label>
+            <div class="task-edit-actions">
+              <button type="button" class="outline" @click="editingTask=null">取消</button>
+              <button class="primary">保存修改</button>
+            </div>
+          </form>
+          </template>
         </section>
       </template>
       <template v-else-if="tab==='family'">
