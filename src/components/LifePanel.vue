@@ -531,6 +531,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
+      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
+        @created="planCreated" @task-created="emit('tasksChanged')"/>
+      <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
+        <button v-for="tab in [
+          {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'shopping',label:'购物'},
+          {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
+          :key="tab.id" type="button" :class="{selected:planType===tab.id}"
+          :aria-pressed="planType===tab.id" @click="planType=tab.id as PlanType">
+          {{ tab.label }}</button>
+      </div>
       <div class="archive-toolbar">
         <div class="archive-tabs" role="group" aria-label="计划记录筛选">
           <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
@@ -553,7 +563,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <p v-if="planScope==='history'" class="life-caption">历史不会自动删除，可按年月查找。切回「进行中」就能继续管理未完成项目。</p>
       </div>
       <div class="life-grid">
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='routine'" class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
           <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
@@ -593,7 +603,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <button :disabled="busy">＋ 添加定期任务</button>
           </form>
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='wish'" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <template v-for="w in items" :key="w.id">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
@@ -618,7 +628,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <button :disabled="busy">＋ 记录心愿</button>
           </form>
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='goal'" class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
           <p class="life-caption">原有预留金额作为期初储蓄额保留；下方家計簿联动可计算期间收支差额和手动调整额。</p>
           <template v-for="g in goals" :key="g.id">
@@ -642,7 +652,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <button :disabled="busy">＋ 新建目标</button>
           </form>
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
@@ -669,7 +679,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <input v-model.trim="shoppingTitle" required placeholder="需要买些什么？"/>
             <button :disabled="busy">＋ 添加购物</button></form>
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='trip'" class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
