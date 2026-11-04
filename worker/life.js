@@ -5,10 +5,10 @@ import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
-  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type']},
-  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note']},
+  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
+  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id']},
-  shopping_items:{columns:['title','quantity']},
+  shopping_items:{columns:['title','quantity','due_on']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
 }
 const plural={anniversaries:'anniversaries',routines:'routines',wishes:'wishes',goals:'goals',shopping:'shopping_items',memories:'memories'}
@@ -38,19 +38,21 @@ function normalized(table,b,s){
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
       const careType=b.healthRecordType||null
       if(careType&&!['deworm','vaccination','vet','medication','grooming','other'].includes(careType))return null
-      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType]
+      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType,b.remindEnabled===false?0:1]
     }
     case 'wishes':
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
       if(b.status && !['wished','planning','active','completed','cancelled'].includes(b.status))return null
-      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',trim(b.note,2000)]
+      if(b.targetOn&&!ymd(b.targetOn))return null
+      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',trim(b.note,2000),b.targetOn||null]
     case 'goals':
       if(!Number.isSafeInteger(b.targetAmount)||b.targetAmount<=0||b.targetAmount>100000000000||!validMoney(b.reservedAmount??0)||!JPY(b.currency||'JPY')||
         (b.targetOn&&!ymd(b.targetOn))||(b.wishId&&!hexId(b.wishId)))return null
       return [title,b.targetAmount,b.reservedAmount||0,b.currency||'JPY',b.targetOn||null,b.wishId||null]
     case 'shopping_items':
       if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>9999)return null
-      return [title,b.quantity]
+      if(b.dueOn&&!ymd(b.dueOn))return null
+      return [title,b.quantity,b.dueOn||null]
     case 'memories':
       if(!ymd(b.happenedOn))return null
       if(b.linkedType&&!['trip','wish','profile','anniversary'].includes(b.linkedType))return null
