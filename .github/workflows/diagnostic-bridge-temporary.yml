@@ -9,3 +9,5 @@ jobs:
       - name: Probe internal ledger service without querying D1
         run: |
           curl --fail --show-error --silent --max-time 30 --retry 2 'https://homeflow-bridge-diagnostics.yupan6706.workers.dev/check'
+
+# Re-run after the Cloudflare-compatible manual redirect fix.
