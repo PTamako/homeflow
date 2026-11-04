@@ -66,28 +66,37 @@ async function detect(){
   }catch(e){error.value=(e as Error).message;checked.value=true}
 }
 async function loadGoalNet(){
-  if(kind.value!=='goal'||!target.value||!start.value||!end.value)return
-  const requestedId=target.value,requestedStart=start.value,requestedEnd=end.value
-  netBusy.value=true;netLoaded.value=false
+  if(kind.value!=='goal'||!target.value||
+    (recurringGoal.value?!periodKey.value:(!start.value||!end.value)))return
+  const requestedId=target.value,requestedKey=periodKey.value
+  const requestedStart=start.value,requestedEnd=end.value
+  netBusy.value=true;netLoaded.value=false;periodFuture.value=false
   try{
-    const params=new URLSearchParams({targetId:requestedId,start:requestedStart,end:requestedEnd})
+    const params=new URLSearchParams({targetId:requestedId})
+    if(recurringGoal.value)params.set('periodKey',requestedKey)
+    else{params.set('start',requestedStart);params.set('end',requestedEnd)}
     const data=await api('/finance/goal/net?'+params.toString())
-    if(kind.value==='goal'&&target.value===requestedId&&start.value===requestedStart&&end.value===requestedEnd){
-      net.value=Number(data.net||0);netLoaded.value=true
-    }
+    if(kind.value!=='goal'||target.value!==requestedId||
+      (recurringGoal.value?periodKey.value!==requestedKey:
+       start.value!==requestedStart||end.value!==requestedEnd))return
+    net.value=Number(data.net||0)
+    if(recurringGoal.value){start.value=String(data.start||'');end.value=String(data.end||'')}
+    periodFuture.value=!!data.notStarted;netLoaded.value=true
   }catch(e){error.value=(e as Error).message}
   finally{netBusy.value=false}
 }
 async function refreshSettings(){
-  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false
+  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
   if(!available.value||!target.value)return
-  const requestedId=target.value,requestedKind=kind.value
+  const requestedId=target.value,requestedKind=kind.value,requestedKey=periodKey.value
   try{
     const params=new URLSearchParams({type:requestedKind,targetId:requestedId})
+    if(recurringGoal.value)params.set('periodKey',requestedKey)
     const data=await api('/finance/settings?'+params.toString())
-    if(requestedId!==target.value||requestedKind!==kind.value)return
+    if(requestedId!==target.value||requestedKind!==kind.value||
+      (recurringGoal.value&&requestedKey!==periodKey.value))return
     adjustment.value=String(data.adjustmentAmount||0)
-    opening.value=Number(data.openingAmount||0)
+    opening.value=recurringGoal.value?0:Number(data.openingAmount||0)
     if(requestedKind==='goal'){
       if(data.periodStart&&data.periodEnd){start.value=data.periodStart;end.value=data.periodEnd}
       await loadGoalNet()
@@ -102,10 +111,14 @@ async function saveSettings(){
   }
   busy.value=true;error.value='';clearToast()
   try{
-    await api('/finance/settings','PUT',{type:kind.value,targetId:target.value,
-      adjustmentAmount:amount,periodStart:kind.value==='goal'?start.value:null,
-      periodEnd:kind.value==='goal'?end.value:null})
-    notify('调整额和设置已保存，不会修改家計簿')
+    const payload:Record<string,unknown>={type:kind.value,targetId:target.value,adjustmentAmount:amount}
+    if(recurringGoal.value)payload.periodKey=periodKey.value
+    else{
+      payload.periodStart=kind.value==='goal'?start.value:null
+      payload.periodEnd=kind.value==='goal'?end.value:null
+    }
+    await api('/finance/settings','PUT',payload)
+    notify(recurringGoal.value?'本月／本年的调整额已保存':'调整额和设置已保存，不会修改家計簿')
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
