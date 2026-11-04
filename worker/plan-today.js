@@ -23,10 +23,20 @@ export async function todayPlansRoute(request,db,session){
         AND status NOT IN ('completed','cancelled')
         AND target_on IS NOT NULL AND target_on<=?3
       ORDER BY target_on,id LIMIT 25`).bind(h,u,date),
-    db.prepare(`SELECT id,title,target_on AS dueOn FROM goals
-      WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
-        AND reserved_amount<target_amount AND target_on IS NOT NULL AND target_on<=?3
-      ORDER BY target_on,id LIMIT 25`).bind(h,u,date),
+    db.prepare(`SELECT id,title,
+      CASE WHEN goal_mode IN ('monthly','yearly') THEN ?3 ELSE target_on END AS dueOn
+      FROM goals WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+        AND (
+          (goal_mode='once' AND reserved_amount<target_amount
+            AND target_on IS NOT NULL AND target_on<=?3)
+          OR (goal_mode='monthly' AND start_on<=?3
+            AND (target_on IS NULL OR target_on>=?3)
+            AND (?3=date(?3,'start of month','+1 month','-1 day') OR target_on=?3))
+          OR (goal_mode='yearly' AND start_on<=?3
+            AND (target_on IS NULL OR target_on>=?3)
+            AND (substr(?3,6,5)='12-31' OR target_on=?3))
+        )
+      ORDER BY dueOn,id LIMIT 25`).bind(h,u,date),
     db.prepare(`SELECT id,title,start_on AS dueOn,destination FROM trips
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
         AND status IN ('planning','active')
