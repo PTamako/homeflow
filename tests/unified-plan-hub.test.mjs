@@ -126,6 +126,6 @@ test('dated purchases completed today remain visible only for that Tokyo day',as
  const x=(await response.json()).items
  assert.deepEqual(x.map(v=>v.done),[true,false])
  assert.equal(x[0].overdue,false)
- assert.match(db.batches[0][0].sql,/completed_at>=\\?4/)
+ assert.ok(db.batches[0][0].sql.includes('completed_at>=?4'))
  assert.ok(db.batches[0][0].values[3].startsWith('2026-11-03T15:00:00'))
 })
