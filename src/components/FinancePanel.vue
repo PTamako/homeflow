@@ -9,6 +9,9 @@ const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
 const nextCursor=ref<string|null>(null),busy=ref(false),error=ref('')
+const linkedPageSize=5
+const linkedVisibleCount=ref(linkedPageSize)
+const visibleLinks=computed(()=>links.value.slice(0,linkedVisibleCount.value))
 const {toast,notify,clear:clearToast}=usePageToast()
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
@@ -165,7 +168,7 @@ function resetGoalPeriod(){
   else if(goalStartOn.value){start.value=goalStartOn.value;end.value=dateYmd()}
 }
 watch([kind,target],()=>{
-  entries.value=[];nextCursor.value=null
+  entries.value=[];nextCursor.value=null;linkedVisibleCount.value=linkedPageSize
   const previousKey=periodKey.value
   resetGoalPeriod()
   void refreshLinks()
@@ -254,11 +257,13 @@ onMounted(()=>{
           <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
         <template v-if="kind==='trip'">
-          <div v-for="row in links" :key="row.linkId" class="line">
+          <div v-for="row in visibleLinks" :key="row.linkId" class="line">
             <span>{{ row.entry?.date||'原账目已删除' }} · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
               <small>{{ row.entry?fmt(row.entry.amount):'未找到明细' }}</small></span>
             <button type="button" class="unlink" @click="unlink(row)" :disabled="busy">移除关联</button>
           </div>
+          <button v-if="links.length>visibleLinks.length" type="button" class="more"
+            @click="linkedVisibleCount+=linkedPageSize">加载更多已关联支出（每次 5 条）</button>
           <div v-for="row in entries" :key="row.id" class="line">
             <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
             <button type="button" :disabled="busy || links.some(x=>String(x.entryId)===String(row.id))" @click="linkEntry(row)">

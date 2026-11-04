@@ -5,7 +5,7 @@ const uuidPattern=/^[0-9a-f-]{36}$/i
 export function listFilters(url) {
   const p=new URL(url).searchParams
   if(!['limit','scope','year','month','cursor'].some(key=>p.has(key)))return null
-  const limit=p.has('limit')?Number(p.get('limit')):6
+  const limit=p.has('limit')?Number(p.get('limit')):5
   const scope=p.get('scope')||'all'
   const year=p.get('year')||''
   const month=p.get('month')||''

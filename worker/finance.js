@@ -201,7 +201,7 @@ export async function financeRoute(request,env,path,session){
     if(!dateOk(start)||!dateOk(end)||end<start||
        Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z')>90*86400000)return json({error:'invalid_range'},400)
     try{
-      const data=await ledger(env,{start,end,limit:50,cursor})
+      const data=await ledger(env,{start,end,limit:5,cursor})
       return json({entries:data.entries,nextCursor:data.nextCursor||null,readOnly:true})
     }catch(error){return financeError(error)}
   }
