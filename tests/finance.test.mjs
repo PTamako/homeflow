@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {financeRoute,canUseLedger} from '../worker/finance.js'
 const prod={APP_ENV:'production',KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',
-  KAKEBO_LEDGER_READ_TOKEN:'example-secret-12345678901234567890'}
+  KAKEBO_LEDGER_READ_TOKEN:'example-secret-12345678901234567890',
+  KAKEBO_LEDGER_SERVICE:{fetch:(...args)=>globalThis.fetch(...args)}}
 const owner={user_id:'owner',household_id:'primary',role:'owner'}
 const member={user_id:'member',household_id:'primary',role:'member'}
 function request(path,method='GET',data){
