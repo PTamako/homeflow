@@ -13,8 +13,20 @@ const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
+const periodKey=ref(''),periodFuture=ref(false)
+const goalMode=computed(()=>selected.value?.goal_mode||'once')
+const recurringGoal=computed(()=>kind.value==='goal'&&goalMode.value!=='once')
+const goalStartOn=computed(()=>String(selected.value?.start_on||''))
+const modeLabel=computed(()=>goalMode.value==='monthly'?'每月':goalMode.value==='yearly'?'每年':'累计')
+function defaultPeriodKey(){
+ const today=dateYmd(),start=goalStartOn.value
+ const mode=goalMode.value
+ const nowKey=mode==='yearly'?today.slice(0,4):today.slice(0,7)
+ const startKey=mode==='yearly'?start.slice(0,4):start.slice(0,7)
+ return startKey&&startKey>nowKey?startKey:nowKey
+}
 const actualWithAdjustment=computed(()=>total.value+Number(adjustment.value||0))
-const goalTotal=computed(()=>opening.value+net.value+Number(adjustment.value||0))
+const goalTotal=computed(()=>(recurringGoal.value?0:opening.value)+net.value+Number(adjustment.value||0))
 const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(selected.value?.target_amount||1)*100)))
 const signed=(amount:number)=>(amount<0?'−':amount>0?'+':'')+'¥'+Math.abs(Number(amount||0)).toLocaleString('ja-JP')
 
