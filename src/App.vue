@@ -28,6 +28,8 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
 ]
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
+// Distinguish session loading from signed-out state.
+const authReady=ref(false)
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
@@ -352,8 +354,10 @@ watch(tab,value=>{
   }
 })
 onMounted(async()=>{
-  await refresh()
-  if(user.value&&tab.value==='today')await reloadToday()
+  try{
+    await refresh()
+    if(user.value&&tab.value==='today')await reloadToday()
+  }finally{authReady.value=true}
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
@@ -369,7 +373,10 @@ onBeforeUnmount(()=>{
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <button v-if="user" class="text-button" @click="logout">退出 · {{ user.loginName }}</button>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
-    <main v-if="!user" class="auth-content">
+    <main v-if="!authReady" class="auth-content" aria-live="polite">
+      <section class="panel" role="status"><h2>正在打开我们的小家…</h2><p class="hint">正在确认登录状态与家庭资料。</p></section>
+    </main>
+    <main v-else-if="!user" class="auth-content">
       <div class="eyebrow">OUR LITTLE HOME</div><h1>欢迎回家 ♡</h1><p class="lead">家人的共享生活，以及自己的小秘密。</p>
       <form class="panel auth-form" @submit.prevent="submitAuth">
         <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':'登录 HomeFlow' }}</h2>
@@ -598,13 +605,13 @@ onBeforeUnmount(()=>{
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
-      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
+      <LifePanel :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
         :tasks="tasks" :focus-plan-type="focusPlanType" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks" @open-plans="openPlans" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <PageToast :toast="toast" />
-    <nav v-if="user" class="nav" aria-label="页面导航">
+    <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
         <AppIcon :name="n.icon" :size="23" /><span>{{ n.label }}</span></button>
     </nav>
