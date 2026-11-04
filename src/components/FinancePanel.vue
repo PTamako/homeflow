@@ -49,6 +49,51 @@ async function detect(){
     available.value=!!status.connected;checked.value=true
   }catch(e){error.value=(e as Error).message;checked.value=true}
 }
+async function loadGoalNet(){
+  if(kind.value!=='goal'||!target.value||!start.value||!end.value)return
+  const requestedId=target.value,requestedStart=start.value,requestedEnd=end.value
+  netBusy.value=true;netLoaded.value=false
+  try{
+    const params=new URLSearchParams({targetId:requestedId,start:requestedStart,end:requestedEnd})
+    const data=await api('/finance/goal/net?'+params.toString())
+    if(kind.value==='goal'&&target.value===requestedId&&start.value===requestedStart&&end.value===requestedEnd){
+      net.value=Number(data.net||0);netLoaded.value=true
+    }
+  }catch(e){error.value=(e as Error).message}
+  finally{netBusy.value=false}
+}
+async function refreshSettings(){
+  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false
+  if(!available.value||!target.value)return
+  const requestedId=target.value,requestedKind=kind.value
+  try{
+    const params=new URLSearchParams({type:requestedKind,targetId:requestedId})
+    const data=await api('/finance/settings?'+params.toString())
+    if(requestedId!==target.value||requestedKind!==kind.value)return
+    adjustment.value=String(data.adjustmentAmount||0)
+    opening.value=Number(data.openingAmount||0)
+    if(requestedKind==='goal'){
+      if(data.periodStart&&data.periodEnd){start.value=data.periodStart;end.value=data.periodEnd}
+      await loadGoalNet()
+    }
+  }catch(e){error.value=(e as Error).message}
+}
+async function saveSettings(){
+  if(!target.value)return
+  const amount=Number(adjustment.value)
+  if(!/^-?\d+$/.test(adjustment.value.trim())||!Number.isSafeInteger(amount)||Math.abs(amount)>100000000000){
+    error.value='调整额请输入有效的整数日元';return
+  }
+  busy.value=true;error.value='';message.value=''
+  try{
+    await api('/finance/settings','PUT',{type:kind.value,targetId:target.value,
+      adjustmentAmount:amount,periodStart:kind.value==='goal'?start.value:null,
+      periodEnd:kind.value==='goal'?end.value:null})
+    message.value='调整额和设置已保存，不会修改家計簿'
+    if(kind.value==='goal')await loadGoalNet()
+  }catch(e){error.value=(e as Error).message}
+  finally{busy.value=false}
+}
 async function refreshLinks(){
   links.value=[]
   if(!available.value||!target.value)return
