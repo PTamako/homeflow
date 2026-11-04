@@ -769,7 +769,9 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  assert.equal(get('shopping',shopping.body.id).overdue,true)
  assert.equal(get('wish',wish.body.id).overdue,true)
  assert.equal(get('goal',once.body.id).overdue,true)
- assert.equal(get('goal',saving.body.id).periodKey,lastMonthKey)
+ assert.equal(get('goal',saving.body.id),undefined,'closed recurring period is not an overdue Today task')
+ const reviews=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.goalReviews
+ assert.equal(reviews.find(x=>x.id===saving.body.id).periodKey,lastMonthKey)
  assert.equal(get('trip',trip.body.id).tripEnded,true)
  assert.equal((await ask('/api/plans/complete','POST',
    {kind:'goal',id:saving.body.id,periodKey:today.slice(0,7),completed:true},owner)).status,409,
@@ -780,8 +782,9 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  amount.net=0
  const notFunded=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
- assert.equal(notFunded.status,409,'a manual click must not mark insufficient savings as complete')
- assert.equal(notFunded.body.error,'goal_not_funded')
+ assert.equal(notFunded.status,200,'an insufficient period is a valid settled shortfall')
+ assert.equal(notFunded.body.status,'shortfall')
+ assert.ok(notFunded.body.differenceAmount>0)
  amount.net=20000
  const saved=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
@@ -796,7 +799,9 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  assert.equal(bought.status,200,JSON.stringify(bought.body))
  rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
  assert.equal(get('wish',wish.body.id).done,true)
- assert.equal(get('goal',saving.body.id).done,true)
+ assert.equal(get('goal',saving.body.id),undefined,'settled recurring goals stay in history')
+ const settled=(await ask('/api/goals/'+saving.body.id+'/periods?limit=5','GET',undefined,owner)).body
+ assert.equal(settled.items.find(x=>x.periodKey===lastMonthKey).status,'met')
  assert.equal(get('goal',once.body.id).done,true)
  assert.equal(get('shopping',shopping.body.id).done,true)
  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks").get().n,3)
@@ -809,10 +814,10 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  assert.equal(undoWish.status,200)
  const undoGoal=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:false},owner)
- assert.equal(undoGoal.status,200)
+ assert.equal(undoGoal.status,409,'historic settlement is rechecked, not manually unchecked')
  rows=(await ask('/api/plans/today?date='+tomorrow,'GET',undefined,owner)).body.items
  assert.equal(get('wish',wish.body.id).done,false)
- assert.equal(get('goal',saving.body.id).periodKey,lastMonthKey)
+ assert.equal(get('goal',saving.body.id),undefined,'settled periods never re-enter Today')
  assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(wish.body.id).status,'wished')
  sqlite.close()
 })
