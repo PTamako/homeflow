@@ -120,7 +120,7 @@ async function deliver(sub,env,data){
       Urgency:'normal',
     },
     body,
-    redirect:'error',
+    redirect:'manual',
   })
 }
 export async function runPushSchedule(env,now=Date.now()){
