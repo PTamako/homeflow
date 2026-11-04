@@ -54,10 +54,17 @@ function editAnniversary(item:Row){
 function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
 async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode();if(!error.value)notify('修改已保存')}
 async function shoppingLinksChanged(){
- // Keep the same picker mounted so the user can choose another receipt
- // without requesting the first page of Kakebo results again.
- await fetchMode()
- if(!error.value)notify('购物关联已更新，可继续选择其他消费')
+ // Refresh only the edited shopping row, not all six plan categories,
+ // and keep the same Kakebo candidate page and scroll position.
+ const id=ledgerPickerId.value
+ if(!id)return
+ try{
+  const data=await api('/shopping/'+encodeURIComponent(id))
+  const idx=other.value.findIndex(x=>x.id===id)
+  if(idx>=0&&data.item)other.value.splice(idx,1,data.item)
+  else await fetchMode()
+  notify('购物关联已更新，可继续选择其他消费')
+ }catch(e){error.value=(e as Error).message}
 }
 async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
