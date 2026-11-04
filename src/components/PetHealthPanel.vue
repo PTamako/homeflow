@@ -3,7 +3,7 @@ import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
 const props=defineProps<{petId:string;name:string;userId:string}>()
-type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string;sourceRoutineId?:string|null}
+type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string;sourceRoutineId?:string|null;sourceTaskId?:string|null}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref(''),message=ref('')
 const editingId=ref<string|null>(null)
@@ -107,7 +107,7 @@ watch(year,value=>{if(!value)month.value=''})
         :allow-edit="r.createdBy===props.userId" :allow-delete="r.createdBy===props.userId"
         @edit="editRecord(r)" @delete="removeRecord(r)">
         <div class="record-heading">
-          <strong>{{ names[r.recordType]||'护理' }}<template v-if="r.sourceRoutineId"> · 定期任务</template></strong><span>{{ r.eventOn }}</span>
+          <strong>{{ names[r.recordType]||'护理' }}<template v-if="r.sourceRoutineId"> · 定期任务</template><template v-else-if="r.sourceTaskId"> · 今日任务</template></strong><span>{{ r.eventOn }}</span>
         </div>
       </SwipeActions>
       <p v-if="r.weightGrams">{{ (r.weightGrams/1000).toFixed(2) }} kg</p>
