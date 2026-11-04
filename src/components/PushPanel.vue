@@ -60,18 +60,17 @@ async function disable(){
 onMounted(discover)
 </script>
 <template>
-  <section class="push-card">
-    <div><b class="push-heading"><AppIcon name="bell" :size="20" /> 重要日子与每日提醒</b>
-      <p>生日、纪念日、豆沙护理、到期待办。通知不会透露私人数据给其他家庭账号。</p></div>
-    <button v-if="available" :disabled="busy" @click="enabled?disable():enable()">{{ enabled?'关闭本机推送':'开启锁屏通知' }}</button>
-    <small v-if="message">{{ message }}</small>
+  <section class="push-setting">
+    <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
+      @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
+    <small v-if="message" role="status">{{ message }}</small>
     <PageToast :toast="toast" />
-    <a v-if="!available" class="setup-link" href="/vapid-setup.html">用 iPhone 配置推送密钥（无需电脑）</a>
   </section>
 </template>
 <style scoped>
-.push-card{background:#fff;border:1px solid #eeeae4;border-radius:17px;padding:16px 20px;margin:16px 0;display:grid;gap:10px}
-.push-card b{font-size:15px}.push-heading{display:flex;align-items:center;gap:9px}.push-card p,.push-card small{font-size:12px;line-height:1.7;color:#7b8c81;margin:6px 0}
-.push-card button{background:#43866a;color:#fff;border:0;border-radius:10px;padding:10px 12px;font-size:13px;justify-self:start}
-.push-card button:disabled{opacity:.6}.setup-link{color:#327f5d;font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.push-setting{display:grid;gap:6px;justify-items:start;margin-top:10px}
+.push-toggle{background:#43866a;color:#fff;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
+.push-toggle:disabled{opacity:.55;cursor:not-allowed}
+.push-toggle:focus-visible{outline:2px solid #43866a;outline-offset:3px}
+.push-setting small{font-size:12px;line-height:1.55;color:#7b8c81;overflow-wrap:anywhere}
 </style>
