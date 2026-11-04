@@ -194,14 +194,16 @@ function normalized(key,r,h,u) {
       const key=r.period_key
       if(r.plan_type==='goal'&&key!=='once'&&
          !/^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(key))return null
+      const modeCheck=r.plan_type==='goal'
+        ? "AND ((goal_mode='once' AND ?4='once') OR "+
+          "(goal_mode='monthly' AND length(?4)=7) OR "+
+          "(goal_mode='yearly' AND length(?4)=4))"
+        : ''
       return [`INSERT OR IGNORE INTO plan_completion_marks
         (household_id,plan_type,plan_id,period_key,completed_at,completed_by,prior_status)
         SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE EXISTS(
           SELECT 1 FROM ${table} WHERE id=?3 AND household_id=?1 AND created_by=?6
-          AND (?2='wish' OR
-            (goal_mode='once' AND ?4='once') OR
-            (goal_mode='monthly' AND length(?4)=7) OR
-            (goal_mode='yearly' AND length(?4)=4)))`,
+          ${modeCheck})`,
         [h,r.plan_type,r.plan_id,key,r.completed_at,u,r.prior_status??null]]
     }
     default:return null
