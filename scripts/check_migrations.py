@@ -13,6 +13,7 @@ MIGRATIONS=[
     "0007_offline_tasks.sql",
     "0008_shopping_ledger.sql",
     "0009_finance_target_settings.sql",
+    "0011_unified_plan_hub.sql",
 ]
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
@@ -27,6 +28,10 @@ columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
 assert "ledger_entry_id" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
 assert {"adjustment_amount","period_start","period_end"}.issubset({x[1] for x in db.execute("PRAGMA table_info(finance_target_settings)")})
+assert {"remind_enabled"}.issubset({x[1] for x in db.execute("PRAGMA table_info(tasks)")})
+assert "remind_enabled" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
+assert "target_on" in {x[1] for x in db.execute("PRAGMA table_info(wishes)")}
+assert "due_on" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
 assert "password_rounds" in columns
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")
