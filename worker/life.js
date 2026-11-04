@@ -1,6 +1,6 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
-import {dueOn,nextAnniversary,validateRule} from './recurrence.js'
+import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -114,8 +114,14 @@ export async function lifeRoute(request,db,path,session){
     const date=new URL(request.url).searchParams.get('date')||new Date(Date.now()+9*3600000).toISOString().slice(0,10)
     if(!ymd(date))return bad()
     const [all,marks]=await db.batch([
-      db.prepare("SELECT * FROM routines WHERE household_id=?1 AND enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 250")
-        .bind(session.household_id,session.user_id),
+      db.prepare(`SELECT r.*,
+        (SELECT m.occurrence_on FROM routine_marks m
+         WHERE m.routine_id=r.id AND m.occurrence_on<=?3
+           AND (m.completed_at IS NOT NULL OR m.skipped_at IS NOT NULL)
+         ORDER BY m.occurrence_on DESC LIMIT 1) AS last_resolved_on
+        FROM routines r WHERE r.household_id=?1 AND r.enabled=1
+          AND (r.visibility='household' OR r.created_by=?2) LIMIT 250`)
+        .bind(session.household_id,session.user_id,date),
       db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at
         FROM routine_marks m JOIN routines r ON r.id=m.routine_id
         WHERE r.household_id=?1 AND m.occurrence_on=?2
@@ -123,19 +129,34 @@ export async function lifeRoute(request,db,path,session){
         .bind(session.household_id,date,session.user_id)
     ])
     const saved=new Map((marks.results||[]).map(x=>[x.routine_id,x]))
-    const due=(all.results||[]).filter(r=>dueOn(r,date))
-    return json({date,items:due.map(r=>({...r,mark:saved.get(r.id)||null}))})
+    // One row per routine: today is a fresh occurrence; prior completed marks
+    // never leak into today. Unfinished earlier due dates can carry forward.
+    const items=[]
+    for(const r of all.results||[]){
+      const due=dueOn(r,date),mark=saved.get(r.id)||null
+      const carriedFrom=due||mark?null:pendingCarryover(r,date,r.last_resolved_on)
+      if(due||mark||carriedFrom)items.push({...r,mark,carriedFrom})
+    }
+    return json({date,items})
   }
   if(id&&parts[3]==='mark'&&table==='routines'&&request.method==='POST'){
     const body=await readBody(request)
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
     if(!rule)return json({error:'not_found'},404)
-    const existingMark=body.status==='open'?
-      await db.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?1 AND occurrence_on=?2')
-        .bind(id,body.date).first():null
-    if(!dueOn(rule,body.date) && !(body.status==='open' && existingMark))
-      return json({error:'not_found'},404)
+    if(!dueOn(rule,body.date)){
+      const [existing,lastResolved]=await db.batch([
+        db.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?1 AND occurrence_on=?2')
+          .bind(id,body.date),
+        db.prepare(`SELECT occurrence_on AS last_resolved_on FROM routine_marks
+          WHERE routine_id=?1 AND occurrence_on<=?2
+          AND (completed_at IS NOT NULL OR skipped_at IS NOT NULL)
+          ORDER BY occurrence_on DESC LIMIT 1`).bind(id,body.date)
+      ])
+      if(!(existing.results||[]).length &&
+          !pendingCarryover(rule,body.date,lastResolved.results?.[0]?.last_resolved_on||null))
+        return json({error:'not_found'},404)
+    }
     if(rule.visibility==='private' && rule.created_by!==session.user_id)return json({error:'forbidden'},403)
     const stamp=iso()
     const st=db.prepare(`INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at)
@@ -163,12 +184,16 @@ export async function lifeRoute(request,db,path,session){
     if(!item)return json({error:'not_found'},404)
     const body=await readBody(request)
     if(typeof body?.completed!=='boolean')return bad()
-    await db.prepare(`UPDATE shopping_items SET completed_at=?1,completed_by=?2
+    await db.prepare(`UPDATE shopping_items SET completed_at=?1,completed_by=?2,
+      ledger_entry_id=CASE WHEN ?1 IS NULL THEN NULL ELSE ledger_entry_id END
       WHERE id=?3 AND household_id=?4 AND (visibility='household' OR created_by=?5)`)
       .bind(body.completed?iso():null,body.completed?session.user_id:null,id,session.household_id,session.user_id).run()
     return json({ok:true})
   }
-  if(!id&&request.method==='GET')return json({items:await view(db,table,session)})
+  if(!id&&request.method==='GET'){
+    const items=await view(db,table,session)
+    return json({items:table==='routines'?items.filter(x=>x.enabled!==0):items})
+  }
   if(!id&&request.method==='POST'){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
@@ -193,6 +218,22 @@ export async function lifeRoute(request,db,path,session){
       ' WHERE id=?'+(fields.length+1)+' AND household_id=?'+(fields.length+2)+' AND created_by=?'+(fields.length+3)
     await db.prepare(sql).bind(visibilityOf(b,session),...vals,id,session.household_id,session.user_id).run()
     return json({ok:true})
+  }
+  if(id&&request.method==='DELETE'){
+    const current=await getObject(db,table,id,session)
+    if(!current)return json({error:'not_found'},404)
+    if(current.created_by!==session.user_id)return json({error:'forbidden'},403)
+    if(table==='routines'){
+      // Preserve historical completion marks even after removing the plan.
+      await db.prepare('UPDATE routines SET enabled=0,updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4')
+        .bind(iso(),id,session.household_id,session.user_id).run()
+      return json({ok:true,archived:true})
+    }
+    try{
+      await db.prepare('DELETE FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
+        .bind(id,session.household_id,session.user_id).run()
+      return json({ok:true})
+    }catch{return json({error:'linked_records_require_unlink'},409)}
   }
   return json({error:'not_found'},404)
 }

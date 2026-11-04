@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import {ref,watch,onBeforeUnmount} from 'vue'
+import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import FinancePanel from './FinancePanel.vue'
 import AppIcon from './AppIcon.vue'
+import LifeItemEditor from './LifeItemEditor.vue'
+import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
@@ -13,11 +15,53 @@ const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),inter
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
+const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
+type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
+const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
+const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId
+function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
+async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode()}
+async function removeItem(kind:EditableKind,item:Row){
+ if(!canEdit(item))return
+ const warning=kind==='memories'?'删除回忆后，本机照片不会一起删除，请先备份。':
+   kind==='routines'?'删除定期计划？以前的完成记录会保留。':'确定删除这条记录吗？'
+ if(!confirm(warning))return
+ await update(()=>api('/'+kind+'/'+item.id,'DELETE'))
+ if(!error.value){editing.value=null;if(kind==='trips'&&tripDetail.value?.id===item.id)tripDetail.value=null}
+}
+const jstDate=(timestamp:string)=>{
+ const iso=timestamp.includes('T')?timestamp:timestamp.replace(' ','T')+'Z'
+ const time=Date.parse(iso)
+ return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
+}
+const visibleShopping=computed(()=>other.value.filter(x=>!x.completed_at||jstDate(x.completed_at)===displayedDay.value))
+const shoppingHistory=computed(()=>other.value.filter(x=>!!x.completed_at&&jstDate(x.completed_at)!==displayedDay.value))
+function toggleLedger(id:string){ledgerPickerId.value=ledgerPickerId.value===id?null:id;editing.value=null}
+
+function countdown(date:string){
+  const days=Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(today()+'T00:00:00Z'))/86400000)
+  if(!Number.isFinite(days))return ''
+  return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
+}
+function routineLabel(r:Row){
+  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
+    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
+    r.repeat_type==='workday'?'工作日':'定期'
+}
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 let photoUrls:string[]=[]
+let lastTodayValue=''
+function refreshOnResume(){
+  if(document.visibilityState!=='visible')return
+  const current=today()
+  if(displayedDay.value!==current){
+    displayedDay.value=current
+    if(props.mode==='today'||props.mode==='plans')void fetchMode()
+  }
+}
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
   const response=await fetch('/api'+path,{method,cache:'no-store',credentials:'same-origin',
     ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
@@ -29,13 +73,14 @@ async function fetchMode(){
   error.value=''
   try{
     if(props.mode==='today'){
+      lastTodayValue=today()
       const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
       routines.value=r.items||[];items.value=a.items||[]
     }else if(props.mode==='family'){
       items.value=(await api('/anniversaries/upcoming')).items||[]
     }else if(props.mode==='plans'){
-      const [w,g,s,t]=await Promise.all([api('/wishes'),api('/goals'),api('/shopping'),api('/trips')])
-      items.value=w.items||[];goals.value=g.items||[];other.value=s.items||[];trips.value=t.items||[]
+      const [w,g,s,t,r]=await Promise.all([api('/wishes'),api('/goals'),api('/shopping'),api('/trips'),api('/routines')])
+      items.value=w.items||[];goals.value=g.items||[];other.value=s.items||[];trips.value=t.items||[];routines.value=r.items||[]
     }else if(props.mode==='memories'){
       items.value=(await api('/memories')).items||[]
       await loadPhotos()
@@ -111,6 +156,25 @@ async function toggleTrip(id:string){
     await selectTrip(tripDetail.value.id)
   }catch(e){error.value=(e as Error).message}
 }
+async function editTripItem(item:Row){
+  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
+  const title=prompt('修改明细名称',item.label||item.title)
+  if(title===null)return
+  if(!title.trim()||title.length>150){error.value='名称须为 1～150 个字符';return}
+  try{
+    const payload={title:title.trim(),...(item.quantity?{quantity:item.quantity}:{})}
+    await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'PATCH',payload)
+    await selectTrip(tripDetail.value.id)
+  }catch(e){error.value=(e as Error).message}
+}
+async function removeTripItem(item:Row){
+  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||
+    !confirm('删除这条旅行明细吗？关联的打勾记录也将清除。'))return
+  try{
+    await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'DELETE')
+    await selectTrip(tripDetail.value.id)
+  }catch(e){error.value=(e as Error).message}
+}
 async function previewTrip(){
   try{const data=JSON.parse(paste.value);const result=await api('/trips/import','POST',{preview:true,payload:data,targetTripId:importTargetId.value||null})
     preview.value={...result,payload:data};error.value=''}
@@ -177,7 +241,11 @@ async function loadPhotos(){
     }catch{ /* private local storage may be unavailable in some Safari modes */ }
   }
 }
-onBeforeUnmount(()=>{for(const x of photoUrls)URL.revokeObjectURL(x)})
+onMounted(()=>document.addEventListener('visibilitychange',refreshOnResume))
+onBeforeUnmount(()=>{
+  for(const x of photoUrls)URL.revokeObjectURL(x)
+  document.removeEventListener('visibilitychange',refreshOnResume)
+})
 watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 </script>
 
@@ -199,13 +267,72 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
       <div class="life-grid">
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
-          <p class="life-caption">完成后保存当天记录，下次重复不会被删除。</p>
-          <p v-if="!routines.length" class="life-empty">还没有需要今天执行的重复任务</p>
-          <div v-for="r in routines" :key="r.id" class="life-row">
-            <label><input type="checkbox" :checked="!!r.mark?.completed_at" @change="markRoutine(r,!r.mark?.completed_at)"/>
-              <span>{{ r.title }}</span></label>
-            <small>{{ r.repeat_type==='daily'?'每天':r.repeat_type==='interval'?'按间隔':'按日期' }}</small>
+          <p class="life-caption">每天更新。已完成的记录不会带到明天；未完成事项会顺延到下一适用日。</p>
+          <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
+          <div v-for="r in routines" :key="r.id" class="life-row today-routine-row"
+            :class="{'routine-completed':!!r.mark?.completed_at}">
+            <label class="today-routine-label">
+              <input type="checkbox" :checked="!!r.mark?.completed_at" :disabled="busy"
+                :aria-label="(r.mark?.completed_at?'撤销完成 ':'完成 ')+r.title"
+                @change="markRoutine(r,!r.mark?.completed_at)"/>
+              <span class="routine-name">{{ r.title }}</span>
+            </label>
+            <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}</small>
           </div>
+          
+        </section>
+        <section class="life-card">
+          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
+          <p v-if="!items.length" class="life-empty">暂无即将到来的纪念日，可在「家庭」添加。</p>
+          <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row upcoming-anniversary">
+            <b>{{ e.title }}</b>
+            <div class="anniversary-countdown">
+              <strong>{{ countdown(e.nextOn) }}</strong>
+              <time :datetime="e.nextOn">{{ e.nextOn }}</time>
+            </div>
+          </div>
+        </section>
+      </div>
+    </template>
+
+    <template v-else-if="mode==='family'">
+      <section class="life-card">
+        <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
+        <p class="life-caption">家庭成员或宠物档案中填写的生日会自动显示、每年提醒，无需重复创建。这里可添加结婚纪念日或其他特殊日期。</p>
+        <template v-for="e in items" :key="e.id">
+          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn }}</small></div>
+            <div v-if="canEdit(e)" class="detail-actions">
+              <button type="button" class="life-link" @click="edit('anniversaries',e)">编辑</button>
+              <button type="button" class="life-link life-danger" @click="removeItem('anniversaries',e)">删除</button>
+            </div>
+          </div>
+          <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
+            kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
+        </template>
+        <form class="life-form" @submit.prevent="addAnniversary">
+          <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>
+          <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
+          <button :disabled="busy">添加纪念日</button>
+        </form>
+      </section>
+    </template>
+
+    <template v-else-if="mode==='plans'">
+      <div class="life-grid">
+        <section class="life-card">
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
+          <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
+          <template v-for="r in routines" :key="r.id">
+            <div class="life-row"><div class="life-details"><b>{{ r.title }}</b><small>{{ routineLabel(r) }}</small></div>
+              <div v-if="canEdit(r)" class="detail-actions">
+                <button type="button" class="life-link" @click="edit('routines',r)">编辑</button>
+                <button type="button" class="life-link life-danger" @click="removeItem('routines',r)">删除</button>
+              </div>
+            </div>
+            <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
+              kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
+          </template>
+          <p v-if="!routines.length" class="life-empty">还没有设置定期任务</p>
           <form class="life-form" @submit.prevent="addRoutine">
             <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
             <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
@@ -219,45 +346,23 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
                 <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
               </select></label>
             <p class="life-caption">只是标记任务与谁有关，不会指定执行者或改变共享权限。</p>
-            <button :disabled="busy">＋ 定期任务</button>
+            <button :disabled="busy">＋ 添加定期任务</button>
           </form>
         </section>
-        <section class="life-card">
-          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
-          <p v-if="!items.length" class="life-empty">先在家庭档案填写生日，或在下方添加重要日子</p>
-          <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row">
-            <b>{{ e.title }}</b><span>{{ e.nextOn }}</span>
-          </div>
-          <form class="life-form" @submit.prevent="addAnniversary">
-            <input v-model.trim="eventTitle" required maxlength="150" placeholder="生日、纪念日或自定义日期"/>
-            <input v-model="eventDate" required type="date"/>
-            <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">仅一次</option><option value="monthly">每月</option></select>
-            <button :disabled="busy">＋ 添加重要日子</button>
-          </form>
-        </section>
-      </div>
-    </template>
-
-    <template v-else-if="mode==='family'">
-      <section class="life-card">
-        <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
-        <p class="life-caption">家庭成员或宠物档案中填写的生日会自动显示、每年提醒，无需重复创建。这里可添加结婚纪念日或其他特殊日期。</p>
-        <div v-for="e in items" :key="e.id" class="life-row"><b>{{ e.title }}</b><span>{{ e.nextOn }}</span></div>
-        <form class="life-form" @submit.prevent="addAnniversary">
-          <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>
-          <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
-          <button :disabled="busy">添加纪念日</button>
-        </form>
-      </section>
-    </template>
-
-    <template v-else-if="mode==='plans'">
-      <div class="life-grid">
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
-          <div v-for="w in items" :key="w.id" class="life-row"><div><b>{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
-            <button v-if="w.wish_type==='trip'" class="life-link" @click="convertWish(w)">开始计划</button>
-          </div>
+          <template v-for="w in items" :key="w.id">
+            <div class="life-row" :class="{'detail-completed':w.status==='completed'}">
+              <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
+              <div class="detail-actions">
+                <button v-if="w.wish_type==='trip'&&w.status!=='completed'" type="button" class="life-link" @click="convertWish(w)">计划</button>
+                <button v-if="canEdit(w)" type="button" class="life-link" @click="edit('wishes',w)">编辑</button>
+                <button v-if="canEdit(w)" type="button" class="life-link life-danger" @click="removeItem('wishes',w)">删除</button>
+              </div>
+            </div>
+            <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
+              kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
+          </template>
           <form class="life-form" @submit.prevent="addWish">
             <input v-model.trim="wishTitle" required placeholder="想实现什么心愿？"/>
             <select v-model="wishType"><option value="trip">想去旅行</option><option value="purchase">想买东西</option><option value="activity">想体验</option><option value="other">其他</option></select>
@@ -269,9 +374,18 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
           <p class="life-caption">预留金额不等于银行余额，也不会被当成家計簿支出。</p>
-          <div v-for="g in goals" :key="g.id" class="life-row"><div><b>{{ g.title }}</b>
-            <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
-            <button class="life-link" @click="reserve(g)">调整</button></div>
+          <template v-for="g in goals" :key="g.id">
+            <div class="life-row" :class="{'detail-completed':Number(g.reserved_amount)>=Number(g.target_amount)}">
+              <div class="life-details"><b class="detail-name">{{ g.title }}</b>
+                <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
+              <div v-if="canEdit(g)" class="detail-actions">
+                <button type="button" class="life-link" @click="edit('goals',g)">编辑</button>
+                <button type="button" class="life-link life-danger" @click="removeItem('goals',g)">删除</button>
+              </div>
+            </div>
+            <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
+              kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
+          </template>
           <form class="life-form" @submit.prevent="addGoal">
             <input v-model.trim="goalTitle" required placeholder="目标名称"/>
             <label>目标金额（日元）<input v-model.number="goalAmount" type="number" min="1" required/></label>
@@ -281,43 +395,108 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
-          <div v-for="s in other" :key="s.id" class="life-row">
-            <label><input type="checkbox" :checked="!!s.completed_at" @change="toggleShopping(s)"/>
-              <span>{{ s.title }}</span></label></div>
+          <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
+          <template v-for="s in visibleShopping" :key="s.id">
+            <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
+              <label class="shopping-check"><input type="checkbox" :checked="!!s.completed_at" :disabled="busy" @change="toggleShopping(s)"/>
+                <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
+                  <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
+              <div class="detail-actions">
+                <button v-if="isOwner&&canEdit(s)" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
+                <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
+              </div>
+            </div>
+            <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
+              kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
+            <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
+              @saved="changed" @close="ledgerPickerId=null"/>
+          </template>
+          <details v-if="shoppingHistory.length" class="shopping-history">
+            <summary>历史已完成购物（{{ shoppingHistory.length }}）</summary>
+            <template v-for="s in shoppingHistory" :key="s.id">
+              <div class="life-row detail-completed shopping-line">
+                <label class="shopping-check"><input type="checkbox" :checked="true" :disabled="busy" @change="toggleShopping(s)"/>
+                  <span class="detail-name">{{ s.title }}</span></label>
+                <div class="detail-actions">
+                  <button v-if="isOwner&&canEdit(s)" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                  <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
+                  <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
+                </div>
+              </div>
+              <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
+                kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
+              <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
+                @saved="changed" @close="ledgerPickerId=null"/>
+            </template>
+          </details>
           <form class="life-form" @submit.prevent="addShopping">
             <input v-model.trim="shoppingTitle" required placeholder="需要买些什么？"/>
             <button :disabled="busy">＋ 添加购物</button></form>
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
-          <div v-for="t in trips" :key="t.id" class="life-row"><div><b>{{ t.title }}</b>
-            <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
-            <button class="life-link" @click="selectTrip(t.id)">查看行程</button></div>
+          <template v-for="t in trips" :key="t.id">
+            <div class="life-row" :class="{'detail-completed':t.status==='completed'}">
+              <div class="life-details"><b class="detail-name">{{ t.title }}</b>
+                <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
+              <div class="detail-actions">
+                <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
+                <button v-if="canEdit(t)" type="button" class="life-link" @click="edit('trips',t)">编辑</button>
+                <button v-if="canEdit(t)" type="button" class="life-link life-danger" @click="removeItem('trips',t)">删除</button>
+              </div>
+            </div>
+            <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
+              kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
+          </template>
           <div v-if="tripDetail" class="trip-detail">
             <h3>{{ tripDetail.title }}</h3>
             <template v-if="tripDetail.plan">
               <div v-for="d in tripDetail.plan.trip.days" :key="d.date" class="trip-day"><b>{{ d.date }}</b>
-                <label v-for="it in d.items" :key="it.externalId" class="trip-item">
-                  <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
-                  <span>{{ it.startTime||'待定' }} · {{ it.title }}</span></label></div>
+                <div v-for="it in d.items" :key="it.externalId" class="trip-detail-row">
+                  <label class="trip-item" :class="{done:itemDone(it.externalId)}">
+                    <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
+                    <span>{{ it.startTime||'待定' }} · {{ it.title }}</span>
+                  </label>
+                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
+                    <button type="button" @click="editTripItem(it)">编辑</button>
+                    <button type="button" class="remove" @click="removeTripItem(it)">删除</button>
+                  </div>
+                </div></div>
               <div v-if="tripDetail.plan.trip.tasks?.length" class="trip-day">
                 <b class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 出发前待办</b>
-                <label v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" class="trip-item">
-                  <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
-                  <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
-                </label>
+                <div v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" class="trip-detail-row">
+                  <label class="trip-item" :class="{done:itemDone(task.externalId)}">
+                    <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
+                    <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
+                  </label>
+                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
+                    <button type="button" @click="editTripItem(task)">编辑</button>
+                    <button type="button" class="remove" @click="removeTripItem(task)">删除</button>
+                  </div>
+                </div>
               </div>
               <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
                 <b class="life-heading"><AppIcon name="shopping" :size="18" /> 行李清单 · {{ list.owner }}</b>
-                <label v-for="piece in list.items" :key="piece.externalId" class="trip-item">
-                  <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
-                  <span>{{ piece.label }} × {{ piece.quantity }}</span>
-                </label>
+                <div v-for="piece in list.items" :key="piece.externalId" class="trip-detail-row">
+                  <label class="trip-item" :class="{done:itemDone(piece.externalId)}">
+                    <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
+                    <span>{{ piece.label }} × {{ piece.quantity }}</span>
+                  </label>
+                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
+                    <button type="button" @click="editTripItem(piece)">编辑</button>
+                    <button type="button" class="remove" @click="removeTripItem(piece)">删除</button>
+                  </div>
+                </div>
               </div>
               <div v-if="tripDetail.plan.trip.bookings?.length" class="trip-day">
                 <b class="life-heading"><AppIcon name="plane" :size="18" /> 交通和预订</b>
-                <div v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" class="trip-item">
+                <div v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" class="trip-detail-row">
                   <span>{{ booking.title }} · {{ booking.status }}</span>
+                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
+                    <button type="button" @click="editTripItem(booking)">编辑</button>
+                    <button type="button" class="remove" @click="removeTripItem(booking)">删除</button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -358,6 +537,12 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
         <p v-if="!items.length" class="life-empty">还没有回忆，先写下一件开心的小事。</p>
         <article v-for="m in items" :key="m.id" class="memory">
           <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
+          <div v-if="canEdit(m)" class="detail-actions">
+            <button type="button" class="life-link" @click="edit('memories',m)">编辑</button>
+            <button type="button" class="life-link life-danger" @click="removeItem('memories',m)">删除</button>
+          </div>
+          <LifeItemEditor v-if="editing?.kind==='memories'&&editing.item.id===m.id"
+            kind="memories" :item="m" @saved="changed" @cancel="editing=null"/>
           <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
             <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
               <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
@@ -379,7 +564,13 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 </template>
 
 <style scoped>
-.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}
+.trip-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;flex-wrap:wrap}
+.trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere}
+.trip-item.done span{color:#9aa99d;text-decoration:line-through}
+.trip-item-actions{display:flex;gap:5px;flex:none}
+.trip-item-actions button{border:0;border-radius:7px;background:#edf5ed;color:#43866a;padding:6px 8px;font-size:11px}
+.trip-item-actions .remove{background:#faefeb;color:#ab5d4a}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
@@ -396,5 +587,27 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 .life-form input[type="date"]{min-inline-size:0}
 .life-form label,.trip-import label{min-width:0;max-width:100%}
 .life-form button{width:100%}
+.life-details{min-width:0;flex:1}
+.detail-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;flex:none}
+.life-row .detail-actions .life-link{font-size:11px;padding:6px 8px;min-width:0}
+.life-danger{color:#a45b4c!important;background:#faefeb!important}
+.detail-completed .detail-name{text-decoration:line-through;color:#9ba99f}
+.detail-completed small{color:#a1aea5}
+.shopping-check{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.shopping-check input{width:18px;height:18px;flex:none;accent-color:#43866a}
+.shopping-check span{overflow-wrap:anywhere;min-width:0}
+.shopping-history{border-top:1px solid #e5ece5;margin-top:13px}
+.shopping-history summary{font-size:12px;color:#607b6a;cursor:pointer;padding:10px}
+@media(max-width:520px){.shopping-line{align-items:flex-start;flex-wrap:wrap}.shopping-line .detail-actions{margin-left:25px;justify-content:flex-start}}
+.today-routine-label{display:flex!important;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer}
+.today-routine-label input[type="checkbox"]{width:20px;height:20px;flex:none;accent-color:#43866a}
+.today-routine-row .routine-name{overflow-wrap:anywhere}
+.today-routine-row.routine-completed .routine-name{text-decoration:line-through;color:#9daaa1}
+.today-routine-row.routine-completed small{color:#7b9d86}
+.upcoming-anniversary{align-items:center}
+.anniversary-countdown{display:grid;justify-items:end;gap:4px;text-align:right;flex:none}
+.anniversary-countdown strong{font-size:13px;color:#43866a}
+.anniversary-countdown time{font-size:12px;color:#85958b}
+@media(max-width:420px){.anniversary-countdown{max-width:45%}.upcoming-anniversary>b{max-width:55%;overflow-wrap:anywhere}}
 @media(max-width:720px){.life-grid{grid-template-columns:minmax(0,1fr)}}
 </style>

@@ -48,6 +48,34 @@ export async function petsRoute(request,db,path,session){
    await db.batch(statements)
    return json({ok:true,id,createdReminder:!!next},201)
  }
+ if(recordId&&request.method==='PATCH'){
+   const rec=await db.prepare(`SELECT id,created_by,linked_task_id FROM pet_health_records
+     WHERE id=?1 AND household_id=?2 AND profile_id=?3 AND deleted_at IS NULL`)
+     .bind(recordId,h,profileId).first()
+   if(!rec)return json({error:'not_found'},404)
+   if(rec.created_by!==u)return json({error:'forbidden'},403)
+   const b=await readBody(request)
+   const type=b?.recordType,eventOn=b?.eventOn,next=b?.nextDueOn||null
+   const weight=b?.weightGrams==null?null:Number(b.weightGrams)
+   const note=shortText(b?.note,1000)
+   const visibility=['private','household'].includes(b?.visibility)?b.visibility:'household'
+   if(!['weight','deworm','vaccination','vet','medication','grooming','other'].includes(type)||
+      !goodDate(eventOn)||(next&&!goodDate(next))||(next&&next<eventOn)||
+      (weight!==null&&(!Number.isInteger(weight)||weight<=0||weight>=100000))||
+      (type==='weight'&&weight===null)||note.length>1000)return json({error:'invalid_input'},400)
+   const statements=[db.prepare(`UPDATE pet_health_records SET visibility=?1,record_type=?2,event_on=?3,
+     weight_grams=?4,note=?5,next_due_on=?6 WHERE id=?7 AND household_id=?8 AND created_by=?9`)
+     .bind(visibility,type,eventOn,weight,note,next,recordId,h,u)]
+   if(rec.linked_task_id){
+     // Do not delete a task with independent historical edits or completions.
+     statements.push(db.prepare(`UPDATE tasks SET due_on=?1,notes=?2,updated_at=?3
+       WHERE id=?4 AND household_id=?5 AND creator_user_id=?6
+       AND deleted_at IS NULL AND completed_at IS NULL`)
+       .bind(next,note,new Date().toISOString(),rec.linked_task_id,h,u))
+   }
+   await db.batch(statements)
+   return json({ok:true,reminderUpdated:!!rec.linked_task_id})
+ }
  if(recordId&&request.method==='DELETE'){
    const rec=await db.prepare(`SELECT created_by,linked_task_id FROM pet_health_records
      WHERE id=?1 AND household_id=?2 AND profile_id=?3 AND deleted_at IS NULL`)

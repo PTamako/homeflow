@@ -24,7 +24,17 @@ const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const openPetId=ref<string|null>(null)
 const editProfileId=ref<string|null>(null),profileRevision=ref(0)
 const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'}] as const
-const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.completedAt))
+function tokyoToday(){return new Date(Date.now()+9*3600000).toISOString().slice(0,10)}
+function tokyoDate(timestamp:string){
+ const iso=timestamp.includes('T')?timestamp:timestamp.replace(' ','T')+'Z'
+ const n=Date.parse(iso)
+ return Number.isFinite(n)?new Date(n+9*3600000).toISOString().slice(0,10):''
+}
+const visibleTasks=computed(()=>tasks.value.filter(t=>{
+ const now=tokyoToday()
+ return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
+   !t.dueOn||t.dueOn<=now
+}))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
@@ -248,7 +258,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
             </div>
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
-          <div class="row-between"><b>任务列表</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示已完成</label></div>
+          <div class="row-between"><b>今日待办</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label></div>
           <div v-if="!visibleTasks.length" class="empty">今天没有任务，添加一件小事吧。</div>
           <div v-for="t in visibleTasks" :key="t.id" class="task-row">
             <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
@@ -311,7 +321,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
               </button>
               <ProfileEditor v-if="editProfileId===p.id&&canEditProfile(p)" :key="p.id"
                 :profile="p" @saved="profileSaved" @close="editProfileId=null"/>
-              <PetHealthPanel :pet-id="p.id" :name="p.displayName" />
+              <PetHealthPanel :pet-id="p.id" :name="p.displayName" :user-id="user.id" />
             </div>
           </div>
           <p v-if="!pets.length" class="empty">尚无宠物档案，可以在下方添加豆沙。</p>

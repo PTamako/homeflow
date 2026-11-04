@@ -58,3 +58,40 @@ export function nextAnniversary(date,repeatMode,asOf){
   }
   return null
 }
+
+/** Last scheduled occurrence strictly before the viewed date.
+ * Computed without D1 reads, and bounded for Workers Free CPU.
+ */
+export function lastScheduledBefore(rule,date){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{4}-\d{2}-\d{2}$/.test(rule?.anchor_date||'')||
+     date<=rule.anchor_date)return null
+  const age=daysBetween(rule.anchor_date,date)
+  if(rule.repeat_type==='interval'){
+    let config={}
+    try{config=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return null}
+    if(config.anchor==='completion')return null // next_due_on already carries over.
+    const days=Number(config.days)
+    if(!Number.isInteger(days)||days<1||days>3650)return null
+    const scheduled=age-1-((age-1)%days)
+    const d=new Date(rule.anchor_date+'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate()+scheduled)
+    return d.toISOString().slice(0,10)
+  }
+  const max=rule.repeat_type==='monthly'?65:rule.repeat_type==='daily'?1:35
+  const d=new Date(date+'T00:00:00Z')
+  for(let i=1;i<=max&&i<=age;i++){
+    d.setUTCDate(d.getUTCDate()-1)
+    const day=d.toISOString().slice(0,10)
+    if(dueOn(rule,day))return day
+  }
+  return null
+}
+export function pendingCarryover(rule,date,lastResolvedOn){
+  // A workday-excluding rule never creates a weekend/holiday todo.
+  if(rule.repeat_type==='workday'&&!isJapaneseWorkday(date))return null
+  let c={}
+  try{c=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return null}
+  if(c.excludeJapaneseHolidays&&!isJapaneseWorkday(date))return null
+  const previous=lastScheduledBefore(rule,date)
+  return previous&&(!lastResolvedOn||lastResolvedOn<previous)?previous:null
+}

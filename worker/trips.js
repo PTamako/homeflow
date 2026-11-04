@@ -71,7 +71,7 @@ export async function tripsRoute(request,db,path,session){
   const h=session.household_id,u=session.user_id
   if(path==='/api/trips'&&request.method==='GET'){
     const {results}=await db.prepare(`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
-        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,import_source_key AS importSourceKey
+        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey
         FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
         ORDER BY COALESCE(start_on,created_at) DESC LIMIT 150`).bind(h,u).all()
     return json({items:results||[]})
@@ -176,18 +176,86 @@ export async function tripsRoute(request,db,path,session){
       const {results}=await db.prepare('SELECT item_id AS itemId,completed_at AS completedAt FROM trip_progress WHERE trip_id=?1').bind(id).all()
       return json({trip:{id:trip.id,title:trip.title,destination:trip.destination,startOn:trip.start_on,
         endOn:trip.end_on,budgetAmount:trip.budget_amount,currency:trip.currency,status:trip.status,
-        visibility:trip.visibility,plan},progress:allowed?(results||[]).filter(r=>allowed.has(r.itemId)):[]})
+        visibility:trip.visibility,createdBy:trip.created_by,plan},progress:allowed?(results||[]).filter(r=>allowed.has(r.itemId)):[]})
+    }
+    if(bpath[3]==='items'&&bpath[4]&&['PATCH','DELETE'].includes(request.method)){
+      if(trip.created_by!==u)return json({error:'forbidden'},403)
+      const ext=bpath[4]
+      if(!idOk(ext)||!trip.plan_json)return json({error:'not_found'},404)
+      let plan
+      try{plan=JSON.parse(trip.plan_json)}catch{return json({error:'invalid_saved_plan'},409)}
+      const sources=[
+        ...(plan.trip?.days||[]).map(x=>x.items||[]),
+        plan.trip?.tasks||[],
+        ...(plan.trip?.packingLists||[]).map(x=>x.items||[]),
+        plan.trip?.bookings||[]
+      ]
+      let found=null,collection=null
+      for(const arr of sources)for(const row of arr)if(row.externalId===ext){found=row;collection=arr;break}
+      if(!found||!collection)return json({error:'not_found'},404)
+      if(request.method==='DELETE'){
+        collection.splice(collection.indexOf(found),1)
+      }else{
+        const body=await readBody(request)
+        const value=shortText(body?.title,150)
+        if(!value||value.length>150)return json({error:'invalid_input'},400)
+        if('label' in found)found.label=value
+        else found.title=value
+        if(body.quantity!==undefined&&'quantity' in found){
+          if(!Number.isInteger(body.quantity)||body.quantity<1||body.quantity>9999)return json({error:'invalid_input'},400)
+          found.quantity=body.quantity
+        }
+      }
+      const raw=JSON.stringify(plan)
+      const hash=await sha256(raw)
+      await db.batch([
+        db.prepare('UPDATE trips SET plan_json=?1,import_hash=?2,updated_at=?3 WHERE id=?4 AND household_id=?5 AND created_by=?6')
+          .bind(raw,hash,iso(),id,h,u),
+        ...(request.method==='DELETE'?[db.prepare('DELETE FROM trip_progress WHERE trip_id=?1 AND item_id=?2').bind(id,ext)]:[])
+      ])
+      return json({ok:true,removed:request.method==='DELETE'})
     }
     if(request.method==='PATCH'){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
-      const body=await readBody(request)
-      if(!['planning','active','completed','cancelled'].includes(body?.status))return json({error:'invalid_input'},400)
-      await db.prepare(`UPDATE trips SET status=?1,updated_at=?2 WHERE id=?3 AND household_id=?4 AND created_by=?5`)
-        .bind(body.status,iso(),id,h,u).run()
-      if(trip.wish_id && body.status==='completed'){
-        await db.prepare(`UPDATE wishes SET status='completed',updated_at=?1 WHERE id=?2 AND household_id=?3`)
-          .bind(iso(),trip.wish_id,h).run()
+      const b=await readBody(request)
+      if(!['planning','active','completed','cancelled'].includes(b?.status))return json({error:'invalid_input'},400)
+      const title=b.title===undefined?trip.title:shortText(b.title,150)
+      const destination=b.destination===undefined?trip.destination:shortText(b.destination,300)
+      const start=b.startDate===undefined?trip.start_on:(b.startDate||null)
+      const end=b.endDate===undefined?trip.end_on:(b.endDate||null)
+      const budget=b.budgetAmount===undefined?trip.budget_amount:b.budgetAmount
+      if(!title||(b.destination!==undefined&&typeof b.destination!=='string')||
+         (start&&!dateOk(start))||(end&&!dateOk(end))||(start&&end&&start>end)||
+         !Number.isSafeInteger(budget)||budget<0||budget>100000000000)
+        return json({error:'invalid_input'},400)
+      let plan=trip.plan_json,hash=trip.import_hash
+      if(plan){
+        try{
+          const p=JSON.parse(plan)
+          p.trip.title=title;p.trip.destination=destination
+          if(start)p.trip.startDate=start
+          if(end)p.trip.endDate=end
+          p.trip.budget.amount=budget
+          plan=JSON.stringify(p);hash=await sha256(plan)
+        }catch{return json({error:'invalid_saved_plan'},409)}
       }
+      const timestamp=iso()
+      await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
+        status=?6,plan_json=?7,import_hash=?8,updated_at=?9
+        WHERE id=?10 AND household_id=?11 AND created_by=?12`)
+        .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u).run()
+      if(trip.wish_id&&b.status==='completed'){
+        await db.prepare("UPDATE wishes SET status='completed',updated_at=?1 WHERE id=?2 AND household_id=?3")
+          .bind(timestamp,trip.wish_id,h).run()
+      }
+      return json({ok:true})
+    }
+    if(request.method==='DELETE'){
+      if(trip.created_by!==u)return json({error:'forbidden'},403)
+      await db.batch([
+        db.prepare('DELETE FROM finance_links WHERE household_id=?1 AND target_type=?2 AND target_id=?3').bind(h,'trip',id),
+        db.prepare('DELETE FROM trips WHERE id=?1 AND household_id=?2 AND created_by=?3').bind(id,h,u)
+      ])
       return json({ok:true})
     }
   }
