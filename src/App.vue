@@ -17,6 +17,8 @@ type Task={id:string;title:string;notes:string;visibility:'private'|'household';
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
+const focusPlanType=ref('all')
+function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
@@ -282,13 +284,13 @@ onBeforeUnmount(()=>{
     </main>
     <main v-else class="content">
       <div class="eyebrow">OUR LITTLE HOME</div>
-      <h1>{{ {today:'我们家的今天',plans:'旅行与心愿',memories:'我们的时光轴',family:'家庭档案'}[tab] }} ♡</h1>
+      <h1>{{ {today:'我们家的今天',plans:'我的计划',memories:'我们的时光轴',family:'家庭档案'}[tab] }} ♡</h1>
       <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
-        <div class="section-title"><h2>今日与近期待办</h2><span>{{ tasks.filter(t=>!!t.completedAt).length }} / {{ tasks.length }} 完成</span></div>
+        <div class="section-title"><h2>今日与近期待办</h2><span>{{ visibleTasks.filter(t=>!!t.completedAt).length }} / {{ visibleTasks.length }} 今日事项</span></div>
         <section class="panel">
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
@@ -444,11 +446,12 @@ onBeforeUnmount(()=>{
         </section>
       </template>
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
-        <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'让旅行心愿变成计划':'把值得纪念的时刻留下来' }}</h2>
+        <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
       <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
-        :profile-revision="profileRevision" @edit-profile="openBirthdayProfileEditor" />
+        :tasks="tasks" :focus-plan-type="focusPlanType" :profile-revision="profileRevision"
+        @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks" @open-plans="openPlans" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <PageToast :toast="toast" />
