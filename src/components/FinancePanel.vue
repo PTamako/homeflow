@@ -96,7 +96,7 @@ async function saveSettings(){
 }
 async function refreshLinks(){
   links.value=[]
-  if(!available.value||!target.value)return
+  if(!available.value||!target.value||kind.value!=='trip')return
   try{
     const data=await api('/finance/links?type='+encodeURIComponent(kind.value)+'&targetId='+encodeURIComponent(target.value))
     links.value=data.items||[]
@@ -129,8 +129,9 @@ async function unlink(item:Item){
     await refreshLinks();message.value='已取消关联；原记账明细不受影响'
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-watch([kind,target],()=>{entries.value=[];nextCursor.value=null;refreshLinks()})
+watch([kind,target],()=>{entries.value=[];nextCursor.value=null;refreshLinks();refreshSettings()})
 watch(kind,()=>{target.value=''})
+watch([start,end],()=>{netLoaded.value=false})
 watch(selected,value=>{
   if(!value)return
   const s=value.startOn||value.start_on
