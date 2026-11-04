@@ -6,7 +6,7 @@
 - GitHub：`PTamako/homeflow`（私有）；
 - Worker：`homeflow`，D1 Binding `DB` → `homeflow`。
 - Preview Worker：`homeflow-preview`，D1 Binding `DB` → `homeflow-preview`。
-- 生产与预览数据库均已核实至 0012 的主要新字段、索引和表，包括两份历史 0009 文件。**曾手动执行 SQL，Wrangler 迁移记录未必同步；请不要对已有数据库重放。**
+- 生产与预览 D1 的主要结构已核实至 0015：0013 完成确认表、0014 多笔购物关联表/索引/旧关联兼容触发器、0015 用户延后提醒表/索引均已在实际环境检查。历史存在两份 0009 迁移；**曾通过 Cloudflare API 手动执行 SQL，Wrangler 迁移记录未必同步，绝不对已有 D1 批量重放历史 ALTER 或旧迁移。**
 - `HOMEFLOW_BOOTSTRAP_SECRET` 已在生产 Worker 发现（只验证名称，绝不读取其内容）；生产 D1 已有 1 个家庭和 1 个用户。
 - 生产 Cron 为 `0 23 * * *` UTC，即日本时间每日 08:00。
 - GitHub Actions 构建、部署实际成功；新版本不自动触碰 `kakebo_jp` D1。
@@ -85,3 +85,11 @@
 - 迁移清单包括历史两个前缀为 0009 的文件；本地 SQLite 验证不会访问或写入 D1。
 - 部署后的 /api/health 检查只核对环境身份，不创建或修改家庭记录；它不代替 iPhone/iPad、Push 或账目真实验收。
 - 可移植备份单数据集上限 500 条，超过上限会明确返回错误而非截断；每位家庭成员分别备份。
+
+## 8. 2026-11-04 本轮安全发布及仍需人工确认
+
+- PR #47–#52 见 [交付状态](RELEASE_STATUS.md)；所有 PR 必须经过独立分支 CI 和 main 上先 Preview 后 Production 的自动部署。
+- 迁移 0014（购物多笔关联）及 0015（用户级提醒延后）已分别通过 Cloudflare D1 API 在 Preview 和 Production 预检、应用、核实名称/索引；两套 DB 旧单笔关联缺失数量检查为 0。此次迁移没有删除或清空任何真实记录。
+- 手工执行迁移后不得推断 Wrangler 的迁移追踪已经同步。后续新迁移应先核实实际 schema 和历史迁移元数据，**禁止在生产 D1 重放旧 SQL**。见 [Issue #56](https://github.com/PTamako/homeflow/issues/56)。
+- 真实银行专项储值不可使用家庭净收支模拟证明（[Issue #53](https://github.com/PTamako/homeflow/issues/53)）；退款原消费关系没有数据契约时必须人工核实（[Issue #54](https://github.com/PTamako/homeflow/issues/54)）。
+- iPhone/iPad、第二位家庭账号、08:00 Web Push 实际送达、完整 ZIP 恢复与照片跨端同步仍保留原本的未勾选事项，详见 [Issue #4](https://github.com/PTamako/homeflow/issues/4)。

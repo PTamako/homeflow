@@ -11,11 +11,11 @@
 ## 截至 2026-11-04 的实际状态
 
 - 主分支 CI 构建、Node 双账号/隐私/财务/ZIP/旅行测试通过，生产 Worker 和独立 D1 已部署。
-- 家庭初始密钥 `HOMEFLOW_BOOTSTRAP_SECRET` 存在，但 **尚未创建任何真实用户或家庭**，请在首页初始化。
+- 生产 D1 已有真实家庭和 Owner 初始化记录，**不要重复执行首次初始化或清空现有家庭数据**；第二位家人请使用独立账号和邀请加入。
 - 离线任务支持本机队列、幂等同步和冲突提示；离线仅缓存静态页面，不会绕过登录。
 - 本机照片支持多图和 ZIP 打包备份；跨设备云相册需要用户先启用 R2 并绑定 `MEDIA`。
-- Web Push 代码与每天日本时间 08:00 的 Cron 已部署；通知需要配置 VAPID Secrets 并在 iPhone 主屏幕应用中同意授权。
-- 家計簿只读桥接通过私有 Cloudflare Service Binding 实现（HomeFlow Owner 专属），目标 Worker 不公开 HTTP 地址；不再依赖两边 Secret 的公网请求。最终真人端到端确认仍须完成。
+- Web Push VAPID Secrets 和每天日本时间 08:00 的 Cron 已配置；重要提醒支持当前账号「明天再提醒」，实际送达仍需 iPhone 主屏幕 PWA 验收。
+- 家計簿只读桥接通过私有 Cloudflare Service Binding 实现（HomeFlow Owner 专属），购物可关联多笔消费、逐笔解除；绝不写入家計簿原始账目。退款的真实原单关系及专用储值资金证明仍未实现，参见 Issues #53、#54。
 - **以上已部署不等于 iPhone/iPad 双账号、锁屏送达和数据恢复的真机验收。**
 
 ## 技术栈
@@ -36,6 +36,15 @@ npm run check
 npm run dev
 ```
 
-部署代码前先检查 D1 迁移（目前 0001–0007 均由 Cloudflare API 手动执行，Wrangler 迁移跟踪未补齐，**不要直接重新执行历史 ALTER**）。主分支经 GitHub Actions 构建后先部署 Preview，再部署 Production。
+部署代码前先检查 D1 迁移：历史 0001–0013 中多项曾通过 Cloudflare API 手动执行，0014/0015 也分别已在 Preview 与 Production 安全应用且核对。Wrangler 迁移追踪未必同步，**禁止直接重放旧迁移或对已有数据库执行批量 ALTER**。新变更必须先完成 CI、Preview D1 安全迁移检查，再核对 Production D1，最后由 GitHub Actions 先 Preview 后 Production 发布 Worker。
 
 更多信息： [模块路线](docs/ROADMAP.md)、[旅行 JSON 规则](docs/TRIP_IMPORT.md)、[上线配置与验证](docs/DEPLOY_AND_VERIFY.md)、[真实交付情况](docs/RELEASE_STATUS.md)。
+
+## 最近交付与未完成事项
+
+- [PR #47](https://github.com/PTamako/homeflow/pull/47)：心愿与一次性储值的可选目标日期、完成记录 ZIP 恢复；家庭净收支估算不等于真实专用储蓄。
+- [PR #48](https://github.com/PTamako/homeflow/pull/48) 和 [#52](https://github.com/PTamako/homeflow/pull/52)：多笔真实购物支出关联、逐笔解除、连续选择和局部刷新。
+- [PR #49](https://github.com/PTamako/homeflow/pull/49)：账户级明天再提醒。
+- [PR #50](https://github.com/PTamako/homeflow/pull/50)：完成心愿和旅行后主动整理为私人回忆，服务端禁止私人计划信息泄漏到家庭共享回忆。
+- [PR #51](https://github.com/PTamako/homeflow/pull/51)：用户主动查询月度计划回顾，一次 D1 批处理，不使用 Kakebo 或定时写入。
+- 仍需实现或真实设备验收：[专项储值 #53](https://github.com/PTamako/homeflow/issues/53)、[真实退款/部分购买 #54](https://github.com/PTamako/homeflow/issues/54)、[高级提醒 #55](https://github.com/PTamako/homeflow/issues/55)、[低成本验收与迁移追踪 #56](https://github.com/PTamako/homeflow/issues/56)、[iPhone/iPad 真机 #4](https://github.com/PTamako/homeflow/issues/4)。
