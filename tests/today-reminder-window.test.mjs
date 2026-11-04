@@ -38,11 +38,11 @@ test('Important Reminders only shows items not already in unified Today list',()
  assert.equal(additionalReminders([{kind:'task',id:'a'}],['task:a']).length,0)
 })
 
-test('Important Reminders auto-fetches when the compact settings menu opens',()=>{
+test('Important Reminders loads in the hidden settings menu, keeping the red dot ready',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const important=readFileSync(new URL('../src/components/ImportantReminders.vue',import.meta.url),'utf8')
  const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
- const i=app.indexOf('<ImportantReminders :today-date="currentJstDay"')
+ const i=app.indexOf('<ImportantReminders ref="importantRemindersRef"')
  assert.ok(app.includes('class="settings-popover"'))
  assert.ok(app.includes('class="settings-overlay"'))
  assert.ok(app.includes(':today-entry-keys="todayEntryKeys" compact'))
