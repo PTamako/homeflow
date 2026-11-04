@@ -69,8 +69,16 @@ export async function tripsRoute(request,db,path,session){
     const issue=validatedTripPayload(payload)
     if(issue)return json({error:issue},400)
     const hash=await sha256(JSON.stringify(payload))
-    const current=await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
       WHERE household_id=?1 AND import_source_key=?2`).bind(h,payload.importSourceId).first()
+    // A trip created from a wish can be populated by an imported plan without losing wish_id.
+    const targetId=body.targetTripId||null
+    if(targetId&&!/^[0-9a-f-]{36}$/.test(targetId))return json({error:'invalid_input'},400)
+    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+      WHERE household_id=?1 AND id=?2`).bind(h,targetId).first():null
+    if(targetId&&!target)return json({error:'not_found'},404)
+    if(target&&matching&&matching.id!==target.id)return json({error:'import_source_already_linked'},409)
+    const current=target||matching
     const summary={days:payload.trip.days.length,itineraryItems:payload.trip.days.reduce((n,d)=>n+d.items.length,0),
       tasks:(payload.trip.tasks||[]).length,packing:(payload.trip.packingLists||[]).reduce((n,l)=>n+l.items.length,0),
       bookings:(payload.trip.bookings||[]).length}
@@ -81,10 +89,10 @@ export async function tripsRoute(request,db,path,session){
     const data=payload.trip
     if(current){
       await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,
-        timezone=?5,budget_amount=?6,currency=?7,plan_json=?8,import_hash=?9,updated_at=?10
-        WHERE id=?11 AND household_id=?12 AND created_by=?13`)
+        timezone=?5,budget_amount=?6,currency=?7,plan_json=?8,import_hash=?9,import_source_key=?10,updated_at=?11
+        WHERE id=?12 AND household_id=?13 AND created_by=?14`)
       .bind(data.title,data.destination,data.startDate,data.endDate,data.timeZone,
-        data.budget.amount,data.currency,JSON.stringify(payload),hash,iso(),current.id,h,u).run()
+        data.budget.amount,data.currency,JSON.stringify(payload),hash,payload.importSourceId,iso(),current.id,h,u).run()
       return json({ok:true,id:current.id,updated:true,preservedProgress:true})
     }
     const id=crypto.randomUUID()

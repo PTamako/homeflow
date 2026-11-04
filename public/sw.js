@@ -25,3 +25,28 @@ self.addEventListener('fetch',event=>{
     return res
   })))
 })
+
+self.addEventListener('push',event=>{
+  let msg={title:'HomeFlow · 今日提醒',body:'你有新的家庭待办',url:'/',tag:'homeflow-reminder'}
+  try{
+    if(event.data){const data=event.data.json();if(data&&typeof data==='object')msg={...msg,...data}}
+  }catch{}
+  const title=String(msg.title||'HomeFlow · 今日提醒').slice(0,90)
+  event.waitUntil(self.registration.showNotification(title,{
+    body:String(msg.body||'').slice(0,150),
+    tag:String(msg.tag||'homeflow-reminder').slice(0,180),
+    icon:'/icon.svg',badge:'/icon.svg',
+    data:{url:'/'}
+  }))
+})
+self.addEventListener('notificationclick',event=>{
+  event.notification.close()
+  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async list=>{
+    for(const client of list){
+      if(new URL(client.url).origin===self.location.origin){
+        await client.focus();return
+      }
+    }
+    await self.clients.openWindow('/')
+  }))
+})

@@ -6,6 +6,7 @@ import {tripsRoute} from './trips.js'
 import {mediaRoute} from './media.js'
 import {remindersRoute} from './reminders.js'
 import {backupRoute} from './backup.js'
+import {pushRoute,runPushSchedule} from './webpush.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -29,6 +30,7 @@ export default {
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
+        if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
         if(path==='/api/reminders')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
@@ -49,5 +51,9 @@ export default {
     if(request.method!=='GET')return json({error:'method_not_allowed'},405)
     return new Response('<!doctype html><html><meta charset="utf-8"><title>HomeFlow</title><body>HomeFlow API</body></html>',
       {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}})
+  },
+  async scheduled(controller,env,ctx){
+    if(!await verifiedDatabase(env))return
+    ctx.waitUntil(runPushSchedule(env).catch(()=>{}))
   }
 }

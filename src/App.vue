@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
 import LifePanel from './components/LifePanel.vue'
+import PushPanel from './components/PushPanel.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;completedAt:string|null}
@@ -59,6 +60,15 @@ async function submitAuth(){
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
+  // A browser push endpoint must not keep receiving the old user's private notifications.
+  try{
+    const registration=await navigator.serviceWorker?.getRegistration()
+    const sub=await registration?.pushManager?.getSubscription()
+    if(sub){
+      try{await api('/push/subscriptions','DELETE',{endpoint:sub.endpoint})}catch{}
+      await sub.unsubscribe()
+    }
+  }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   user.value=null;profiles.value=[];tasks.value=[];await refresh()
 }
@@ -181,6 +191,7 @@ onMounted(refresh)
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
+      <PushPanel v-if="tab==='today'" />
       <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">

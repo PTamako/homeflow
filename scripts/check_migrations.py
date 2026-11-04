@@ -7,6 +7,7 @@ MIGRATIONS=[
     "0001_core.sql",
     "0002_stage1_family_tasks.sql",
     "0003_life_projects.sql",
+    "0004_push_notifications.sql",
 ]
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
@@ -15,7 +16,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "password_rounds" in columns

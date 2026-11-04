@@ -13,7 +13,7 @@ const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
 const photoFile=ref<File|null>(null),photos=ref<Record<string,string>>({})
-const paste=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
+const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 let photoUrls:string[]=[]
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
   const response=await fetch('/api'+path,{method,cache:'no-store',credentials:'same-origin',
@@ -105,7 +105,7 @@ async function toggleTrip(id:string){
   }catch(e){error.value=(e as Error).message}
 }
 async function previewTrip(){
-  try{const data=JSON.parse(paste.value);const result=await api('/trips/import','POST',{preview:true,payload:data})
+  try{const data=JSON.parse(paste.value);const result=await api('/trips/import','POST',{preview:true,payload:data,targetTripId:importTargetId.value||null})
     preview.value={...result,payload:data};error.value=''}
   catch(e){preview.value=null;error.value=(e as Error).message}
 }
@@ -114,7 +114,7 @@ async function importTrip(){
   const change=preview.value.changes
   if(change==='update'&&!confirm('会更新原旅行内容，但不会删除已完成事项。确定更新吗？'))return
   await update(()=>api('/trips/import','POST',{payload:preview.value?.payload,
-    visibility:'household',confirmReplace:change==='update'}))
+    visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null}
 }
 async function addMemory(){
@@ -272,6 +272,9 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           </div>
           <details class="trip-import"><summary>从 ChatGPT 导入旅行计划 JSON</summary>
             <p class="life-caption">粘贴 HomeFlow Trip v1 格式。先验证预览，再保存；更新旧计划会保留完成记录。</p>
+            <label>导入到哪个旅行项目？
+              <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
+            </label>
             <textarea v-model="paste" rows="6" placeholder="粘贴完整的 JSON 内容"></textarea>
             <button class="life-light" @click="previewTrip">验证与预览</button>
             <div v-if="preview" class="trip-preview">

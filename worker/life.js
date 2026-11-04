@@ -68,7 +68,11 @@ async function validLinks(db,table,data,session){
   if(table==='memories'&&data[4]){
     const tab={trip:'trips',wish:'wishes',profile:'family_profiles',anniversary:'anniversaries'}[data[3]]
     if(!tab)return false
-    const item=await db.prepare('SELECT 1 FROM '+tab+' WHERE id=?1 AND household_id=?2').bind(data[4],hid).first()
+    const isProfile=tab==='family_profiles'
+    const sql=isProfile
+      ? 'SELECT 1 FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL'
+      : "SELECT 1 FROM "+tab+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)"
+    const item=await db.prepare(sql).bind(...(isProfile?[data[4],hid]:[data[4],hid,session.user_id])).first()
     if(!item)return false
   }
   return true
