@@ -5,6 +5,7 @@ import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp
 import BackupPanel from './components/BackupPanel.vue'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
+import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
@@ -76,6 +77,7 @@ const allToday=computed<TodayEntry[]>(()=>{
   }))
   return [...standard,...recurring,...plans].sort((a,b)=>Number(a.done)-Number(b.done))
 })
+const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
 const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
   allToday.value.filter(row=>row.kind===todayCategory.value))
 const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
@@ -430,6 +432,7 @@ onBeforeUnmount(()=>{
       <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
+        <ImportantReminders :today-date="currentJstDay" :today-entry-keys="todayEntryKeys" />
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <div class="section-title"><h2>今日待办</h2><span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span></div>
