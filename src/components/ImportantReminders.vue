@@ -4,7 +4,7 @@ import AppIcon from './AppIcon.vue'
 import {additionalReminders} from '../today-presentation.mjs'
 
 type Reminder={id:string;kind:string;title:string;dueOn:string}
-const props=defineProps<{todayDate:string;todayEntryKeys:string[]}>()
+const props=withDefaults(defineProps<{todayDate:string;todayEntryKeys:string[];compact?:boolean}>(),{compact:false})
 const items=ref<Reminder[]>([])
 const loading=ref(false)
 const error=ref('')
@@ -30,17 +30,17 @@ async function load(){
   if(current===requestId)loading.value=false
  }
 }
-// The component only exists on Today's page. Load automatically on entry,
-// refresh on JST date rollover, and ignore old responses when navigating away.
+// Load on settings menu opening, refresh on JST date rollover,
+// and ignore stale responses when the menu closes.
 watch(()=>props.todayDate,()=>{void load()},{immediate:true})
 onBeforeUnmount(()=>{requestId++})
 </script>
 
 <template>
-  <section class="panel important-reminders" aria-label="重要提醒">
+  <section :class="['important-reminders',{panel:!compact,compact}]" aria-label="重要提醒">
     <div class="reminder-heading">
       <h2><AppIcon name="bell" :size="20" /> 重要提醒</h2>
-      <button class="text-button" type="button" :disabled="loading" @click="load">刷新</button>
+      <button v-if="!compact" class="text-button" type="button" :disabled="loading" @click="load">刷新</button>
     </div>
     <p v-if="loading" class="reminder-status" role="status">正在读取今天的提醒…</p>
     <template v-else-if="error">
@@ -57,8 +57,10 @@ onBeforeUnmount(()=>{requestId++})
 
 <style scoped>
 .important-reminders{min-width:0}
+.important-reminders.compact{margin:0;padding:0;background:transparent;border:0;box-shadow:none}
 .reminder-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .reminder-heading h2{display:flex;align-items:center;gap:8px;margin:0;font-size:16px}
+.compact .reminder-heading h2{font-size:14px}
 .reminder-item{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:11px 0;border-top:1px solid #e9eee9;min-width:0}
 .reminder-item span{overflow-wrap:anywhere;min-width:0}
