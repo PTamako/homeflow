@@ -12,6 +12,7 @@ MIGRATIONS=[
     "0006_pet_health.sql",
     "0007_offline_tasks.sql",
     "0008_shopping_ledger.sql",
+    "0009_finance_target_settings.sql",
 ]
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
@@ -20,11 +21,12 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
 assert "ledger_entry_id" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
+assert {"adjustment_amount","period_start","period_end"}.issubset({x[1] for x in db.execute("PRAGMA table_info(finance_target_settings)")})
 assert "password_rounds" in columns
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")
