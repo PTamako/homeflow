@@ -242,7 +242,9 @@ onMounted(()=>{
     if(s&&e&&Date.parse(e)-Date.parse(s)<=90*86400000){start.value=s;end.value=e}
   }
   void detect()
-  if(kind.value==='goal')void refreshCompletionMarks()
+  // Focused navigation already fetched completion marks by ID; avoid
+  // a duplicate D1 lookup when opening from Today.
+  if(kind.value==='goal'&&!props.initialPeriodKey)void refreshCompletionMarks()
 })
 </script>
 <template>
