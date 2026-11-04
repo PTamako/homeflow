@@ -33,8 +33,11 @@ export async function remindersRoute(request,db,session) {
       ...(hasQuiet?{quietStartHour:quietStart,quietEndHour:quietEnd}:{})})
   }
   if(url.pathname==='/api/reminders/item'){
-    if(!['PUT','DELETE'].includes(request.method))return json({error:'method_not_allowed'},405)
-    const body=await readBody(request),kind=body?.kind,id=body?.id
+    if(!['GET','PUT','DELETE'].includes(request.method))return json({error:'method_not_allowed'},405)
+    const body=request.method==='GET'?
+      {kind:url.searchParams.get('kind'),id:url.searchParams.get('id')}:
+      await readBody(request)
+    const kind=body?.kind,id=body?.id
     if(!['task','routine','trip'].includes(kind)||!itemIdOk(id)||
       (request.method==='PUT'&&(!validLead(body?.advanceDays)||!priorityOk(body?.priority))))
       return json({error:'invalid_input'},400)
@@ -63,6 +66,20 @@ export async function remindersRoute(request,db,session) {
       }
     }
     if(!allowed)return json({error:'not_found'},404)
+    if(request.method==='GET'){
+      // Only queried when the user opens a plan's reminder editor.
+      const [record,base]=await db.batch([
+        db.prepare('SELECT advance_days,priority FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 AND kind=?3 AND item_id=?4')
+          .bind(hid,u,kind,id),
+        db.prepare('SELECT advance_days FROM reminder_preferences WHERE household_id=?1 AND user_id=?2')
+          .bind(hid,u)
+      ])
+      const saved=record.results?.[0]||null
+      const defaultDays=validLead(base.results?.[0]?.advance_days)?base.results[0].advance_days:0
+      return json({kind,id,customized:!!saved,defaultDays,
+        advanceDays:validLead(saved?.advance_days)?saved.advance_days:defaultDays,
+        priority:priorityOk(saved?.priority)?saved.priority:'normal'})
+    }
     if(request.method==='DELETE'){
       await db.prepare('DELETE FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 AND kind=?3 AND item_id=?4')
         .bind(hid,u,kind,id).run()
