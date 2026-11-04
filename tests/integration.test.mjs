@@ -484,7 +484,7 @@ test('shopping links to a verified kakebo expense and edits / removes details sa
  const originalFetch=globalThis.fetch
  globalThis.fetch=async(url,options)=>{
    assert.match(String(url),/kakeibo-f17\.pages\.dev\/api\/homeflow-ledger\?ids=123/)
-   assert.equal(options.headers.Authorization,'Bearer '+token)
+   assert.equal(options.headers.Authorization,undefined)
    assert.equal(options.method,'GET')
    return new Response(JSON.stringify({entries:[{id:123,date:'2026-11-04',type:'expense',amount:800,merchant:'超市'}]}),
      {status:200,headers:{'content-type':'application/json'}})
@@ -561,7 +561,7 @@ test('owner can link a shared shopping item created by family member, but cannot
  const old=globalThis.fetch
  globalThis.fetch=async(url,opts)=>{
    externalRequests++
-   assert.equal(opts.headers.Authorization,'Bearer '+token)
+   assert.equal(opts.headers.Authorization,undefined)
    return new Response(JSON.stringify({entries:[{id:456,type:'expense',date:'2026-11-04',amount:1800}]}),{status:200})
  }
  try {
