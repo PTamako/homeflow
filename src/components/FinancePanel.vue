@@ -4,8 +4,8 @@ import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
-const props=defineProps<{trips:Item[];goals:Item[];owner:boolean}>()
-const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>('trip'),target=ref('')
+const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string}>()
+const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
 const nextCursor=ref<string|null>(null),busy=ref(false),error=ref('')
 const {toast,notify,clear:clearToast}=usePageToast()
@@ -50,6 +50,7 @@ async function detect(){
   try{
     const status=await api('/finance/status')
     available.value=!!status.connected;checked.value=true
+    if(available.value&&target.value)await Promise.all([refreshSettings(),refreshLinks()])
   }catch(e){error.value=(e as Error).message;checked.value=true}
 }
 async function loadGoalNet(){
@@ -144,18 +145,26 @@ watch(selected,value=>{
     if(days<=90&&days>=0){start.value=s;end.value=e}
   }
 })
-onMounted(()=>{defaultDates();detect()})
+onMounted(()=>{
+  defaultDates()
+  const x=selected.value
+  if(x&&kind.value==='trip'){
+    const s=x.startOn||x.start_on,e=x.endOn||x.end_on
+    if(s&&e&&Date.parse(e)-Date.parse(s)<=90*86400000){start.value=s;end.value=e}
+  }
+  void detect()
+})
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> 家計簿 · 旅行支出与储蓄进度</h2>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值进度 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
     <p class="hint">旅行计划逐笔关联真实消费；储蓄目标按选定期间的收支差额计算。两者都能手填正负调整额，不修改原账目。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
       家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
     </p>
     <template v-else>
-      <div class="fields">
+      <div v-if="!embeddedId" class="fields">
         <label>关联对象
           <select v-model="kind"><option value="trip">旅行计划</option><option value="goal">储蓄目标</option></select>
         </label>
