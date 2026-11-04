@@ -427,6 +427,47 @@ test('dated shopping, wishes and savings goals carry forward until explicitly co
  sqlite.close()
 })
 
+test('finished savings goals archive and expired unfinished trips stay active',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const user=await ask('/api/auth/bootstrap','POST',{
+   loginName:'archive-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(user.status,201)
+ const owner=extractCookie(user.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10)
+ const goal=await ask('/api/goals','POST',{
+   title:'已储值目标',goalMode:'once',targetAmount:10000,
+   reservedAmount:0,startOn:yesterday,targetOn:yesterday,currency:'JPY',
+   visibility:'household'},owner)
+ const trip=await ask('/api/trips','POST',{
+   title:'旅行待收尾',destination:'大阪',startDate:yesterday,endDate:yesterday,
+   budgetAmount:1000,visibility:'household'},owner)
+ assert.equal(goal.status,201)
+ assert.equal(trip.status,201)
+ const before=(await ask('/api/goals?scope=active&limit=5','GET',undefined,owner)).body.items
+ assert.ok(before.some(x=>x.id===goal.body.id))
+ const marked=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:goal.body.id,completed:true},owner)
+ assert.equal(marked.status,200)
+ const active=(await ask('/api/goals?scope=active&limit=5','GET',undefined,owner)).body.items
+ const history=(await ask('/api/goals?scope=history&limit=5','GET',undefined,owner)).body.items
+ assert.ok(!active.some(x=>x.id===goal.body.id),'confirmed goal is no longer active')
+ assert.ok(history.some(x=>x.id===goal.body.id),'confirmed goal appears in history')
+ const tripsActive=(await ask('/api/trips?scope=active&limit=5','GET',undefined,owner)).body.items
+ const tripsHistory=(await ask('/api/trips?scope=history&limit=5','GET',undefined,owner)).body.items
+ assert.ok(tripsActive.some(x=>x.id===trip.body.id),'incomplete trip remains editable')
+ assert.ok(!tripsHistory.some(x=>x.id===trip.body.id),'end date alone does not imply completion')
+ const undone=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:goal.body.id,completed:false},owner)
+ assert.equal(undone.status,200)
+ const reopened=(await ask('/api/goals?scope=active&limit=5','GET',undefined,owner)).body.items
+ assert.ok(reopened.some(x=>x.id===goal.body.id),'undo returns goal to active plans')
+ sqlite.close()
+})
+
 test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
