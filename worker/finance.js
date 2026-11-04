@@ -25,7 +25,7 @@ async function ledger(env,params){
     try{
       response=await env.KAKEBO_LEDGER_SERVICE.fetch(u.toString(),{method:'GET',
         headers:{Accept:'application/json'},
-        signal:controller.signal,redirect:'error'})
+        signal:controller.signal,redirect:'manual'})
     }catch(error){
       throw Error(error?.name==='AbortError'?'ledger_timeout':'ledger_network_error')
     }
