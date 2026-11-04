@@ -42,7 +42,7 @@ const goalPeriodDue=computed(()=>{
   if(!g||kind.value!=='goal')return false
   if(!recurringGoal.value)return !!g.target_on&&g.target_on<=today
   const key=String(periodKey.value)
-  if(!/^(\\d{4})(-\\d{2})?$/.test(key))return false
+  if(!/^(\d{4})(-\d{2})?$/.test(key))return false
   const end=goalMode.value==='monthly'
     ?new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5,7)),0)).toISOString().slice(0,10)
     :key+'-12-31'
