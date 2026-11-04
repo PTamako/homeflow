@@ -112,3 +112,18 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .today-unified-row{padding:12px 0;align-items:center}
 .today-unified-row .task-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;line-height:1.45}
 .today-kind-label{display:inline-flex;align-items:center;border-radius:6px;background:#e9f1ea;color:#3f785b;font-size:10px;font-weight:700;padding:2px 6px;white-space:nowrap}
+
+/* Today: one horizontally scrollable, touch-friendly category filter. */
+.today-category-tabs{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;
+  padding:3px 0 12px;max-width:100%;-webkit-overflow-scrolling:touch}
+.today-category-tabs::-webkit-scrollbar{display:none}
+.today-category-tabs button{flex:none;min-height:36px;border:1px solid #d7e6d9;
+  border-radius:999px;padding:7px 12px;background:#fff;color:#637c6e;font-size:12px}
+.today-category-tabs button.selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
+.today-category-tabs button:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.today-plan-link{flex:none;font-size:11px;white-space:nowrap;padding:7px 5px}
+.today-unified-row>.app-icon{flex:none;color:#43866a;margin-right:6px}
+.today-unified-row>.task-detail{min-width:0;flex:1}
+.today-unified-row .task-detail>div{overflow-wrap:anywhere}
+@media(max-width:480px){.today-unified-row{gap:7px}
+  .today-plan-link{padding:6px 2px}.today-category-tabs button{padding:7px 10px}}

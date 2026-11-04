@@ -16,10 +16,20 @@ type User={id:string;loginName:string;role:'owner'|'member';householdId:string;h
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
 type Routine=Record<string,any>
-type TodayEntry={key:string;kind:'task'|'routine';title:string;done:boolean;task?:Task;routine?:Routine}
+type PlanKind='shopping'|'wish'|'goal'|'trip'
+type TodayKind='task'|'routine'|PlanKind
+type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string}
+type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
+const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
+const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
+ {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
+ {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
+]
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
-const todayRoutines=ref<Routine[]>([]),editingRoutine=ref<Routine|null>(null),routineBusy=ref(false)
+const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
+const todayCategory=ref<'all'|TodayKind>('all')
+const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const focusPlanType=ref('all')
 function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
@@ -48,17 +58,22 @@ const visibleTasks=computed(()=>tasks.value.filter(t=>{
  return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
    !t.dueOn||t.dueOn<=now
 }))
-const unifiedToday=computed<TodayEntry[]>(()=>{
+const allToday=computed<TodayEntry[]>(()=>{
   const standard:TodayEntry[]=visibleTasks.value.map(task=>({
     key:'task:'+task.id,kind:'task',title:task.title,done:!!task.completedAt,task
   }))
   const recurring:TodayEntry[]=todayRoutines.value.map(routine=>({
     key:'routine:'+routine.id,kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
   }))
-  // The two sources share a single completion order, without changing their
-  // independent persistence and recurrence rules.
-  return [...standard,...recurring].sort((a,b)=>Number(a.done)-Number(b.done))
+  // All plan types use one visual list, while retaining each source's own
+  // completion, privacy and recurrence rules.
+  const plans:TodayEntry[]=todayPlans.value.map(plan=>({
+    key:'plan:'+plan.kind+':'+plan.id,kind:plan.kind,title:plan.title,done:plan.done,plan
+  }))
+  return [...standard,...recurring,...plans].sort((a,b)=>Number(a.done)-Number(b.done))
 })
+const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
+  allToday.value.filter(row=>row.kind===todayCategory.value))
 const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
 function recurringLabel(r:Routine){
   return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
@@ -157,6 +172,7 @@ async function submitAuth(){
     }
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
+    if(user.value&&tab.value==='today')await reloadToday()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
@@ -171,7 +187,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
 }
 async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
 async function loadTodayRoutines(){
@@ -183,7 +199,32 @@ async function loadTodayRoutines(){
     if(date===tokyoToday()&&user.value)todayRoutines.value=result.items||[]
   }catch(e){error.value=(e as Error).message}
 }
-async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines()])}
+async function loadTodayPlans(){
+  if(!user.value)return
+  const date=tokyoToday()
+  try{
+    const result=await api('/plans/today?date='+encodeURIComponent(date))
+    if(date===tokyoToday()&&user.value){
+      todayPlans.value=(result.items||[]).filter(x=>['shopping','wish','goal','trip'].includes(String(x.kind))).
+        map((x):TodayPlan=>({
+          id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
+          dueOn:String(x.dueOn||''),done:!!x.done,overdue:!!x.overdue,
+          destination:typeof x.destination==='string'?x.destination:undefined
+        }))
+    }
+  }catch(e){error.value=(e as Error).message}
+}
+async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
+async function toggleShoppingPlan(plan:TodayPlan){
+  if(shoppingBusy.value)return
+  shoppingBusy.value=true
+  try{
+    await api('/shopping/'+plan.id+'/toggle','POST',{completed:!plan.done})
+    await loadTodayPlans()
+    notify(plan.done?'已撤销购物完成':'购物已完成')
+  }catch(e){error.value=(e as Error).message}
+  finally{shoppingBusy.value=false}
+}
 function editRoutine(r:Routine){
   if(r.created_by!==user.value?.id)return
   editingRoutine.value=editingRoutine.value?.id===r.id?null:r
@@ -304,10 +345,14 @@ watch(tab,value=>{
   clearToast()
   editingTask.value=null
   editingRoutine.value=null
-  if(value==='today'&&user.value)void reloadToday()
+  if(value==='today'){
+    todayCategory.value='all'
+    if(user.value)void reloadToday()
+  }
 })
 onMounted(async()=>{
   await refresh()
+  if(user.value&&tab.value==='today')await reloadToday()
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
@@ -388,11 +433,16 @@ onBeforeUnmount(()=>{
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
           <div class="row-between">
-            <b>待办与定期事项</b>
+            <b>事项分类</b>
             <label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label>
           </div>
-          <p class="today-unified-hint">待办和定期任务统一显示。定期事项每天更新，未完成按原规则顺延。</p>
-          <div v-if="!unifiedToday.length" class="empty">今天没有待完成的事项。</div>
+          <div class="today-category-tabs" role="group" aria-label="今日待办分类">
+            <button v-for="category in todayCategories" :key="category.id" type="button"
+              :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
+              @click="todayCategory=category.id">{{ category.label }}</button>
+          </div>
+          <p class="today-unified-hint">默认显示今天的所有事项；到期未完成的计划继续顺延，完成的定期事项第二天重置。</p>
+          <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
           <template v-for="row in unifiedToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
               :allow-edit="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
@@ -400,14 +450,15 @@ onBeforeUnmount(()=>{
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
               @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
               <div class="task-row today-unified-row">
-                <input type="checkbox" :checked="row.done"
-                  :disabled="!!row.routine&&routineBusy"
+                <input v-if="row.task||row.routine||row.plan?.kind==='shopping'" type="checkbox" :checked="row.done"
+                  :disabled="(!!row.routine&&routineBusy)||shoppingBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
-                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
+                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):row.plan?toggleShoppingPlan(row.plan):undefined"/>
+                <AppIcon v-else :name="row.plan?.kind==='wish'?'heart':row.plan?.kind==='goal'?'wallet':'plane'" :size="19" />
                 <div class="task-detail">
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
-                    <span class="today-kind-label">{{ row.kind==='routine'?'定期':'待办' }}</span>
+                    <span class="today-kind-label">{{ todayKindLabels[row.kind] }}</span>
                     <template v-if="row.task">
                       <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
@@ -419,8 +470,15 @@ onBeforeUnmount(()=>{
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                     </template>
+                    <template v-else-if="row.plan">
+                      {{ row.done?'今天已完成':row.plan.kind==='trip'?'旅行进行中':row.plan.overdue?'逾期未完成 · 顺延':'今天的计划' }} · {{ row.plan.dueOn }}
+                      <template v-if="row.plan.destination"> · {{ row.plan.destination }}</template>
+                    </template>
                   </small>
                 </div>
+                <button v-if="row.plan" type="button" class="text-button today-plan-link"
+                  :aria-label="'打开'+todayKindLabels[row.kind]+'计划：'+row.title"
+                  @click="openPlans(row.plan.kind)">查看计划</button>
               </div>
             </SwipeActions>
             <form v-if="row.task&&editingTask?.id===row.task.id" class="task-edit-form" @submit.prevent="saveTaskEdit">

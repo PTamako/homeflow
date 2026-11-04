@@ -9,11 +9,15 @@ export async function todayPlansRoute(request,db,session){
     new Date(Date.now()+9*3600000).toISOString().slice(0,10)
   if(!validDate(date)||!date)return json({error:'invalid_input'},400)
   const h=session.household_id,u=session.user_id
+  // Retain purchases completed today in the checklist with a strikethrough;
+  // their completion marks will not be carried into tomorrow.
+  const startOfDayUtc=new Date(date+'T00:00:00+09:00').toISOString()
   const batch=await db.batch([
-    db.prepare(`SELECT id,title,due_on AS dueOn FROM shopping_items
+    db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt FROM shopping_items
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
-        AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?3
-      ORDER BY due_on,id LIMIT 25`).bind(h,u,date),
+        AND (completed_at IS NULL OR completed_at>=?4)
+        AND due_on IS NOT NULL AND due_on<=?3
+      ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 25`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,target_on AS dueOn FROM wishes
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
         AND status NOT IN ('completed','cancelled')
@@ -33,7 +37,8 @@ export async function todayPlansRoute(request,db,session){
   const types=['shopping','wish','goal','trip']
   const items=batch.flatMap((group,i)=>(group.results||[]).map(row=>({
     kind:types[i],id:row.id,title:row.title,dueOn:row.dueOn,
-    overdue:row.dueOn<date,...(row.destination?{destination:row.destination}:{})
+    done:!!row.completedAt,overdue:row.dueOn<date&&!row.completedAt,
+    ...(row.destination?{destination:row.destination}:{})
   })))
   return json({date,items})
 }

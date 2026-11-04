@@ -43,3 +43,19 @@ test('routine creation belongs under Plans and anniversary creation under Family
  assert.ok(!sections.plans.includes('submit.prevent="addAnniversary"'))
  assert.ok(!sections.family.includes('submit.prevent="addRoutine"'))
 })
+
+test('Today includes dated plans in the single default All checklist with category tabs',()=>{
+ assert.ok(app.includes("const todayCategory=ref<'all'|TodayKind>('all')"))
+ for(const kind of ['shopping','wish','goal','trip']){
+   assert.ok(app.includes(kind+":'"),'missing category '+kind)
+ }
+ assert.ok(app.includes("key:'plan:'+plan.kind+':'+plan.id"))
+ assert.ok(app.includes("api('/plans/today?date='"))
+ assert.ok(app.includes('v-for="category in todayCategories"'))
+ assert.ok(app.includes('v-for="row in unifiedToday"'))
+ assert.ok(app.includes('toggleShoppingPlan(row.plan)'))
+ assert.ok(app.includes('openPlans(row.plan.kind)'))
+ assert.ok(!sections.today.includes('今天的其他计划'),'no second plan card')
+ assert.ok(!sections.today.includes('todayPlans'),'plans fetched only in parent')
+ assert.ok(!sections.today.includes("api('/plans/today')"),'avoid duplicate D1 read')
+})
