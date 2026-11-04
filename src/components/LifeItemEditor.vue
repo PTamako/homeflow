@@ -10,7 +10,8 @@ const config=(()=>{try{return typeof data.repeat_config==='string'?JSON.parse(da
 const mode=data.repeat_type==='weekly'&&config.excludeJapaneseHolidays?'workday':data.repeat_type
 const form=reactive({
  title:String(data.title||''),visibility:String(data.visibility||'household'),
- quantity:Number(data.quantity||1),eventDate:String(data.event_date||''),
+ quantity:Number(data.quantity||1),dueOn:String(data.due_on||''),remindEnabled:data.remind_enabled!==0,
+ eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
  repeatAnchor:String(config.anchor||'fixed'),anchorDate:String(data.anchor_date||''),
@@ -33,7 +34,7 @@ function values(){
  if(!common.title||common.title.length>150)throw Error('名称须为 1～150 个字符')
  switch(props.kind){
   case 'shopping':
-   return {...common,quantity:form.quantity}
+   return {...common,quantity:form.quantity,dueOn:form.dueOn||null}
   case 'anniversaries':
    return {...common,eventDate:form.eventDate,repeatMode:form.repeatMode,
      advanceDays:JSON.parse(data.advance_days_json||'[30,7,1,0]'),
@@ -48,11 +49,11 @@ function values(){
      type==='monthly'?{day:prev.day||Number(form.anchorDate.slice(-2))||1}:{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
      assignedTo:data.assigned_to||null,subjectProfileId:form.subjectProfileId||null,
-     healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
+     remindEnabled:form.remindEnabled,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
   }
   case 'wishes':
    return {...common,wishType:form.wishType,status:form.status,
-     estimatedAmount:form.estimatedAmount,currency:data.currency||'JPY',note:form.note}
+     estimatedAmount:form.estimatedAmount,currency:data.currency||'JPY',note:form.note,targetOn:form.targetOn||null}
   case 'goals':
    return {...common,targetAmount:form.targetAmount,reservedAmount:form.reservedAmount,
      currency:data.currency||'JPY',targetOn:form.targetOn||null,wishId:data.wish_id||null}
@@ -82,6 +83,7 @@ async function save(){
   <label>名称<input v-model="form.title" required maxlength="150"/></label>
   <template v-if="kind==='shopping'">
    <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
+   <label>计划购买日<input v-model="form.dueOn" type="date"/></label>
   </template>
   <template v-else-if="kind==='anniversaries'">
    <label>日期<input v-model="form.eventDate" type="date" required/></label>
@@ -93,6 +95,7 @@ async function save(){
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<input v-model="form.anchorDate" type="date" required/></label>
+   <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启推送提醒（不影响今天的待办）</label>
    <label>关联对象（可选）
     <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
      <option value="">不关联任何人或宠物</option>
@@ -112,6 +115,7 @@ async function save(){
    <label>类型<select v-model="form.wishType"><option value="trip">旅行</option><option value="purchase">购物</option><option value="activity">体验</option><option value="other">其他</option></select></label>
    <label>状态<select v-model="form.status"><option value="wished">想做</option><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
    <label>预计金额（¥）<input v-model.number="form.estimatedAmount" type="number" min="0"/></label>
+   <label>目标日期（可选）<input v-model="form.targetOn" type="date"/></label>
    <label>备注<textarea v-model="form.note" rows="2" maxlength="2000"/></label>
   </template>
   <template v-else-if="kind==='goals'">
@@ -145,6 +149,8 @@ async function save(){
 .detail-editor-title{font-size:14px}
 .detail-editor label{font-size:12px;color:#65796e;display:grid;gap:5px;min-width:0}
 .detail-editor :is(input,select,textarea){width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #d4e0d6;border-radius:9px;background:#fff;min-height:40px;padding:9px;color:#273e30}
+.detail-editor .edit-remind{display:flex;align-items:center;gap:9px}
+.detail-editor .edit-remind input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:none}
 .detail-editor textarea{line-height:1.5;resize:vertical}
 .editor-actions{display:flex;justify-content:flex-end;gap:10px}
 .editor-actions button{padding:10px 12px;border-radius:10px;border:0;font-size:13px}

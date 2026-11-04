@@ -5,10 +5,10 @@ import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
-  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type']},
-  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note']},
+  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
+  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id']},
-  shopping_items:{columns:['title','quantity']},
+  shopping_items:{columns:['title','quantity','due_on']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
 }
 const plural={anniversaries:'anniversaries',routines:'routines',wishes:'wishes',goals:'goals',shopping:'shopping_items',memories:'memories'}
@@ -38,19 +38,21 @@ function normalized(table,b,s){
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
       const careType=b.healthRecordType||null
       if(careType&&!['deworm','vaccination','vet','medication','grooming','other'].includes(careType))return null
-      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType]
+      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType,b.remindEnabled===false?0:1]
     }
     case 'wishes':
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
       if(b.status && !['wished','planning','active','completed','cancelled'].includes(b.status))return null
-      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',trim(b.note,2000)]
+      if(b.targetOn&&!ymd(b.targetOn))return null
+      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',trim(b.note,2000),b.targetOn||null]
     case 'goals':
       if(!Number.isSafeInteger(b.targetAmount)||b.targetAmount<=0||b.targetAmount>100000000000||!validMoney(b.reservedAmount??0)||!JPY(b.currency||'JPY')||
         (b.targetOn&&!ymd(b.targetOn))||(b.wishId&&!hexId(b.wishId)))return null
       return [title,b.targetAmount,b.reservedAmount||0,b.currency||'JPY',b.targetOn||null,b.wishId||null]
     case 'shopping_items':
       if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>9999)return null
-      return [title,b.quantity]
+      if(b.dueOn&&!ymd(b.dueOn))return null
+      return [title,b.quantity,b.dueOn||null]
     case 'memories':
       if(!ymd(b.happenedOn))return null
       if(b.linkedType&&!['trip','wish','profile','anniversary'].includes(b.linkedType))return null
@@ -231,8 +233,22 @@ export async function lifeRoute(request,db,path,session){
     const spec=catalog[table].columns
     const columns=['id','household_id','created_by','visibility',...spec]
     const query='INSERT INTO '+table+' ('+columns.join(',')+') VALUES('+columns.map((_,i)=>'?'+(i+1)).join(',')+')'
-    const id=crypto.randomUUID()
-    await db.prepare(query).bind(id,session.household_id,session.user_id,visibilityOf(b,session),...vals).run()
+    const id=crypto.randomUUID(),visibility=visibilityOf(b,session)
+    if(table==='wishes'&&b.createSavingsGoal===true){
+      // Create both records atomically using the existing goals.wish_id link.
+      if(!Number.isSafeInteger(b.estimatedAmount)||b.estimatedAmount<=0||
+         b.estimatedAmount>100000000000||(b.goalTargetOn&&!ymd(b.goalTargetOn)))return bad()
+      const goalId=crypto.randomUUID()
+      await db.batch([
+        db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals),
+        db.prepare('INSERT INTO goals (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,target_on,wish_id) VALUES(?1,?2,?3,?4,?5,?6,0,?7,?8,?9)')
+          .bind(goalId,session.household_id,session.user_id,visibility,
+            trim(b.title+' · 储蓄目标',150),b.estimatedAmount,b.currency||'JPY',
+            b.goalTargetOn||b.targetOn||null,id)
+      ])
+      return json({ok:true,id,goalId},201)
+    }
+    await db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals).run()
     return json({ok:true,id},201)
   }
   if(id&&!hexId(id))return bad()
@@ -258,6 +274,17 @@ export async function lifeRoute(request,db,path,session){
       await db.prepare('UPDATE routines SET enabled=0,updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4')
         .bind(iso(),id,session.household_id,session.user_id).run()
       return json({ok:true,archived:true})
+    }
+    if(table==='wishes'){
+      // Keep existing savings and trip records. Removing a wish merely unlinks
+      // its optional goal/trip: never silently delete linked financial records.
+      await db.batch([
+        db.prepare('UPDATE goals SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
+        db.prepare('UPDATE trips SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
+        db.prepare('DELETE FROM wishes WHERE id=?1 AND household_id=?2 AND created_by=?3')
+          .bind(id,session.household_id,session.user_id)
+      ])
+      return json({ok:true,unlinked:true})
     }
     try{
       await db.prepare('DELETE FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')

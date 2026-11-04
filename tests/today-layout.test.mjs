@@ -34,8 +34,11 @@ test('Today preserves anniversary countdown and keeps recurring creation in Plan
  assert.ok(life.includes('text-decoration:line-through'))
 })
 test('routine creation belongs under Plans and anniversary creation under Family',()=>{
- assert.ok(sections.plans.includes('submit.prevent="addRoutine"'))
- assert.ok(sections.plans.includes('定期任务设置'))
+ assert.ok(sections.plans.includes('<PlanCreator'))
+ assert.ok(sections.plans.includes('任务／定期计划'))
+ const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
+ assert.ok(creator.includes('submit.prevent="submit"'))
+ assert.ok(creator.includes("repeatType:'once'"))
  assert.ok(sections.family.includes('submit.prevent="addAnniversary"'))
  assert.ok(!sections.plans.includes('submit.prevent="addAnniversary"'))
  assert.ok(!sections.family.includes('submit.prevent="addRoutine"'))
