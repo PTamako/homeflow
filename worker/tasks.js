@@ -5,11 +5,13 @@ function validated(body,session) {
   const dueOn=body?.dueOn??null
   const assignee=body?.assigneeUserId||null
   const subject=body?.subjectProfileId||null
+  const care=body?.healthRecordType
+  if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
     !validDate(dueOn)|| (visibility==='private' && assignee && assignee!==session.user_id)) return null
   if(assignee && (typeof assignee!=='string'||assignee.length>60))return null
   if(subject && (typeof subject!=='string'||subject.length>60))return null
-  return {title,notes,visibility,dueOn:dueOn||null,assignee,subject}
+  return {title,notes,visibility,dueOn:dueOn||null,assignee,subject,care}
 }
 async function validateRefs(db,session,data) {
   if(data.assignee){
@@ -18,10 +20,16 @@ async function validateRefs(db,session,data) {
     if(!a)return false
   }
   if(data.subject) {
-    const p=await db.prepare('SELECT 1 FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL')
+    const p=await db.prepare('SELECT type FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL')
       .bind(data.subject,session.household_id).first()
-    if(!p)return false
+    if(!p || (data.care&&p.type!=='pet'))return false
+    // A linked pet automatically logs daily care unless the user explicitly opts out.
+    if(p.type==='pet'&&data.care===undefined)data.care='other'
+  }else{
+    if(data.care)return false
+    data.care=null
   }
+  if(data.care===undefined)data.care=null
   return true
 }
 export async function tasksRoute(request,db,path,session) {
@@ -32,7 +40,8 @@ export async function tasksRoute(request,db,path,session) {
     if(!['open','done','all'].includes(mode))return json({error:'invalid_status'},400)
     const {results}=await db.prepare(`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
-      subject_profile_id AS subjectProfileId,completed_at AS completedAt,
+      subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
+      completed_at AS completedAt,
       completed_by AS completedBy,created_at AS createdAt,updated_at AS updatedAt
       FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
         AND (visibility='household' OR creator_user_id=?2)
@@ -51,9 +60,9 @@ export async function tasksRoute(request,db,path,session) {
     if(reqId && (typeof reqId!=='string'||!/^[0-9a-f-]{36}$/.test(reqId)))return json({error:'invalid_request_id'},400)
     const id=crypto.randomUUID()
     const result=await db.prepare(`INSERT OR IGNORE INTO tasks
-      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`)
-      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId).run()
+      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`)
+      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care).run()
     if(!result.meta?.changes && reqId){
       const found=await db.prepare('SELECT id FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND client_request_id=?3')
         .bind(household,who,reqId).first()
@@ -74,22 +83,47 @@ export async function tasksRoute(request,db,path,session) {
     // Completing a shared task is allowed to both members. Editing belongs to creator.
     if(Object.prototype.hasOwnProperty.call(b,'completed')){
       if(typeof b.completed!=='boolean')return json({error:'invalid_input'},400)
-      await db.prepare(`UPDATE tasks SET completed_at=?1,completed_by=?2,updated_at=?3
+      // Only a state transition creates or archives a record. Replays and
+      // multi-device taps are idempotent, and writes share one D1 transaction.
+      if(Boolean(task.completed_at)===b.completed)return json({ok:true,unchanged:true})
+      const stamp=iso(),date=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+      const update=db.prepare(`UPDATE tasks SET completed_at=?1,completed_by=?2,updated_at=?3
         WHERE id=?4 AND household_id=?5 AND deleted_at IS NULL
-        AND (visibility='household' OR creator_user_id=?2)`)
-        .bind(b.completed?iso():null,b.completed?who:null,iso(),task.id,household).run()
+          AND (visibility='household' OR creator_user_id=?2)
+          AND ${b.completed?'completed_at IS NULL':'completed_at IS NOT NULL'}`)
+        .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household)
+      if(b.completed && task.subject_profile_id && task.health_record_type){
+        const care=db.prepare(`INSERT INTO pet_health_records
+          (id,household_id,profile_id,created_by,visibility,record_type,event_on,note,source_task_id)
+          SELECT ?1,t.household_id,t.subject_profile_id,?2,t.visibility,
+            t.health_record_type,?3,t.title,t.id
+          FROM tasks t JOIN family_profiles p ON p.id=t.subject_profile_id AND p.household_id=t.household_id
+          WHERE t.id=?4 AND t.household_id=?5 AND t.completed_at=?6
+            AND t.deleted_at IS NULL AND p.type='pet' AND p.archived_at IS NULL
+          ON CONFLICT(source_task_id) DO UPDATE SET deleted_at=NULL`)
+          .bind(crypto.randomUUID(),who,date,task.id,household,stamp)
+        await db.batch([update,care])
+      }else if(!b.completed){
+        const archive=db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
+          WHERE household_id=?1 AND source_task_id=?2 AND deleted_at IS NULL`)
+          .bind(household,task.id)
+        await db.batch([update,archive])
+      }else await update.run()
       return json({ok:true})
     }
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)
     const data=validated(b,session)
+    if(data && data.care===undefined && data.subject===task.subject_profile_id)
+      data.care=task.health_record_type
     if(!data||!await validateRefs(db,session,data))return json({error:'invalid_input'},400)
     if(b.expectedUpdatedAt && b.expectedUpdatedAt!==task.updated_at)
       return json({error:'task_edit_conflict',currentUpdatedAt:task.updated_at},409)
     const result=await db.prepare(`UPDATE tasks SET title=?1,notes=?2,visibility=?3,
-      due_on=?4,assignee_user_id=?5,subject_profile_id=?6,updated_at=?7
-      WHERE id=?8 AND household_id=?9 AND creator_user_id=?10 AND deleted_at IS NULL
-        AND updated_at=?11`)
-      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,iso(),task.id,household,who,task.updated_at).run()
+      due_on=?4,assignee_user_id=?5,subject_profile_id=?6,
+      health_record_type=?7,updated_at=?8
+      WHERE id=?9 AND household_id=?10 AND creator_user_id=?11 AND deleted_at IS NULL
+        AND updated_at=?12`)
+      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,iso(),task.id,household,who,task.updated_at).run()
     if(!result.meta?.changes)return json({error:'task_edit_conflict'},409)
     return json({ok:true})
   }

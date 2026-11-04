@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -781,5 +781,89 @@ test('recurring pet task completion creates exactly one linked care record, supp
  assert.equal((await ask(mark,'POST',{date:'2026-11-06',status:'completed'},owner)).status,200)
  records=(await ask(health,'GET',undefined,owner)).body.records
  assert.equal(records.length,2,'disabled care sync does not create records')
+ sqlite.close()
+})
+
+test('one-off today pet tasks sync exactly once, undo safely, and respect privacy and editing',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'task-care-owner',password:'a-strong-care-password-12345',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registration.status,201)
+ const owner=extractCookie(registration.cookie)
+ const pet=await ask('/api/family/profiles','POST',{type:'pet',displayName:'豆沙'},owner)
+ const person=await ask('/api/family/profiles','POST',{type:'person',displayName:'家庭成员'},owner)
+ assert.equal(pet.status,201)
+ assert.equal(person.status,201)
+ const health='/api/pets/'+pet.body.id+'/health'
+ const bad=await ask('/api/tasks','POST',{
+   title:'不属于宠物的任务',visibility:'household',
+   subjectProfileId:person.body.id,healthRecordType:'other'},owner)
+ assert.equal(bad.status,400)
+ const noCare=await ask('/api/tasks','POST',{
+   title:'只做任务不写护理',visibility:'household',
+   subjectProfileId:pet.body.id,healthRecordType:null},owner)
+ assert.equal(noCare.status,201)
+ const linked=await ask('/api/tasks','POST',{
+   title:'给豆沙换水',visibility:'household',subjectProfileId:pet.body.id},owner)
+ assert.equal(linked.status,201,JSON.stringify(linked.body))
+ const id=linked.body.id
+ const list=await ask('/api/tasks?status=all','GET',undefined,owner)
+ const task=list.body.tasks.find(t=>t.id===id)
+ assert.equal(task.healthRecordType,'other','pet-linked tasks default to logging care')
+ assert.equal(task.subjectProfileId,pet.body.id)
+ const invitation=await ask('/api/auth/invitations','POST',{},owner)
+ const joined=await ask('/api/auth/join','POST',{
+   loginName:'partner-care',password:'another-strong-test-password-123',
+   displayName:'伴侣',invitationCode:invitation.body.invitationCode})
+ assert.equal(joined.status,201)
+ const partner=extractCookie(joined.cookie)
+ const privatePet=await ask('/api/tasks','POST',{
+   title:'私人梳毛',visibility:'private',subjectProfileId:pet.body.id,healthRecordType:'grooming'},owner)
+ assert.equal(privatePet.status,201)
+ assert.equal((await ask('/api/tasks/'+privatePet.body.id,'PATCH',{completed:true},partner)).status,404)
+ const shared='/api/tasks/'+id
+ assert.equal((await ask(shared,'PATCH',{completed:true},partner)).status,200)
+ assert.equal((await ask(shared,'PATCH',{completed:true},owner)).status,200)
+ let records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,1,'shared task completion does not duplicate history')
+ assert.equal(records[0].recordType,'other')
+ assert.equal(records[0].note,'给豆沙换水')
+ assert.equal(records[0].sourceTaskId,id)
+ assert.equal(records[0].eventOn,new Date(Date.now()+9*3600000).toISOString().slice(0,10))
+ assert.equal(records[0].visibility,'household')
+ const recordId=records[0].id
+ const manuallyAdded=await ask(health,'POST',{
+   recordType:'grooming',eventOn:records[0].eventOn,note:'独立梳毛记录',visibility:'private'},owner)
+ assert.equal(manuallyAdded.status,201)
+ assert.equal((await ask(shared,'PATCH',{completed:false},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,1,'undo should archive only the generated record')
+ assert.equal(records[0].note,'独立梳毛记录')
+ assert.equal((await ask(shared,'PATCH',{completed:true},partner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,2)
+ assert.equal(records.find(x=>x.sourceTaskId===id)?.id,recordId,'rechecking restores same history id')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE source_task_id=?').get(id).n,1)
+ const petOnly=await ask('/api/tasks/'+privatePet.body.id,'PATCH',{completed:true},owner)
+ assert.equal(petOnly.status,200)
+ const partnerHealth=(await ask(health,'GET',undefined,partner)).body.records
+ assert.equal(partnerHealth.some(x=>x.note==='私人梳毛'),false,
+   'private care entries must remain invisible to another household login')
+ assert.equal((await ask('/api/tasks/'+noCare.body.id,'PATCH',{completed:true},owner)).status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE source_task_id=?').get(noCare.body.id).n,0,
+   'explicitly disabling care sync is respected')
+ const current=(await ask('/api/tasks?status=all','GET',undefined,owner)).body.tasks.find(t=>t.id===noCare.body.id)
+ const edited=await ask('/api/tasks/'+noCare.body.id,'PATCH',{
+   title:'更新后仍不记录',visibility:'household',notes:'',
+   subjectProfileId:pet.body.id,healthRecordType:'other',dueOn:current.dueOn,
+   expectedUpdatedAt:current.updatedAt},owner)
+ assert.equal(edited.status,200,JSON.stringify(edited.body))
+ assert.equal((await ask('/api/tasks/'+noCare.body.id,'PATCH',{completed:false},owner)).status,200)
+ assert.equal((await ask('/api/tasks/'+noCare.body.id,'PATCH',{completed:true},owner)).status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE source_task_id=?').get(noCare.body.id).n,1,
+  'editing an existing task can enable linked pet care')
  sqlite.close()
 })
