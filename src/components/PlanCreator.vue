@@ -7,8 +7,8 @@ const props=defineProps<{profiles:Array<{id:string;displayName:string;type:strin
 const emit=defineEmits<{created:[kind:PlanKind,id:string];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性、每天、工作日或自定义间隔'},
- {id:'shopping',label:'购物计划',icon:'shopping',description:'家庭购物、数量与购买日期'},
- {id:'wish',label:'心愿计划',icon:'heart',description:'可同时创建关联的储值目标'},
+ {id:'shopping',label:'购物计划',icon:'shopping',description:'家庭商品、数量与购买日期'},
+ {id:'wish',label:'心愿计划',icon:'heart',description:'可同时创建关联的储值计划'},
  {id:'goal',label:'储值计划',icon:'wallet',description:'目标、期初金额和家計簿收支'},
  {id:'trip',label:'旅行计划',icon:'plane',description:'出行日期、预算和行程'}
 ] as const
