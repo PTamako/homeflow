@@ -21,7 +21,7 @@ type TodayKind='task'|'routine'|PlanKind
 type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string}
 type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
 const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
-const todayCategories:[{id:'all'|'task'|'routine'|'shopping'|'wish'|'goal'|'trip';label:string},...{id:'all'|'task'|'routine'|'shopping'|'wish'|'goal'|'trip';label:string}[]]=[
+const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
