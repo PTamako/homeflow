@@ -3,7 +3,6 @@ import {goalPeriod} from './goal-period.js'
 import {verifiedGoalProgress} from './finance.js'
 import {jstDayOf} from './today-periods.js'
 import {closedGoalPeriods,settleGoalPeriod} from './goal-settlements.js'
-import {goalPeriod} from './goal-period.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
 const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
