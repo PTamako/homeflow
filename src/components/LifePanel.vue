@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref,watch,onBeforeUnmount} from 'vue'
+import {ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import FinancePanel from './FinancePanel.vue'
 import AppIcon from './AppIcon.vue'
@@ -28,6 +28,10 @@ const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPh
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 let photoUrls:string[]=[]
+let lastTodayValue=''
+function refreshOnResume(){
+  if(props.mode==='today' && document.visibilityState==='visible' && lastTodayValue!==today())void fetchMode()
+}
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
   const response=await fetch('/api'+path,{method,cache:'no-store',credentials:'same-origin',
     ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
@@ -39,6 +43,7 @@ async function fetchMode(){
   error.value=''
   try{
     if(props.mode==='today'){
+      lastTodayValue=today()
       const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
       routines.value=r.items||[];items.value=a.items||[]
     }else if(props.mode==='family'){
@@ -187,7 +192,11 @@ async function loadPhotos(){
     }catch{ /* private local storage may be unavailable in some Safari modes */ }
   }
 }
-onBeforeUnmount(()=>{for(const x of photoUrls)URL.revokeObjectURL(x)})
+onMounted(()=>document.addEventListener('visibilitychange',refreshOnResume))
+onBeforeUnmount(()=>{
+  for(const x of photoUrls)URL.revokeObjectURL(x)
+  document.removeEventListener('visibilitychange',refreshOnResume)
+})
 watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 </script>
 
@@ -209,7 +218,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
       <div class="life-grid">
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
-          <p class="life-caption">仅显示今天需要做的事项。打勾后文字划线，记录保留，下一次仍按计划出现。</p>
+          <p class="life-caption">每天更新。已完成的记录不会带到明天；未完成事项会顺延到下一适用日。</p>
           <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
           <div v-for="r in routines" :key="r.id" class="life-row today-routine-row"
             :class="{'routine-completed':!!r.mark?.completed_at}">
@@ -219,7 +228,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
                 @change="markRoutine(r,!r.mark?.completed_at)"/>
               <span class="routine-name">{{ r.title }}</span>
             </label>
-            <small>{{ r.mark?.completed_at?'已完成':routineLabel(r) }}</small>
+            <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}</small>
           </div>
           
         </section>

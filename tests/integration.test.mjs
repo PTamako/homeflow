@@ -384,3 +384,85 @@ test('completion-anchored interval stays checked on its due date and recurs norm
    'completing a routine does not delete or duplicate it')
  sqlite.close()
 })
+
+test('uncompleted weekly and monthly routines roll over without duplicate occurrences',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'rollover-owner',password:'another-long-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registration.status,201,JSON.stringify(registration.body))
+ const owner=extractCookie(registration.cookie)
+ const weekly=await ask('/api/routines','POST',{
+   title:'周一整理',repeatType:'weekly',repeatConfig:{weekdays:[1]},
+   anchorDate:'2026-11-02',visibility:'private'
+ },owner)
+ assert.equal(weekly.status,201,JSON.stringify(weekly.body))
+ const day=(date)=>ask('/api/routines/today?date='+date,'GET',undefined,owner)
+ const tuesday=await day('2026-11-03')
+ const carried=tuesday.body.items.find(x=>x.id===weekly.body.id)
+ assert.ok(carried,JSON.stringify(tuesday.body))
+ assert.equal(carried.carriedFrom,'2026-11-02')
+ assert.equal(carried.mark,null)
+ const marked=await ask('/api/routines/'+weekly.body.id+'/mark','POST',
+   {date:'2026-11-03',status:'completed'},owner)
+ assert.equal(marked.status,200,JSON.stringify(marked.body))
+ const sameDay=await day('2026-11-03')
+ assert.ok(sameDay.body.items.find(x=>x.id===weekly.body.id)?.mark?.completed_at)
+ const wednesday=await day('2026-11-04')
+ assert.equal(wednesday.body.items.some(x=>x.id===weekly.body.id),false,
+   'completed overdue Monday is not re-shown Wednesday')
+ const nextMonday=await day('2026-11-09')
+ assert.ok(nextMonday.body.items.some(x=>x.id===weekly.body.id))
+ assert.equal(nextMonday.body.items.find(x=>x.id===weekly.body.id).mark,null,
+   'old completion does not mark next scheduled occurrence')
+ const monthly=await ask('/api/routines','POST',{
+   title:'每月一号缴费',repeatType:'monthly',repeatConfig:{day:1},
+   anchorDate:'2026-10-01',visibility:'household'
+ },owner)
+ assert.equal(monthly.status,201,JSON.stringify(monthly.body))
+ const nov4=await day('2026-11-04')
+ assert.equal(nov4.body.items.find(x=>x.id===monthly.body.id)?.carriedFrom,'2026-11-01')
+ const saved=await ask('/api/routines/'+monthly.body.id+'/mark','POST',
+   {date:'2026-11-04',status:'completed'},owner)
+ assert.equal(saved.status,200,JSON.stringify(saved.body))
+ const nov5=await day('2026-11-05')
+ assert.equal(nov5.body.items.some(x=>x.id===monthly.body.id),false)
+ const dec1=await day('2026-12-01')
+ assert.ok(dec1.body.items.some(x=>x.id===monthly.body.id))
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,2)
+ sqlite.close()
+})
+test('workday routines do not roll into Japanese weekends and daily marks reset each day',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'workday-owner',password:'a-strong-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registration.status,201)
+ const owner=extractCookie(registration.cookie)
+ const daily=await ask('/api/routines','POST',{
+   title:'早上添猫粮',repeatType:'daily',repeatConfig:{},
+   anchorDate:'2026-11-06',visibility:'household'
+ },owner)
+ const workday=await ask('/api/routines','POST',{
+   title:'平日通勤',repeatType:'workday',repeatConfig:{},
+   anchorDate:'2026-11-06',visibility:'household'
+ },owner)
+ assert.equal(daily.status,201)
+ assert.equal(workday.status,201)
+ const done=await ask('/api/routines/'+daily.body.id+'/mark','POST',
+   {date:'2026-11-06',status:'completed'},owner)
+ assert.equal(done.status,200)
+ const friday=await ask('/api/routines/today?date=2026-11-06','GET',undefined,owner)
+ assert.ok(friday.body.items.find(x=>x.id===daily.body.id)?.mark?.completed_at)
+ const saturday=await ask('/api/routines/today?date=2026-11-07','GET',undefined,owner)
+ assert.equal(saturday.body.items.find(x=>x.id===daily.body.id)?.mark,null)
+ assert.equal(saturday.body.items.some(x=>x.id===workday.body.id),false,
+   'Saturday has no Japanese workday task, even if Friday was missed')
+ const monday=await ask('/api/routines/today?date=2026-11-09','GET',undefined,owner)
+ assert.equal(monday.body.items.some(x=>x.id===workday.body.id),true)
+ sqlite.close()
+})
