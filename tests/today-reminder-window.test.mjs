@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {readFileSync} from 'node:fs'
+import {upcomingWithinDays,additionalReminders} from '../src/today-presentation.mjs'
+
+test('Today anniversaries include today and the inclusive 30th day, not later events',()=>{
+ const events=[
+  {id:'past',nextOn:'2026-11-03'},
+  {id:'today',nextOn:'2026-11-04'},
+  {id:'soon',nextOn:'2026-11-11'},
+  {id:'end',nextOn:'2026-12-04'},
+  {id:'later',nextOn:'2026-12-05'},
+  {id:'bad',nextOn:'not-a-date'}
+ ]
+ assert.deepEqual(upcomingWithinDays(events,'2026-11-04').map(x=>x.id),['today','soon','end'])
+ assert.deepEqual(upcomingWithinDays(events,'2026-12-05'),[{id:'later',nextOn:'2026-12-05'}])
+ assert.deepEqual(upcomingWithinDays(events,'wrong-date'),[])
+})
+
+test('30-day window works across leap day and year boundary',()=>{
+ const events=[{nextOn:'2028-02-29'},{nextOn:'2028-03-01'},{nextOn:'2028-03-02'}]
+ assert.equal(upcomingWithinDays(events,'2028-01-30').length,1)
+ assert.equal(upcomingWithinDays([{nextOn:'2027-01-02'}],'2026-12-31').length,1)
+})
+
+test('Important Reminders only shows items not already in unified Today list',()=>{
+ const reminders=[
+  {kind:'task',id:'a',title:'购物'},
+  {kind:'routine',id:'b',title:'梳毛'},
+  {kind:'task',id:'c',title:'独立重要任务'},
+  {kind:'anniversary',id:'birthday',title:'生日'},
+  {kind:'trip',id:'t1',title:'整体旅行'},
+  {kind:'trip',id:'t1:pack',title:'机票行李'},
+  {kind:'shopping',id:'s1',title:'待买商品'}
+ ]
+ const keys=['task:a','routine:b','plan:trip:t1','plan:shopping:s1']
+ assert.deepEqual(additionalReminders(reminders,keys).map(x=>x.id),['c','birthday','t1:pack'])
+ assert.equal(additionalReminders([{kind:'task',id:'a'}],['task:a']).length,0)
+})
+
+test('Important Reminders appears before the Today hero/checklist and auto-fetches',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+ const important=readFileSync(new URL('../src/components/ImportantReminders.vue',import.meta.url),'utf8')
+ const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
+ const i=app.indexOf('<ImportantReminders :today-date="currentJstDay"')
+ assert.ok(i>0)
+ assert.ok(i<app.indexOf('HOMEFLOW · TODAY'))
+ assert.ok(i<app.indexOf('<h2>今日待办</h2>'))
+ assert.ok(app.includes(':today-entry-keys="todayEntryKeys"'))
+ assert.match(important,/watch\(\(\)=>props.todayDate,[\s\S]*?immediate:true/)
+ assert.match(important,/additionalReminders\(items.value,props.todayEntryKeys\)/)
+ assert.match(important,/onBeforeUnmount\(\(\)=>\{requestId\+\+\}\)/)
+ assert.match(life,/todayAnniversaries=computed/)
+ assert.match(life,/未来 30 天的纪念日/)
+ assert.ok(!life.includes('查看今天的提醒'))
+})
