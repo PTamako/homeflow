@@ -47,7 +47,7 @@ test('routine creation belongs under Plans and anniversary creation under Family
 test('Today includes dated plans in the single default All checklist with category tabs',()=>{
  assert.ok(app.includes("const todayCategory=ref<'all'|TodayKind>('all')"))
  for(const kind of ['shopping','wish','goal','trip']){
-   assert.ok(app.includes("kind:'"+kind+"'"),'missing category '+kind)
+   assert.ok(app.includes(kind+":'"),'missing category '+kind)
  }
  assert.ok(app.includes("key:'plan:'+plan.kind+':'+plan.id"))
  assert.ok(app.includes("api('/plans/today?date='"))
