@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -464,5 +464,69 @@ test('workday routines do not roll into Japanese weekends and daily marks reset 
    'Saturday has no Japanese workday task, even if Friday was missed')
  const monday=await ask('/api/routines/today?date=2026-11-09','GET',undefined,owner)
  assert.equal(monday.body.items.some(x=>x.id===workday.body.id),true)
+ sqlite.close()
+})
+
+test('shopping links to a verified kakebo expense and edits / removes details safely',async()=>{
+ const {db,sqlite}=makeDb()
+ sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
+ const token='test-read-token-012345678901234567890'
+ const env={APP_ENV:'production',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234',
+   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token}
+ const ownerRegistered=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'shopping-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(ownerRegistered.status,201,JSON.stringify(ownerRegistered.body))
+ const owner=extractCookie(ownerRegistered.cookie)
+ const shopping=await send(env,'/api/shopping','POST',{title:'给豆沙买猫粮',quantity:2,visibility:'household'},owner)
+ assert.equal(shopping.status,201,JSON.stringify(shopping.body))
+ const originalFetch=globalThis.fetch
+ globalThis.fetch=async(url,options)=>{
+   assert.match(String(url),/kakeibo-f17\.pages\.dev\/api\/homeflow-ledger\?ids=123/)
+   assert.equal(options.headers.Authorization,'Bearer '+token)
+   assert.equal(options.method,'GET')
+   return new Response(JSON.stringify({entries:[{id:123,date:'2026-11-04',type:'expense',amount:800,merchant:'超市'}]}),
+     {status:200,headers:{'content-type':'application/json'}})
+ }
+ try{
+   const linked=await send(env,'/api/finance/shopping/'+shopping.body.id+'/link','POST',{entryId:123},owner)
+   assert.equal(linked.status,200,JSON.stringify(linked.body))
+   const list=await send(env,'/api/shopping','GET',undefined,owner)
+   const item=list.body.items.find(x=>x.id===shopping.body.id)
+   assert.equal(item.ledger_entry_id,'123')
+   assert.ok(item.completed_at)
+   const patch=await send(env,'/api/shopping/'+item.id,'PATCH',
+     {title:'豆沙猫粮（新）',quantity:3,visibility:'household'},owner)
+   assert.equal(patch.status,200,JSON.stringify(patch.body))
+   const after=await send(env,'/api/shopping','GET',undefined,owner)
+   assert.equal(after.body.items.find(x=>x.id===item.id)?.title,'豆沙猫粮（新）')
+   assert.equal(after.body.items.find(x=>x.id===item.id)?.ledger_entry_id,'123')
+   const unlink=await send(env,'/api/finance/shopping/'+item.id+'/link','DELETE',undefined,owner)
+   assert.equal(unlink.status,200)
+   const opened=await send(env,'/api/shopping','GET',undefined,owner)
+   assert.equal(opened.body.items.find(x=>x.id===item.id)?.completed_at,null)
+   assert.equal(opened.body.items.find(x=>x.id===item.id)?.ledger_entry_id,null)
+   const del=await send(env,'/api/shopping/'+item.id,'DELETE',undefined,owner)
+   assert.equal(del.status,200)
+   assert.equal((await send(env,'/api/shopping','GET',undefined,owner)).body.items.length,0)
+ }finally{globalThis.fetch=originalFetch;sqlite.close()}
+})
+test('completed routine plans can be archived without losing their completion marks',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const registered=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'archive-owner',password:'long-password-for-test-112233',
+   displayName:'主人',householdName:'家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const r=await send(env,'/api/routines','POST',{
+   title:'喝水',repeatType:'daily',repeatConfig:{},anchorDate:'2026-11-04',
+   visibility:'household'},owner)
+ assert.equal(r.status,201)
+ assert.equal((await send(env,'/api/routines/'+r.body.id+'/mark','POST',
+   {date:'2026-11-04',status:'completed'},owner)).status,200)
+ assert.equal((await send(env,'/api/routines/'+r.body.id,'DELETE',undefined,owner)).status,200)
+ assert.equal((await send(env,'/api/routines','GET',undefined,owner)).body.items.length,0)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS c FROM routine_marks WHERE routine_id=?').get(r.body.id).c,1)
  sqlite.close()
 })

@@ -184,12 +184,16 @@ export async function lifeRoute(request,db,path,session){
     if(!item)return json({error:'not_found'},404)
     const body=await readBody(request)
     if(typeof body?.completed!=='boolean')return bad()
-    await db.prepare(`UPDATE shopping_items SET completed_at=?1,completed_by=?2
+    await db.prepare(`UPDATE shopping_items SET completed_at=?1,completed_by=?2,
+      ledger_entry_id=CASE WHEN ?1 IS NULL THEN NULL ELSE ledger_entry_id END
       WHERE id=?3 AND household_id=?4 AND (visibility='household' OR created_by=?5)`)
       .bind(body.completed?iso():null,body.completed?session.user_id:null,id,session.household_id,session.user_id).run()
     return json({ok:true})
   }
-  if(!id&&request.method==='GET')return json({items:await view(db,table,session)})
+  if(!id&&request.method==='GET'){
+    const items=await view(db,table,session)
+    return json({items:table==='routines'?items.filter(x=>x.enabled!==0):items})
+  }
   if(!id&&request.method==='POST'){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
@@ -214,6 +218,22 @@ export async function lifeRoute(request,db,path,session){
       ' WHERE id=?'+(fields.length+1)+' AND household_id=?'+(fields.length+2)+' AND created_by=?'+(fields.length+3)
     await db.prepare(sql).bind(visibilityOf(b,session),...vals,id,session.household_id,session.user_id).run()
     return json({ok:true})
+  }
+  if(id&&request.method==='DELETE'){
+    const current=await getObject(db,table,id,session)
+    if(!current)return json({error:'not_found'},404)
+    if(current.created_by!==session.user_id)return json({error:'forbidden'},403)
+    if(table==='routines'){
+      // Preserve historical completion marks even after removing the plan.
+      await db.prepare('UPDATE routines SET enabled=0,updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4')
+        .bind(iso(),id,session.household_id,session.user_id).run()
+      return json({ok:true,archived:true})
+    }
+    try{
+      await db.prepare('DELETE FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
+        .bind(id,session.household_id,session.user_id).run()
+      return json({ok:true})
+    }catch{return json({error:'linked_records_require_unlink'},409)}
   }
   return json({error:'not_found'},404)
 }

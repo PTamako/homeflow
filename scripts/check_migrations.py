@@ -11,6 +11,7 @@ MIGRATIONS=[
     "0005_interval_policies.sql",
     "0006_pet_health.sql",
     "0007_offline_tasks.sql",
+    "0008_shopping_ledger.sql",
 ]
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
@@ -23,6 +24,7 @@ required={"users","households","household_members","family_profiles","tasks","an
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
+assert "ledger_entry_id" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
 assert "password_rounds" in columns
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")

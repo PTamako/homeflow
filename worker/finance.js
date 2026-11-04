@@ -45,6 +45,30 @@ export async function financeRoute(request,env,path,session){
   }
   if(!ready(env))return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
+  const shop=path.match(/^\/api\/finance\/shopping\/([0-9a-f-]{36})\/link$/i)
+  if(shop&&(request.method==='POST'||request.method==='DELETE')){
+    // Only the creator may attach a real expense to an existing shopping item.
+    // A manually checked task is never treated as a verified purchase.
+    const item=await db.prepare('SELECT id,created_by,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2')
+      .bind(shop[1],h).first()
+    if(!item)return json({error:'not_found'},404)
+    if(item.created_by!==user)return json({error:'forbidden'},403)
+    if(request.method==='DELETE'){
+      await db.prepare('UPDATE shopping_items SET ledger_entry_id=NULL,completed_at=NULL,completed_by=NULL WHERE id=?1 AND household_id=?2 AND created_by=?3')
+        .bind(item.id,h,user).run()
+      return json({ok:true,unlinked:true})
+    }
+    const b=await readBody(request),entryId=String(b?.entryId??'')
+    if(!/^[1-9]\d{0,11}$/.test(entryId))return json({error:'invalid_input'},400)
+    try{
+      const found=await ledger(env,{ids:entryId})
+      if(!found.entries.some(x=>String(x.id)===entryId&&x.type==='expense'))
+        return json({error:'entry_not_found'},404)
+      await db.prepare('UPDATE shopping_items SET ledger_entry_id=?1,completed_at=?2,completed_by=?3 WHERE id=?4 AND household_id=?5 AND created_by=?3')
+        .bind(entryId,new Date().toISOString(),user,item.id,h).run()
+      return json({ok:true,linked:true,completed:true})
+    }catch{return financeError()}
+  }
   if(path==='/api/finance/candidates'&&request.method==='GET'){
     const start=url.searchParams.get('start'),end=url.searchParams.get('end'),cursor=url.searchParams.get('cursor')
     if(!dateOk(start)||!dateOk(end)||end<start||
