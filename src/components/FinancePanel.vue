@@ -13,8 +13,20 @@ const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
+const periodKey=ref(''),periodFuture=ref(false)
+const goalMode=computed(()=>selected.value?.goal_mode||'once')
+const recurringGoal=computed(()=>kind.value==='goal'&&goalMode.value!=='once')
+const goalStartOn=computed(()=>String(selected.value?.start_on||''))
+const modeLabel=computed(()=>goalMode.value==='monthly'?'每月':goalMode.value==='yearly'?'每年':'累计')
+function defaultPeriodKey(){
+ const today=dateYmd(),start=goalStartOn.value
+ const mode=goalMode.value
+ const nowKey=mode==='yearly'?today.slice(0,4):today.slice(0,7)
+ const startKey=mode==='yearly'?start.slice(0,4):start.slice(0,7)
+ return startKey&&startKey>nowKey?startKey:nowKey
+}
 const actualWithAdjustment=computed(()=>total.value+Number(adjustment.value||0))
-const goalTotal=computed(()=>opening.value+net.value+Number(adjustment.value||0))
+const goalTotal=computed(()=>(recurringGoal.value?0:opening.value)+net.value+Number(adjustment.value||0))
 const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(selected.value?.target_amount||1)*100)))
 const signed=(amount:number)=>(amount<0?'−':amount>0?'+':'')+'¥'+Math.abs(Number(amount||0)).toLocaleString('ja-JP')
 
@@ -54,28 +66,37 @@ async function detect(){
   }catch(e){error.value=(e as Error).message;checked.value=true}
 }
 async function loadGoalNet(){
-  if(kind.value!=='goal'||!target.value||!start.value||!end.value)return
-  const requestedId=target.value,requestedStart=start.value,requestedEnd=end.value
-  netBusy.value=true;netLoaded.value=false
+  if(kind.value!=='goal'||!target.value||
+    (recurringGoal.value?!periodKey.value:(!start.value||!end.value)))return
+  const requestedId=target.value,requestedKey=periodKey.value
+  const requestedStart=start.value,requestedEnd=end.value
+  netBusy.value=true;netLoaded.value=false;periodFuture.value=false
   try{
-    const params=new URLSearchParams({targetId:requestedId,start:requestedStart,end:requestedEnd})
+    const params=new URLSearchParams({targetId:requestedId})
+    if(recurringGoal.value)params.set('periodKey',requestedKey)
+    else{params.set('start',requestedStart);params.set('end',requestedEnd)}
     const data=await api('/finance/goal/net?'+params.toString())
-    if(kind.value==='goal'&&target.value===requestedId&&start.value===requestedStart&&end.value===requestedEnd){
-      net.value=Number(data.net||0);netLoaded.value=true
-    }
+    if(kind.value!=='goal'||target.value!==requestedId||
+      (recurringGoal.value?periodKey.value!==requestedKey:
+       start.value!==requestedStart||end.value!==requestedEnd))return
+    net.value=Number(data.net||0)
+    if(recurringGoal.value){start.value=String(data.start||'');end.value=String(data.end||'')}
+    periodFuture.value=!!data.notStarted;netLoaded.value=true
   }catch(e){error.value=(e as Error).message}
   finally{netBusy.value=false}
 }
 async function refreshSettings(){
-  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false
+  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
   if(!available.value||!target.value)return
-  const requestedId=target.value,requestedKind=kind.value
+  const requestedId=target.value,requestedKind=kind.value,requestedKey=periodKey.value
   try{
     const params=new URLSearchParams({type:requestedKind,targetId:requestedId})
+    if(recurringGoal.value)params.set('periodKey',requestedKey)
     const data=await api('/finance/settings?'+params.toString())
-    if(requestedId!==target.value||requestedKind!==kind.value)return
+    if(requestedId!==target.value||requestedKind!==kind.value||
+      (recurringGoal.value&&requestedKey!==periodKey.value))return
     adjustment.value=String(data.adjustmentAmount||0)
-    opening.value=Number(data.openingAmount||0)
+    opening.value=recurringGoal.value?0:Number(data.openingAmount||0)
     if(requestedKind==='goal'){
       if(data.periodStart&&data.periodEnd){start.value=data.periodStart;end.value=data.periodEnd}
       await loadGoalNet()
@@ -90,10 +111,14 @@ async function saveSettings(){
   }
   busy.value=true;error.value='';clearToast()
   try{
-    await api('/finance/settings','PUT',{type:kind.value,targetId:target.value,
-      adjustmentAmount:amount,periodStart:kind.value==='goal'?start.value:null,
-      periodEnd:kind.value==='goal'?end.value:null})
-    notify('调整额和设置已保存，不会修改家計簿')
+    const payload:Record<string,unknown>={type:kind.value,targetId:target.value,adjustmentAmount:amount}
+    if(recurringGoal.value)payload.periodKey=periodKey.value
+    else{
+      payload.periodStart=kind.value==='goal'?start.value:null
+      payload.periodEnd=kind.value==='goal'?end.value:null
+    }
+    await api('/finance/settings','PUT',payload)
+    notify(recurringGoal.value?'本月／本年的调整额已保存':'调整额和设置已保存，不会修改家計簿')
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
@@ -133,11 +158,24 @@ async function unlink(item:Item){
     await refreshLinks();notify('已取消关联，原记账明细不受影响')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-watch([kind,target],()=>{entries.value=[];nextCursor.value=null;refreshLinks();refreshSettings()})
+function resetGoalPeriod(){
+  if(kind.value!=='goal')return
+  if(recurringGoal.value)periodKey.value=defaultPeriodKey()
+  else if(goalStartOn.value){start.value=goalStartOn.value;end.value=dateYmd()}
+}
+watch([kind,target],()=>{
+  entries.value=[];nextCursor.value=null
+  const previousKey=periodKey.value
+  resetGoalPeriod()
+  void refreshLinks()
+  if(periodKey.value===previousKey||!recurringGoal.value)void refreshSettings()
+})
 watch(kind,()=>{target.value=''})
-watch([start,end],()=>{netLoaded.value=false})
+watch(periodKey,()=>{if(recurringGoal.value&&available.value)void refreshSettings()})
+watch([start,end],()=>{if(!recurringGoal.value)netLoaded.value=false})
 watch(selected,value=>{
   if(!value)return
+  if(kind.value==='goal'){resetGoalPeriod();return}
   const s=value.startOn||value.start_on
   const e=value.endOn||value.end_on
   if(s&&e){
@@ -148,7 +186,8 @@ watch(selected,value=>{
 onMounted(()=>{
   defaultDates()
   const x=selected.value
-  if(x&&kind.value==='trip'){
+  if(kind.value==='goal')resetGoalPeriod()
+  else if(x&&kind.value==='trip'){
     const s=x.startOn||x.start_on,e=x.endOn||x.end_on
     if(s&&e&&Date.parse(e)-Date.parse(s)<=90*86400000){start.value=s;end.value=e}
   }
@@ -157,8 +196,8 @@ onMounted(()=>{
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值进度 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
-    <p class="hint">旅行计划逐笔关联真实消费；储蓄目标按选定期间的收支差额计算。两者都能手填正负调整额，不修改原账目。</p>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值计划 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
+    <p class="hint">旅行计划关联实际消费；储值计划可按累计、每月或每年目标计算期间收支差额。调整额按所选期间保存，不修改原账目。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
       家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
@@ -166,7 +205,7 @@ onMounted(()=>{
     <template v-else>
       <div v-if="!embeddedId" class="fields">
         <label>关联对象
-          <select v-model="kind"><option value="trip">旅行计划</option><option value="goal">储蓄目标</option></select>
+          <select v-model="kind"><option value="trip">旅行计划</option><option value="goal">储值计划</option></select>
         </label>
         <label>选择项目
           <select v-model="target"><option value="">请选择</option>
@@ -182,23 +221,32 @@ onMounted(()=>{
           <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
         </div>
         <div v-else class="summary">
-          <span>目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
-          <span>期初储蓄额 {{ fmt(opening) }}</span>
-          <span>期间收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
-          <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
-          <strong v-if="netLoaded">储蓄进度金额 {{ signed(goalTotal) }}</strong>
-          <small v-if="netLoaded">完成率 {{ goalProgress.toFixed(1) }}%</small>
-          <small v-else>点击读取期间收支差额后计算进度；不包含资产移动。</small>
+          <span>{{ modeLabel }}目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
+          <span v-if="!recurringGoal">期初储值额 {{ fmt(opening) }}</span>
+          <span>{{ recurringGoal?'本期':'所选期间' }}收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
+          <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
+          <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
+          <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
+          <small v-if="periodFuture">所选期间还未开始，暂不查询家計簿。</small>
+          <small v-else>依家庭收支估算，不代表真实银行存款余额；资产移动不计入差额。</small>
         </div>
         <label class="adjustment-label">手动调整额（円，可输入正数或负数）
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
         </label>
-        <div class="fields">
-          <label>起始日期<input v-model="start" type="date"/></label>
-          <label>结束日期<input v-model="end" type="date"/></label>
+        <div v-if="recurringGoal" class="fields">
+          <label v-if="goalMode==='monthly'">选择月份
+            <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" /></label>
+          <label v-else>选择年份
+            <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
+              :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
+          <small>本期计算范围：{{ start||'—' }} ～ {{ end||'—' }}；首期从计划开始日期算起。</small>
+        </div>
+        <div v-else class="fields">
+          <label>起始日期<input v-model="start" type="date" :min="kind==='goal'?goalStartOn||undefined:undefined"/></label>
+          <label>结束日期<input v-model="end" type="date" :min="start||undefined"/></label>
         </div>
         <div class="finance-actions">
-          <button type="button" :disabled="busy" @click="saveSettings">保存调整额{{ kind==='goal'?'和期间':'' }}</button>
+          <button type="button" :disabled="busy" @click="saveSettings">保存{{ recurringGoal?'本期':'' }}调整额{{ kind==='goal'&&!recurringGoal?'和期间':'' }}</button>
           <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
             {{ netBusy?'读取中…':'刷新收支差额' }}
           </button>

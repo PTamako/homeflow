@@ -1,6 +1,7 @@
 // Server-to-server read-only connection to kakebo_jp.
 // User-approved ledger entry IDs are the only financial records stored in HomeFlow D1.
 import {json,readBody} from './security.js'
+import {goalPeriod} from './goal-period.js'
 const dateOk=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&
   !Number.isNaN(Date.parse(x+'T00:00:00Z'))&&new Date(x+'T00:00:00Z').toISOString().slice(0,10)===x
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
@@ -53,7 +54,7 @@ async function ledger(env,params){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount':'id')+' FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
+  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
@@ -88,8 +89,20 @@ export async function financeRoute(request,env,path,session){
   const url=new URL(request.url),user=session.user_id,h=session.household_id
   if(path==='/api/finance/goal/net'&&request.method==='GET'){
     const id=url.searchParams.get('targetId')
-    if(!await financeTarget(db,h,user,'goal',id))return json({error:'not_found'},404)
-    const start=url.searchParams.get('start'),end=url.searchParams.get('end')
+    const goal=await financeTarget(db,h,user,'goal',id)
+    if(!goal)return json({error:'not_found'},404)
+    let start=url.searchParams.get('start'),end=url.searchParams.get('end')
+    const cadence=goal.goal_mode||'once'
+    const key=url.searchParams.get('periodKey')
+    if(cadence!=='once'){
+      const window=goalPeriod(goal,key)
+      if(!window)return json({error:'invalid_range'},400)
+      if(window.notStarted)return json({
+        start:window.start,end:window.periodEnd,income:0,expense:0,net:0,
+        readOnly:true,notStarted:true,periodKey:key
+      })
+      start=window.start;end=window.end
+    }else if(goal.start_on&&start<goal.start_on)return json({error:'invalid_range'},400)
     if(!validPeriod(start,end))return json({error:'invalid_range'},400)
     try{
       const data=await ledger(env,{summary:'net',start,end})
@@ -102,7 +115,21 @@ export async function financeRoute(request,env,path,session){
   if(path==='/api/finance/settings'&&request.method==='PUT'){
     const body=await readBody(request)
     const kind=body?.type,id=body?.targetId,amount=body?.adjustmentAmount
-    if(!await financeTarget(db,h,user,kind,id))return json({error:'not_found'},404)
+    const item=await financeTarget(db,h,user,kind,id)
+    if(!item)return json({error:'not_found'},404)
+    if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
+      const window=goalPeriod(item,body?.periodKey)
+      if(!window||!validAdjustment(amount))return json({error:'invalid_input'},400)
+      await db.prepare(`INSERT INTO goal_period_adjustments
+        (household_id,goal_id,period_key,adjustment_amount,updated_by,updated_at)
+        VALUES(?1,?2,?3,?4,?5,CURRENT_TIMESTAMP)
+        ON CONFLICT(household_id,goal_id,period_key) DO UPDATE SET
+          adjustment_amount=excluded.adjustment_amount,updated_by=excluded.updated_by,
+          updated_at=CURRENT_TIMESTAMP`)
+        .bind(h,id,window.periodKey,amount,user).run()
+      return json({ok:true,adjustmentAmount:amount,periodKey:window.periodKey,
+        periodStart:window.start,periodEnd:window.periodEnd})
+    }
     const start=kind==='goal'?(body?.periodStart||null):null
     const end=kind==='goal'?(body?.periodEnd||null):null
     if(!validAdjustment(amount)||Boolean(start)!==Boolean(end)||
@@ -121,6 +148,17 @@ export async function financeRoute(request,env,path,session){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
+    if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
+      const window=goalPeriod(item,url.searchParams.get('periodKey'))
+      if(!window)return json({error:'invalid_range'},400)
+      const record=await db.prepare(`SELECT adjustment_amount FROM goal_period_adjustments
+        WHERE household_id=?1 AND goal_id=?2 AND period_key=?3`)
+        .bind(h,id,window.periodKey).first()
+      return json({adjustmentAmount:record?.adjustment_amount||0,
+        periodStart:window.start,periodEnd:window.periodEnd,
+        periodKey:window.periodKey,goalMode:item.goal_mode,
+        openingAmount:0,targetAmount:item.target_amount})
+    }
     const saved=await savedSettings(db,h,kind,id)
     const result={adjustmentAmount:saved?.adjustment_amount||0,
       periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null,

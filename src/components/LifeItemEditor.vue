@@ -19,6 +19,7 @@ const form=reactive({
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
  targetAmount:Number(data.target_amount||0),reservedAmount:Number(data.reserved_amount||0),
+ goalMode:String(data.goal_mode||'once'),goalStartOn:String(data.start_on||''),
  targetOn:String(data.target_on||''),happenedOn:String(data.happened_on||''),
  story:String(data.story||''),destination:String(data.destination||''),
  startOn:String(data.startOn||data.start_on||''),
@@ -56,6 +57,7 @@ function values(){
      estimatedAmount:form.estimatedAmount,currency:data.currency||'JPY',note:form.note,targetOn:form.targetOn||null}
   case 'goals':
    return {...common,targetAmount:form.targetAmount,reservedAmount:form.reservedAmount,
+     goalMode:form.goalMode,startOn:form.goalStartOn||null,
      currency:data.currency||'JPY',targetOn:form.targetOn||null,wishId:data.wish_id||null}
   case 'memories':
    return {...common,story:form.story,happenedOn:form.happenedOn,
@@ -79,7 +81,7 @@ async function save(){
 </script>
 <template>
  <form class="detail-editor" @submit.prevent="save">
-  <b class="detail-editor-title">编辑{{ ({shopping:'购物',routines:'定期任务',anniversaries:'重要日子',wishes:'心愿',goals:'储蓄目标',memories:'回忆',trips:'旅行'} as Record<string,string>)[kind] }}</b>
+  <b class="detail-editor-title">编辑{{ ({shopping:'购物计划',routines:'定期任务',anniversaries:'重要日子',wishes:'心愿计划',goals:'储值计划',memories:'回忆',trips:'旅行'} as Record<string,string>)[kind] }}</b>
   <label>名称<input v-model="form.title" required maxlength="150"/></label>
   <template v-if="kind==='shopping'">
    <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
@@ -119,9 +121,17 @@ async function save(){
    <label>备注<textarea v-model="form.note" rows="2" maxlength="2000"/></label>
   </template>
   <template v-else-if="kind==='goals'">
-   <label>目标金额（¥）<input v-model.number="form.targetAmount" type="number" min="1" required/></label>
-   <label>期初储蓄额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
-   <label>目标日期<input v-model="form.targetOn" type="date"/></label>
+   <label>储值方式<select v-model="form.goalMode">
+     <option value="once">累计目标（一次性）</option>
+     <option value="monthly">每月固定目标</option>
+     <option value="yearly">每年固定目标</option>
+   </select></label>
+   <label>{{ form.goalMode==='monthly'?'每月目标金额':form.goalMode==='yearly'?'每年目标金额':'累计目标金额' }}（¥）
+     <input v-model.number="form.targetAmount" type="number" min="1" required/></label>
+   <label>开始日期<input v-model="form.goalStartOn" type="date" required/></label>
+   <label v-if="form.goalMode==='once'">期初储值额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
+   <label>结束／目标日期（可选）<input v-model="form.targetOn" type="date" :min="form.goalStartOn||undefined"/></label>
+   <small v-if="form.goalMode!=='once'">每个月／每年分别计算，不重复计入旧期初储值额；调整额按期间单独保存。</small>
   </template>
   <template v-else-if="kind==='memories'">
    <label>发生日期<input v-model="form.happenedOn" type="date" required/></label>

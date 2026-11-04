@@ -64,8 +64,12 @@ export async function listPage(db,table,session,filters,options={}){
     if(filters.scope==='active')clauses.push("status NOT IN ('completed','cancelled')")
     if(filters.scope==='history')clauses.push("status IN ('completed','cancelled')")
   }else if(table==='goals'){
-    if(filters.scope==='active')clauses.push('reserved_amount<target_amount')
-    if(filters.scope==='history')clauses.push('reserved_amount>=target_amount')
+    if(filters.scope==='active')push(
+      "((goal_mode='once' AND reserved_amount<target_amount) OR (goal_mode!='once' AND (target_on IS NULL OR target_on>={0})))",
+      localDate)
+    if(filters.scope==='history')push(
+      "((goal_mode='once' AND reserved_amount>=target_amount) OR (goal_mode!='once' AND target_on IS NOT NULL AND target_on<{0}))",
+      localDate)
   }else if(table==='routines'){
     if(filters.scope==='active')clauses.push('enabled=1')
     if(filters.scope==='history')clauses.push('enabled=0')

@@ -7,7 +7,7 @@ const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
   routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
   wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on']},
-  goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id']},
+  goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id','goal_mode','start_on']},
   shopping_items:{columns:['title','quantity','due_on']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
 }
@@ -48,7 +48,12 @@ function normalized(table,b,s){
     case 'goals':
       if(!Number.isSafeInteger(b.targetAmount)||b.targetAmount<=0||b.targetAmount>100000000000||!validMoney(b.reservedAmount??0)||!JPY(b.currency||'JPY')||
         (b.targetOn&&!ymd(b.targetOn))||(b.wishId&&!hexId(b.wishId)))return null
-      return [title,b.targetAmount,b.reservedAmount||0,b.currency||'JPY',b.targetOn||null,b.wishId||null]
+      const goalMode=b.goalMode||'once',startOn=b.startOn||null
+      if(!['once','monthly','yearly'].includes(goalMode)||
+         (startOn&&!ymd(startOn))||(goalMode!=='once'&&!startOn)||
+         (startOn&&b.targetOn&&startOn>b.targetOn))return null
+      return [title,b.targetAmount,b.reservedAmount||0,b.currency||'JPY',
+        b.targetOn||null,b.wishId||null,goalMode,startOn]
     case 'shopping_items':
       if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>9999)return null
       if(b.dueOn&&!ymd(b.dueOn))return null
@@ -237,14 +242,16 @@ export async function lifeRoute(request,db,path,session){
     if(table==='wishes'&&b.createSavingsGoal===true){
       // Create both records atomically using the existing goals.wish_id link.
       if(!Number.isSafeInteger(b.estimatedAmount)||b.estimatedAmount<=0||
-         b.estimatedAmount>100000000000||(b.goalTargetOn&&!ymd(b.goalTargetOn)))return bad()
+         b.estimatedAmount>100000000000||(b.goalTargetOn&&!ymd(b.goalTargetOn))||
+         (b.goalStartOn&&!ymd(b.goalStartOn))||
+         (b.goalStartOn&&b.goalTargetOn&&b.goalStartOn>b.goalTargetOn))return bad()
       const goalId=crypto.randomUUID()
       await db.batch([
         db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals),
-        db.prepare('INSERT INTO goals (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,target_on,wish_id) VALUES(?1,?2,?3,?4,?5,?6,0,?7,?8,?9)')
+        db.prepare("INSERT INTO goals (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,target_on,wish_id,goal_mode,start_on) VALUES(?1,?2,?3,?4,?5,?6,0,?7,?8,?9,'once',?10)")
           .bind(goalId,session.household_id,session.user_id,visibility,
-            trim(b.title+' · 储蓄目标',150),b.estimatedAmount,b.currency||'JPY',
-            b.goalTargetOn||b.targetOn||null,id)
+            trim(b.title+' · 储值计划',150),b.estimatedAmount,b.currency||'JPY',
+            b.goalTargetOn||b.targetOn||null,id,b.goalStartOn||new Date(Date.now()+9*3600000).toISOString().slice(0,10))
       ])
       return json({ok:true,id,goalId},201)
     }

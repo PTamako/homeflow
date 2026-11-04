@@ -73,7 +73,7 @@ function toggleFinance(kind:'goal'|'trip',id:string){
 async function planCreated(kind:PlanType,id:string){
   planType.value=kind
   await fetchMode()
-  notify('计划已创建'+(kind==='wish'?'，如已选择储值目标则自动关联':''))
+  notify('计划已创建'+(kind==='wish'?'，如已选择储值计划则自动关联':''))
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
@@ -274,7 +274,7 @@ async function addGoal(){
   if(!error.value)goalTitle.value=''
 }
 async function reserve(g:Row){
-  const value=prompt('目前为这个目标预留了多少日元？（这不是实际存款交易）',String(g.reserved_amount||0))
+  const value=prompt('为这个累计目标设置多少期初储值额？（不会产生家計簿交易）',String(g.reserved_amount||0))
   if(value===null)return
   const amount=Number(value)
   if(!Number.isSafeInteger(amount)||amount<0){error.value='请输入有效金额';return}
@@ -540,13 +540,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
         </section>
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
+          <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿计划</h2>
           <template v-for="w in items" :key="w.id">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}<template v-if="w.target_on"> · {{ w.target_on }}</template></small>
-                  <small v-if="linkedGoal(w)">已关联储值目标：{{ linkedGoal(w)?.title }}</small></div>
+                  <small v-if="linkedGoal(w)">已关联储值计划：{{ linkedGoal(w)?.title }}</small></div>
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
@@ -560,14 +560,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
         </section>
         <section v-if="planType==='all'||planType==='goal'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
-          <p class="life-caption">原有预留金额作为期初储蓄额保留；下方家計簿联动可计算期间收支差额和手动调整额。</p>
+          <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储值计划</h2>
+          <p class="life-caption">储值方式支持累计目标、每月目标和每年目标。选定期间只读汇总家計簿收支，并可单独调整金额。</p>
           <template v-for="g in goals" :key="g.id">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
                 <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
+                  <small v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</small>
+                  <small v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
+                  <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
                   <small v-if="g.wish_id">已关联心愿计划</small></div>
                 <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
@@ -578,13 +580,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="goal" :embedded-id="g.id"/>
           </template>
-          <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储蓄目标':'暂无已完成的目标' }}</p>
+          <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
             @click="loadMore('goals')">加载更多目标</button>
 
         </section>
         <section v-if="planType==='all'||planType==='shopping'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
+          <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
