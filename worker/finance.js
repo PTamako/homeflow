@@ -82,6 +82,22 @@ export async function financeRoute(request,env,path,session){
   }
   if(!ready(env))return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
+  if(path==='/api/finance/settings'&&request.method==='GET'){
+    const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
+    const item=await financeTarget(db,h,user,kind,id)
+    if(!item)return json({error:'not_found'},404)
+    const saved=await savedSettings(db,h,kind,id)
+    const result={adjustmentAmount:saved?.adjustment_amount||0,
+      periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null}
+    if(kind==='shopping'&&item.ledger_entry_id){
+      try{
+        const data=await ledger(env,{ids:String(item.ledger_entry_id)})
+        const entry=data.entries.find(x=>String(x.id)===String(item.ledger_entry_id))
+        result.linkedAmount=entry?.type==='expense'?entry.amount:null
+      }catch(error){return financeError(error)}
+    }
+    return json(result)
+  }
   const shop=path.match(/^\/api\/finance\/shopping\/([0-9a-f-]{36})\/link$/i)
   if(shop&&(request.method==='POST'||request.method==='DELETE')){
     // Owner may verify any household-shared shopping item. Private items
