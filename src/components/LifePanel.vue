@@ -2,8 +2,9 @@
 import {ref,watch,onBeforeUnmount} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import FinancePanel from './FinancePanel.vue'
+import AppIcon from './AppIcon.vue'
 
-const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;isOwner:boolean;profiles:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
@@ -27,7 +28,7 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
 async function fetchMode(){
   error.value=''
   try{
-    if(props.mode==='today'||props.mode==='cat'){
+    if(props.mode==='today'){
       const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
       routines.value=r.items||[];items.value=a.items||[]
     }else if(props.mode==='family'){
@@ -185,9 +186,9 @@ watch(()=>props.mode,fetchMode,{immediate:true})
     <p v-if="error" role="alert" class="life-error">{{ error }}</p>
     <p v-if="notice" class="life-notice" role="status">{{ notice }}</p>
 
-    <template v-if="mode==='today'||mode==='cat'">
-      <section v-if="mode==='today'" class="life-card">
-        <div class="life-row"><b>🔔 重要提醒</b><button class="life-link" @click="loadReminders">查看今天的提醒</button></div>
+    <template v-if="mode==='today'">
+      <section class="life-card">
+        <div class="life-row"><b class="life-heading"><AppIcon name="bell" :size="19" /> 重要提醒</b><button class="life-link" @click="loadReminders">查看今天的提醒</button></div>
         <div v-if="remindersLoaded">
           <p v-if="!dueItems.length" class="life-empty">今天暂无新的重要提醒</p>
           <div v-for="x in dueItems" :key="x.kind+x.id" class="life-row">
@@ -197,7 +198,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
       </section>
       <div class="life-grid">
         <section class="life-card">
-          <h2>⏰ 今日定期事项</h2>
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
           <p class="life-caption">完成后保存当天记录，下次重复不会被删除。</p>
           <p v-if="!routines.length" class="life-empty">还没有需要今天执行的重复任务</p>
           <div v-for="r in routines" :key="r.id" class="life-row">
@@ -216,7 +217,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           </form>
         </section>
         <section class="life-card">
-          <h2>🎂 即将到来的纪念日</h2>
+          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
           <p v-if="!items.length" class="life-empty">可以先添加一个重要日子</p>
           <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row">
             <b>{{ e.title }}</b><span>{{ e.nextOn }}</span>
@@ -233,7 +234,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
 
     <template v-else-if="mode==='family'">
       <section class="life-card">
-        <h2>🎂 家人的重要日子</h2>
+        <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
         <p class="life-caption">生日、结婚纪念日和自定义日期，支持每年重复。</p>
         <div v-for="e in items" :key="e.id" class="life-row"><b>{{ e.title }}</b><span>{{ e.nextOn }}</span></div>
         <form class="life-form" @submit.prevent="addAnniversary">
@@ -247,7 +248,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
     <template v-else-if="mode==='plans'">
       <div class="life-grid">
         <section class="life-card">
-          <h2>♡ 心愿清单</h2>
+          <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <div v-for="w in items" :key="w.id" class="life-row"><div><b>{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
             <button v-if="w.wish_type==='trip'" class="life-link" @click="convertWish(w)">开始计划</button>
           </div>
@@ -260,7 +261,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           </form>
         </section>
         <section class="life-card">
-          <h2>¥ 储蓄目标</h2>
+          <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
           <p class="life-caption">预留金额不等于银行余额，也不会被当成家計簿支出。</p>
           <div v-for="g in goals" :key="g.id" class="life-row"><div><b>{{ g.title }}</b>
             <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
@@ -273,7 +274,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           </form>
         </section>
         <section class="life-card">
-          <h2>🛒 家庭购物</h2>
+          <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
           <div v-for="s in other" :key="s.id" class="life-row">
             <label><input type="checkbox" :checked="!!s.completed_at" @change="toggleShopping(s)"/>
               <span>{{ s.title }}</span></label></div>
@@ -282,7 +283,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
             <button :disabled="busy">＋ 添加购物</button></form>
         </section>
         <section class="life-card">
-          <h2>✈ 旅行计划</h2>
+          <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <div v-for="t in trips" :key="t.id" class="life-row"><div><b>{{ t.title }}</b>
             <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
             <button class="life-link" @click="selectTrip(t.id)">查看行程</button></div>
@@ -294,21 +295,21 @@ watch(()=>props.mode,fetchMode,{immediate:true})
                   <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
                   <span>{{ it.startTime||'待定' }} · {{ it.title }}</span></label></div>
               <div v-if="tripDetail.plan.trip.tasks?.length" class="trip-day">
-                <b>✅ 出发前待办</b>
+                <b class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 出发前待办</b>
                 <label v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" class="trip-item">
                   <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
                   <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
                 </label>
               </div>
               <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
-                <b>🧳 行李清单 · {{ list.owner }}</b>
+                <b class="life-heading"><AppIcon name="shopping" :size="18" /> 行李清单 · {{ list.owner }}</b>
                 <label v-for="piece in list.items" :key="piece.externalId" class="trip-item">
                   <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
                   <span>{{ piece.label }} × {{ piece.quantity }}</span>
                 </label>
               </div>
               <div v-if="tripDetail.plan.trip.bookings?.length" class="trip-day">
-                <b>🏨 交通和预订</b>
+                <b class="life-heading"><AppIcon name="plane" :size="18" /> 交通和预订</b>
                 <div v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" class="trip-item">
                   <span>{{ booking.title }} · {{ booking.status }}</span>
                 </div>
@@ -336,7 +337,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
 
     <template v-else-if="mode==='memories'">
       <section class="life-card">
-        <h2>✿ 留下一段美好的回忆</h2>
+        <h2 class="life-heading"><AppIcon name="book-heart" :size="21" /> 留下一段美好的回忆</h2>
         <form class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<input v-model="memoryDate" required type="date"/></label>
@@ -347,7 +348,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           <button :disabled="busy">保存到时光轴</button>
         </form>
       </section>
-      <section class="life-card"><h2>我们的时光轴</h2>
+      <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
         <p v-if="!items.length" class="life-empty">还没有回忆，先写下一件开心的小事。</p>
         <article v-for="m in items" :key="m.id" class="memory">
           <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
@@ -376,4 +377,17 @@ watch(()=>props.mode,fetchMode,{immediate:true})
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
+
+/* Shared icon language and responsive form guards */
+.life-heading{display:flex;align-items:center;gap:9px;color:#293f34;min-width:0}
+.life-heading .app-icon{color:#43866a}
+.life-form,.life-card,.life-row,.trip-import,.trip-detail{min-width:0;max-width:100%}
+.life-row>*{min-width:0;overflow-wrap:anywhere}
+.life-row>button{flex:none}
+.life-form input:not([type="checkbox"]),.life-form select,.life-form textarea,
+.trip-import select,.trip-import textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+.life-form input[type="date"]{min-inline-size:0}
+.life-form label,.trip-import label{min-width:0;max-width:100%}
+.life-form button{width:100%}
+@media(max-width:720px){.life-grid{grid-template-columns:minmax(0,1fr)}}
 </style>

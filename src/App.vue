@@ -6,12 +6,13 @@ import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
+import AppIcon from './components/AppIcon.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;completedAt:string|null;updatedAt:string}
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
-const tab=ref<'today'|'cat'|'family'|'plans'|'memories'>('today')
+const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
@@ -19,9 +20,12 @@ const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
 const error=ref(''),invitation=ref(''),showDone=ref(false)
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
-const nav=[{id:'today',icon:'☀',label:'今天'},{id:'plans',icon:'✓',label:'计划'},{id:'memories',icon:'▧',label:'时光轴'},{id:'cat',icon:'🐾',label:'豆沙'},{id:'family',icon:'⌂',label:'家庭'}] as const
+const openPetId=ref<string|null>(null)
+const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'}] as const
 const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.completedAt))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
+const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
+function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 const errText=(key:string)=>{
   const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'输入格式不符合要求，请检查所有字段。',
     invalid_login_name:'登录账号格式不正确：请使用邮箱地址，或 3～36 位英文用户名（可包含数字、点、下划线和连字符）。',
@@ -171,7 +175,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
 
 <template>
   <div class="shell">
-    <header class="topbar"><div class="brand"><span class="brand-icon">⌂</span>HomeFlow</div>
+    <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <button v-if="user" class="text-button" @click="logout">退出 · {{ user.loginName }}</button>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
     <main v-if="!user" class="auth-content">
@@ -202,12 +206,12 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
     </main>
     <main v-else class="content">
       <div class="eyebrow">OUR LITTLE HOME</div>
-      <h1>{{ {today:'我们家的今天',plans:'旅行与心愿',memories:'我们的时光轴',cat:'豆沙的小天地',family:'家庭档案'}[tab] }} ♡</h1>
+      <h1>{{ {today:'我们家的今天',plans:'旅行与心愿',memories:'我们的时光轴',family:'家庭档案'}[tab] }} ♡</h1>
       <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
-          <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark">✿</div></section>
+          <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <div class="section-title"><h2>今日与近期待办</h2><span>{{ tasks.filter(t=>!!t.completedAt).length }} / {{ tasks.length }} 完成</span></div>
         <section class="panel">
           <form class="task-form" @submit.prevent="addTask">
@@ -240,30 +244,66 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
         </section>
       </template>
       <template v-else-if="tab==='family'">
-        <section class="panel"><h2>家庭成员</h2><p><a href="/api/export" download class="text-button">导出当前账户可查看的数据备份（JSON）</a></p><div class="profiles"><div v-for="p in profiles" :key="p.id" class="profile">
-          <span>{{ p.type==='pet'?'🐾':'♡' }}</span><div><b>{{ p.displayName }}</b>
-          <p>{{ p.type==='pet'?'宠物':'家庭成员' }} · {{ p.birthday||'未填写生日' }}</p></div></div></div></section>
+        <section class="panel">
+          <div class="family-section-heading">
+            <h2><AppIcon name="users" :size="20" /> 家庭成员</h2>
+            <span class="section-hint">{{ people.length }} 位成员</span>
+          </div>
+          <div v-if="people.length" class="profiles">
+            <div v-for="p in people" :key="p.id" class="profile">
+              <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
+              <div class="profile-description"><b>{{ p.displayName }}</b>
+                <p>家庭成员 · {{ p.birthday||'未填写生日' }}</p>
+              </div>
+            </div>
+          </div>
+          <p v-else class="empty">还没有家庭成员档案</p>
+        </section>
+        <section class="panel">
+          <div class="family-section-heading">
+            <h2><AppIcon name="paw" :size="20" /> 宠物档案</h2>
+            <span class="section-hint">{{ pets.length }} 只宠物</span>
+          </div>
+          <p class="hint">点击宠物卡片，查看体重、驱虫、疫苗和护理记录。</p>
+          <div v-for="p in pets" :key="p.id" class="pet-profile-entry">
+            <button type="button" class="pet-profile-trigger" :aria-expanded="openPetId===p.id"
+              :aria-controls="'pet-health-'+p.id" @click="togglePet(p.id)">
+              <span class="profile-symbol"><AppIcon name="paw" :size="22" /></span>
+              <span class="profile-description"><b>{{ p.displayName }}</b>
+                <small>生日：{{ p.birthday||'未填写' }} · 到家日：{{ p.adoptedOn||'未填写' }}</small>
+              </span>
+              <AppIcon class="pet-chevron" name="chevron-down" :size="20" />
+            </button>
+            <div v-if="openPetId===p.id" :id="'pet-health-'+p.id" class="pet-health-content">
+              <PetHealthPanel :pet-id="p.id" :name="p.displayName" />
+            </div>
+          </div>
+          <p v-if="!pets.length" class="empty">尚无宠物档案，可以在下方添加豆沙。</p>
+        </section>
         <section v-if="user.role==='owner'" class="panel">
           <h2>添加家庭或宠物档案</h2>
-          <form class="task-form" @submit.prevent="addProfile">
-            <input v-model="name" required maxlength="60" placeholder="昵称或名字"/>
-            <select v-model="petType"><option value="person">家庭成员</option><option value="pet">宠物</option></select>
-            <label>生日<input v-model="birth" type="date"/></label>
-            <label v-if="petType==='pet'">到家日<input v-model="adopted" type="date"/></label>
-            <button class="primary">＋ 添加档案</button></form>
+          <form class="profile-form" @submit.prevent="addProfile">
+            <label class="field-wide">昵称或名字
+              <input v-model="name" required maxlength="60" placeholder="例如：豆沙" />
+            </label>
+            <label>类型
+              <select v-model="petType"><option value="person">家庭成员</option><option value="pet">宠物</option></select>
+            </label>
+            <label>生日（可选）
+              <input v-model="birth" type="date" />
+            </label>
+            <label v-if="petType==='pet'">到家日（可选）
+              <input v-model="adopted" type="date" />
+            </label>
+            <button class="primary field-wide">添加档案</button>
+          </form>
         </section>
-        <section v-if="user.role==='owner'" class="panel"><h2>邀请家人独立登录</h2>
-          <p class="hint">7 天有效的一次性邀请码，最多两个账号。</p>
+        <section v-if="user.role==='owner'" class="panel">
+          <h2>邀请家人独立登录</h2>
+          <p class="hint">邀请码 7 天内有效，每个家庭最多两位登录成员。</p>
           <button class="outline" @click="generateInvite">生成邀请码</button>
           <div v-if="invitation" class="invitation"><code>{{ invitation }}</code><p>仅发送给家人，请勿公开。</p></div>
         </section>
-      </template>
-      <template v-else-if="tab==='cat'">
-        <section class="hero"><div><span>CAT · HOMEFLOW</span><h2>豆沙的每一天 🐾</h2><p>可以在任务中关联豆沙，护理周期会继续扩展。</p></div></section>
-        <section v-for="p in pets" :key="p.id" class="panel"><h2>🐾 {{ p.displayName }}</h2>
-          <p class="hint">生日：{{ p.birthday||'未填' }}　到家：{{ p.adoptedOn||'未填' }}</p></section>
-        <PetHealthPanel v-for="p in pets" :key="p.id" :pet-id="p.id" :name="p.displayName" />
-        <p v-if="!pets.length" class="panel empty">先在家庭页面创建豆沙的档案吧。</p>
       </template>
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
@@ -274,7 +314,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
-        <span class="nav-icon">{{ n.icon }}</span><span>{{ n.label }}</span></button>
+        <AppIcon :name="n.icon" :size="23" /><span>{{ n.label }}</span></button>
     </nav>
   </div>
 </template>

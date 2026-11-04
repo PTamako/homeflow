@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
+import AppIcon from './AppIcon.vue'
 type Item=Record<string,any>
 const props=defineProps<{trips:Item[];goals:Item[];owner:boolean}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>('trip'),target=ref('')
@@ -79,7 +80,7 @@ onMounted(()=>{defaultDates();detect()})
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2>↗ 家計簿 · 实际旅行开销</h2>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> 家計簿 · 实际旅行开销</h2>
     <p class="hint">财务数据只从家計簿安全读取。HomeFlow 仅保存你确认关联的明细 ID，不创建新支出。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
@@ -122,9 +123,9 @@ onMounted(()=>{defaultDates();detect()})
 <style scoped>
 .finance-card{background:#fff;border:1px solid #eceae4;border-radius:18px;padding:18px;margin-top:16px}
 .finance-card h2{font-size:17px;margin:0 0 10px}.hint{font-size:12px;line-height:1.7;color:#839087}
-.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
-.fields label{font-size:12px;color:#607469;display:grid;gap:5px}
-.fields select,.fields input{border:1px solid #dce6dc;border-radius:10px;min-width:0;width:100%;min-height:41px;padding:8px;background:#fff}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0;min-width:0}
+.fields label{font-size:12px;color:#607469;display:grid;gap:5px;min-width:0;max-width:100%}
+.fields select,.fields input{border:1px solid #dce6dc;border-radius:10px;min-width:0;max-width:100%;box-sizing:border-box;width:100%;min-height:41px;padding:8px;background:#fff}
 button{background:#488d6c;color:#fff;border:0;border-radius:9px;padding:9px 12px;font-size:12px}
 button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;padding:14px;display:grid;gap:3px;margin:14px 0}
 .summary strong{font-size:22px}.summary span,.summary small{font-size:12px;color:#587564}
@@ -132,4 +133,5 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
 .line span{min-width:0;overflow-wrap:anywhere}.line small{display:block;color:#7a9083;margin-top:3px}
 .line .unlink{background:#f3f5ee;color:#758978}.more{margin-top:8px;background:#eef5ed;color:#488d6c}
 .error{font-size:12px;color:#a94d37}.success{font-size:12px;color:#3f876a}
+@media(max-width:720px){.fields{grid-template-columns:minmax(0,1fr)}}
 </style>

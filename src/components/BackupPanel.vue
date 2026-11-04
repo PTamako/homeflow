@@ -2,6 +2,7 @@
 import {ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
 import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
+import AppIcon from './AppIcon.vue'
 const props=defineProps<{userId:string}>()
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','memories',
@@ -128,7 +129,7 @@ async function restore(){
 </script>
 <template>
   <section class="backup">
-    <h2>☁ 备份与恢复</h2>
+    <h2 class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
     <p>为当前登录账号保存独立备份。ZIP 包括此设备的本机照片；家庭其他账号需要分别备份自己的私人记录。</p>
     <button :disabled="pending" @click="exportArchive">下载完整本机备份 ZIP</button>
     <label class="import-label">恢复历史备份（ZIP 或 JSON）
@@ -148,10 +149,10 @@ async function restore(){
 </template>
 <style scoped>
 .backup{background:#fff;border:1px solid #eeeae4;border-radius:18px;padding:20px;margin:16px 0}
-.backup h2{font-size:17px}.backup p,.backup small{color:#849187;font-size:12px;line-height:1.7}
+.backup h2{font-size:17px}.backup-title{display:flex;align-items:center;gap:9px}.backup p,.backup small{color:#849187;font-size:12px;line-height:1.7}
 .backup button{background:#468b6e;border:0;color:white;border-radius:10px;padding:10px 14px;font-size:13px}
 .backup button:disabled{opacity:.5}.import-label{display:grid;gap:8px;color:#64756b;font-size:12px;margin-top:18px}
-.import-label input{width:100%;border:1px solid #e4e7e0;padding:10px;border-radius:10px}
+.import-label input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #e4e7e0;padding:10px;border-radius:10px}
 .preview{background:#edf5ec;padding:12px;border-radius:12px;margin-top:14px}.preview b{font-size:13px}
 .preview p{font-size:11px;margin:3px 0}.preview button{margin-top:10px}
 .backup .error{color:#a94d37}.backup .success{color:#3c8566}
