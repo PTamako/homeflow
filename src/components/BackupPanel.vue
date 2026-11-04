@@ -8,7 +8,7 @@ import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','memories',
-  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments']
+  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
@@ -149,7 +149,7 @@ async function restore(){
     <p v-if="status" class="success" role="status">{{ status }}</p>
     <PageToast :toast="toast" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <small>新建记录恢复包括计划日期、提醒选择、储值周期及调整额；已存在的记录不会被覆盖。账号密码、推送密钥和未同步离线任务不在备份内。云端相册尚未开通。</small>
+    <small>备份包括心愿与每月／每年储值的完成确认、计划日期、提醒选择、储值周期及调整额；已存在的记录不会被覆盖。账号密码、推送密钥和未同步离线任务不在备份内。云端相册尚未开通。</small>
   </section>
 </template>
 <style scoped>

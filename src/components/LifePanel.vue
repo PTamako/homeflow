@@ -273,10 +273,7 @@ async function focusExactPlan(requestId:number){
 }
 async function finishWish(w:Row){
   if(busy.value)return
-  if(!w.target_on||w.target_on>today()){
-    notify('心愿到期后才能确认实现，请先在计划中设置目标日期。','warning')
-    return
-  }
+  // Target date is for scheduling, not a prerequisite to achieving a wish.
   const completing=w.status!=='completed'
   busy.value=true;error.value=''
   try{
@@ -688,7 +685,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </SwipeActions>
             <div v-if="canEdit(w)" class="plan-action-strip">
-              <button v-if="w.target_on&&w.target_on<=today()&&w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
+              <button v-if="w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
                 type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
                 {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
               <button v-if="linkedGoal(w)" type="button" class="life-link"
