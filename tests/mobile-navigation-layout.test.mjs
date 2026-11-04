@@ -118,5 +118,12 @@ test('plan tasks place reminders and early completion inside compact, divided it
   assert.match(life,/\.plan-task-controls\{[^}]*flex-wrap:wrap/)
   assert.match(life,/\.plan-task-next\{[^}]*white-space:nowrap/)
   assert.match(life,/\.plan-task-action:disabled\{opacity:/)
+  // The footer must remain inside the same SwipeActions surface as its title.
+  // Otherwise the hidden action width can leave a short horizontal seam.
+  assert.match(routine,/class="plan-task-footer"[\s\S]*?<\/SwipeActions>/)
+  assert.match(oneTime,/class="plan-task-footer"[\s\S]*?<\/SwipeActions>/)
+  assert.doesNotMatch(routine,/<\/SwipeActions>[\s\S]*?class="plan-task-footer"/)
+  assert.doesNotMatch(oneTime,/<\/SwipeActions>[\s\S]*?class="plan-task-footer"/)
+  assert.match(life,/\.plan-task-item :deep\(\.swipe-content\)\{background:#fff\}/)
   assert.doesNotMatch(routine,/routine-early-complete|routine-list-item/)
 })
