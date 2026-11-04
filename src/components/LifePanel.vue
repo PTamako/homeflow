@@ -470,7 +470,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             :allow-edit="canEdit(e)||canEditBirthday(e)" :allow-delete="canEdit(e)"
             @edit="editAnniversary(e)" @delete="removeItem('anniversaries',e)">
             <div class="life-row"><div class="life-details"><b>{{ e.title }}</b>
-              <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
               <small>{{ e.nextOn||e.event_date }}</small></div></div>
           </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
