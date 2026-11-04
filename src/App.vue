@@ -528,7 +528,7 @@ onBeforeUnmount(()=>{
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
-          <div class="row-between"><b>重要提醒 · 储值计划</b><small>每期独立结算，不顺延旧月份</small></div>
+          <div class="row-between"><b>重要提醒 · 储值计划</b></div>
           <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
             <AppIcon name="wallet" :size="20"/>
             <div class="task-detail">
@@ -559,7 +559,7 @@ onBeforeUnmount(()=>{
                 <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
               </select>
             </label>
-            <p class="task-object-hint">关联豆沙等宠物后，默认勾选完成就记录护理历史；也可以关闭。不会改变家庭共享权限。</p>
+
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
           <div v-if="pendingTasks.length" class="pending">
@@ -583,7 +583,7 @@ onBeforeUnmount(()=>{
               :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
               @click="todayCategory=category.id">{{ category.label }}</button>
           </div>
-          <p class="today-unified-hint">只显示今天到期及逾期未完成的事项，每次展示 5 条；购物、心愿会一直顺延至完成；储值截止后转入重要提醒与每期结算历史，不在今日待办中反复顺延。</p>
+
           <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
@@ -668,7 +668,7 @@ onBeforeUnmount(()=>{
             <h2><AppIcon name="users" :size="20" /> 家庭成员</h2>
             <span class="section-hint">{{ people.length }} 位成员</span>
           </div>
-          <p class="hint">点击自己的档案即可补充或修改生日。填写后自动加入每年生日提醒。</p>
+
           <div v-if="people.length" class="profiles">
             <div v-for="p in visiblePeople" :key="p.id" :id="'profile-'+p.id" class="profile-entry">
               <button v-if="canEditProfile(p)" type="button" class="profile profile-button"
