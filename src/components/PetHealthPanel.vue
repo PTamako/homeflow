@@ -17,7 +17,7 @@ let readRevision=0
 const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 function pageUrl(more=false){
-  const query=new URLSearchParams({limit:'6'})
+  const query=new URLSearchParams({limit:'5'})
   if(year.value){query.set('year',year.value);if(month.value)query.set('month',month.value)}
   if(more&&nextCursor.value)query.set('cursor',nextCursor.value)
   return '/api/pets/'+props.petId+'/health?'+query
@@ -104,7 +104,7 @@ watch(year,value=>{if(!value)month.value=''})
         <option value="">全年</option><option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
       </select></label>
     </div>
-    <p class="sub">默认显示最近 6 条。护理历史不会每天清空，可按年月查找。</p>
+    <p class="sub">默认显示最近 5 条，每次再加载 5 条。护理历史不会每天清空，可按年月查找。</p>
     <div v-if="!items.length" class="empty">该时间范围内没有护理记录。</div>
     <div v-for="r in items" :key="r.id" class="record">
       <SwipeActions :id="r.id" scope="pet-health"
