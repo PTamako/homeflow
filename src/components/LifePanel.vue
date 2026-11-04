@@ -430,7 +430,28 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
           <p class="life-caption">每天更新。已完成的记录不会带到明天；未完成事项会顺延到下一适用日。</p>
-          <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
+          <template v-for="t in oneTimePlans" :key="'once-'+t.id">
+            <SwipeActions :id="t.id" scope="plans-once" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
+              @edit="editOnce(t)" @delete="deleteOnce(t)">
+              <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
+                <label class="shopping-check">
+                  <input type="checkbox" :checked="!!t.completedAt" :disabled="busy"
+                    @change="onceChange(t,{completed:!t.completedAt})"/>
+                  <span class="life-details"><b class="detail-name">{{ t.title }}</b>
+                    <small>一次性 · {{ t.dueOn||'未设置日期' }} · {{ t.remindEnabled===0?'不提醒':'可提醒' }}</small>
+                  </span>
+                </label>
+              </div>
+            </SwipeActions>
+            <form v-if="onceEditing?.id===t.id" class="life-form once-edit" @submit.prevent="saveOnce">
+              <label>名称<input v-model.trim="onceTitle" maxlength="150" required/></label>
+              <label>计划日期<input v-model="onceDate" type="date"/></label>
+              <label class="once-remind"><input v-model="onceRemind" type="checkbox"/> 开启提醒</label>
+              <div class="once-actions"><button type="button" class="life-light" @click="onceEditing=null">取消</button>
+                <button :disabled="busy">保存</button></div>
+            </form>
+          </template>
+          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">今天没有需要执行的定期任务</p>
           <template v-for="r in routines" :key="r.id">
             <SwipeActions :id="r.id" scope="today-routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -564,8 +585,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       </div>
       <div class="life-grid">
         <section v-if="planType==='all'||planType==='routine'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
-          <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
+          <p class="life-caption">一次性任务和重复任务都由上方「新增计划」创建。到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -577,31 +598,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
-          <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有设置定期任务':'暂无已归档的定期计划' }}</p>
+          <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addRoutine">
-            <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
-            <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
-            <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
-            <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
-              <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
-            </select>
-            <label>关联对象（可选）
-              <select v-model="routineSubject" aria-label="这项定期任务与谁有关">
-                <option value="">不关联任何人或宠物</option>
-                <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
-              </select></label>
-            <label v-if="routineSubjectIsPet">勾选完成后同步到宠物护理记录
-              <select v-model="routineHealthType" aria-label="完成任务后写入哪种护理记录">
-                <option value="">不自动记录</option><option value="other">日常护理</option>
-                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
-                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option>
-                <option value="vet">就诊</option>
-              </select></label>
-            <p class="life-caption">关联对象不会改变任务权限。关联宠物后，可选择完成时自动写入护理历史；同一天不会重复记录。</p>
-            <button :disabled="busy">＋ 添加定期任务</button>
-          </form>
+
         </section>
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
@@ -620,13 +620,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
           <button v-if="listCursors.wishes" class="life-more" type="button" :disabled="pageBusy.wishes"
             @click="loadMore('wishes')">加载更多心愿</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addWish">
-            <input v-model.trim="wishTitle" required placeholder="想实现什么心愿？"/>
-            <select v-model="wishType"><option value="trip">想去旅行</option><option value="purchase">想买东西</option><option value="activity">想体验</option><option value="other">其他</option></select>
-            <label>预估日元<input v-model.number="wishBudget" type="number" min="0"/></label>
-            <select v-model="wishVisibility"><option value="household">家庭共享</option><option value="private">仅自己</option></select>
-            <button :disabled="busy">＋ 记录心愿</button>
-          </form>
+
         </section>
         <section v-if="planType==='all'||planType==='goal'" class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
@@ -645,12 +639,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储蓄目标':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
             @click="loadMore('goals')">加载更多目标</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addGoal">
-            <input v-model.trim="goalTitle" required placeholder="目标名称"/>
-            <label>目标金额（日元）<input v-model.number="goalAmount" type="number" min="1" required/></label>
-            <label>目标日期<input v-model="goalTarget" type="date"/></label>
-            <button :disabled="busy">＋ 新建目标</button>
-          </form>
+
         </section>
         <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
@@ -675,9 +664,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
             @click="loadMore('shopping')">加载更多购物记录</button>
 
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addShopping">
-            <input v-model.trim="shoppingTitle" required placeholder="需要买些什么？"/>
-            <button :disabled="busy">＋ 添加购物</button></form>
+
         </section>
         <section v-if="planType==='all'||planType==='trip'" class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
