@@ -3,6 +3,7 @@ import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import FinancePanel from './FinancePanel.vue'
+import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
@@ -10,13 +11,19 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>}>()
-const emit=defineEmits<{editProfile:[id:string]}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
+const todayPlans=ref<Row[]>([])
+type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
+const planType=ref<PlanType>('all')
+const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
+const onceEditing=ref<Row|null>(null)
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref(''),routineHealthType=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
@@ -25,7 +32,7 @@ const shoppingTitle=ref('')
 const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
-const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId
+const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId||item.creatorUserId===props.userId
 const canEditBirthday=(item:Row)=>{
   if(item.source!=='profile_birthday')return false
   const profile=props.profiles.find(p=>p.id===item.subject_profile_id)
@@ -52,6 +59,49 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>('active')
+const oneTimePlans=computed(()=>(props.tasks||[])
+  .filter(t=>planScope.value==='active'?!t.completedAt:!!t.completedAt)
+  .filter(t=>{
+    if(!planYear.value||planScope.value!=='history')return true
+    const d=t.completedAt?jstDate(t.completedAt):t.dueOn||''
+    return d.startsWith(planYear.value+'-'+(planMonth.value||'')) || (!planMonth.value&&d.startsWith(planYear.value))
+  })
+  .slice(0,30))
+function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
+function toggleFinance(kind:'goal'|'trip',id:string){
+  financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
+}
+async function planCreated(kind:PlanType,id:string){
+  planType.value=kind
+  await fetchMode()
+  if(kind==='routine')emit('tasksChanged')
+  notify('计划已创建'+(kind==='wish'?'，如已选择储值目标则自动关联':''))
+}
+function editOnce(t:Row){
+  onceEditing.value=onceEditing.value?.id===t.id?null:t
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0
+}
+async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
+  await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
+  emit('tasksChanged')
+}
+async function saveOnce(){
+  const t=onceEditing.value
+  if(!t)return
+  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:t.visibility,
+    dueOn:onceDate.value||null,assigneeUserId:t.assigneeUserId||null,
+    subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
+    remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
+  if(!error.value)onceEditing.value=null
+}
+async function deleteOnce(t:Row){
+  if(!confirm('删除这项一次性计划吗？'))return
+  await onceChange(t,{},'DELETE')
+}
+watch(()=>props.focusPlanType,type=>{
+  if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+})
+
 const planYear=ref(''),planMonth=ref('')
 const memoryYear=ref(''),memoryMonth=ref('')
 const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
