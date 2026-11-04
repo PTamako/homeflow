@@ -14,7 +14,7 @@ async function discover(){
   try{
     const r=await fetch('/api/push/config',{credentials:'same-origin',cache:'no-store'})
     const data=await r.json()
-    if(!r.ok||!data.configured||!data.publicKey){message.value='推送配置尚未启用；应用内提醒仍可查看。';return}
+    if(!r.ok||!data.configured||!data.publicKey){message.value='推送还未设置 VAPID 密钥。可以直接用手机生成，无需电脑。';return}
     publicKey=data.publicKey
     available.value=true
     const registration=await navigator.serviceWorker.ready
@@ -61,11 +61,12 @@ onMounted(discover)
       <p>生日、纪念日、豆沙护理、到期待办。通知不会透露私人数据给其他家庭账号。</p></div>
     <button v-if="available" :disabled="busy" @click="enabled?disable():enable()">{{ enabled?'关闭本机推送':'开启锁屏通知' }}</button>
     <small v-if="message">{{ message }}</small>
+    <a v-if="!available" class="setup-link" href="/vapid-setup.html">📱 用 iPhone 配置推送密钥（无需电脑）</a>
   </section>
 </template>
 <style scoped>
 .push-card{background:#fff;border:1px solid #eeeae4;border-radius:17px;padding:16px 20px;margin:16px 0;display:grid;gap:10px}
 .push-card b{font-size:15px}.push-card p,.push-card small{font-size:12px;line-height:1.7;color:#7b8c81;margin:6px 0}
 .push-card button{background:#43866a;color:#fff;border:0;border-radius:10px;padding:10px 12px;font-size:13px;justify-self:start}
-.push-card button:disabled{opacity:.6}
+.push-card button:disabled{opacity:.6}.setup-link{color:#327f5d;font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 </style>
