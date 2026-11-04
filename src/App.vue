@@ -20,6 +20,7 @@ type Task={id:string;title:string;notes:string;visibility:'private'|'household';
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
+type GoalReview={id:string;kind:'goal';title:string;periodKey:string;dueOn:string;pendingCount:number;reviewType:'pending'|'due_today'|'due_soon';targetAmount:number}
 type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string;periodKey?:string;tripEnded?:boolean;ledgerEntryId?:string|null}
 type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
 const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
@@ -27,12 +28,13 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
 const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
+const goalReviews=ref<GoalReview[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
 const todayVisibleCount=ref(listPageSize)
@@ -287,6 +289,11 @@ async function loadTodayPlans(){
   try{
     const result=await api('/plans/today?date='+encodeURIComponent(date))
     if(date===tokyoToday()&&user.value){
+      goalReviews.value=(result.goalReviews||[]).filter((x:any)=>x.kind==='goal').map((x:any)=>({
+        id:String(x.id),kind:'goal' as const,title:String(x.title),periodKey:String(x.periodKey),
+        dueOn:String(x.dueOn),pendingCount:Number(x.pendingCount)||0,
+        reviewType:x.reviewType as GoalReview['reviewType'],targetAmount:Number(x.targetAmount)||0
+      }))
       todayPlans.value=(result.items||[]).filter(x=>['shopping','wish','goal','trip'].includes(String(x.kind))).
         map((x):TodayPlan=>({
           id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
@@ -459,9 +466,9 @@ onBeforeUnmount(()=>{
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <div v-if="authReady&&user" class="settings-anchor">
         <button class="settings-trigger" type="button" aria-controls="homeflow-settings" :aria-expanded="settingsOpen"
-          :aria-label="hasImportantReminders?'设置：今天有重要提醒':'设置'"
+          :aria-label="hasImportantReminders||goalReviews.length?'设置：今天有重要提醒':'设置'"
           @click="toggleSettings"><AppIcon name="settings" :size="20" /> 设置
-          <span v-if="hasImportantReminders" class="settings-alert-dot" aria-hidden="true"></span></button>
+          <span v-if="hasImportantReminders||goalReviews.length" class="settings-alert-dot" aria-hidden="true"></span></button>
         <div v-show="settingsOpen" id="homeflow-settings" class="settings-popover" role="dialog" aria-label="HomeFlow 设置">
           <div class="settings-title"><strong>设置</strong>
             <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
@@ -520,6 +527,21 @@ onBeforeUnmount(()=>{
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
+        <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
+          <div class="row-between"><b>重要提醒 · 储值计划</b><small>每期独立结算，不顺延旧月份</small></div>
+          <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
+            <AppIcon name="wallet" :size="20"/>
+            <div class="task-detail">
+              <b>{{ review.title }} · {{ review.pendingCount>1?review.pendingCount+' 期待核验':review.periodKey+(review.pendingCount?' 待核验':' 即将到期') }}</b>
+              <small>{{ review.reviewType==='pending'?'已截止，等待账目核验':review.reviewType==='due_today'?'本期今日截止':'即将到期' }}
+                · {{ review.dueOn }} · 目标 ¥{{ review.targetAmount.toLocaleString('ja-JP') }}</small>
+            </div>
+            <button type="button" class="text-button today-plan-link" @click="openPlans('goal',review.id,review.periodKey)">
+              {{ review.pendingCount?'去核验':'查看' }}
+            </button>
+          </div>
+          <p v-if="goalReviews.length>5" class="hint">还有 {{ goalReviews.length-5 }} 项储值提醒，可在计划中查看。</p>
+        </section>
         <div class="section-title"><h2>今日待办</h2><span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span></div>
         <section class="panel">
           <form class="task-form" @submit.prevent="addTask">
@@ -561,7 +583,7 @@ onBeforeUnmount(()=>{
               :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
               @click="todayCategory=category.id">{{ category.label }}</button>
           </div>
-          <p class="today-unified-hint">只显示今天到期及逾期未完成的事项，每次展示 5 条；购物、心愿会一直顺延至完成，储值按期分别确认。</p>
+          <p class="today-unified-hint">只显示今天到期及逾期未完成的事项，每次展示 5 条；购物、心愿会一直顺延至完成；储值截止后转入重要提醒与每期结算历史，不在今日待办中反复顺延。</p>
           <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"

@@ -1,7 +1,8 @@
 import {json,readBody,validDate,iso} from './security.js'
 import {goalPeriod} from './goal-period.js'
 import {verifiedGoalProgress} from './finance.js'
-import {earliestUnfinishedGoalPeriod,jstDayOf} from './today-periods.js'
+import {jstDayOf} from './today-periods.js'
+import {closedGoalPeriods,settleGoalPeriod} from './goal-settlements.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
 const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -31,6 +32,14 @@ async function completePlan(request,db,session,env){
     periodKey=body?.periodKey
     const window=goalPeriod(row,periodKey,today)
     if(!window||window.periodEnd>today)return json({error:'not_due'},409)
+  }
+  if(kind==='goal'&&(row.goal_mode||'once')!=='once'){
+    // Older clients may still call the former mark-complete endpoint.
+    // Route them through the same verified period settlement and never allow
+    // an unchecked acknowledgement to bypass the stored snapshot.
+    if(!body.completed)return json({error:'use_period_recheck'},409)
+    const result=await settleGoalPeriod(env,row,periodKey,today,true)
+    return json(result,result.ok?200:result.error==='not_due'?409:503)
   }
   const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
     WHERE household_id=?1 AND plan_type=?2 AND plan_id=?3 AND period_key=?4`)
@@ -126,9 +135,17 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
       ORDER BY start_on,id LIMIT 25`).bind(h,u,date),
     db.prepare(`SELECT plan_type,plan_id,period_key,completed_at FROM plan_completion_marks
       WHERE household_id=?1 AND (plan_type='goal' OR completed_at>=?2)
-      ORDER BY completed_at DESC LIMIT 5000`).bind(h,startOfDayUtc)
+      ORDER BY completed_at DESC LIMIT 5000`).bind(h,startOfDayUtc),
+    db.prepare(`SELECT goal_id,period_key,status FROM goal_period_settlements
+      WHERE household_id=?1 AND status IN ('met','shortfall') LIMIT 5000`).bind(h)
   ])
   const result=[]
+  const goalReviews=[]
+  const settledByGoal=new Map()
+  for(const record of batch[5]?.results||[]){
+    if(!settledByGoal.has(record.goal_id))settledByGoal.set(record.goal_id,new Set())
+    settledByGoal.get(record.goal_id).add(record.period_key)
+  }
   const add=(kind,row,done=false,periodKey)=>result.push({
     kind,id:row.id,title:row.title,dueOn:row.dueOn,
     done,overdue:row.dueOn<date&&!done,
@@ -160,12 +177,26 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
         add('goal',{...goal,dueOn:goal.target_on},false,'once')
       }
     }else{
-      const pending=earliestUnfinishedGoalPeriod(goal,date,new Set(marked.keys()))
-      if(pending)add('goal',{...goal,dueOn:pending.dueOn},false,pending.periodKey)
-      for(const [periodKey,completed] of marked){
-        if(jstDayOf(completed)!==date)continue
-        const window=goalPeriod(goal,periodKey,date)
-        if(window&&window.periodEnd<=date)add('goal',{...goal,dueOn:window.periodEnd},true,periodKey)
+      // Closed periods belong to settlement history; never carry them forward
+      // as ordinary overdue tasks. One summary per goal avoids duplicate rows.
+      const closed=closedGoalPeriods(goal,date,1200)
+      const settled=settledByGoal.get(goal.id)||new Set()
+      const pending=closed.filter(w=>!settled.has(w.periodKey)&&!marked.has(w.periodKey))
+      if(pending.length){
+        const oldest=pending[pending.length-1]
+        goalReviews.push({id:goal.id,kind:'goal',title:goal.title,
+          periodKey:oldest.periodKey,dueOn:oldest.periodEnd,
+          pendingCount:pending.length,reviewType:'pending',targetAmount:goal.target_amount})
+      }else{
+        const key=goal.goal_mode==='monthly'?date.slice(0,7):date.slice(0,4)
+        const current=goalPeriod(goal,key,date)
+        if(current&&current.start<=date&&current.periodEnd>=date){
+          const days=Math.round((Date.parse(current.periodEnd+'T00:00:00Z')-
+            Date.parse(date+'T00:00:00Z'))/86400000)
+          if(days<=3)goalReviews.push({id:goal.id,kind:'goal',title:goal.title,
+            periodKey:key,dueOn:current.periodEnd,pendingCount:0,
+            reviewType:days===0?'due_today':'due_soon',targetAmount:goal.target_amount})
+        }
       }
     }
   }
@@ -173,5 +204,7 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
     add('trip',{...row,dueOn:row.endOn&&row.endOn<date?row.endOn:row.dueOn})
   }
   result.sort((a,b)=>Number(a.done)-Number(b.done)||a.dueOn.localeCompare(b.dueOn))
-  return json({date,items:result.slice(0,100)})
+  goalReviews.sort((a,b)=>a.reviewType==='pending'&&b.reviewType!=='pending'?-1:
+    b.reviewType==='pending'&&a.reviewType!=='pending'?1:a.dueOn.localeCompare(b.dueOn))
+  return json({date,items:result.slice(0,100),goalReviews:goalReviews.slice(0,100)})
 }

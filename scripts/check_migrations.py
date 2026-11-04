@@ -24,6 +24,7 @@ MIGRATIONS=[
     "0017_shopping_partial_quantity.sql",
     "0018_shopping_created_index.sql",
     "0019_reminder_item_quiet_retry.sql",
+    "0020_goal_period_settlements.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -36,7 +37,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
@@ -50,12 +51,14 @@ secondary_indexes={
   "idx_tasks_request_id","idx_pet_health_routine_occurrence","idx_pet_health_source_task",
   "idx_shopping_due_active","idx_wishes_target_active","idx_goals_target_on",
   "idx_plan_completion_household_date","idx_shop_links_household",
-  "idx_reminder_snoozes_expiration","idx_shopping_household_created"
+  "idx_reminder_snoozes_expiration","idx_shopping_household_created",
+  "idx_goal_settlements_goal_period"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
 triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shopping",
-          "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link"}
+          "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link",
+           "invalidate_goal_settlement_adjustment_insert","invalidate_goal_settlement_adjustment_update"}
 existing_triggers={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
 assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existing_triggers}"
 added_columns={
@@ -91,6 +94,8 @@ assert "source_task_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_heal
 assert "remind_enabled" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
 assert "goal_mode" in {x[1] for x in db.execute("PRAGMA table_info(goals)")}
 assert "goal_period_adjustments" in tables
+assert {"period_key","status","target_amount","actual_amount","difference_amount"}.issubset(
+    {x[1] for x in db.execute("PRAGMA table_info(goal_period_settlements)")})
 assert {"plan_type","plan_id","period_key","completed_at"}.issubset(
     {x[1] for x in db.execute("PRAGMA table_info(plan_completion_marks)")})
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
