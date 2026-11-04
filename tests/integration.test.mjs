@@ -16,6 +16,7 @@ function makeDb() {
      const stmt=sqlite.prepare(sql)
      const args=[]
      return {
+       _sql:sql,
        bind(...values){args.splice(0,args.length,...values);return this},
        async first(){return stmt.get(...args)||null},
        async all(){return {results:stmt.all(...args)}},
@@ -29,10 +30,7 @@ function makeDb() {
        for (const st of statements){
          // SQLite SELECT / PRAGMA operations are read-only in this test adapter.
          if (/^\s*(SELECT|PRAGMA)/i.test(st._sql||''))results.push(await st.all())
-         else {
-           // D1 .batch() can return SELECT results, detect from stmt metadata instead.
-           try{results.push(await st.all())}catch{results.push(await st.run())}
-         }
+         else results.push(await st.run())
        }
        sqlite.exec('COMMIT')
      }catch(e){sqlite.exec('ROLLBACK');throw e}
