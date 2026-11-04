@@ -84,7 +84,8 @@ async function validLinks(db,table,data,session){
 async function view(db,table,session,detailId=null){
   const name=table==='shopping_items'?'shopping_items':table
   const {results}=await db.prepare('SELECT * FROM '+name+' WHERE household_id=?1 AND (visibility=?2 OR created_by=?3) '+
-    (detailId?'AND id=?4 ':'')+'ORDER BY created_at DESC LIMIT 200')
+    (detailId?'AND id=?4 ':'')+
+    (table==='shopping_items'?'ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,created_at DESC LIMIT 200':'ORDER BY created_at DESC LIMIT 200'))
     .bind(...(detailId?[session.household_id,'household',session.user_id,detailId]:[session.household_id,'household',session.user_id])).all()
   return results||[]
 }
