@@ -73,7 +73,13 @@ async function save(){
  try{
   const response=await fetch('/api/'+props.kind+'/'+encodeURIComponent(props.item.id),{
    method:'PATCH',headers:{'content-type':'application/json'},credentials:'same-origin',
-   body:JSON.stringify({...values(),expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null})})
+   body:JSON.stringify({...values(),expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null,
+    ...(['shopping','memories'].includes(props.kind)?{
+      expectedSnapshot:JSON.stringify((props.kind==='shopping'?
+        ['title','quantity','due_on','completed_at','ledger_entry_id']:
+        ['title','story','happened_on','visibility','linked_type','linked_id'])
+        .map(key=>data[key]??null))
+    }:{})})})
   const result=await response.json()
   if(!response.ok)throw Error(result.error==='forbidden'?'只能编辑自己创建的项目':result.error||'保存失败')
   emit('saved')
