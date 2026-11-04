@@ -1,18 +1,37 @@
 <script setup lang="ts">
-import {onMounted,ref} from 'vue'
+import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 const props=defineProps<{petId:string;name:string;userId:string}>()
 type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref(''),message=ref('')
 const editingId=ref<string|null>(null)
+const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
+const reading=ref(false)
+let readRevision=0
+const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
+const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
+function pageUrl(more=false){
+  const query=new URLSearchParams({limit:'6'})
+  if(year.value){query.set('year',year.value);if(month.value)query.set('month',month.value)}
+  if(more&&nextCursor.value)query.set('cursor',nextCursor.value)
+  return '/api/pets/'+props.petId+'/health?'+query
+}
 const names:Record<string,string>={weight:'体重',deworm:'驱虫',vaccination:'疫苗',vet:'看医生',medication:'用药',grooming:'梳毛/洗澡',other:'其他'}
-async function read(){
+async function read(more=false){
+ if(more&&reading.value)return
+ const revision=++readRevision
+ reading.value=true;error.value=''
+ const requestUrl=pageUrl(more)
  try{
-  const r=await fetch('/api/pets/'+props.petId+'/health',{credentials:'same-origin',cache:'no-store'})
+  const r=await fetch(requestUrl,{credentials:'same-origin',cache:'no-store'})
   if(!r.ok)throw Error('读取护理记录失败')
-  const data=await r.json();items.value=data.records||[]
+  const data=await r.json()
+  if(revision!==readRevision||requestUrl!==pageUrl(more))return
+  items.value=more?[...items.value,...(data.records||[])]:data.records||[]
+  nextCursor.value=data.nextCursor||null
  }catch(e){error.value=(e as Error).message}
+ finally{if(revision===readRevision)reading.value=false}
 }
 function editRecord(r:Health){
   editingId.value=r.id;kind.value=r.recordType;eventDate.value=r.eventOn
@@ -51,7 +70,9 @@ async function create(){
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
-onMounted(read)
+onMounted(()=>read())
+watch([year,month],()=>void read())
+watch(year,value=>{if(!value)month.value=''})
 </script>
 <template>
   <section class="pet-card">
@@ -70,7 +91,16 @@ onMounted(read)
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="message" class="ok" role="status">{{ message }}</p>
-    <div v-if="!items.length" class="empty">还没有护理记录，可以先记录一次体重或驱虫。</div>
+    <div class="pet-history-filter">
+      <label>年份<select v-model="year" aria-label="宠物护理记录年份">
+        <option value="">全部年份</option><option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
+      </select></label>
+      <label>月份<select v-model="month" :disabled="!year" aria-label="宠物护理记录月份">
+        <option value="">全年</option><option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
+      </select></label>
+    </div>
+    <p class="sub">默认显示最近 6 条。护理历史不会每天清空，可按年月查找。</p>
+    <div v-if="!items.length" class="empty">该时间范围内没有护理记录。</div>
     <div v-for="r in items" :key="r.id" class="record">
       <div><strong>{{ names[r.recordType]||'护理' }}</strong><span>{{ r.eventOn }}</span></div>
       <div v-if="r.createdBy===props.userId" class="record-actions">
@@ -81,6 +111,7 @@ onMounted(read)
       <p v-if="r.note">{{ r.note }}</p>
       <small v-if="r.nextDueOn">下次计划：{{ r.nextDueOn }}</small>
     </div>
+    <button v-if="nextCursor" type="button" class="pet-more" :disabled="reading" @click="read(true)">加载更多护理记录</button>
   </section>
 </template>
 <style scoped>
@@ -110,4 +141,11 @@ onMounted(read)
   .pet-card{padding:16px}
   .pet-form input[type="date"]{min-inline-size:0}
 }
+
+.pet-history-filter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:17px}
+.pet-history-filter label{display:grid;gap:5px;font-size:12px;color:#698172;min-width:0}
+.pet-history-filter select{width:100%;max-width:100%;min-width:0;min-height:40px;padding:8px;border:1px solid #d4e2d7;border-radius:9px;background:white;color:#304938}
+.pet-history-filter select:disabled{opacity:.5}
+.pet-more{display:block;margin:12px auto;border:1px solid #b6d4c0;background:#f5faf6;color:#397959;padding:9px 15px;border-radius:10px;font-size:12px}
+@media(max-width:420px){.pet-history-filter{gap:7px}}
 </style>

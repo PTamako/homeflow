@@ -34,8 +34,64 @@ const jstDate=(timestamp:string)=>{
  const time=Date.parse(iso)
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
-const visibleShopping=computed(()=>other.value.filter(x=>!x.completed_at||jstDate(x.completed_at)===displayedDay.value))
-const shoppingHistory=computed(()=>other.value.filter(x=>!!x.completed_at&&jstDate(x.completed_at)!==displayedDay.value))
+const planScope=ref<'active'|'history'>('active')
+const planYear=ref(''),planMonth=ref('')
+const memoryYear=ref(''),memoryMonth=ref('')
+const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
+const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
+const listCursors=ref<Record<string,string|null>>({})
+const pageBusy=ref<Record<string,boolean>>({})
+const pageLimit=6
+const anniversaryExpanded=ref(false)
+const anniversaryView=ref<'upcoming'|'past'>('upcoming')
+const anniversaryYear=ref(''),anniversaryMonth=ref('')
+const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
+  anniversaryExpanded.value?items.value:items.value.slice(0,5))
+const visibleShopping=computed(()=>other.value)
+
+function listPath(kind:string,cursor?:string|null){
+  const q=new URLSearchParams({limit:String(pageLimit)})
+  if(kind==='memories'){
+    if(memoryYear.value){q.set('year',memoryYear.value);if(memoryMonth.value)q.set('month',memoryMonth.value)}
+  }else if(kind==='anniversaries'){
+    q.set('scope','history')
+    if(anniversaryYear.value){
+      q.set('year',anniversaryYear.value)
+      if(anniversaryMonth.value)q.set('month',anniversaryMonth.value)
+    }
+  }else{
+    q.set('scope',planScope.value)
+    if(planScope.value==='history'&&planYear.value){
+      q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)
+    }
+  }
+  if(cursor)q.set('cursor',cursor)
+  return '/'+kind+'?'+q.toString()
+}
+function assignRows(kind:string,rows:Row[],append=false){
+  const target=kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
+    kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
+  target.value=append?[...target.value,...rows]:rows
+}
+async function loadMore(kind:string){
+  const cursor=listCursors.value[kind]
+  if(!cursor||pageBusy.value[kind])return
+  const endpoint=listPath(kind,cursor)
+  pageBusy.value[kind]=true
+  try{
+    const data=await api(endpoint)
+    // Ignore responses for a filter that changed while the request was running.
+    if(endpoint!==listPath(kind,cursor)||
+      (kind==='memories'&&props.mode!=='memories')||
+      (kind==='anniversaries'&&(props.mode!=='family'||anniversaryView.value!=='past'))||
+      (kind!=='memories'&&kind!=='anniversaries'&&props.mode!=='plans'))return
+    assignRows(kind,data.items||[],true)
+    listCursors.value[kind]=data.nextCursor||null
+    if(kind==='memories')await loadPhotos()
+  }catch(e){error.value=(e as Error).message}
+  finally{pageBusy.value[kind]=false}
+}
+
 function toggleLedger(id:string){ledgerPickerId.value=ledgerPickerId.value===id?null:id;editing.value=null}
 
 function countdown(date:string){
@@ -77,12 +133,28 @@ async function fetchMode(){
       const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
       routines.value=r.items||[];items.value=a.items||[]
     }else if(props.mode==='family'){
-      items.value=(await api('/anniversaries/upcoming')).items||[]
+      const past=anniversaryView.value==='past'
+      const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
+      const data=await api(path)
+      if(props.mode!=='family'||past!==(anniversaryView.value==='past')||
+        (past&&path!==listPath('anniversaries')))return
+      items.value=data.items||[]
+      listCursors.value.anniversaries=past?data.nextCursor||null:null
     }else if(props.mode==='plans'){
-      const [w,g,s,t,r]=await Promise.all([api('/wishes'),api('/goals'),api('/shopping'),api('/trips'),api('/routines')])
-      items.value=w.items||[];goals.value=g.items||[];other.value=s.items||[];trips.value=t.items||[];routines.value=r.items||[]
+      const kinds=['wishes','goals','shopping','trips','routines']
+      const paths=kinds.map(kind=>listPath(kind))
+      const pages=await Promise.all(paths.map(path=>api(path)))
+      if(props.mode!=='plans'||paths.some((path,i)=>path!==listPath(kinds[i])))return
+      kinds.forEach((kind,i)=>{
+        assignRows(kind,pages[i].items||[])
+        listCursors.value[kind]=pages[i].nextCursor||null
+      })
     }else if(props.mode==='memories'){
-      items.value=(await api('/memories')).items||[]
+      const path=listPath('memories')
+      const data=await api(path)
+      if(props.mode!=='memories'||path!==listPath('memories'))return
+      items.value=data.items||[]
+      listCursors.value.memories=data.nextCursor||null
       await loadPhotos()
     }
   }catch(e){error.value=(e as Error).message}
@@ -231,7 +303,7 @@ async function loadPhotos(){
       cloudPhotos.value[item.memoryId].push({id:item.id,uploadedBy:item.uploadedBy})
     }
   }catch{cloudEnabled.value=false}
-  for(const m of items.value.slice(0,30)){
+  for(const m of items.value){
     try{
       if(m.created_by!==props.userId)continue
       const list=await listLocalPhotos(props.userId,m.id)
@@ -247,6 +319,15 @@ onBeforeUnmount(()=>{
   document.removeEventListener('visibilitychange',refreshOnResume)
 })
 watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
+watch([planScope,planYear,planMonth],()=>{if(props.mode==='plans')void fetchMode()})
+watch([memoryYear,memoryMonth],()=>{if(props.mode==='memories')void fetchMode()})
+watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
+  anniversaryExpanded.value=false
+  if(props.mode==='family')void fetchMode()
+})
+watch(anniversaryYear,value=>{if(!value)anniversaryMonth.value=''})
+watch(planYear,value=>{if(!value)planMonth.value=''})
+watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </script>
 
 <template>
@@ -298,9 +379,26 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
     <template v-else-if="mode==='family'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
-        <p class="life-caption">家庭成员或宠物档案中填写的生日会自动显示、每年提醒，无需重复创建。这里可添加结婚纪念日或其他特殊日期。</p>
-        <template v-for="e in items" :key="e.id">
-          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn }}</small></div>
+        <p class="life-caption">档案生日会自动每年提醒。过去的一次性纪念日保存在历史中，可以按年月查询。</p>
+        <div class="archive-tabs" role="group" aria-label="重要日子筛选">
+          <button type="button" :class="{selected:anniversaryView==='upcoming'}"
+            :aria-pressed="anniversaryView==='upcoming'" @click="anniversaryView='upcoming'">即将到来</button>
+          <button type="button" :class="{selected:anniversaryView==='past'}"
+            :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
+        </div>
+        <div v-if="anniversaryView==='past'" class="archive-date-filters">
+          <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
+            <option value="">全部年份</option>
+            <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
+          </select></label>
+          <label>月份<select v-model="anniversaryMonth" :disabled="!anniversaryYear" aria-label="纪念日历史月份">
+            <option value="">全年</option>
+            <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
+          </select></label>
+        </div>
+        <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
+        <template v-for="e in upcomingAnniversaries" :key="e.id">
+          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn||e.event_date }}</small></div>
             <div v-if="canEdit(e)" class="detail-actions">
               <button type="button" class="life-link" @click="edit('anniversaries',e)">编辑</button>
               <button type="button" class="life-link life-danger" @click="removeItem('anniversaries',e)">删除</button>
@@ -309,6 +407,11 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
         </template>
+        <button v-if="anniversaryView==='upcoming'&&items.length>5" type="button" class="life-more" @click="anniversaryExpanded=!anniversaryExpanded">
+          {{ anniversaryExpanded?'收起重要日子':'查看全部重要日子（'+items.length+'）' }}
+        </button>
+        <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
+          :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <form class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
@@ -318,12 +421,34 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
     </template>
 
     <template v-else-if="mode==='plans'">
+      <div class="archive-toolbar">
+        <div class="archive-tabs" role="group" aria-label="计划记录筛选">
+          <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
+            @click="planScope='active'">进行中</button>
+          <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
+            @click="planScope='history'">已完成／历史</button>
+        </div>
+        <div v-if="planScope==='history'" class="archive-date-filters">
+          <label>年份
+            <select v-model="planYear" aria-label="历史记录年份"><option value="">全部年份</option>
+              <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
+            </select>
+          </label>
+          <label>月份
+            <select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份"><option value="">全年</option>
+              <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
+            </select>
+          </label>
+        </div>
+        <p v-if="planScope==='history'" class="life-caption">历史不会自动删除，可按年月查找。切回「进行中」就能继续管理未完成项目。</p>
+      </div>
       <div class="life-grid">
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
           <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
-            <div class="life-row"><div class="life-details"><b>{{ r.title }}</b><small>{{ routineLabel(r) }}</small></div>
+            <div class="life-row" :class="{'detail-completed':r.enabled===0}">
+              <div class="life-details"><b class="detail-name">{{ r.title }}</b><small>{{ r.enabled===0?'已停用':routineLabel(r) }}</small></div>
               <div v-if="canEdit(r)" class="detail-actions">
                 <button type="button" class="life-link" @click="edit('routines',r)">编辑</button>
                 <button type="button" class="life-link life-danger" @click="removeItem('routines',r)">删除</button>
@@ -332,8 +457,10 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
           </template>
-          <p v-if="!routines.length" class="life-empty">还没有设置定期任务</p>
-          <form class="life-form" @submit.prevent="addRoutine">
+          <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有设置定期任务':'暂无已归档的定期计划' }}</p>
+          <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
+            @click="loadMore('routines')">加载更多定期任务</button>
+          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addRoutine">
             <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
             <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
             <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
@@ -352,7 +479,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <template v-for="w in items" :key="w.id">
-            <div class="life-row" :class="{'detail-completed':w.status==='completed'}">
+            <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
               <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
               <div class="detail-actions">
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'" type="button" class="life-link" @click="convertWish(w)">计划</button>
@@ -363,7 +490,10 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
           </template>
-          <form class="life-form" @submit.prevent="addWish">
+          <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
+          <button v-if="listCursors.wishes" class="life-more" type="button" :disabled="pageBusy.wishes"
+            @click="loadMore('wishes')">加载更多心愿</button>
+          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addWish">
             <input v-model.trim="wishTitle" required placeholder="想实现什么心愿？"/>
             <select v-model="wishType"><option value="trip">想去旅行</option><option value="purchase">想买东西</option><option value="activity">想体验</option><option value="other">其他</option></select>
             <label>预估日元<input v-model.number="wishBudget" type="number" min="0"/></label>
@@ -386,7 +516,10 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
           </template>
-          <form class="life-form" @submit.prevent="addGoal">
+          <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储蓄目标':'暂无已完成的目标' }}</p>
+          <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
+            @click="loadMore('goals')">加载更多目标</button>
+          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addGoal">
             <input v-model.trim="goalTitle" required placeholder="目标名称"/>
             <label>目标金额（日元）<input v-model.number="goalAmount" type="number" min="1" required/></label>
             <label>目标日期<input v-model="goalTarget" type="date"/></label>
@@ -412,32 +545,18 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
               @saved="changed" @close="ledgerPickerId=null"/>
           </template>
-          <details v-if="shoppingHistory.length" class="shopping-history">
-            <summary>历史已完成购物（{{ shoppingHistory.length }}）</summary>
-            <template v-for="s in shoppingHistory" :key="s.id">
-              <div class="life-row detail-completed shopping-line">
-                <label class="shopping-check"><input type="checkbox" :checked="true" :disabled="busy" @change="toggleShopping(s)"/>
-                  <span class="detail-name">{{ s.title }}</span></label>
-                <div class="detail-actions">
-                  <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
-                  <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
-                  <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
-                </div>
-              </div>
-              <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
-                kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
-              <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
-                @saved="changed" @close="ledgerPickerId=null"/>
-            </template>
-          </details>
-          <form class="life-form" @submit.prevent="addShopping">
+          <p v-if="!visibleShopping.length" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
+          <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
+            @click="loadMore('shopping')">加载更多购物记录</button>
+
+          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addShopping">
             <input v-model.trim="shoppingTitle" required placeholder="需要买些什么？"/>
             <button :disabled="busy">＋ 添加购物</button></form>
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
-            <div class="life-row" :class="{'detail-completed':t.status==='completed'}">
+            <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
               <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                 <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
               <div class="detail-actions">
@@ -449,6 +568,9 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
           </template>
+          <p v-if="!trips.length" class="life-empty">{{ planScope==='active'?'暂无进行中的旅行':'暂无已结束的旅行' }}</p>
+          <button v-if="listCursors.trips" class="life-more" type="button" :disabled="pageBusy.trips"
+            @click="loadMore('trips')">加载更多旅行</button>
           <div v-if="tripDetail" class="trip-detail">
             <h3>{{ tripDetail.title }}</h3>
             <template v-if="tripDetail.plan">
@@ -534,7 +656,20 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
         </form>
       </section>
       <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
-        <p v-if="!items.length" class="life-empty">还没有回忆，先写下一件开心的小事。</p>
+        <div class="archive-date-filters">
+          <label>年份
+            <select v-model="memoryYear" aria-label="回忆年份"><option value="">全部年份</option>
+              <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
+            </select>
+          </label>
+          <label>月份
+            <select v-model="memoryMonth" :disabled="!memoryYear" aria-label="回忆月份"><option value="">全年</option>
+              <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
+            </select>
+          </label>
+        </div>
+        <p class="life-caption">默认只显示最近 6 条，切换年月可查询旧回忆，照片按当前显示的记录加载。</p>
+        <p v-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
         <article v-for="m in items" :key="m.id" class="memory">
           <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
           <div v-if="canEdit(m)" class="detail-actions">
@@ -558,6 +693,8 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
           </div>
           <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
         </article>
+        <button v-if="listCursors.memories" type="button" class="life-more" :disabled="pageBusy.memories"
+          @click="loadMore('memories')">加载更多回忆</button>
       </section>
     </template>
   </section>
@@ -610,4 +747,16 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 .anniversary-countdown time{font-size:12px;color:#85958b}
 @media(max-width:420px){.anniversary-countdown{max-width:45%}.upcoming-anniversary>b{max-width:55%;overflow-wrap:anywhere}}
 @media(max-width:720px){.life-grid{grid-template-columns:minmax(0,1fr)}}
+
+.archive-toolbar{background:#fff;border:1px solid #eeebe5;border-radius:16px;padding:13px;margin-bottom:16px}
+.archive-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:#f0f5ef;padding:4px;border-radius:12px;gap:4px}
+.archive-tabs button{min-height:39px;border:0;background:transparent;color:#748b7d;border-radius:9px;font-size:13px;font-weight:650}
+.archive-tabs button.selected{background:#43866a;color:white}
+.archive-date-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.archive-date-filters label{display:grid;gap:5px;font-size:12px;color:#6c8073;min-width:0}
+.archive-date-filters select{width:100%;max-width:100%;min-width:0;min-height:40px;border:1px solid #d9e5dc;border-radius:9px;padding:8px;font-size:13px;background:#fff;color:#344c3c}
+.archive-date-filters select:disabled{opacity:.5}
+.life-more{display:block;margin:14px auto 0;padding:9px 15px;min-height:40px;border:1px solid #b4d4be;background:#f6faf6;color:#397e59;border-radius:10px;font-size:12px;font-weight:650}
+.life-more:disabled{opacity:.6}
+@media(max-width:420px){.archive-date-filters{gap:8px}}
 </style>
