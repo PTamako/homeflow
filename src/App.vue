@@ -30,8 +30,9 @@ function tokyoDate(timestamp:string){
  const n=Date.parse(iso)
  return Number.isFinite(n)?new Date(n+9*3600000).toISOString().slice(0,10):''
 }
+const currentJstDay=ref(tokyoToday())
 const visibleTasks=computed(()=>tasks.value.filter(t=>{
- const now=tokyoToday()
+ const now=currentJstDay.value
  return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
    !t.dueOn||t.dueOn<=now
 }))
@@ -167,6 +168,14 @@ async function discardPending(id:string){
   if(user.value)pendingTasks.value=await listPending(user.value.id)
 }
 function onOnline(){if(user.value)void flushTasks()}
+function onForeground(){
+  if(document.visibilityState!=='visible')return
+  const d=tokyoToday()
+  if(d!==currentJstDay.value){
+    currentJstDay.value=d
+    if(user.value&&tab.value==='today')void loadTasks()
+  }
+}
 async function toggleTask(t:Task){
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
@@ -192,8 +201,16 @@ async function generateInvite(){
   catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{if(value==='today'&&user.value)loadTasks()})
-onMounted(async()=>{await refresh();window.addEventListener('online',onOnline);if(user.value&&navigator.onLine)void flushTasks()})
-onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
+onMounted(async()=>{
+  await refresh()
+  window.addEventListener('online',onOnline)
+  document.addEventListener('visibilitychange',onForeground)
+  if(user.value&&navigator.onLine)void flushTasks()
+})
+onBeforeUnmount(()=>{
+  window.removeEventListener('online',onOnline)
+  document.removeEventListener('visibilitychange',onForeground)
+})
 </script>
 
 <template>
