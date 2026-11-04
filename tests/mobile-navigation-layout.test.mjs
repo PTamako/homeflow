@@ -38,3 +38,19 @@ test('native mobile date fields and every main form constrain intrinsic width',(
   assert.ok(finance.includes('.fields{grid-template-columns:minmax(0,1fr)}'))
   assert.ok(life.includes('.life-form input[type="date"]{min-inline-size:0}'))
 })
+
+test('native date controls fit inside narrow cards across every form',()=>{
+  for(const type of ['date','datetime-local','month','time']){
+    assert.ok(css.includes('input[type="'+type+'"]'),type+' global sizing')
+  }
+  for(const declaration of ['inline-size:100%','min-inline-size:0','max-inline-size:100%','box-sizing:border-box']){
+    assert.ok(css.includes(declaration),declaration)
+  }
+  for(const container of ['.task-edit-form','.plan-fields','.detail-editor','.profile-editor-grid','.archive-date-filters','.ledger-dates']){
+    assert.ok(css.includes(container),container+' width containment')
+  }
+  assert.match(css,/::-webkit-date-and-time-value\s*\{[\s\S]*?min-inline-size:0/)
+  assert.match(css,/::-webkit-datetime-edit\s*\{[\s\S]*?min-inline-size:0/)
+  const shopping=readFileSync(new URL('../src/components/ShoppingLedgerPicker.vue',import.meta.url),'utf8')
+  assert.match(shopping,/@media\(max-width:600px\)\s*\{\.ledger-dates\s*\{grid-template-columns:minmax\(0,1fr\)/)
+})

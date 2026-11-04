@@ -130,5 +130,5 @@ onMounted(()=>{void check();void loadSettings()})
 .adjustment-breakdown{display:grid;gap:5px;font-size:12px;color:#607c6d}.adjustment-breakdown strong{font-size:15px;color:#264b3b}
 .shopping-adjustment small{font-size:11px;color:#718e7c}
 .ledger-error{color:#a14d37;font-size:12px}
-@media(max-width:420px){.ledger-dates{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.ledger-dates{grid-template-columns:minmax(0,1fr)}}
 </style>

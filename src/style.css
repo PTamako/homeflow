@@ -127,3 +127,38 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .today-unified-row .task-detail>div{overflow-wrap:anywhere}
 @media(max-width:480px){.today-unified-row{gap:7px}
   .today-plan-link{padding:6px 2px}.today-category-tabs button{padding:7px 10px}}
+
+/* All date/time fields, including nested plan editors and finance pickers.
+   Safari's native picker has an intrinsic width that can escape narrow grid cells. */
+:where(input[type="date"],input[type="datetime-local"],input[type="month"],input[type="time"]){
+  display:block;
+  inline-size:100%;
+  min-inline-size:0;
+  max-inline-size:100%;
+  box-sizing:border-box;
+}
+:where(input[type="date"],input[type="datetime-local"],input[type="month"],input[type="time"])::-webkit-date-and-time-value{
+  min-inline-size:0;
+  max-inline-size:100%;
+  text-align:start;
+}
+:where(input[type="date"],input[type="datetime-local"],input[type="month"],input[type="time"])::-webkit-datetime-edit{
+  min-inline-size:0;
+  max-inline-size:100%;
+}
+:where(input[type="date"],input[type="datetime-local"],input[type="month"],input[type="time"])::-webkit-calendar-picker-indicator{
+  flex-shrink:0;
+  margin-inline-start:0;
+}
+:is(.task-form,.task-edit-form,.profile-form,.auth-form,.life-form,.pet-form,.fields,
+    .plan-creator,.plan-fields,.detail-editor,.profile-editor-grid,.archive-date-filters,
+    .pet-history-filter,.ledger-dates,.shopping-ledger,.finance-card){
+  min-inline-size:0;
+  max-inline-size:100%;
+}
+:is(.task-form,.task-edit-form,.profile-form,.auth-form,.life-form,.pet-form,.fields,
+    .plan-fields,.detail-editor,.profile-editor-grid,.archive-date-filters,
+    .pet-history-filter,.ledger-dates) > label{
+  min-inline-size:0;
+  max-inline-size:100%;
+}
