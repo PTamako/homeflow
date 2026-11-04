@@ -72,6 +72,31 @@ test('bootstrap readiness distinguishes missing vs short keys without exposing t
  sqlite.close()
 })
 
+test('email login, Japanese nickname and specific registration errors',async()=>{
+  const {db,sqlite}=makeDb()
+  const secret='testing-bootstrap-secret-0123456789abcdef'
+  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:secret}
+  const register=(overrides={})=>send(env,'/api/auth/bootstrap','POST',{
+    loginName:'new.user+home@example.com',password:'my-long-password-123456',
+    displayName:'白ちゃん',householdName:'我们的小家',bootstrapSecret:secret,...overrides
+  })
+  assert.equal((await register({loginName:'bad@name'})).body.error,'invalid_login_name')
+  assert.equal((await register({password:'short'})).body.error,'invalid_password')
+  assert.equal((await register({displayName:'<script>'})).body.error,'invalid_display_name')
+  const created=await register()
+  assert.equal(created.status,201,JSON.stringify(created.body))
+  const session=extractCookie(created.cookie)
+  const me=await send(env,'/api/auth/me','GET',undefined,session)
+  assert.equal(me.body.user.loginName,'new.user+home@example.com')
+  const good=await send(env,'/api/auth/login','POST',
+    {loginName:'NEW.USER+HOME@EXAMPLE.COM',password:'my-long-password-123456'})
+  assert.equal(good.status,200,JSON.stringify(good.body))
+  const failed=await send(env,'/api/auth/login','POST',
+    {loginName:'new.user+home@example.com',password:'wrong-long-password-12345'})
+  assert.equal(failed.status,401)
+  sqlite.close()
+})
+
 test('end-to-end owner, one-use invitation, private/shared ACL and trip import',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-only-for-unit-test-123456789'}
