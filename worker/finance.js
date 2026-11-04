@@ -199,26 +199,59 @@ export async function financeRoute(request,env,path,session){
     const result={adjustmentAmount:saved?.adjustment_amount||0,
       periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null,
       openingAmount:kind==='goal'?item.reserved_amount||0:null,linkedAmount:null}
-    if(kind==='shopping'&&item.ledger_entry_id){
-      try{
-        const data=await ledger(env,{ids:String(item.ledger_entry_id)})
-        const entry=data.entries.find(x=>String(x.id)===String(item.ledger_entry_id))
-        result.linkedAmount=entry?.type==='expense'?entry.amount:null
-      }catch(error){return financeError(error)}
-    }
+    // The linked-entries endpoint handles every shopping receipt in one read.
     return json(result)
   }
+  const shopList=path.match(/^\/api\/finance\/shopping\/([0-9a-f-]{36})\/links$/i)
   const shop=path.match(/^\/api\/finance\/shopping\/([0-9a-f-]{36})\/link$/i)
-  if(shop&&(request.method==='POST'||request.method==='DELETE')){
-    // Owner may verify any household-shared shopping item. Private items
-    // created by other family members remain inaccessible.
+  if((shopList&&request.method==='GET')||
+     (shop&&(request.method==='POST'||request.method==='DELETE'))){
+    // Owner may see shared items but never a different member's private item.
+    const shoppingId=(shopList||shop)[1]
     const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2')
-      .bind(shop[1],h).first()
+      .bind(shoppingId,h).first()
     if(!item)return json({error:'not_found'},404)
     if(item.created_by!==user&&item.visibility!=='household')return json({error:'forbidden'},403)
+
+    if(shopList){
+      const {results}=await db.prepare(
+        'SELECT external_entry_id AS entryId,linked_at AS linkedAt FROM shopping_expense_links '+
+        'WHERE household_id=?1 AND shopping_id=?2 ORDER BY linked_at,external_entry_id LIMIT 50'
+      ).bind(h,item.id).all()
+      const rows=results||[]
+      try{
+        const data=rows.length?await ledger(env,{ids:rows.map(x=>x.entryId).join(',')}):{entries:[]}
+        const byId=new Map(data.entries.map(x=>[String(x.id),x]))
+        const links=rows.map(row=>{
+          const entry=byId.get(String(row.entryId))||null
+          return {...row,entry:entry?.type==='expense'?entry:null,
+            needsReview:!entry||entry.type!=='expense'}
+        })
+        return json({items:links,linkedAmount:links.reduce((sum,x)=>sum+Number(x.entry?.amount||0),0),
+          needsReview:links.some(x=>x.needsReview),readOnly:true})
+      }catch(error){return financeError(error)}
+    }
+
     if(request.method==='DELETE'){
-      await db.prepare("UPDATE shopping_items SET ledger_entry_id=NULL,completed_at=NULL,completed_by=NULL WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
-        .bind(item.id,h,user).run()
+      const body=await readBody(request)
+      const entryId=body?.entryId===undefined?null:String(body.entryId)
+      if(entryId!==null&&!/^[1-9]\d{0,11}$/.test(entryId))return json({error:'invalid_input'},400)
+      const statements=[
+        entryId===null?
+          db.prepare('DELETE FROM shopping_expense_links WHERE household_id=?1 AND shopping_id=?2').bind(h,item.id):
+          db.prepare('DELETE FROM shopping_expense_links WHERE household_id=?1 AND shopping_id=?2 AND external_entry_id=?3')
+            .bind(h,item.id,entryId),
+        db.prepare('UPDATE shopping_items SET '+
+          'ledger_entry_id=(SELECT external_entry_id FROM shopping_expense_links '+
+          'WHERE household_id=?1 AND shopping_id=?2 ORDER BY linked_at,external_entry_id LIMIT 1),'+
+          'completed_at=CASE WHEN EXISTS(SELECT 1 FROM shopping_expense_links '+
+          'WHERE household_id=?1 AND shopping_id=?2) THEN completed_at ELSE NULL END,'+
+          'completed_by=CASE WHEN EXISTS(SELECT 1 FROM shopping_expense_links '+
+          'WHERE household_id=?1 AND shopping_id=?2) THEN completed_by ELSE NULL END '+
+          "WHERE id=?2 AND household_id=?1 AND (visibility='household' OR created_by=?3)")
+          .bind(h,item.id,user)
+      ]
+      await db.batch(statements)
       return json({ok:true,unlinked:true})
     }
     const b=await readBody(request),entryId=String(b?.entryId??'')
@@ -227,8 +260,17 @@ export async function financeRoute(request,env,path,session){
       const found=await ledger(env,{ids:entryId})
       if(!found.entries.some(x=>String(x.id)===entryId&&x.type==='expense'))
         return json({error:'entry_not_found'},404)
-      await db.prepare("UPDATE shopping_items SET ledger_entry_id=?1,completed_at=?2,completed_by=?3 WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3)")
-        .bind(entryId,new Date().toISOString(),user,item.id,h).run()
+      await db.batch([
+        db.prepare('INSERT OR IGNORE INTO shopping_expense_links '+
+          '(household_id,shopping_id,external_entry_id,linked_by) VALUES(?1,?2,?3,?4)')
+          .bind(h,item.id,entryId,user),
+        db.prepare('UPDATE shopping_items SET '+
+          'ledger_entry_id=COALESCE(ledger_entry_id,?1),'+
+          'completed_at=COALESCE(completed_at,?2),'+
+          'completed_by=COALESCE(completed_by,?3) '+
+          "WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3)")
+          .bind(entryId,new Date().toISOString(),user,item.id,h)
+      ])
       return json({ok:true,linked:true,completed:true})
     }catch(error){return financeError(error)}
   }

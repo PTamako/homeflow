@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -370,6 +370,53 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  assert.equal(petUpdated.status,200)
  const petList=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
  assert.equal(petList.body.items.find(e=>e.id==='profile-birthday:'+pet.body.id)?.event_date,'2022-05-07')
+ sqlite.close()
+})
+
+test('shopping supports two verified receipts, partial unlink, and source deletion review',async()=>{
+ const {db,sqlite}=makeDb()
+ const {env,amount}=mockedProductionLedger(db,sqlite)
+ amount.expenses.push({id:124,date:'2026-11-04',type:'expense',amount:1400,merchant:'第二次购买'})
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'multi-shopping-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const item=await ask('/api/shopping','POST',{title:'分两次购买',quantity:2,visibility:'household'},owner)
+ assert.equal(item.status,201)
+ const link='/api/finance/shopping/'+item.body.id+'/link'
+ const list='/api/finance/shopping/'+item.body.id+'/links'
+ for(const entryId of [123,124]){
+   const connected=await ask(link,'POST',{entryId},owner)
+   assert.equal(connected.status,200,JSON.stringify(connected.body))
+ }
+ const linked=await ask(list,'GET',undefined,owner)
+ assert.equal(linked.status,200,JSON.stringify(linked.body))
+ assert.equal(linked.body.items.length,2)
+ assert.equal(linked.body.linkedAmount,4900)
+ assert.equal(linked.body.needsReview,false)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,2)
+ const repeated=await ask(link,'POST',{entryId:123},owner)
+ assert.equal(repeated.status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,2)
+ const snapshot=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(snapshot.status,200,JSON.stringify(snapshot.body))
+ assert.equal(snapshot.body.records.shoppingExpenseLinks.length,2)
+ const part=await ask(link,'DELETE',{entryId:123},owner)
+ assert.equal(part.status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,1)
+ assert.ok(sqlite.prepare('SELECT completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id).done)
+ amount.expenses.pop()
+ const review=await ask(list,'GET',undefined,owner)
+ assert.equal(review.status,200)
+ assert.equal(review.body.needsReview,true)
+ assert.equal(review.body.linkedAmount,0,'unavailable or refunded source is not counted as live expense')
+ const clear=await ask(link,'DELETE',undefined,owner)
+ assert.equal(clear.status,200)
+ const status=sqlite.prepare('SELECT ledger_entry_id AS entry,completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id)
+ assert.equal(status.entry,null)
+ assert.equal(status.done,null)
  sqlite.close()
 })
 
