@@ -6,12 +6,14 @@ function validated(body,session) {
   const assignee=body?.assigneeUserId||null
   const subject=body?.subjectProfileId||null
   const care=body?.healthRecordType
+  const reminder=body?.remindEnabled===undefined?null:body.remindEnabled
+  if(reminder!==null&&typeof reminder!=='boolean')return null
   if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
     !validDate(dueOn)|| (visibility==='private' && assignee && assignee!==session.user_id)) return null
   if(assignee && (typeof assignee!=='string'||assignee.length>60))return null
   if(subject && (typeof subject!=='string'||subject.length>60))return null
-  return {title,notes,visibility,dueOn:dueOn||null,assignee,subject,care}
+  return {title,notes,visibility,dueOn:dueOn||null,assignee,subject,care,reminder}
 }
 async function validateRefs(db,session,data) {
   if(data.assignee){
@@ -42,7 +44,7 @@ export async function tasksRoute(request,db,path,session) {
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
       subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
       completed_at AS completedAt,
-      completed_by AS completedBy,created_at AS createdAt,updated_at AS updatedAt
+      completed_by AS completedBy,remind_enabled AS remindEnabled,created_at AS createdAt,updated_at AS updatedAt
       FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
         AND (visibility='household' OR creator_user_id=?2)
         AND (?3='all' OR (?3='open' AND completed_at IS NULL)
@@ -60,9 +62,9 @@ export async function tasksRoute(request,db,path,session) {
     if(reqId && (typeof reqId!=='string'||!/^[0-9a-f-]{36}$/.test(reqId)))return json({error:'invalid_request_id'},400)
     const id=crypto.randomUUID()
     const result=await db.prepare(`INSERT OR IGNORE INTO tasks
-      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`)
-      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care).run()
+      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type,remind_enabled)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`)
+      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care,data.reminder===false?0:1).run()
     if(!result.meta?.changes && reqId){
       const found=await db.prepare('SELECT id FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND client_request_id=?3')
         .bind(household,who,reqId).first()
@@ -120,10 +122,10 @@ export async function tasksRoute(request,db,path,session) {
       return json({error:'task_edit_conflict',currentUpdatedAt:task.updated_at},409)
     const result=await db.prepare(`UPDATE tasks SET title=?1,notes=?2,visibility=?3,
       due_on=?4,assignee_user_id=?5,subject_profile_id=?6,
-      health_record_type=?7,updated_at=?8
-      WHERE id=?9 AND household_id=?10 AND creator_user_id=?11 AND deleted_at IS NULL
-        AND updated_at=?12`)
-      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,iso(),task.id,household,who,task.updated_at).run()
+      health_record_type=?7,remind_enabled=COALESCE(?8,remind_enabled),updated_at=?9
+      WHERE id=?10 AND household_id=?11 AND creator_user_id=?12 AND deleted_at IS NULL
+        AND updated_at=?13`)
+      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,data.reminder===null?null:data.reminder?1:0,iso(),task.id,household,who,task.updated_at).run()
     if(!result.meta?.changes)return json({error:'task_edit_conflict'},409)
     return json({ok:true})
   }
