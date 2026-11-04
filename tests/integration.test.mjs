@@ -54,6 +54,24 @@ async function send(env,path,method='GET',body,cookie,csrf=true){
 }
 function extractCookie(header) {return header?.split(';')[0]||''}
 
+test('bootstrap readiness distinguishes missing vs short keys without exposing their contents',async()=>{
+ const {db,sqlite}=makeDb()
+ const base={APP_ENV:'preview',DB:db}
+ for (const [secret,expected] of [[undefined,'missing'],['short-value','too_short'],['x'.repeat(32),null]]){
+   const env={...base,HOMEFLOW_BOOTSTRAP_SECRET:secret}
+   const result=await send(env,'/api/auth/bootstrap-status')
+   assert.equal(result.status,200)
+   assert.equal(result.body.bootstrapIssue,expected)
+   assert.equal(result.body.bootstrapAvailable,expected===null)
+   assert.equal(JSON.stringify(result.body).includes('short-value'),false)
+ }
+ const bad=await send({...base,HOMEFLOW_BOOTSTRAP_SECRET:'short-value'},'/api/auth/bootstrap','POST',{
+   loginName:'owner',password:'owner-passphrase-example-123',displayName:'Owner',bootstrapSecret:'short-value'})
+ assert.equal(bad.status,503)
+ assert.equal(bad.body.error,'bootstrap_secret_too_short')
+ sqlite.close()
+})
+
 test('end-to-end owner, one-use invitation, private/shared ACL and trip import',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-only-for-unit-test-123456789'}
