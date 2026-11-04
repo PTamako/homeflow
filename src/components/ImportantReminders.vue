@@ -13,6 +13,8 @@ const error=ref('')
 let requestId=0
 const visibleReminders=computed(()=>loadedDate.value===props.todayDate
  ? additionalReminders(items.value,props.todayEntryKeys) as Reminder[] : [])
+const pageSize=5,visibleCount=ref(pageSize)
+const shownReminders=computed(()=>visibleReminders.value.slice(0,visibleCount.value))
 
 async function load(){
  const current=++requestId
@@ -44,7 +46,7 @@ function refreshIfStale(){
  if(!loading.value&&Date.now()-lastLoadedAt.value>15*60*1000)void load()
 }
 defineExpose({refreshIfStale})
-watch(()=>props.todayDate,()=>{void load()},{immediate:true})
+watch(()=>props.todayDate,()=>{visibleCount.value=pageSize;void load()},{immediate:true})
 watch([visibleReminders,loading,error],([rows,isLoading,loadError])=>{
  emit('presenceChange',!isLoading&&!loadError&&rows.length>0)
 },{immediate:true})
@@ -63,10 +65,12 @@ onBeforeUnmount(()=>{requestId++})
       <button type="button" class="text-button" @click="load">重试</button>
     </template>
     <p v-else-if="!visibleReminders.length" class="reminder-status">今天没有额外的重要提醒。</p>
-    <div v-else v-for="item in visibleReminders" :key="item.kind+':'+item.id" class="reminder-item">
+    <div v-else v-for="item in shownReminders" :key="item.kind+':'+item.id" class="reminder-item">
       <span>{{ item.title }}</span>
       <small>{{ item.dueOn }}</small>
     </div>
+    <button v-if="!loading&&!error&&visibleReminders.length>shownReminders.length" type="button"
+      class="text-button" @click="visibleCount+=pageSize">加载更多重要提醒（每次 5 条）</button>
   </section>
 </template>
 
