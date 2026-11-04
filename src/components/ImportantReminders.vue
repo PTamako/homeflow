@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {computed,ref,watch,onBeforeUnmount} from 'vue'
 import AppIcon from './AppIcon.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 import {additionalReminders} from '../today-presentation.mjs'
 
 type Reminder={id:string;kind:string;title:string;dueOn:string}
@@ -10,6 +12,8 @@ const items=ref<Reminder[]>([])
 const lastLoadedAt=ref(0),loadedDate=ref('')
 const loading=ref(false)
 const error=ref('')
+const snoozeError=ref(''),snoozing=ref(false)
+const {toast,notify}=usePageToast()
 let requestId=0
 const visibleReminders=computed(()=>loadedDate.value===props.todayDate
  ? additionalReminders(items.value,props.todayEntryKeys) as Reminder[] : [])
@@ -41,6 +45,22 @@ async function load(){
   }
  }
 }
+async function snooze(item:Reminder){
+ if(snoozing.value)return
+ snoozing.value=true;snoozeError.value=''
+ try{
+  const response=await fetch('/api/reminders/snooze',{
+   method:'POST',credentials:'same-origin',
+   headers:{'content-type':'application/json'},
+   body:JSON.stringify({kind:item.kind,id:item.id,untilOn:props.todayDate})
+  })
+  if(!response.ok)throw Error('稍后提醒保存失败，请重试')
+  // The same in-memory list drives both reminders and Settings badge.
+  items.value=items.value.filter(x=>x.kind!==item.kind||x.id!==item.id)
+  notify('已设置明天再提醒')
+ }catch(e){snoozeError.value=(e as Error).message}
+ finally{snoozing.value=false}
+}
 // The badge and menu consume the same in-memory result: no second D1 read.
 function refreshIfStale(){
  if(!loading.value&&Date.now()-lastLoadedAt.value>15*60*1000)void load()
@@ -68,7 +88,11 @@ onBeforeUnmount(()=>{requestId++})
     <div v-else v-for="item in shownReminders" :key="item.kind+':'+item.id" class="reminder-item">
       <span>{{ item.title }}</span>
       <small>{{ item.dueOn }}</small>
+      <button class="snooze-button" type="button" :disabled="snoozing"
+        @click="snooze(item)">明天再提醒</button>
     </div>
+    <p v-if="snoozeError" class="reminder-error" role="alert">{{ snoozeError }}</p>
+    <PageToast :toast="toast" />
     <button v-if="!loading&&!error&&visibleReminders.length>shownReminders.length" type="button"
       class="text-button" @click="visibleCount+=pageSize">加载更多重要提醒（每次 5 条）</button>
   </section>
@@ -84,7 +108,10 @@ onBeforeUnmount(()=>{requestId++})
   padding:11px 0;border-top:1px solid #e9eee9;min-width:0}
 .reminder-item span{overflow-wrap:anywhere;min-width:0}
 .reminder-item small{flex:none;color:#6c8073}
+.snooze-button{font-size:11px;white-space:nowrap;background:#edf4ee;color:#3d7b5d;
+  border:1px solid #d8e7da;border-radius:8px;padding:6px 8px}
+.snooze-button:disabled{opacity:.5}
 .reminder-status{font-size:13px;color:#71867a;margin:8px 0 2px}
 .reminder-error{font-size:13px;color:#a45b4c}
-@media(max-width:400px){.reminder-item{align-items:flex-start;flex-wrap:wrap}.reminder-item small{margin-left:auto}}
+@media(max-width:400px){.reminder-item{align-items:flex-start;flex-wrap:wrap}.reminder-item small{margin-left:auto}.snooze-button{margin-left:auto}}
 </style>
