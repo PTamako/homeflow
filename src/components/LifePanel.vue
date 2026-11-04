@@ -632,7 +632,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <details class="life-card plan-recap">
-        <summary><AppIcon name="chart-no-axes-column" :size="18" /> 月度计划回顾（按需生成）</summary>
+        <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
         <p class="life-caption">只在点击生成时读取当月完成记录，不额外查询家計簿，也不会在后台每天写入统计。</p>
         <div class="plan-recap-controls">
           <label>年份<select v-model="recapYear" aria-label="回顾年份">
