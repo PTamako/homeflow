@@ -9,6 +9,12 @@ const nextCursor=ref<string|null>(null),busy=ref(false),error=ref(''),message=re
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
+const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
+const actualWithAdjustment=computed(()=>total.value+Number(adjustment.value||0))
+const goalTotal=computed(()=>opening.value+net.value+Number(adjustment.value||0))
+const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(selected.value?.target_amount||1)*100)))
+const signed=(amount:number)=>(amount<0?'−':amount>0?'+':'')+'¥'+Math.abs(Number(amount||0)).toLocaleString('ja-JP')
+
 const fmt=(amount:number)=>'¥'+Number(amount||0).toLocaleString('ja-JP')
 const dateYmd=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 function defaultDates(){
