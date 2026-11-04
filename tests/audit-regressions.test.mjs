@@ -17,7 +17,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql',
   '0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_finance_target_settings.sql',
   '0009_routine_pet_care.sql','0010_task_pet_care.sql','0011_unified_plan_hub.sql',
-  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql']
+  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
