@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 type Profile={
@@ -50,10 +51,10 @@ async function save(){
         <input v-model="form.displayName" required maxlength="60" placeholder="姓名或昵称"/>
       </label>
       <label>生日
-        <input v-model="form.birthday" type="date"/>
+        <DateField v-model="form.birthday" />
       </label>
       <label v-if="profile.type==='pet'">到家日
-        <input v-model="form.adoptedOn" type="date"/>
+        <DateField v-model="form.adoptedOn" />
       </label>
       <label v-if="profile.type==='person'">关系（可选）
         <input v-model="form.relation" maxlength="40" placeholder="例如：自己、伴侣"/>
