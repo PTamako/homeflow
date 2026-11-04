@@ -4,18 +4,76 @@ import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 const stringDate=d=>typeof d==='string'&&d.length===10&&validDate(d)
 const addDays=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
 const validLead=n=>[0,1,3,7].includes(n)
+const validHour=n=>Number.isInteger(n)&&n>=0&&n<=23
+const itemIdOk=x=>typeof x==='string'&&x.length>0&&x.length<=200&&!/[\x00-\x1f]/.test(x)
+const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
+const priorityOk=x=>['normal','important'].includes(x)
 export async function remindersRoute(request,db,session) {
   const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
   const url=new URL(request.url)
   if(url.pathname==='/api/reminders/preferences'){
     if(request.method!=='PUT')return json({error:'method_not_allowed'},405)
     const body=await readBody(request)
-    if(!validLead(body?.advanceDays))return json({error:'invalid_input'},400)
-    await db.prepare('INSERT INTO reminder_preferences (household_id,user_id,advance_days) VALUES(?1,?2,?3) '+
+    const hasQuiet=Object.hasOwn(body||{},'quietStartHour')||Object.hasOwn(body||{},'quietEndHour')
+    const quietStart=body?.quietStartHour??null,quietEnd=body?.quietEndHour??null
+    if(!validLead(body?.advanceDays)||
+      (hasQuiet&&!((quietStart===null&&quietEnd===null)||
+        (validHour(quietStart)&&validHour(quietEnd)&&quietStart!==quietEnd)))||
+      (hasQuiet&&(!Object.hasOwn(body,'quietStartHour')||!Object.hasOwn(body,'quietEndHour'))))
+      return json({error:'invalid_input'},400)
+    await db.prepare('INSERT INTO reminder_preferences '+
+      '(household_id,user_id,advance_days,quiet_start_hour,quiet_end_hour) VALUES(?1,?2,?3,?4,?5) '+
       'ON CONFLICT(household_id,user_id) DO UPDATE SET '+
-      'advance_days=excluded.advance_days,updated_at=CURRENT_TIMESTAMP')
-      .bind(session.household_id,session.user_id,body.advanceDays).run()
-    return json({ok:true,advanceDays:body.advanceDays})
+      'advance_days=excluded.advance_days,'+
+      'quiet_start_hour=CASE WHEN ?6=1 THEN excluded.quiet_start_hour ELSE reminder_preferences.quiet_start_hour END,'+
+      'quiet_end_hour=CASE WHEN ?6=1 THEN excluded.quiet_end_hour ELSE reminder_preferences.quiet_end_hour END,'+
+      'updated_at=CURRENT_TIMESTAMP')
+      .bind(session.household_id,session.user_id,body.advanceDays,quietStart,quietEnd,hasQuiet?1:0).run()
+    return json({ok:true,advanceDays:body.advanceDays,
+      ...(hasQuiet?{quietStartHour:quietStart,quietEndHour:quietEnd}:{})})
+  }
+  if(url.pathname==='/api/reminders/item'){
+    if(!['PUT','DELETE'].includes(request.method))return json({error:'method_not_allowed'},405)
+    const body=await readBody(request),kind=body?.kind,id=body?.id
+    if(!['task','routine','trip'].includes(kind)||!itemIdOk(id)||
+      (request.method==='PUT'&&(!validLead(body?.advanceDays)||!priorityOk(body?.priority))))
+      return json({error:'invalid_input'},400)
+    const hid=session.household_id,u=session.user_id
+    let allowed=false
+    if(kind==='task'){
+      allowed=!!await db.prepare("SELECT id FROM tasks WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR creator_user_id=?3)")
+        .bind(id,hid,u).first()
+    }else if(kind==='routine'){
+      allowed=!!await db.prepare("SELECT id FROM routines WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+        .bind(id,hid,u).first()
+    }else{
+      const cut=id.indexOf(':'),tripId=id.slice(0,cut),externalId=id.slice(cut+1)
+      if(cut>0&&idOk(tripId)&&externalId){
+        const trip=await db.prepare("SELECT created_by,plan_json FROM trips WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+          .bind(tripId,hid,u).first()
+        if(trip){
+          try{
+            const plan=JSON.parse(trip.plan_json||'{}')?.trip
+            const candidates=[...(plan?.tasks||[]),...(plan?.reminders||[]),
+              ...(plan?.days||[]).flatMap(d=>d.items||[])]
+            allowed=candidates.some(x=>x.externalId===externalId&&
+              (trip.created_by===u||x.visibility==='household'))
+          }catch{}
+        }
+      }
+    }
+    if(!allowed)return json({error:'not_found'},404)
+    if(request.method==='DELETE'){
+      await db.prepare('DELETE FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 AND kind=?3 AND item_id=?4')
+        .bind(hid,u,kind,id).run()
+      return json({ok:true,reset:true})
+    }
+    await db.prepare('INSERT INTO reminder_item_preferences (household_id,user_id,kind,item_id,advance_days,priority) '+
+      'VALUES(?1,?2,?3,?4,?5,?6) '+
+      'ON CONFLICT(household_id,user_id,kind,item_id) DO UPDATE SET '+
+      'advance_days=excluded.advance_days,priority=excluded.priority,updated_at=CURRENT_TIMESTAMP')
+      .bind(hid,u,kind,id,body.advanceDays,body.priority).run()
+    return json({ok:true,kind,id,advanceDays:body.advanceDays,priority:body.priority})
   }
   if(url.pathname==='/api/reminders/snooze'){
     if(!['POST','DELETE'].includes(request.method))return json({error:'method_not_allowed'},405)
@@ -44,7 +102,7 @@ export async function remindersRoute(request,db,session) {
   const date=url.searchParams.get('date')||today
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
-  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference]=await db.batch([
+  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.completed_at,m.skipped_at FROM routine_marks m
@@ -64,9 +122,16 @@ export async function remindersRoute(request,db,session) {
     db.prepare(BIRTHDAY_PROFILES_SQL).bind(hid),
     db.prepare('SELECT kind,item_id,until_on FROM reminder_snoozes WHERE household_id=?1 AND user_id=?2 AND until_on>=?3 LIMIT 500')
       .bind(hid,u,date),
-    db.prepare('SELECT advance_days FROM reminder_preferences WHERE household_id=?1 AND user_id=?2').bind(hid,u)
+    db.prepare('SELECT advance_days,quiet_start_hour,quiet_end_hour FROM reminder_preferences WHERE household_id=?1 AND user_id=?2').bind(hid,u),
+    db.prepare('SELECT kind,item_id,advance_days,priority FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 LIMIT 500').bind(hid,u)
   ])
   const leadDays=validLead(preference.results?.[0]?.advance_days)?preference.results[0].advance_days:0
+  const overrides=new Map((itemPrefs.results||[]).map(x=>[x.kind+':'+x.item_id,x]))
+  const forItem=(kind,id)=>{
+    const found=overrides.get(kind+':'+id)
+    return {days:validLead(found?.advance_days)?found.advance_days:leadDays,
+      priority:priorityOk(found?.priority)?found.priority:'normal'}
+  }
   const announcements=[]
   for(const e of mergeProfileBirthdays(events.results,birthdayProfiles.results)){
     const next=nextAnniversary(e.event_date,e.repeat_mode,date)
@@ -79,18 +144,20 @@ export async function remindersRoute(request,db,session) {
   const completed=new Set((marks.results||[]).filter(x=>x.completed_at||x.skipped_at).map(x=>x.routine_id))
   for(const r of rules.results||[]){
     try{
+      const opts=forItem('routine',r.id)
       if(dueOn(r,date)){
-        if(!completed.has(r.id))announcements.push({kind:'routine',id:r.id,title:r.title,dueOn:date})
-      }else if(leadDays>0&&dueOn(r,addDays(date,leadDays))){
+        if(!completed.has(r.id))announcements.push({kind:'routine',id:r.id,title:r.title,dueOn:date,priority:opts.priority})
+      }else if(opts.days>0&&dueOn(r,addDays(date,opts.days))){
         announcements.push({kind:'routine',id:r.id,title:r.title,
-          dueOn:addDays(date,leadDays),daysBefore:leadDays})
+          dueOn:addDays(date,opts.days),daysBefore:opts.days,priority:opts.priority})
       }
     }catch{}
   }
   for(const t of tasks.results||[]){
     const ahead=daysBetween(date,t.due_on)
-    if(ahead<=0||ahead===leadDays)
-      announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on,
+    const opts=forItem('task',t.id)
+    if(ahead<=0||ahead===opts.days)
+      announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on,priority:opts.priority,
         ...(ahead>0?{daysBefore:ahead}:{})})
   }
   const finished=new Set((tripProgress.results||[]).map(r=>r.trip_id+':'+r.item_id))
@@ -110,8 +177,10 @@ export async function remindersRoute(request,db,session) {
       if(trip.created_by!==u && task.visibility!=='household')continue
       if(task.dueDate&&!finished.has(trip.id+':'+task.externalId)){
         const ahead=daysBetween(date,task.dueDate)
-        if(ahead<=0||ahead===leadDays)
-          announcements.push({kind:'trip',id:trip.id+':'+task.externalId,
+        const itemId=trip.id+':'+task.externalId
+        const opts=forItem('trip',itemId)
+        if(ahead<=0||ahead===opts.days)
+          announcements.push({kind:'trip',id:itemId,priority:opts.priority,
             title:trip.title+' · '+task.title,dueOn:task.dueDate,
             ...(ahead>0?{daysBefore:ahead}:{})})
       }
@@ -127,7 +196,11 @@ export async function remindersRoute(request,db,session) {
     }
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
+  const pref=preference.results?.[0]||{}
   return json({date,advanceDays:leadDays,
+    quietHours:{start:pref.quiet_start_hour??null,end:pref.quiet_end_hour??null},
+    itemPreferences:(itemPrefs.results||[]).map(x=>({kind:x.kind,id:x.item_id,
+      advanceDays:x.advance_days,priority:x.priority})),
     snoozed:(snoozes.results||[]).map(x=>({kind:x.kind,id:x.item_id,untilOn:x.until_on})),
     items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id))})
 }
