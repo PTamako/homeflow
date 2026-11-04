@@ -82,19 +82,21 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
   return [
    {results:[{id:'shop',title:'猫粮',dueOn:'2026-11-04'}]},
    {results:[{id:'wish',title:'电脑',dueOn:'2026-11-03'}]},
-   {results:[{id:'goal',title:'储值',dueOn:'2026-11-04'}]},
-   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-01',destination:'上海'}]}
+   {results:[{id:'goal',title:'储值',goal_mode:'once',target_on:'2026-11-04',target_amount:10000,reserved_amount:0}]},
+   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-01',destination:'上海'}]},
+   {results:[]}
   ]
  }
  const r=await todayPlansRoute(url('/api/plans/today?date=2026-11-04'),db,owner)
  assert.equal(r.status,200)
  const result=await r.json()
  assert.equal(result.items.length,4)
- assert.deepEqual(result.items.map(x=>x.kind),['shopping','wish','goal','trip'])
- assert.equal(result.items[1].overdue,true)
+ assert.deepEqual(new Set(result.items.map(x=>x.kind)),new Set(['shopping','wish','goal','trip']))
+ assert.equal(result.items.find(x=>x.kind==='wish').overdue,true)
  assert.equal(db.batches.length,1)
- assert.equal(db.batches[0].length,4)
- assert.ok(db.batches[0].every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
+ assert.equal(db.batches[0].length,5)
+ assert.ok(db.batches[0].slice(0,4).every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
+ assert.equal(db.batches[0][4].values[0],'family')
  assert.ok(db.batches[0].every(q=>!q.sql.includes('finance')&&!q.sql.includes('ledger')))
 })
 test('invalid Today date never queries D1',async()=>{
@@ -119,14 +121,14 @@ test('dated purchases completed today remain visible only for that Tokyo day',as
      {results:[{id:'done',title:'猫粮',dueOn:'2026-11-03',
        completedAt:'2026-11-04T06:00:00.000Z'},
        {id:'open',title:'洗衣液',dueOn:'2026-11-04',completedAt:null}]},
-     {results:[]},{results:[]},{results:[]}
+     {results:[]},{results:[]},{results:[]},{results:[]}
    ]
  }
  const response=await todayPlansRoute(url('/api/plans/today?date=2026-11-04'),db,owner)
  assert.equal(response.status,200)
  const x=(await response.json()).items
- assert.deepEqual(x.map(v=>v.done),[true,false])
- assert.equal(x[0].overdue,false)
+ assert.deepEqual(x.map(v=>v.done),[false,true])
+ assert.equal(x.find(v=>v.id==='done').overdue,false)
  assert.ok(db.batches[0][0].sql.includes('completed_at>=?4'))
  assert.ok(db.batches[0][0].values[3].startsWith('2026-11-03T15:00:00'))
 })
