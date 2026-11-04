@@ -18,7 +18,6 @@ watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
-const todayPlans=ref<Row[]>([])
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
@@ -206,8 +205,8 @@ async function fetchMode(){
   try{
     if(props.mode==='today'){
       lastTodayValue=today()
-      const [upcoming,p]=await Promise.all([api('/anniversaries/upcoming'),api('/plans/today')])
-      items.value=upcoming.items||[];todayPlans.value=p.items||[]
+      const upcoming=await api('/anniversaries/upcoming')
+      items.value=upcoming.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
       const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
@@ -439,26 +438,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <strong>{{ countdown(e.nextOn) }}</strong>
               <time :datetime="e.nextOn">{{ e.nextOn }}</time>
             </div>
-          </div>
-        </section>
-        <section class="life-card">
-          <h2 class="life-heading"><AppIcon name="clipboard-check" :size="21" /> 今天的其他计划</h2>
-          <p class="life-caption">今天到期的购物、心愿、储值目标以及进行中的旅行会出现在这里。过期未完成的计划会顺延，已完成的不重复显示。</p>
-          <p v-if="!todayPlans.length" class="life-empty">其他计划今天没有待处理项目。</p>
-          <div v-for="p in todayPlans" :key="p.kind+'-'+p.id" class="life-row today-plan-row">
-            <label v-if="p.kind==='shopping'" class="today-routine-label">
-              <input type="checkbox" :disabled="busy" @change="toggleShopping(p)"/>
-              <span class="life-details"><b>{{ p.title }}</b>
-                <small>{{ p.overdue?'逾期未完成 · 顺延':'今日购买计划' }} · {{ p.dueOn }}</small>
-              </span>
-            </label>
-            <div v-else class="life-details">
-              <b>{{ p.title }}</b>
-              <small>{{ p.kind==='wish'?'心愿':p.kind==='goal'?'储值':'旅行' }}
-                · {{ p.overdue&&p.kind!=='trip'?'逾期未完成 · 顺延':'属于今天的计划' }}
-                · {{ p.dueOn }}</small>
-            </div>
-            <button type="button" class="life-link" @click="emit('openPlans',p.kind)">查看计划</button>
           </div>
         </section>
     </template>
@@ -793,7 +772,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .once-remind{display:flex!important;align-items:center;gap:9px}
 .once-remind input{width:18px!important;min-height:18px!important}
 .once-actions{display:flex;gap:8px}.once-actions button{flex:1}
-.today-plan-row{gap:10px}.today-plan-row .life-details{flex:1;min-width:0}
 @media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
