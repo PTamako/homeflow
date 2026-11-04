@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
@@ -480,7 +481,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <form class="life-form" @submit.prevent="addAnniversary">
-          <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>
+          <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><DateField v-model="eventDate" required />
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
           <button :disabled="busy">添加纪念日</button>
         </form>
@@ -712,7 +713,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <h2 class="life-heading"><AppIcon name="book-heart" :size="21" /> 留下一段美好的回忆</h2>
         <form class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
-          <label>发生日期<input v-model="memoryDate" required type="date"/></label>
+          <label>发生日期<DateField v-model="memoryDate" required /></label>
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
           <label>可选照片（仅存本机）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
