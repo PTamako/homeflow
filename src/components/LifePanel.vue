@@ -3,6 +3,7 @@ import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import FinancePanel from './FinancePanel.vue'
+import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
@@ -10,13 +11,19 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>}>()
-const emit=defineEmits<{editProfile:[id:string]}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
+const todayPlans=ref<Row[]>([])
+type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
+const planType=ref<PlanType>('all')
+const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
+const onceEditing=ref<Row|null>(null)
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref(''),routineHealthType=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
@@ -25,7 +32,7 @@ const shoppingTitle=ref('')
 const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
-const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId
+const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId||item.creatorUserId===props.userId
 const canEditBirthday=(item:Row)=>{
   if(item.source!=='profile_birthday')return false
   const profile=props.profiles.find(p=>p.id===item.subject_profile_id)
@@ -52,6 +59,48 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>('active')
+const oneTimePlans=computed(()=>(props.tasks||[])
+  .filter(t=>planScope.value==='active'?!t.completedAt:!!t.completedAt)
+  .filter(t=>{
+    if(!planYear.value||planScope.value!=='history')return true
+    const d=t.completedAt?jstDate(t.completedAt):t.dueOn||''
+    return d.startsWith(planYear.value+'-'+(planMonth.value||'')) || (!planMonth.value&&d.startsWith(planYear.value))
+  })
+  .slice(0,30))
+function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
+function toggleFinance(kind:'goal'|'trip',id:string){
+  financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
+}
+async function planCreated(kind:PlanType,id:string){
+  planType.value=kind
+  await fetchMode()
+  notify('计划已创建'+(kind==='wish'?'，如已选择储值目标则自动关联':''))
+}
+function editOnce(t:Row){
+  onceEditing.value=onceEditing.value?.id===t.id?null:t
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0
+}
+async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
+  await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
+  emit('tasksChanged')
+}
+async function saveOnce(){
+  const t=onceEditing.value
+  if(!t)return
+  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:t.visibility,
+    dueOn:onceDate.value||null,assigneeUserId:t.assigneeUserId||null,
+    subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
+    remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
+  if(!error.value)onceEditing.value=null
+}
+async function deleteOnce(t:Row){
+  if(!confirm('删除这项一次性计划吗？'))return
+  await onceChange(t,{},'DELETE')
+}
+watch(()=>props.focusPlanType,type=>{
+  if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+})
+
 const planYear=ref(''),planMonth=ref('')
 const memoryYear=ref(''),memoryMonth=ref('')
 const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
@@ -118,7 +167,9 @@ function countdown(date:string){
   return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
 }
 function routineLabel(r:Row){
-  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
+  const config=(()=>{try{return typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return {}}})()
+  if(r.repeat_type==='weekly'&&config.excludeJapaneseHolidays)return '工作日'
+  return r.repeat_type==='once'?'一次性':r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
     r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
     r.repeat_type==='workday'?'工作日':'定期'
 }
@@ -155,8 +206,8 @@ async function fetchMode(){
   try{
     if(props.mode==='today'){
       lastTodayValue=today()
-      const upcoming=await api('/anniversaries/upcoming')
-      items.value=upcoming.items||[]
+      const [upcoming,p]=await Promise.all([api('/anniversaries/upcoming'),api('/plans/today')])
+      items.value=upcoming.items||[];todayPlans.value=p.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
       const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
@@ -209,6 +260,9 @@ async function addRoutine(){
     subjectProfileId:routineSubject.value||null,healthRecordType:routineSubjectIsPet.value?routineHealthType.value||null:null,
     visibility:'household'}))
   if(!error.value)routineTitle.value=''
+}
+async function markRoutine(r:Row,done:boolean){
+  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:done?'completed':'open'}),done?'已完成':'已撤销完成')
 }
 async function addWish(){
   await update(()=>api('/wishes','POST',{title:wishTitle.value,wishType:wishType.value,
@@ -387,6 +441,26 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
           </div>
         </section>
+        <section class="life-card">
+          <h2 class="life-heading"><AppIcon name="clipboard-check" :size="21" /> 今天的其他计划</h2>
+          <p class="life-caption">今天到期的购物、心愿、储值目标以及进行中的旅行会出现在这里。过期未完成的计划会顺延，已完成的不重复显示。</p>
+          <p v-if="!todayPlans.length" class="life-empty">其他计划今天没有待处理项目。</p>
+          <div v-for="p in todayPlans" :key="p.kind+'-'+p.id" class="life-row today-plan-row">
+            <label v-if="p.kind==='shopping'" class="today-routine-label">
+              <input type="checkbox" :disabled="busy" @change="toggleShopping(p)"/>
+              <span class="life-details"><b>{{ p.title }}</b>
+                <small>{{ p.overdue?'逾期未完成 · 顺延':'今日购买计划' }} · {{ p.dueOn }}</small>
+              </span>
+            </label>
+            <div v-else class="life-details">
+              <b>{{ p.title }}</b>
+              <small>{{ p.kind==='wish'?'心愿':p.kind==='goal'?'储值':'旅行' }}
+                · {{ p.overdue&&p.kind!=='trip'?'逾期未完成 · 顺延':'属于今天的计划' }}
+                · {{ p.dueOn }}</small>
+            </div>
+            <button type="button" class="life-link" @click="emit('openPlans',p.kind)">查看计划</button>
+          </div>
+        </section>
     </template>
 
     <template v-else-if="mode==='family'">
@@ -435,6 +509,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
+      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
+        @created="planCreated" @task-created="emit('tasksChanged')"/>
+      <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
+        <button v-for="tab in [
+          {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'shopping',label:'购物'},
+          {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
+          :key="tab.id" type="button" :class="{selected:planType===tab.id}"
+          :aria-pressed="planType===tab.id" @click="planType=tab.id as PlanType">
+          {{ tab.label }}</button>
+      </div>
       <div class="archive-toolbar">
         <div class="archive-tabs" role="group" aria-label="计划记录筛选">
           <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
@@ -457,9 +541,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <p v-if="planScope==='history'" class="life-caption">历史不会自动删除，可按年月查找。切回「进行中」就能继续管理未完成项目。</p>
       </div>
       <div class="life-grid">
-        <section class="life-card">
-          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
-          <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
+        <section v-if="planType==='all'||planType==='routine'" class="life-card">
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
+          <p class="life-caption">一次性任务和重复任务都由上方「新增计划」创建。到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -471,39 +555,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
-          <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有设置定期任务':'暂无已归档的定期计划' }}</p>
+          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addRoutine">
-            <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
-            <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
-            <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
-            <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
-              <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
-            </select>
-            <label>关联对象（可选）
-              <select v-model="routineSubject" aria-label="这项定期任务与谁有关">
-                <option value="">不关联任何人或宠物</option>
-                <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
-              </select></label>
-            <label v-if="routineSubjectIsPet">勾选完成后同步到宠物护理记录
-              <select v-model="routineHealthType" aria-label="完成任务后写入哪种护理记录">
-                <option value="">不自动记录</option><option value="other">日常护理</option>
-                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
-                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option>
-                <option value="vet">就诊</option>
-              </select></label>
-            <p class="life-caption">关联对象不会改变任务权限。关联宠物后，可选择完成时自动写入护理历史；同一天不会重复记录。</p>
-            <button :disabled="busy">＋ 添加定期任务</button>
-          </form>
+
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='wish'" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <template v-for="w in items" :key="w.id">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
-                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
+                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}<template v-if="w.target_on"> · {{ w.target_on }}</template></small>
+                  <small v-if="linkedGoal(w)">已关联储值目标：{{ linkedGoal(w)?.title }}</small></div>
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
@@ -514,15 +578,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
           <button v-if="listCursors.wishes" class="life-more" type="button" :disabled="pageBusy.wishes"
             @click="loadMore('wishes')">加载更多心愿</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addWish">
-            <input v-model.trim="wishTitle" required placeholder="想实现什么心愿？"/>
-            <select v-model="wishType"><option value="trip">想去旅行</option><option value="purchase">想买东西</option><option value="activity">想体验</option><option value="other">其他</option></select>
-            <label>预估日元<input v-model.number="wishBudget" type="number" min="0"/></label>
-            <select v-model="wishVisibility"><option value="household">家庭共享</option><option value="private">仅自己</option></select>
-            <button :disabled="busy">＋ 记录心愿</button>
-          </form>
+
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='goal'" class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
           <p class="life-caption">原有预留金额作为期初储蓄额保留；下方家計簿联动可计算期间收支差额和手动调整额。</p>
           <template v-for="g in goals" :key="g.id">
@@ -530,23 +588,23 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
                 <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
+                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
+                  <small v-if="g.wish_id">已关联心愿计划</small></div>
+                <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
+            <FinancePanel v-if="isOwner&&financeDetail?.kind==='goal'&&financeDetail.id===g.id"
+              :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
+              embedded-kind="goal" :embedded-id="g.id"/>
           </template>
           <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储蓄目标':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
             @click="loadMore('goals')">加载更多目标</button>
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addGoal">
-            <input v-model.trim="goalTitle" required placeholder="目标名称"/>
-            <label>目标金额（日元）<input v-model.number="goalAmount" type="number" min="1" required/></label>
-            <label>目标日期<input v-model="goalTarget" type="date"/></label>
-            <button :disabled="busy">＋ 新建目标</button>
-          </form>
+
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
@@ -557,7 +615,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
                     <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
                 <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                  class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                  class="life-link" @click="toggleLedger(s.id)">账目与调整额</button>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
@@ -569,11 +627,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
             @click="loadMore('shopping')">加载更多购物记录</button>
 
-          <form v-if="planScope==='active'" class="life-form" @submit.prevent="addShopping">
-            <input v-model.trim="shoppingTitle" required placeholder="需要买些什么？"/>
-            <button :disabled="busy">＋ 添加购物</button></form>
+
         </section>
-        <section class="life-card">
+        <section v-if="planType==='all'||planType==='trip'" class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
@@ -581,11 +637,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
-                <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
+                <div class="trip-card-actions">
+                  <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
+                  <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('trip',t.id)">费用</button>
+                </div>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
+            <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
+              :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
+              embedded-kind="trip" :embedded-id="t.id"/>
           </template>
           <p v-if="!trips.length" class="life-empty">{{ planScope==='active'?'暂无进行中的旅行':'暂无已结束的旅行' }}</p>
           <button v-if="listCursors.trips" class="life-more" type="button" :disabled="pageBusy.trips"
@@ -662,8 +724,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </details>
         </section>
       </div>
-      <FinancePanel :trips="trips" :goals="goals" :owner="isOwner" />
-    </template>
+     </template>
 
     <template v-else-if="mode==='memories'">
       <section class="life-card">
@@ -723,6 +784,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.plan-filter-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 11px;scrollbar-width:none}
+.plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
+ padding:8px 12px;min-height:36px;flex:none;font-size:12px}
+.plan-filter-tabs button.selected{background:#43866a;color:#fff;border-color:#43866a}
+.trip-card-actions{display:flex;gap:5px;flex:none;flex-wrap:wrap}
+.once-edit{background:#f6faf6;border-radius:12px;padding:12px}
+.once-remind{display:flex!important;align-items:center;gap:9px}
+.once-remind input{width:18px!important;min-height:18px!important}
+.once-actions{display:flex;gap:8px}.once-actions button{flex:1}
+.today-plan-row{gap:10px}.today-plan-row .life-details{flex:1;min-width:0}
+@media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
+ .plan-filter-tabs button{padding:7px 10px}}
+
 .life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}
 .trip-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;flex-wrap:wrap}
 .trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere}
