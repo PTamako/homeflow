@@ -1,4 +1,5 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
+import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {dueOn,nextAnniversary,validateRule} from './recurrence.js'
 
 const catalog={
@@ -98,8 +99,15 @@ export async function lifeRoute(request,db,path,session){
   const id=parts[2]
   if(table==='anniversaries'&&id==='upcoming'&&request.method==='GET'){
     const now=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-    const events=await view(db,table,session)
-    return json({items:events.map(e=>({...e,nextOn:nextAnniversary(e.event_date,e.repeat_mode,now)}))
+    // One D1 batch: existing custom anniversaries + live family profile birthdays.
+    // No second saved birthday record, so editing a profile cannot leave stale reminders.
+    const [events,profiles]=await db.batch([
+      db.prepare("SELECT * FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) ORDER BY created_at DESC LIMIT 200")
+        .bind(session.household_id,session.user_id),
+      db.prepare(BIRTHDAY_PROFILES_SQL).bind(session.household_id)
+    ])
+    return json({items:mergeProfileBirthdays(events.results,profiles.results)
+      .map(e=>({...e,nextOn:nextAnniversary(e.event_date,e.repeat_mode,now)}))
       .filter(e=>e.nextOn).sort((a,b)=>a.nextOn.localeCompare(b.nextOn))})
   }
   if(table==='routines'&&id==='today'&&request.method==='GET'){

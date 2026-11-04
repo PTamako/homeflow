@@ -4,7 +4,7 @@ import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '.
 import FinancePanel from './FinancePanel.vue'
 import AppIcon from './AppIcon.vue'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profiles:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
@@ -178,7 +178,7 @@ async function loadPhotos(){
   }
 }
 onBeforeUnmount(()=>{for(const x of photoUrls)URL.revokeObjectURL(x)})
-watch(()=>props.mode,fetchMode,{immediate:true})
+watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 </script>
 
 <template>
@@ -213,12 +213,18 @@ watch(()=>props.mode,fetchMode,{immediate:true})
             <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
               <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
             </select>
-            <select v-model="routineSubject" aria-label="关联成员或宠物"><option value="">不关联成员</option><option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select><button :disabled="busy">＋ 定期任务</button>
+            <label>关联对象（可选）
+              <select v-model="routineSubject" aria-label="这项定期任务与谁有关">
+                <option value="">不关联任何人或宠物</option>
+                <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+              </select></label>
+            <p class="life-caption">只是标记任务与谁有关，不会指定执行者或改变共享权限。</p>
+            <button :disabled="busy">＋ 定期任务</button>
           </form>
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
-          <p v-if="!items.length" class="life-empty">可以先添加一个重要日子</p>
+          <p v-if="!items.length" class="life-empty">先在家庭档案填写生日，或在下方添加重要日子</p>
           <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row">
             <b>{{ e.title }}</b><span>{{ e.nextOn }}</span>
           </div>
@@ -235,7 +241,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
     <template v-else-if="mode==='family'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
-        <p class="life-caption">生日、结婚纪念日和自定义日期，支持每年重复。</p>
+        <p class="life-caption">家庭成员或宠物档案中填写的生日会自动显示、每年提醒，无需重复创建。这里可添加结婚纪念日或其他特殊日期。</p>
         <div v-for="e in items" :key="e.id" class="life-row"><b>{{ e.title }}</b><span>{{ e.nextOn }}</span></div>
         <form class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><input v-model="eventDate" type="date" required/>

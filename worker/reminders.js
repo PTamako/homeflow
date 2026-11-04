@@ -1,5 +1,6 @@
 import {json,validDate} from './security.js'
 import {daysBetween,dueOn,nextAnniversary} from './recurrence.js'
+import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 const stringDate=d=>typeof d==='string'&&d.length===10&&validDate(d)
 export async function remindersRoute(request,db,session) {
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
@@ -7,7 +8,7 @@ export async function remindersRoute(request,db,session) {
   const date=new URL(request.url).searchParams.get('date')||today
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
-  const [events,rules,marks,tasks,trips,tripProgress]=await db.batch([
+  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.completed_at,m.skipped_at FROM routine_marks m
@@ -23,10 +24,11 @@ export async function remindersRoute(request,db,session) {
     db.prepare(`SELECT p.trip_id,p.item_id,p.completed_at FROM trip_progress p
       JOIN trips t ON t.id=p.trip_id WHERE t.household_id=?1
       AND t.status IN ('planning','active') AND (t.visibility='household' OR t.created_by=?2)
-      AND p.completed_at IS NOT NULL LIMIT 3000`).bind(hid,u)
+      AND p.completed_at IS NOT NULL LIMIT 3000`).bind(hid,u),
+    db.prepare(BIRTHDAY_PROFILES_SQL).bind(hid)
   ])
   const announcements=[]
-  for(const e of events.results||[]){
+  for(const e of mergeProfileBirthdays(events.results,birthdayProfiles.results)){
     const next=nextAnniversary(e.event_date,e.repeat_mode,date)
     if(!next)continue
     let leads=[]
