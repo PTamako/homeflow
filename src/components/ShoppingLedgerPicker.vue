@@ -80,7 +80,7 @@ onMounted(()=>{void check();void loadSettings()})
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
     家計簿只读联动暂不可用。当前通过 Cloudflare 私有 Service Binding 访问，
-    不需要在这两个应用中重复配置旧版公共接口密钥。请先检查内部桥接 Worker 状态；仍可手动勾选完成购物。
+    不需要在这两个应用中重复配置旧版公共接口密钥。请检查内部桥接 Worker 状态。联动恢复前购物将保留未完成，不支持直接勾选完成。
   </p>
   <template v-else>
    <div class="ledger-dates">
