@@ -38,6 +38,9 @@ const queries=[
     "(s.target_type='shopping' AND EXISTS(SELECT 1 FROM shopping_items p WHERE p.id=s.target_id AND p.household_id=s.household_id AND p.created_by=?2))) LIMIT 501"],
   ['goalPeriodAdjustments',"SELECT a.* FROM goal_period_adjustments a JOIN goals g ON g.id=a.goal_id AND g.household_id=a.household_id "+
     "WHERE a.household_id=?1 AND g.created_by=?2 LIMIT 501"],
+  ['goalPeriodSettlements',"SELECT s.goal_id,s.period_key,s.period_start,s.period_end,s.target_amount,s.actual_amount,s.difference_amount,s.status,s.settled_at "+
+    "FROM goal_period_settlements s JOIN goals g ON g.id=s.goal_id AND g.household_id=s.household_id "+
+    "WHERE s.household_id=?1 AND g.created_by=?2 ORDER BY s.period_key LIMIT 501"],
   // New completion records must be exported with their parent plan. The
   // household AND creator checks prevent other members' private marks leaking.
   ['planCompletionMarks',`SELECT m.plan_type,m.plan_id,m.period_key,m.completed_at,m.prior_status
@@ -59,7 +62,7 @@ const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   switch(key){
@@ -189,6 +192,28 @@ function normalized(key,r,h,u) {
         "SELECT ?1,?2,?3,?4,?5 WHERE EXISTS(SELECT 1 FROM goals WHERE id=?2 AND household_id=?1 AND created_by=?5 "+
         "AND ((goal_mode='monthly' AND length(?3)=7) OR (goal_mode='yearly' AND length(?3)=4)))",
         [h,r.goal_id,r.period_key,r.adjustment_amount,u]]
+    }
+    case 'goalPeriodSettlements': {
+      if(!id(r.goal_id)||!/^(?:19|20|21)\d{2}(?:-(?:0[1-9]|1[0-2]))?$/.test(r.period_key||'')||
+        !date(r.period_start)||!date(r.period_end)||r.period_start>r.period_end||
+        !amount(r.target_amount)||r.target_amount===0||
+        !['pending','met','shortfall'].includes(r.status))return null
+      const pending=r.status==='pending'
+      if(pending&&(r.actual_amount!=null||r.difference_amount!=null||r.settled_at!=null))return null
+      if(!pending&&(!signed(r.actual_amount)||!signed(r.difference_amount)||
+        r.target_amount-r.actual_amount!==r.difference_amount||
+        (r.status==='met')!==(r.difference_amount<=0)||
+        typeof r.settled_at!=='string'||!Number.isFinite(Date.parse(r.settled_at))))return null
+      return [`INSERT OR IGNORE INTO goal_period_settlements
+        (household_id,goal_id,period_key,period_start,period_end,target_amount,
+         actual_amount,difference_amount,status,settled_at)
+        SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10 WHERE EXISTS(
+          SELECT 1 FROM goals WHERE id=?2 AND household_id=?1 AND created_by=?11
+          AND ((goal_mode='monthly' AND length(?3)=7) OR
+               (goal_mode='yearly' AND length(?3)=4)))`,
+        [h,r.goal_id,r.period_key,r.period_start,r.period_end,r.target_amount,
+          pending?null:r.actual_amount,pending?null:r.difference_amount,r.status,
+          pending?null:r.settled_at,u]]
     }
     case 'shoppingExpenseLinks': {
       if(!id(r.shopping_id)||!/^[1-9]\d{0,11}$/.test(String(r.external_entry_id))||
