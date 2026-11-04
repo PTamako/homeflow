@@ -2,6 +2,7 @@
 import {computed,onMounted,onBeforeUnmount,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import BackupPanel from './components/BackupPanel.vue'
+import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
@@ -25,6 +26,9 @@ const errText=(key:string)=>{
   const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'输入格式不符合要求，请检查所有字段。',
     invalid_login_name:'登录账号格式不正确：请使用邮箱地址，或 3～36 位英文用户名（可包含数字、点、下划线和连字符）。',
     invalid_password:'密码需为 12～128 个字符，UTF-8 编码不超过 300 字节。',
+    invalid_password_proof:'密码安全验证数据无效。请刷新页面并重新输入密码。',
+    invalid_password_salt:'密码安全参数异常，请刷新页面重试。',
+    login_challenge_unavailable:'无法获取登录安全参数，请刷新页面重试。',
     invalid_display_name:'昵称需为 1～60 个字符，可使用中文、日文、英文字母和数字。',
     login_name_taken:'这个登录账号已经被使用，请换一个。',
     invalid_invitation_code:'邀请码格式不正确，请向家人重新获取。',
@@ -63,10 +67,18 @@ async function refresh(){
 async function submitAuth(){
   error.value='';loading.value=true
   try{
-    const details={loginName:login.value,password:password.value,displayName:displayName.value}
-    if(authMode.value==='bootstrap')await api('/auth/bootstrap','POST',{...details,householdName:householdName.value,bootstrapSecret:bootstrapSecret.value})
-    else if(authMode.value==='join')await api('/auth/join','POST',{...details,invitationCode:invite.value})
-    else await api('/auth/login','POST',details)
+    if(!validLocalPassword(password.value))throw new Error(errText('invalid_password'))
+    const details={loginName:login.value,displayName:displayName.value}
+    if(authMode.value==='bootstrap'){
+      const proof=await registerPassword(password.value)
+      await api('/auth/bootstrap','POST',{...details,...proof,householdName:householdName.value,bootstrapSecret:bootstrapSecret.value})
+    } else if(authMode.value==='join'){
+      const proof=await registerPassword(password.value)
+      await api('/auth/join','POST',{...details,...proof,invitationCode:invite.value})
+    } else {
+      const proof=await loginPassword(login.value,password.value)
+      await api('/auth/login','POST',{loginName:login.value,...proof})
+    }
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}

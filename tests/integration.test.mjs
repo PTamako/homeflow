@@ -3,6 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import worker from '../worker/index.js'
+import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/auth-crypto.js'
 
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
@@ -48,11 +49,36 @@ function req(path,method='GET',body,token,csrf=true){
  return new Request(origin+path,{method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})})
 }
 async function send(env,path,method='GET',body,cookie,csrf=true){
- const response=await worker.fetch(req(path,method,body,cookie,csrf),env)
+ let payload=body
+ if(method==='POST'&&body&&typeof body.password==='string'&&
+    ['/api/auth/bootstrap','/api/auth/join','/api/auth/login'].includes(path)){
+   const {password,...rest}=body
+   if(path==='/api/auth/login'){
+     const challenge=await worker.fetch(req('/api/auth/login-challenge?loginName='+
+       encodeURIComponent(String(body.loginName).trim().toLowerCase())),env)
+     const options=await challenge.json()
+     payload={...rest,passwordProof:await derivePasswordProof(password,options.salt)}
+   }else{
+     payload={...rest,...(validLocalPassword(password)?await registerPassword(password):
+       {passwordSalt:'bad',passwordProof:'invalid',passwordRounds:100000})}
+   }
+ }
+ const response=await worker.fetch(req(path,method,payload,cookie,csrf),env)
  const result=await response.json()
  return {status:response.status,cookie:response.headers.get('set-cookie'),body:result}
 }
 function extractCookie(header) {return header?.split(';')[0]||''}
+
+test('client password derivation uses exactly 100000 PBKDF2 iterations with 16-byte random salt',async()=>{
+  const proof=await registerPassword('a-long-password-for-homeflow')
+  assert.match(proof.passwordSalt,/^[a-f0-9]{32}$/)
+  assert.match(proof.passwordProof,/^[a-f0-9]{64}$/)
+  assert.equal(proof.passwordRounds,100000)
+  assert.equal(proof.passwordProof,await derivePasswordProof('a-long-password-for-homeflow',proof.passwordSalt))
+  assert.notEqual(proof.passwordProof,await derivePasswordProof('wrong-long-password-12345',proof.passwordSalt))
+  assert.equal(validLocalPassword('short'),false)
+  assert.equal(validLocalPassword('very-long-password-is-okay'),true)
+})
 
 test('bootstrap readiness distinguishes missing vs short keys without exposing their contents',async()=>{
  const {db,sqlite}=makeDb()
@@ -81,7 +107,7 @@ test('email login, Japanese nickname and specific registration errors',async()=>
     displayName:'白ちゃん',householdName:'我们的小家',bootstrapSecret:secret,...overrides
   })
   assert.equal((await register({loginName:'bad@name'})).body.error,'invalid_login_name')
-  assert.equal((await register({password:'short'})).body.error,'invalid_password')
+  assert.equal((await register({password:'short'})).body.error,'invalid_password_proof')
   assert.equal((await register({displayName:'<script>'})).body.error,'invalid_display_name')
   const created=await register()
   assert.equal(created.status,201,JSON.stringify(created.body))
