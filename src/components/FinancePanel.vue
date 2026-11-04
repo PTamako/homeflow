@@ -145,11 +145,11 @@ onMounted(()=>{defaultDates();detect()})
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> 家計簿 · 实际旅行开销</h2>
-    <p class="hint">财务数据只从家計簿安全读取。HomeFlow 仅保存你确认关联的明细 ID，不创建新支出。</p>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> 家計簿 · 旅行支出与储蓄进度</h2>
+    <p class="hint">旅行计划逐笔关联真实消费；储蓄目标按选定期间的收支差额计算。两者都能手填正负调整额，不修改原账目。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
-      家計簿联动目前未启用。需要两边分别设置专用只读密钥后才能查看真实交易；储蓄目标不受影响。
+      家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
     </p>
     <template v-else>
       <div class="fields">
@@ -163,22 +163,48 @@ onMounted(()=>{defaultDates();detect()})
         </label>
       </div>
       <template v-if="target">
-        <div class="summary"><span>已关联实际支出</span><strong>{{ fmt(total) }}</strong><small>{{ links.filter(x=>x.entry).length }} 笔已核对的真实支出</small></div>
-        <div v-for="row in links" :key="row.linkId" class="line">
-          <span>{{ row.entry?.date||'原账目已删除' }} · {{ row.entry?.merchant||('明细 #'+row.entryId) }}<small>{{ row.entry?fmt(row.entry.amount):'未找到明细' }}</small></span>
-          <button type="button" class="unlink" @click="unlink(row)" :disabled="busy">移除关联</button>
+        <div v-if="kind==='trip'" class="summary">
+          <span>已关联实际支出</span><strong>{{ fmt(total) }}</strong>
+          <small>{{ links.filter(x=>x.entry).length }} 笔已确认的真实支出</small>
+          <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
+          <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
         </div>
+        <div v-else class="summary">
+          <span>目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
+          <span>期初储蓄额 {{ fmt(opening) }}</span>
+          <span>期间收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
+          <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
+          <strong v-if="netLoaded">储蓄进度金额 {{ signed(goalTotal) }}</strong>
+          <small v-if="netLoaded">完成率 {{ goalProgress.toFixed(1) }}%</small>
+          <small v-else>点击读取期间收支差额后计算进度；不包含资产移动。</small>
+        </div>
+        <label class="adjustment-label">手动调整额（円，可输入正数或负数）
+          <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
+        </label>
         <div class="fields">
           <label>起始日期<input v-model="start" type="date"/></label>
           <label>结束日期<input v-model="end" type="date"/></label>
         </div>
-        <button type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
-        <div v-for="row in entries" :key="row.id" class="line">
-          <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
-          <button type="button" :disabled="busy || links.some(x=>String(x.entryId)===String(row.id))" @click="linkEntry(row)">
-            {{ links.some(x=>String(x.entryId)===String(row.id))?'已关联':'关联' }}</button>
+        <div class="finance-actions">
+          <button type="button" :disabled="busy" @click="saveSettings">保存调整额{{ kind==='goal'?'和期间':'' }}</button>
+          <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
+            {{ netBusy?'读取中…':'刷新收支差额' }}
+          </button>
+          <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
-        <button v-if="nextCursor" type="button" class="more" :disabled="busy" @click="loadCandidates(true)">加载更多支出</button>
+        <template v-if="kind==='trip'">
+          <div v-for="row in links" :key="row.linkId" class="line">
+            <span>{{ row.entry?.date||'原账目已删除' }} · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
+              <small>{{ row.entry?fmt(row.entry.amount):'未找到明细' }}</small></span>
+            <button type="button" class="unlink" @click="unlink(row)" :disabled="busy">移除关联</button>
+          </div>
+          <div v-for="row in entries" :key="row.id" class="line">
+            <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
+            <button type="button" :disabled="busy || links.some(x=>String(x.entryId)===String(row.id))" @click="linkEntry(row)">
+              {{ links.some(x=>String(x.entryId)===String(row.id))?'已关联':'关联' }}</button>
+          </div>
+          <button v-if="nextCursor" type="button" class="more" :disabled="busy" @click="loadCandidates(true)">加载更多支出</button>
+        </template>
       </template>
     </template>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
@@ -197,6 +223,9 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
 .line{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #f0eee9;padding:10px 0;font-size:12px}
 .line span{min-width:0;overflow-wrap:anywhere}.line small{display:block;color:#7a9083;margin-top:3px}
 .line .unlink{background:#f3f5ee;color:#758978}.more{margin-top:8px;background:#eef5ed;color:#488d6c}
+.adjustment-label{display:grid;gap:6px;margin:12px 0;font-size:12px;color:#607469}
+.adjustment-label input{width:100%;max-width:100%;box-sizing:border-box;border:1px solid #dce6dc;border-radius:10px;padding:9px;min-height:41px;background:#fff;color:#253a31}
+.finance-actions{display:flex;flex-wrap:wrap;gap:8px}
 .error{font-size:12px;color:#a94d37}.success{font-size:12px;color:#3f876a}
 @media(max-width:720px){.fields{grid-template-columns:minmax(0,1fr)}}
 </style>
