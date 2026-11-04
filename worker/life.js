@@ -233,8 +233,22 @@ export async function lifeRoute(request,db,path,session){
     const spec=catalog[table].columns
     const columns=['id','household_id','created_by','visibility',...spec]
     const query='INSERT INTO '+table+' ('+columns.join(',')+') VALUES('+columns.map((_,i)=>'?'+(i+1)).join(',')+')'
-    const id=crypto.randomUUID()
-    await db.prepare(query).bind(id,session.household_id,session.user_id,visibilityOf(b,session),...vals).run()
+    const id=crypto.randomUUID(),visibility=visibilityOf(b,session)
+    if(table==='wishes'&&b.createSavingsGoal===true){
+      // Create both records atomically using the existing goals.wish_id link.
+      if(!Number.isSafeInteger(b.estimatedAmount)||b.estimatedAmount<=0||
+         b.estimatedAmount>100000000000)return bad()
+      const goalId=crypto.randomUUID()
+      await db.batch([
+        db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals),
+        db.prepare('INSERT INTO goals (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,target_on,wish_id) VALUES(?1,?2,?3,?4,?5,?6,0,?7,?8,?9)')
+          .bind(goalId,session.household_id,session.user_id,visibility,
+            trim(b.title+' · 储蓄目标',150),b.estimatedAmount,b.currency||'JPY',
+            b.goalTargetOn||b.targetOn||null,id)
+      ])
+      return json({ok:true,id,goalId},201)
+    }
+    await db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals).run()
     return json({ok:true,id},201)
   }
   if(id&&!hexId(id))return bad()
