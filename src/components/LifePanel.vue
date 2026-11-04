@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ref,watch,onBeforeUnmount} from 'vue'
-import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto} from '../local-media'
+import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import FinancePanel from './FinancePanel.vue'
 
 const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;isOwner:boolean;profiles:Array<{id:string;displayName:string;type:string}>}>()
@@ -14,6 +14,7 @@ const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
+const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 let photoUrls:string[]=[]
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
@@ -122,13 +123,32 @@ async function importTrip(){
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null}
 }
+async function removeCloudPhoto(id:string){
+  if(!confirm('删除这张云端照片吗？本机原图不会删除。'))return
+  try{
+    await api('/media/'+id,'DELETE')
+    await loadPhotos()
+    notice.value='云端照片已删除'
+  }catch(e){error.value=(e as Error).message}
+}
 async function addMemory(){
   if(!memoryTitle.value.trim()||!memoryDate.value)return
   error.value='';busy.value=true
   try{
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
       happenedOn:memoryDate.value,visibility:'private'})
-    if(result.id)for(const f of photoFiles.value.slice(0,10))await saveLocalPhoto(props.userId,result.id,f)
+    if(result.id)for(const f of photoFiles.value.slice(0,10)){
+      await saveLocalPhoto(props.userId,result.id,f)
+      if(cloudEnabled.value){
+        try{
+          const compressed=await compressPhoto(f)
+          const sent=await fetch('/api/media/upload?memoryId='+encodeURIComponent(result.id),{
+            method:'POST',credentials:'same-origin',
+            headers:{'content-type':'image/jpeg'},body:compressed})
+          if(!sent.ok)notice.value='本机照片已保存，但云端备份部分失败'
+        }catch{notice.value='本机照片已保存，但云端暂不可用'}
+      }
+    }
     memoryTitle.value='';memoryStory.value='';photoFiles.value=[]
     await fetchMode()
   }catch(e){error.value=(e as Error).message}
@@ -136,7 +156,16 @@ async function addMemory(){
 }
 async function loadPhotos(){
   for(const x of photoUrls)URL.revokeObjectURL(x)
-  photoUrls=[];photos.value={};localPhotoBlobs.value={}
+  photoUrls=[];photos.value={};localPhotoBlobs.value={};cloudPhotos.value={}
+  try{
+    const media=await api('/media')
+    cloudEnabled.value=!!media.cloudAvailable
+    for(const item of media.items||[]){
+      if(!item.memoryId)continue
+      if(!cloudPhotos.value[item.memoryId])cloudPhotos.value[item.memoryId]=[]
+      cloudPhotos.value[item.memoryId].push({id:item.id,uploadedBy:item.uploadedBy})
+    }
+  }catch{cloudEnabled.value=false}
   for(const m of items.value.slice(0,30)){
     try{
       if(m.created_by!==props.userId)continue
@@ -314,7 +343,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
           <label>可选照片（仅存本机）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">本机照片不上传 Cloudflare，也不会出现在其他设备；开启私有云相册后才支持跨设备同步。</p>
+          <p class="life-caption">{{ cloudEnabled?'照片会同时保存到本机和私有云端，家庭共享范围以这条回忆为准。':'当前只在本机保存照片，不会自动跨设备同步；请定期导出 ZIP 备份。' }}</p>
           <button :disabled="busy">保存到时光轴</button>
         </form>
       </section>
@@ -322,6 +351,13 @@ watch(()=>props.mode,fetchMode,{immediate:true})
         <p v-if="!items.length" class="life-empty">还没有回忆，先写下一件开心的小事。</p>
         <article v-for="m in items" :key="m.id" class="memory">
           <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
+          <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
+            <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
+              <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
+              <button v-if="remote.uploadedBy===props.userId" type="button" class="life-link"
+                @click="removeCloudPhoto(remote.id)">删除云端照片</button>
+            </div>
+          </div>
           <div v-if="photos[m.id]?.length" class="memory-photos">
             <div v-for="(image,i) in photos[m.id]" :key="image">
               <img :src="image" :alt="m.title+' 照片 '+(i+1)" loading="lazy"/>

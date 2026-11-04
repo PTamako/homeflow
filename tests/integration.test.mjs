@@ -188,6 +188,31 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  assert.equal(secondImport.body.inserted,0)
  const ownerHistory=await base('/api/memories','GET',undefined,owner)
  assert.equal(ownerHistory.body.items.filter(x=>x.id===newMemory.id).length,1)
+ // Cloud media is private and cannot be read by the other household login.
+ const mediaObjects=new Map()
+ env.MEDIA={
+   async put(key,bytes){mediaObjects.set(key,Uint8Array.from(bytes))},
+   async get(key){const body=mediaObjects.get(key);return body?{body}:null},
+   async delete(key){mediaObjects.delete(key)}
+ }
+ const photoBytes=Uint8Array.from([255,216,255,10,11,12,13,14,15,16,17,18,19,20,255,217])
+ const photoReq=new Request(origin+'/api/media/upload?memoryId='+memory.body.id,{
+   method:'POST',headers:{cookie:owner,origin,'content-type':'image/jpeg'},body:photoBytes
+ })
+ const photoResponse=await worker.fetch(photoReq,env)
+ assert.equal(photoResponse.status,201,await photoResponse.text().catch(()=>''))
+ const metadata=await base('/api/media','GET',undefined,owner)
+ assert.equal(metadata.body.items.length,1)
+ const mediaId=metadata.body.items[0].id
+ const otherResponse=await worker.fetch(req('/api/media/'+mediaId,'GET',undefined,partner),env)
+ assert.equal(otherResponse.status,404)
+ const ownerResponse=await worker.fetch(req('/api/media/'+mediaId,'GET',undefined,owner),env)
+ assert.equal(ownerResponse.status,200)
+ assert.deepEqual(new Uint8Array(await ownerResponse.arrayBuffer()),photoBytes)
+ const cannotDelete=await worker.fetch(req('/api/media/'+mediaId,'DELETE',undefined,partner),env)
+ assert.equal(cannotDelete.status,404)
+ const deleted=await worker.fetch(req('/api/media/'+mediaId,'DELETE',undefined,owner),env)
+ assert.equal(deleted.status,200)
  const anotherPrivate=await base('/api/portable','GET',undefined,partner)
  assert.equal(anotherPrivate.status,200)
  assert.equal(anotherPrivate.body.records.memories.length,0)

@@ -82,3 +82,5 @@ export async function restoreLocalPhoto(userId:string,memoryId:string,blob:Blob,
     tx.onabort=()=>{db.close();reject(tx.error||new Error('照片恢复被取消'))}
   })
 }
+
+export async function compressPhoto(file:File):Promise<Blob>{return compress(file)}

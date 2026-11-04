@@ -8,10 +8,14 @@ const signatures={
 export async function mediaRoute(request,env,path,session){
   const db=env.DB,h=session.household_id,u=session.user_id
   if(path==='/api/media'&&request.method==='GET'){
-    const {results}=await db.prepare(`SELECT a.id,a.memory_id AS memoryId,a.mime_type AS mimeType,a.byte_size AS byteSize,
-      a.created_at AS createdAt FROM media_assets a JOIN memories m ON m.id=a.memory_id WHERE a.household_id=?1
-      AND (m.visibility='household' OR m.created_by=?2)
-      ORDER BY a.created_at DESC LIMIT 120`).bind(h,u).all()
+    const memoryId=new URL(request.url).searchParams.get('memoryId')
+    if(memoryId&&!/^[0-9a-f-]{36}$/.test(memoryId))return json({error:'invalid_input'},400)
+    const query=`SELECT a.id,a.memory_id AS memoryId,a.uploaded_by AS uploadedBy,
+      a.mime_type AS mimeType,a.byte_size AS byteSize,a.created_at AS createdAt
+      FROM media_assets a JOIN memories m ON m.id=a.memory_id WHERE a.household_id=?1
+      AND (m.visibility='household' OR m.created_by=?2)`+
+      (memoryId?' AND a.memory_id=?3':'')+' ORDER BY a.created_at DESC LIMIT 250'
+    const {results}=await db.prepare(query).bind(...(memoryId?[h,u,memoryId]:[h,u])).all()
     return json({items:results||[],cloudAvailable:!!env.MEDIA})
   }
   if(path==='/api/media/upload'&&request.method==='POST'){
@@ -54,6 +58,18 @@ export async function mediaRoute(request,env,path,session){
     return new Response(object.body,{headers:{'content-type':photo.mime_type,
       'cache-control':'private, max-age=60','x-content-type-options':'nosniff',
       'content-security-policy':"default-src 'none'; sandbox"}})
+  }
+  if(m && request.method==='DELETE'){
+    if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
+    const photo=await db.prepare(`SELECT storage_key FROM media_assets
+      WHERE id=?1 AND household_id=?2 AND uploaded_by=?3`).bind(m[1],h,u).first()
+    if(!photo)return json({error:'not_found'},404)
+    try{
+      await env.MEDIA.delete(photo.storage_key)
+      await db.prepare('DELETE FROM media_assets WHERE id=?1 AND household_id=?2 AND uploaded_by=?3')
+        .bind(m[1],h,u).run()
+      return json({ok:true})
+    }catch{return json({error:'photo_delete_failed'},503)}
   }
   return json({error:'not_found'},404)
 }
