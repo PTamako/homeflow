@@ -9,6 +9,7 @@ import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
+import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
@@ -24,6 +25,12 @@ const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
+type ReminderKind='task'|'routine'|'trip'
+const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
+function toggleReminderEditor(kind:ReminderKind,id:string){
+ const old=reminderTarget.value
+ reminderTarget.value=old?.kind===kind&&old.id===id?null:{kind,id}
+}
 function planRequestKinds(type:PlanType){
  if(type==='routine')return ['routines','tasks']
  if(type==='wish')return ['wishes','goals']
@@ -35,6 +42,7 @@ function planRequestKinds(type:PlanType){
 function selectPlanType(type:PlanType){
  if(type===planType.value)return
  planType.value=type
+ reminderTarget.value=null
  if(props.mode==='plans')void fetchMode()
 }
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
@@ -723,6 +731,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small></div>
               </div>
             </SwipeActions>
+            <button v-if="planScope==='active'&&r.remind_enabled!==0" type="button" class="life-link"
+              @click="toggleReminderEditor('routine',r.id)">设置这项提醒</button>
+            <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
+              kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
             <div v-if="planScope==='active'&&canCompleteRoutineEarly(r)" class="routine-early-complete">
               <small>下次预计：{{ routineNextDue(r) }}</small>
               <button type="button" class="life-link" :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
@@ -743,6 +755,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </div>
             </SwipeActions>
+            <button v-if="planScope==='active'&&t.remindEnabled!==false" type="button" class="life-link"
+              @click="toggleReminderEditor('task',t.id)">设置这项提醒</button>
+            <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
+              kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
               <b>编辑一次性任务</b>
               <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
@@ -928,7 +944,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
                     <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
                   </label>
+                  <button v-if="task.dueDate&&(tripDetail.createdBy===props.userId||task.visibility==='household')"
+                    type="button" class="life-link" @click.stop="toggleReminderEditor('trip',tripDetail.id+':'+task.externalId)">提醒设置</button>
                 </div>
+                <ReminderItemEditor v-if="reminderTarget?.kind==='trip'&&reminderTarget.id===tripDetail.id+':'+task.externalId"
+                  kind="trip" :item-id="tripDetail.id+':'+task.externalId" @close="reminderTarget=null"/>
                 </SwipeActions>
               </div>
               <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
