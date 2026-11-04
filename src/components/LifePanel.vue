@@ -5,7 +5,7 @@ import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto} from '../local-media'
 const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),notice=ref(''),busy=ref(false)
+const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
@@ -38,6 +38,10 @@ async function fetchMode(){
       await loadPhotos()
     }
   }catch(e){error.value=(e as Error).message}
+}
+async function loadReminders(){
+  try{const data=await api('/reminders');dueItems.value=data.items||[];remindersLoaded.value=true}
+  catch(e){error.value=(e as Error).message}
 }
 async function update(action:()=>Promise<any>){
   error.value='';notice.value='';busy.value=true
@@ -152,6 +156,15 @@ watch(()=>props.mode,fetchMode,{immediate:true})
     <p v-if="notice" class="life-notice" role="status">{{ notice }}</p>
 
     <template v-if="mode==='today'||mode==='cat'">
+      <section v-if="mode==='today'" class="life-card">
+        <div class="life-row"><b>🔔 重要提醒</b><button class="life-link" @click="loadReminders">查看今天的提醒</button></div>
+        <div v-if="remindersLoaded">
+          <p v-if="!dueItems.length" class="life-empty">今天暂无新的重要提醒</p>
+          <div v-for="x in dueItems" :key="x.kind+x.id" class="life-row">
+            <span>{{ x.title }}</span><small>{{ x.dueOn }}</small>
+          </div>
+        </div>
+      </section>
       <div class="life-grid">
         <section class="life-card">
           <h2>⏰ 今日定期事项</h2>
