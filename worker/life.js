@@ -229,10 +229,16 @@ export async function lifeRoute(request,db,path,session){
     if(!item)return json({error:'not_found'},404)
     const body=await readBody(request)
     if(typeof body?.completed!=='boolean')return bad()
-    await db.prepare(`UPDATE shopping_items SET completed_at=?1,completed_by=?2,
-      ledger_entry_id=CASE WHEN ?1 IS NULL THEN NULL ELSE ledger_entry_id END
-      WHERE id=?3 AND household_id=?4 AND (visibility='household' OR created_by=?5)`)
-      .bind(body.completed?iso():null,body.completed?session.user_id:null,id,session.household_id,session.user_id).run()
+    // Shopping completion is exclusively derived from a verified Kakebo
+    // expense. The old checkbox must not create unsupported "purchased" rows.
+    if(body.completed)return json({error:'link_ledger_to_complete'},409)
+    if(item.ledger_entry_id)return json({error:'unlink_ledger_to_reopen'},409)
+    // Legacy manual checkmarks can still be cleared safely without losing
+    // any genuine ledger reference; do not allow new manual completions.
+    await db.prepare(`UPDATE shopping_items SET completed_at=NULL,completed_by=NULL
+      WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)
+        AND ledger_entry_id IS NULL`)
+      .bind(id,session.household_id,session.user_id).run()
     return json({ok:true})
   }
   if(!id&&request.method==='GET'){
@@ -246,6 +252,8 @@ export async function lifeRoute(request,db,path,session){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session))return bad()
+    if(table==='wishes'&&b.status==='completed')
+      return json({error:'complete_wish_via_verified_action'},409)
     const spec=catalog[table].columns
     const columns=['id','household_id','created_by','visibility',...spec]
     const query='INSERT INTO '+table+' ('+columns.join(',')+') VALUES('+columns.map((_,i)=>'?'+(i+1)).join(',')+')'
@@ -277,6 +285,8 @@ export async function lifeRoute(request,db,path,session){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session))return bad()
+    if(table==='wishes'&&b.status==='completed'&&current.status!=='completed')
+      return json({error:'complete_wish_via_verified_action'},409)
     // Updated-at CAS where supported, column snapshot CAS on original tables
     // without updated_at. No migrations or additional D1 reads required.
     const revisioned=['routines','anniversaries','wishes','goals'].includes(table)
