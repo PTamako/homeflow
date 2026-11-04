@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import {onMounted,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 const available=ref(false),enabled=ref(false),busy=ref(false),message=ref('')
+const {toast,notify}=usePageToast()
 let publicKey=''
 function decodeKey(value:string){
   const str=atob(value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4))
@@ -36,7 +39,7 @@ async function enable(){
       headers:{'content-type':'application/json'},body:JSON.stringify(data)})
     if(!r.ok)throw Error('服务器尚未接受推送订阅，请重试')
     enabled.value=true
-    message.value='已开启每日提醒（默认日本时间上午 8 点）'
+    notify('已开启每日提醒（日本时间上午 8 点）')
   }catch(e){message.value=(e as Error).message}
   finally{busy.value=false}
 }
@@ -51,7 +54,7 @@ async function disable(){
       if(!response.ok)throw Error('服务器取消订阅失败')
       await sub.unsubscribe()
     }
-    enabled.value=false;message.value='已关闭当前设备的推送'
+    enabled.value=false;notify('已关闭当前设备的推送')
   }catch(e){message.value=(e as Error).message}finally{busy.value=false}
 }
 onMounted(discover)
@@ -62,6 +65,7 @@ onMounted(discover)
       <p>生日、纪念日、豆沙护理、到期待办。通知不会透露私人数据给其他家庭账号。</p></div>
     <button v-if="available" :disabled="busy" @click="enabled?disable():enable()">{{ enabled?'关闭本机推送':'开启锁屏通知' }}</button>
     <small v-if="message">{{ message }}</small>
+    <PageToast :toast="toast" />
     <a v-if="!available" class="setup-link" href="/vapid-setup.html">用 iPhone 配置推送密钥（无需电脑）</a>
   </section>
 </template>

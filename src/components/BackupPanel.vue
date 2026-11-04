@@ -3,11 +3,14 @@ import {ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
 import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','memories',
   'petHealth','routineMarks','tripProgress','financeLinks']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
+const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
 function bodyOk(snapshot:any):snapshot is Snapshot{
   if(!snapshot||snapshot.format!=='homeflow.portable'||snapshot.schemaVersion!==1||
@@ -50,7 +53,7 @@ async function exportArchive(){
     }
     const archive=zipSync(files,{level:0})
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')
-    status.value='备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机照片。'
+    notify('备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机照片')
   }catch(e){error.value=(e as Error).message}
   finally{pending.value=false}
 }
@@ -90,8 +93,8 @@ async function chooseArchive(file:File|null){
       }
     }
     preview.value=snapshot
-    status.value='校验完成：可以恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
-      ' 条记录和 '+Object.keys(photos.value).length+' 张本机照片'
+    notify('校验完成：可以恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
+      ' 条记录和 '+Object.keys(photos.value).length+' 张本机照片')
   }catch(e){error.value=(e as Error).message;preview.value=null}
   finally{pending.value=false}
 }
@@ -121,7 +124,8 @@ async function restore(){
       restoredPhotos++
     }
     const count=Object.values(restoreCounts.value).reduce((n,i)=>n+i,0)
-    status.value='恢复完成：新增 '+count+' 条记录，恢复本机照片 '+restoredPhotos+' 张。刷新页面即可查看。'
+    status.value=''
+    notify('恢复完成：新增 '+count+' 条记录，恢复照片 '+restoredPhotos+' 张')
   }catch(e){
     error.value='恢复未全部完成：'+(e as Error).message+'。已有记录未被覆盖，可以重新导入继续。'
   }finally{pending.value=false}
@@ -143,6 +147,7 @@ async function restore(){
       <button :disabled="pending" @click="restore">确认恢复缺失记录与照片</button>
     </div>
     <p v-if="status" class="success" role="status">{{ status }}</p>
+    <PageToast :toast="toast" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <small>当前采用不覆盖已有记录的恢复方式；账号密码、推送密钥和未同步离线任务不在备份内。云端相册尚未开通。</small>
   </section>

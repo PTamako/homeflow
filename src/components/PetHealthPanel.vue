@@ -2,11 +2,14 @@
 import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 const props=defineProps<{petId:string;name:string;userId:string}>()
 type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string;sourceRoutineId?:string|null;sourceTaskId?:string|null}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
-const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref(''),message=ref('')
+const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref('')
 const editingId=ref<string|null>(null)
+const {toast,notify}=usePageToast()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
 let readRevision=0
@@ -37,7 +40,7 @@ async function read(more=false){
 function editRecord(r:Health){
   editingId.value=r.id;kind.value=r.recordType;eventDate.value=r.eventOn
   nextDate.value=r.nextDueOn||'';weight.value=r.weightGrams;note.value=r.note||''
-  error.value='';message.value=''
+  error.value=''
 }
 function cancelEditing(){
   editingId.value=null;note.value='';nextDate.value='';weight.value=null
@@ -49,11 +52,11 @@ async function removeRecord(r:Health){
     const res=await fetch('/api/pets/'+props.petId+'/health/'+r.id,{method:'DELETE',credentials:'same-origin'})
     if(!res.ok)throw Error('删除护理记录失败')
     await read();if(editingId.value===r.id)cancelEditing()
-    message.value='护理记录已删除'
+    notify('护理记录已删除')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 async function create(){
- busy.value=true;error.value='';message.value=''
+ busy.value=true;error.value=''
  try{
   const r=await fetch('/api/pets/'+props.petId+'/health'+(editingId.value?'/'+editingId.value:''),{
     method:editingId.value?'PATCH':'POST',credentials:'same-origin',
@@ -67,7 +70,7 @@ async function create(){
   note.value='';nextDate.value='';weight.value=null
   const edited=!!editingId.value
   editingId.value=null
-  message.value=edited?'护理记录已更新':data.createdReminder?'保存成功，已经在待办中创建下次提醒':'护理记录已保存'
+  notify(edited?'护理记录已更新':data.createdReminder?'已保存，并创建下次提醒':'护理记录已保存')
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
@@ -91,7 +94,7 @@ watch(year,value=>{if(!value)month.value=''})
       </div>
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <p v-if="message" class="ok" role="status">{{ message }}</p>
+    <PageToast :toast="toast" />
     <div class="pet-history-filter">
       <label>年份<select v-model="year" aria-label="宠物护理记录年份">
         <option value="">全部年份</option><option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>

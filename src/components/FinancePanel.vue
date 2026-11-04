@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
 const props=defineProps<{trips:Item[];goals:Item[];owner:boolean}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>('trip'),target=ref('')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
-const nextCursor=ref<string|null>(null),busy=ref(false),error=ref(''),message=ref('')
+const nextCursor=ref<string|null>(null),busy=ref(false),error=ref('')
+const {toast,notify,clear:clearToast}=usePageToast()
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
@@ -84,12 +87,12 @@ async function saveSettings(){
   if(!/^-?\d+$/.test(adjustment.value.trim())||!Number.isSafeInteger(amount)||Math.abs(amount)>100000000000){
     error.value='调整额请输入有效的整数日元';return
   }
-  busy.value=true;error.value='';message.value=''
+  busy.value=true;error.value='';clearToast()
   try{
     await api('/finance/settings','PUT',{type:kind.value,targetId:target.value,
       adjustmentAmount:amount,periodStart:kind.value==='goal'?start.value:null,
       periodEnd:kind.value==='goal'?end.value:null})
-    message.value='调整额和设置已保存，不会修改家計簿'
+    notify('调整额和设置已保存，不会修改家計簿')
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
@@ -104,7 +107,7 @@ async function refreshLinks(){
 }
 async function loadCandidates(more=false){
   if(!available.value||!start.value||!end.value||!target.value)return
-  busy.value=true;error.value='';message.value=''
+  busy.value=true;error.value='';clearToast()
   try{
     const params=new URLSearchParams({start:start.value,end:end.value})
     if(more&&nextCursor.value)params.set('cursor',nextCursor.value)
@@ -119,14 +122,14 @@ async function linkEntry(entry:Item){
   busy.value=true;error.value=''
   try{
     await api('/finance/links','POST',{type:kind.value,targetId:target.value,entryId:entry.id})
-    await refreshLinks();message.value='已关联家計簿真实支出，不会再次记账'
+    await refreshLinks();notify('已关联家計簿支出，不会重复记账')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 async function unlink(item:Item){
   busy.value=true;error.value=''
   try{
     await api('/finance/links/'+encodeURIComponent(item.linkId),'DELETE')
-    await refreshLinks();message.value='已取消关联；原记账明细不受影响'
+    await refreshLinks();notify('已取消关联，原记账明细不受影响')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 watch([kind,target],()=>{entries.value=[];nextCursor.value=null;refreshLinks();refreshSettings()})
@@ -208,7 +211,7 @@ onMounted(()=>{defaultDates();detect()})
       </template>
     </template>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <p v-if="message" role="status" class="success">{{ message }}</p>
+    <PageToast :toast="toast" />
   </section>
 </template>
 <style scoped>
