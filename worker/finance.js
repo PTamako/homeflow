@@ -51,6 +51,39 @@ async function ledger(env,params){
     return data
   }finally{clearTimeout(timeout)}
 }
+// Verify savings against the same read-only ledger calculation shown in
+// FinancePanel. Called only on an explicit completion attempt, never when
+// rendering Today: zero extra ledger calls during ordinary page views.
+export async function verifiedGoalProgress(env,goal,periodKey,today){
+  if(!ready(env))return {ok:false,error:'ledger_verification_unavailable'}
+  const mode=goal.goal_mode||'once'
+  let start,end,adjustment=0,opening=0
+  if(mode==='once'){
+    const saved=await env.DB.prepare(`SELECT adjustment_amount,period_start,period_end
+      FROM finance_target_settings WHERE household_id=?1 AND target_type='goal' AND target_id=?2`)
+      .bind(goal.household_id,goal.id).first()
+    start=saved?.period_start||goal.start_on||String(goal.created_at||'').slice(0,10)
+    end=saved?.period_end||today
+    adjustment=Number(saved?.adjustment_amount||0)
+    opening=Number(goal.reserved_amount||0)
+  }else{
+    const window=goalPeriod(goal,periodKey,today)
+    if(!window||window.notStarted)return {ok:false,error:'invalid_goal_period'}
+    start=window.start
+    end=window.end
+    const saved=await env.DB.prepare(`SELECT adjustment_amount FROM goal_period_adjustments
+      WHERE household_id=?1 AND goal_id=?2 AND period_key=?3`)
+      .bind(goal.household_id,goal.id,periodKey).first()
+    adjustment=Number(saved?.adjustment_amount||0)
+  }
+  if(!validPeriod(start,end)||end>today)return {ok:false,error:'invalid_goal_period'}
+  const data=await ledger(env,{summary:'net',start,end})
+  const amount=opening+data.net+adjustment
+  if(!Number.isSafeInteger(amount))return {ok:false,error:'ledger_invalid_response'}
+  return {ok:amount>=goal.target_amount,amount,target:goal.target_amount,start,end,
+    error:amount>=goal.target_amount?null:'goal_not_funded'}
+}
+
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
