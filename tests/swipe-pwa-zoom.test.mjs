@@ -12,10 +12,10 @@ const styles=read('src/style.css')
 const icons=read('src/components/AppIcon.vue')
 
 test('every record type shares the swipe row instead of showing permanent inline edit/delete buttons',()=>{
- for(const type of ['today-routines','anniversaries','routines','wishes','goals','shopping','trips','memories'])
+ for(const type of ['anniversaries','routines','wishes','goals','shopping','trips','memories'])
    assert.ok(life.includes('scope="'+type+'"'),'Missing swipe: '+type)
- for(const type of ['today-tasks','pet-health']){
-   const source=type==='today-tasks'?app:pet
+ for(const type of ['today-unified','pet-health']){
+   const source=type==='today-unified'?app:pet
    assert.ok(source.includes('scope="'+type+'"'),'Missing swipe: '+type)
  }
  assert.equal((life.match(/<SwipeActions/g)||[]).length,

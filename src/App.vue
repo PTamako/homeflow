@@ -4,6 +4,7 @@ import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp
 import BackupPanel from './components/BackupPanel.vue'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
+import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
@@ -14,8 +15,11 @@ import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
-type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
+type Routine=Record<string,any>
+type TodayEntry={key:string;kind:'task'|'routine';title:string;done:boolean;task?:Task;routine?:Routine}
+type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
+const todayRoutines=ref<Routine[]>([]),editingRoutine=ref<Routine|null>(null),routineBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
@@ -42,6 +46,23 @@ const visibleTasks=computed(()=>tasks.value.filter(t=>{
  return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
    !t.dueOn||t.dueOn<=now
 }))
+const unifiedToday=computed<TodayEntry[]>(()=>{
+  const standard:TodayEntry[]=visibleTasks.value.map(task=>({
+    key:'task:'+task.id,kind:'task',title:task.title,done:!!task.completedAt,task
+  }))
+  const recurring:TodayEntry[]=todayRoutines.value.map(routine=>({
+    key:'routine:'+routine.id,kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
+  }))
+  // The two sources share a single completion order, without changing their
+  // independent persistence and recurrence rules.
+  return [...standard,...recurring].sort((a,b)=>Number(a.done)-Number(b.done))
+})
+const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
+function recurringLabel(r:Routine){
+  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
+    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
+    r.repeat_type==='workday'?'工作日':'定期'
+}
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
 const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
@@ -104,6 +125,7 @@ async function refresh(){
     if(user.value){
       const [a,b]=await Promise.all([api('/family'),api('/tasks?status=all')])
       profiles.value=a.profiles||[];tasks.value=b.tasks||[]
+      await loadTodayRoutines()
       try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
     }
   }catch{
@@ -147,9 +169,49 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];tasks.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];pendingTasks.value=[];await refresh()
 }
 async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
+async function loadTodayRoutines(){
+  if(!user.value)return
+  const date=tokyoToday()
+  try{
+    const result=await api('/routines/today?date='+encodeURIComponent(date))
+    // An old response must not replace the list after midnight in Japan.
+    if(date===tokyoToday()&&user.value)todayRoutines.value=result.items||[]
+  }catch(e){error.value=(e as Error).message}
+}
+async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines()])}
+function editRoutine(r:Routine){
+  if(r.created_by!==user.value?.id)return
+  editingRoutine.value=editingRoutine.value?.id===r.id?null:r
+  editingTask.value=null
+}
+async function routineSaved(){
+  editingRoutine.value=null
+  await loadTodayRoutines()
+  notify('定期计划已保存')
+}
+async function deleteRoutine(r:Routine){
+  if(r.created_by!==user.value?.id||!confirm('删除定期计划？以前的完成记录会保留。'))return
+  try{
+    await api('/routines/'+r.id,'DELETE')
+    editingRoutine.value=null
+    await loadTodayRoutines()
+    notify('定期计划已删除')
+  }catch(e){error.value=(e as Error).message}
+}
+async function toggleRoutine(r:Routine){
+  if(routineBusy.value)return
+  routineBusy.value=true
+  try{
+    const status=r.mark?.completed_at?'open':'completed'
+    await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),status})
+    await loadTodayRoutines()
+    notify(status==='completed'?'定期事项已完成':'已撤销完成')
+  }catch(e){error.value=(e as Error).message}
+  finally{routineBusy.value=false}
+}
 async function addTask(){
   if(!title.value.trim()||!user.value)return
   error.value='';loading.value=true;syncMessage.value=''
@@ -208,7 +270,7 @@ function onForeground(){
   const d=tokyoToday()
   if(d!==currentJstDay.value){
     currentJstDay.value=d
-    if(user.value&&tab.value==='today')void loadTasks()
+    if(user.value&&tab.value==='today')void reloadToday()
   }
 }
 async function toggleTask(t:Task){
@@ -236,7 +298,12 @@ async function generateInvite(){
   try{invitation.value=(await api('/auth/invitations','POST',{})).invitationCode||'';notify('邀请码已生成')}
   catch(e){error.value=(e as Error).message}
 }
-watch(tab,value=>{clearToast();if(value==='today'&&user.value)loadTasks()})
+watch(tab,value=>{
+  clearToast()
+  editingTask.value=null
+  editingRoutine.value=null
+  if(value==='today'&&user.value)void reloadToday()
+})
 onMounted(async()=>{
   await refresh()
   window.addEventListener('online',onOnline)
@@ -288,7 +355,7 @@ onBeforeUnmount(()=>{
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
-        <div class="section-title"><h2>今日与近期待办</h2><span>{{ tasks.filter(t=>!!t.completedAt).length }} / {{ tasks.length }} 完成</span></div>
+        <div class="section-title"><h2>今日待办</h2><span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span></div>
         <section class="panel">
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
@@ -318,47 +385,70 @@ onBeforeUnmount(()=>{
             </div>
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
-          <div class="row-between"><b>今日待办</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label></div>
-          <div v-if="!visibleTasks.length" class="empty">今天没有任务，添加一件小事吧。</div>
-          <template v-for="t in visibleTasks" :key="t.id">
-          <SwipeActions :id="t.id" scope="today-tasks"
-            :allow-edit="t.creatorUserId===user.id" :allow-delete="t.creatorUserId===user.id"
-            @edit="editTask(t)" @delete="deleteTask(t)">
-            <div class="task-row">
-              <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
-              <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
-                <small class="task-meta"><AppIcon :name="t.visibility==='private'?'shield':'house'" :size="14" />
-                  {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}
-                  <template v-if="nameForProfile(t.subjectProfileId)"> · {{ nameForProfile(t.subjectProfileId) }}</template>
-                  <template v-if="t.healthRecordType&&isPet(t.subjectProfileId)"> · 完成后记护理</template>
-                </small></div>
-            </div>
-          </SwipeActions>
-          <form v-if="editingTask?.id===t.id" class="task-edit-form" @submit.prevent="saveTaskEdit">
-            <b>编辑任务</b>
-            <label>名称<input v-model="editingTask.title" required maxlength="150"/></label>
-            <label>可见范围<select v-model="editingTask.visibility">
-              <option value="private">仅自己</option><option value="household">家庭共享</option>
-            </select></label>
-            <label>截止日期<input v-model="editingTask.dueOn" type="date"/></label>
-            <label>关联对象（可选）
-              <select v-model="editingTask.subjectProfileId" @change="changedEditingSubject">
-                <option value="">不关联任何人或宠物</option>
-                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
-              </select>
-            </label>
-            <label v-if="editTaskPet">完成后同步到宠物护理记录
-              <select v-model="editingTask.healthRecordType">
-                <option value="">不自动记录</option><option value="other">日常护理</option>
-                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
-                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
-              </select>
-            </label>
-            <div class="task-edit-actions">
-              <button type="button" class="outline" @click="editingTask=null">取消</button>
-              <button class="primary">保存修改</button>
-            </div>
-          </form>
+          <div class="row-between">
+            <b>待办与定期事项</b>
+            <label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label>
+          </div>
+          <p class="today-unified-hint">待办和定期任务统一显示。定期事项每天更新，未完成按原规则顺延。</p>
+          <div v-if="!unifiedToday.length" class="empty">今天没有待完成的事项。</div>
+          <template v-for="row in unifiedToday" :key="row.key">
+            <SwipeActions :id="row.key" scope="today-unified"
+              :allow-edit="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
+              :allow-delete="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
+              @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
+              @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
+              <div class="task-row today-unified-row">
+                <input type="checkbox" :checked="row.done"
+                  :disabled="!!row.routine&&routineBusy"
+                  :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
+                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
+                <div class="task-detail">
+                  <div :class="{done:row.done}">{{ row.title }}</div>
+                  <small class="task-meta">
+                    <span class="today-kind-label">{{ row.kind==='routine'?'定期':'待办' }}</span>
+                    <template v-if="row.task">
+                      <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
+                      {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
+                      <template v-if="nameForProfile(row.task.subjectProfileId)"> · {{ nameForProfile(row.task.subjectProfileId) }}</template>
+                      <template v-if="row.task.healthRecordType&&isPet(row.task.subjectProfileId)"> · 完成后记护理</template>
+                    </template>
+                    <template v-else-if="row.routine">
+                      {{ row.routine.mark?.completed_at?'已完成':row.routine.carriedFrom?'未完成 · 顺延至今天':recurringLabel(row.routine) }}
+                      <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
+                      <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
+                    </template>
+                  </small>
+                </div>
+              </div>
+            </SwipeActions>
+            <form v-if="row.task&&editingTask?.id===row.task.id" class="task-edit-form" @submit.prevent="saveTaskEdit">
+              <b>编辑任务</b>
+              <label>名称<input v-model="editingTask.title" required maxlength="150"/></label>
+              <label>可见范围<select v-model="editingTask.visibility">
+                <option value="private">仅自己</option><option value="household">家庭共享</option>
+              </select></label>
+              <label>截止日期<input v-model="editingTask.dueOn" type="date"/></label>
+              <label>关联对象（可选）
+                <select v-model="editingTask.subjectProfileId" @change="changedEditingSubject">
+                  <option value="">不关联任何人或宠物</option>
+                  <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+                </select>
+              </label>
+              <label v-if="editTaskPet">完成后同步到宠物护理记录
+                <select v-model="editingTask.healthRecordType">
+                  <option value="">不自动记录</option><option value="other">日常护理</option>
+                  <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
+                  <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
+                </select>
+              </label>
+              <div class="task-edit-actions">
+                <button type="button" class="outline" @click="editingTask=null">取消</button>
+                <button class="primary">保存修改</button>
+              </div>
+            </form>
+            <LifeItemEditor v-if="row.routine&&editingRoutine?.id===row.routine.id"
+              kind="routines" :item="row.routine" :profiles="profiles"
+              @saved="routineSaved" @cancel="editingRoutine=null"/>
           </template>
         </section>
       </template>
