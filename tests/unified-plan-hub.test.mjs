@@ -39,7 +39,8 @@ test('new wish and savings goal are created atomically and linked',async()=>{
  const [wish,goal]=db.batches[0]
  assert.match(wish.sql,/INSERT INTO wishes/)
  assert.match(goal.sql,/INSERT INTO goals/)
- assert.equal(goal.values.at(-1),result.id)
+ assert.equal(goal.values.at(-2),result.id)
+ assert.match(goal.values.at(-1),/^\d{4}-\d{2}-\d{2}$/)
  assert.equal(goal.values[5],200000)
  assert.equal(goal.values[7],'2027-03-01')
 })
