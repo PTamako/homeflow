@@ -106,3 +106,9 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .task-edit-actions{display:flex;gap:10px;justify-content:flex-end}
 .task-edit-actions button{font-size:13px;padding:9px 13px}
 @media(max-width:520px){.task-edit-form{grid-template-columns:minmax(0,1fr)}}
+
+/* Unified Today checklist: one compact list for one-off and recurring items. */
+.today-unified-hint{font-size:11px;line-height:1.5;color:#82948b;margin:0 0 8px}
+.today-unified-row{padding:12px 0;align-items:center}
+.today-unified-row .task-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;line-height:1.45}
+.today-kind-label{display:inline-flex;align-items:center;border-radius:6px;background:#e9f1ea;color:#3f785b;font-size:10px;font-weight:700;padding:2px 6px;white-space:nowrap}
