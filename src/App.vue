@@ -365,8 +365,8 @@ async function generateInvite(){
   catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{
-  settingsOpen.value=false
   clearToast()
+  settingsOpen.value=false
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
