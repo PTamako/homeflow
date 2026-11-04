@@ -72,7 +72,7 @@ test('ordinary trip can be created without an import JSON',async()=>{
  assert.equal(r.status,201)
  assert.equal(db.calls.length,1)
  assert.match(db.calls[0].sql,/INSERT INTO trips/)
- assert.equal(db.calls[0].values.at(-2),180000)
+ assert.equal(db.calls[0].values.at(-1),180000)
 })
 test('Today shows date-matched plans without calling external ledger',async()=>{
  const db=recordDb()
