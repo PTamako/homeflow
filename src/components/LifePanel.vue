@@ -365,7 +365,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
               <button type="button" class="life-link" @click="downloadLocalPhoto(localPhotoBlobs[m.id][i],m.id+'-'+(i+1)+'.jpg')">保存照片</button>
             </div>
           </div>
-          <p>{{ m.story }}</p><small>{{ m.visibility==='private'?'🔒 私人回忆':'⌂ 家庭共享' }}</small>
+          <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
         </article>
       </section>
     </template>
@@ -380,7 +380,8 @@ watch(()=>props.mode,fetchMode,{immediate:true})
 
 /* Shared icon language and responsive form guards */
 .life-heading{display:flex;align-items:center;gap:9px;color:#293f34;min-width:0}
-.life-heading .app-icon{color:#43866a}
+.life-heading :deep(.app-icon){color:#43866a}
+.memory-visibility{display:inline-flex;align-items:center;gap:5px}
 .life-form,.life-card,.life-row,.trip-import,.trip-detail{min-width:0;max-width:100%}
 .life-row>*{min-width:0;overflow-wrap:anywhere}
 .life-row>button{flex:none}

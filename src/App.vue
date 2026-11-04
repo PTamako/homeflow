@@ -216,7 +216,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
         <section class="panel">
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
-            <select v-model="visibility" aria-label="可见范围"><option value="private">🔒 个人</option><option value="household">⌂ 家庭共享</option></select>
+            <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
             <input v-model="due" type="date" aria-label="完成日期"/>
             <select v-model="subjectId" aria-label="关联对象"><option value="">不关联成员</option>
               <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select>
@@ -226,7 +226,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
             <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
               <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
             <div v-for="op in pendingTasks" :key="op.id" class="task-row">
-              <span>☁</span><div class="task-detail">{{ op.payload.title }}
+              <AppIcon name="archive" :size="18" /><div class="task-detail">{{ op.payload.title }}
                 <small>{{ op.status==='conflict'?'其他设备已修改，需要重新确认':'待网络恢复后同步' }}</small></div>
               <button class="text-button" @click="discardPending(op.id)">取消</button>
             </div>
@@ -237,7 +237,8 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
           <div v-for="t in visibleTasks" :key="t.id" class="task-row">
             <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
             <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
-              <small>{{ t.visibility==='private'?'🔒 仅自己':'⌂ 家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
+              <small class="task-meta"><AppIcon :name="t.visibility==='private'?'shield':'house'" :size="14" />
+                {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
             <button v-if="t.creatorUserId===user.id" class="text-button" @click="editTask(t)" :aria-label="'编辑 '+t.title">编辑</button>
             <button v-if="t.creatorUserId===user.id" class="text-button" @click="deleteTask(t)" :aria-label="'删除 '+t.title">×</button>
           </div>
@@ -306,7 +307,7 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
         </section>
       </template>
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
-        <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
+        <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'让旅行心愿变成计划':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
       <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'" />

@@ -68,3 +68,9 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
   .pet-profile-trigger{padding:12px;gap:11px}
   .nav-item{font-size:10.5px}
 }
+
+/* Solid navigation separates primary actions from scrolling card content. */
+.nav{background:#fff}
+.task-meta{display:flex;align-items:center;gap:5px}
+.hero-title{display:flex;align-items:center;gap:10px}
+.hero-title .app-icon{color:#45886c}
