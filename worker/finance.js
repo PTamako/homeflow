@@ -52,6 +52,9 @@ async function target(db,householdId,userId,kind,id){
   return db.prepare('SELECT id FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
     .bind(id,householdId,userId).first()
 }
+const validAdjustment=n=>Number.isSafeInteger(n)&&Math.abs(n)<=100000000000
+const validPeriod=(start,end)=>dateOk(start)&&dateOk(end)&&end>=start&&
+  Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z')<=3660*86400000
 const LEDGER_ERROR_CODES=new Set([
   'ledger_auth_failed','ledger_access_blocked','ledger_endpoint_missing',
   'ledger_source_token_missing','ledger_source_db_unavailable','ledger_source_unavailable',
