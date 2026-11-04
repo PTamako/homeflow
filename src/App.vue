@@ -8,10 +8,11 @@ import PetHealthPanel from './components/PetHealthPanel.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;completedAt:string|null;updatedAt:string}
-type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
+type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 const tab=ref<'today'|'cat'|'family'|'plans'|'memories'>('today')
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
+const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
 const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
@@ -22,7 +23,7 @@ const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.complet
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const errText=(key:string)=>{
   const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'请检查输入（密码至少 12 位）',
-    bootstrap_not_configured:'请先配置 Cloudflare HOMEFLOW_BOOTSTRAP_SECRET',bootstrap_not_authorized:'启动密钥不正确',
+    bootstrap_not_configured:'请先在生产 Worker 配置 HOMEFLOW_BOOTSTRAP_SECRET',bootstrap_secret_too_short:'已找到 Cloudflare Secret，但长度不足 32 字符。请在生产 Worker 重设为至少 32 位随机值。',bootstrap_not_authorized:'启动密钥不正确',
     not_authenticated:'请登录',conflict_or_expired:'邀请码过期、已使用或账号重复',household_full:'家庭已有两个账号',
     too_many_attempts:'尝试次数过多，请稍后重试',environment_or_database_not_ready:'数据库迁移或绑定尚未完成',
     origin_forbidden:'请使用正确的 HomeFlow 网址',forbidden:'没有访问权限'}
@@ -49,6 +50,7 @@ async function refresh(){
     try{
       const status=await api('/auth/bootstrap-status')
       initialized.value=!!status.initialized
+      bootstrapIssue.value=status.bootstrapIssue||null
       if(!status.initialized)authMode.value='bootstrap'
     }catch{}
   }
@@ -159,6 +161,8 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
       <div class="eyebrow">OUR LITTLE HOME</div><h1>欢迎回家 ♡</h1><p class="lead">家人的共享生活，以及自己的小秘密。</p>
       <form class="panel auth-form" @submit.prevent="submitAuth">
         <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':'登录 HomeFlow' }}</h2>
+        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='missing'" role="alert" class="error">生产 Worker 中尚未找到 HOMEFLOW_BOOTSTRAP_SECRET，请在 Cloudflare 设置至少 32 位的加密 Secret。</p>
+        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='too_short'" role="alert" class="error">Cloudflare Secret 已存在，但长度不足 32 字符。请在生产 Worker 的 Variables and Secrets 中更新密钥值。</p>
         <label>登录账号<input v-model="login" required maxlength="36" autocomplete="username" placeholder="字母、数字和下划线"/></label>
         <label v-if="authMode!=='login'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
         <label>密码<input v-model="password" required type="password" minlength="12" autocomplete="current-password" placeholder="至少 12 位"/></label>

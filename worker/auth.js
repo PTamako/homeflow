@@ -53,13 +53,20 @@ export async function authRoute(request,env,path,session) {
   }
   if(path==='/api/auth/bootstrap-status' && request.method==='GET') {
     const row=await db.prepare('SELECT 1 AS found FROM households LIMIT 1').first()
-    return json({initialized:!!row,bootstrapAvailable:!row && !!env.HOMEFLOW_BOOTSTRAP_SECRET})
+    const key=env.HOMEFLOW_BOOTSTRAP_SECRET
+    const configured=typeof key==='string'&&key.length>0
+    const valid=configured&&key.length>=32
+    // Public status exposes only setup readiness, never the value or its length.
+    return json({initialized:!!row,bootstrapAvailable:!row&&valid,
+      bootstrapIssue:row?null:(!configured?'missing':!valid?'too_short':null)})
   }
   if(path==='/api/auth/bootstrap' && request.method==='POST') {
     const body=await readBody(request)
     if(!body) return malformed()
-    if(typeof env.HOMEFLOW_BOOTSTRAP_SECRET!=='string'||env.HOMEFLOW_BOOTSTRAP_SECRET.length<32)
+    if(typeof env.HOMEFLOW_BOOTSTRAP_SECRET!=='string'||!env.HOMEFLOW_BOOTSTRAP_SECRET)
       return json({error:'bootstrap_not_configured'},503)
+    if(env.HOMEFLOW_BOOTSTRAP_SECRET.length<32)
+      return json({error:'bootstrap_secret_too_short'},503)
     if(typeof body.bootstrapSecret!=='string'||body.bootstrapSecret.length>512)
       return json({error:'bootstrap_not_authorized'},403)
     // Both values are hashed first, then compared without early-exit.
