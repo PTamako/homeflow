@@ -36,6 +36,7 @@ const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
+const settingsOpen=ref(false)
 const focusPlanType=ref('all')
 function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
@@ -196,6 +197,7 @@ async function submitAuth(){
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
+  settingsOpen.value=false
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
     const registration=await navigator.serviceWorker?.getRegistration()
@@ -328,6 +330,7 @@ async function discardPending(id:string){
   if(tab.value==='today')notify('已取消待同步任务')
 }
 function onOnline(){if(user.value)void flushTasks()}
+function onSettingsKeydown(event:KeyboardEvent){if(event.key==='Escape')settingsOpen.value=false}
 function onForeground(){
   if(document.visibilityState!=='visible')return
   const d=tokyoToday()
@@ -362,6 +365,7 @@ async function generateInvite(){
   catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{
+  settingsOpen.value=false
   clearToast()
   editingTask.value=null
   editingRoutine.value=null
@@ -376,11 +380,13 @@ onMounted(async()=>{
     if(user.value&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
   window.addEventListener('online',onOnline)
+  window.addEventListener('keydown',onSettingsKeydown)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
 })
 onBeforeUnmount(()=>{
   window.removeEventListener('online',onOnline)
+  window.removeEventListener('keydown',onSettingsKeydown)
   document.removeEventListener('visibilitychange',onForeground)
 })
 </script>
@@ -388,8 +394,22 @@ onBeforeUnmount(()=>{
 <template>
   <div class="shell">
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
-      <button v-if="user" class="text-button" @click="logout">退出 · {{ user.loginName }}</button>
+      <div v-if="authReady&&user" class="settings-anchor">
+        <button class="settings-trigger" type="button" aria-controls="homeflow-settings" :aria-expanded="settingsOpen"
+          @click="settingsOpen=!settingsOpen"><AppIcon name="settings" :size="20" /> 设置</button>
+        <div v-if="settingsOpen" id="homeflow-settings" class="settings-popover" role="dialog" aria-label="HomeFlow 设置">
+          <div class="settings-title"><strong>设置</strong>
+            <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
+          <div class="settings-section settings-account"><span>当前账号</span><b>{{ user.loginName }}</b></div>
+          <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel /></div>
+          <div class="settings-section settings-reminders">
+            <ImportantReminders :today-date="currentJstDay" :today-entry-keys="todayEntryKeys" compact />
+          </div>
+          <button class="settings-logout" type="button" @click="logout">退出登录</button>
+        </div>
+      </div>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
+    <div v-if="settingsOpen" class="settings-overlay" aria-hidden="true" @click="settingsOpen=false"></div>
     <main v-if="!authReady" class="auth-content" aria-live="polite">
       <section class="panel" role="status"><h2>正在打开我们的小家…</h2><p class="hint">正在确认登录状态与家庭资料。</p></section>
     </main>
@@ -432,7 +452,6 @@ onBeforeUnmount(()=>{
       <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
-        <ImportantReminders :today-date="currentJstDay" :today-entry-keys="todayEntryKeys" />
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <div class="section-title"><h2>今日待办</h2><span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span></div>
@@ -629,7 +648,6 @@ onBeforeUnmount(()=>{
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
-      <PushPanel v-if="tab==='today'" />
       <LifePanel :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
         :tasks="tasks" :focus-plan-type="focusPlanType" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks" @open-plans="openPlans" />
