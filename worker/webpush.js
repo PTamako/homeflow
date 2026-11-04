@@ -84,7 +84,7 @@ async function jwt(endpoint,env){
   const signature=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},privateKey,bytes(toSign))
   return toSign+'.'+encodeB64(signature)
 }
-async function encrypt(data,subscription){
+export async function encrypt(data,subscription){
   const receiver=await crypto.subtle.importKey('raw',decodeB64(subscription.p256dh),
     {name:'ECDH',namedCurve:'P-256'},false,[])
   const local=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits'])
