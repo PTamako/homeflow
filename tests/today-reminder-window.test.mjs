@@ -89,7 +89,7 @@ test('Settings shows a red dot only for outstanding additional reminders without
  assert.match(important,/emit\('presenceChange',!isLoading&&!loadError&&rows.length>0\)/)
  assert.match(important,/loadedDate\.value===props\.todayDate/)
  assert.match(important,/refreshIfStale/)
- assert.equal((important.match(/fetch\('\/api\/reminders/g)||[]).length,1)
+ assert.equal((important.match(/fetch\('\/api\/reminders\?date/g)||[]).length,1)
  assert.match(css,/\.settings-alert-dot\{position:absolute/)
  assert.deepEqual(additionalReminders([{kind:'routine',id:'r'}],['routine:r']),[])
  assert.equal(additionalReminders([{kind:'anniversary',id:'a'}],[]).length,1)
