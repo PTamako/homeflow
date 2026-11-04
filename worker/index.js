@@ -37,7 +37,7 @@ export default {
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
-        if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences')return remindersRoute(request,env.DB,session)
+        if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
         if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
         if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)

@@ -107,6 +107,11 @@ export async function encrypt(data,subscription){
   header.set(localPublic,21)
   return bytes(header,encrypted)
 }
+export const quietAtHour=(quiet,hour)=>{
+  const start=quiet?.start,end=quiet?.end
+  if(!Number.isInteger(start)||!Number.isInteger(end)||start===end)return false
+  return start<end?hour>=start&&hour<end:hour>=start||hour<end
+}
 async function deliver(sub,env,data){
   const body=await encrypt(data,sub)
   const jwtValue=await jwt(sub.endpoint,env)
@@ -117,7 +122,7 @@ async function deliver(sub,env,data){
       'Content-Encoding':'aes128gcm',
       'Content-Type':'application/octet-stream',
       TTL:'86400',
-      Urgency:'normal',
+      Urgency:data.priority==='important'?'high':'normal',
     },
     body,
     redirect:'manual',
@@ -126,7 +131,8 @@ async function deliver(sub,env,data){
 export async function runPushSchedule(env,now=Date.now()){
   if(!vapidReady(env))return {skipped:'push_not_configured'}
   const db=env.DB
-  const day=new Date(now+9*3600000).toISOString().slice(0,10)
+  const jst=new Date(now+9*3600000)
+  const day=jst.toISOString().slice(0,10),hour=jst.getUTCHours()
   const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
     FROM push_subscriptions ORDER BY user_id LIMIT 20`).all()
   if(!subscriptions.length)return {checked:0,sent:0}
@@ -138,28 +144,51 @@ export async function runPushSchedule(env,now=Date.now()){
     if(!remindersCache.has(sub.user_id)){
       const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),
         db,{user_id:sub.user_id,household_id:sub.household_id})
-      remindersCache.set(sub.user_id,(await response.json()).items||[])
+      remindersCache.set(sub.user_id,await response.json())
     }
-    const events=remindersCache.get(sub.user_id).slice(0,20)
+    const data=remindersCache.get(sub.user_id)
+    // No push during user quiet hours. In-app reminders remain visible.
+    // The default is disabled so the requested 06:00 JST push is delivered.
+    if(quietAtHour(data.quietHours,hour))continue
+    const events=(data.items||[]).slice(0,20)
     for(const event of events){
       const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
-      const claim=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
-        (endpoint_hash,notification_key,sent_on,status) VALUES(?1,?2,?3,'claimed')`)
+      // Single atomic claim: sent/gone deliveries never replay, while stale
+      // failed/claimed attempts may be reclaimed without extra SELECTs.
+      const claim=await db.prepare(`INSERT INTO notification_deliveries
+        (endpoint_hash,notification_key,sent_on,status,attempts)
+        VALUES(?1,?2,?3,'claimed',1)
+        ON CONFLICT(endpoint_hash,notification_key,sent_on) DO UPDATE SET
+          status='claimed',attempts=attempts+1,updated_at=CURRENT_TIMESTAMP
+        WHERE notification_deliveries.status IN ('failed','claimed')
+          AND notification_deliveries.attempts < 3
+          AND notification_deliveries.updated_at <= datetime('now','-15 minutes')`)
         .bind(sub.endpoint_hash,key,day).run()
       if(!claim.meta?.changes)continue
       checked++
-      let status=0,result='failed'
-      try{
-        const res=await deliver(sub,env,{title:event.title.slice(0,80),
-          body:event.kind==='anniversary'?'家庭重要日子提醒':event.kind==='routine'?'今天的定期事项':'待办事项到期',
-          url:'/',tag:key})
-        status=res.status
-        result=res.ok?'sent':res.status===404||res.status===410?'gone':'failed'
-      }catch{result='failed'}
+      let status=0,result='failed',extraAttempts=0
+      for(let attempt=0;attempt<2;attempt++){
+        try{
+          const res=await deliver(sub,env,{title:event.title.slice(0,80),
+            priority:event.priority||'normal',
+            body:event.kind==='anniversary'?'家庭重要日子提醒':
+              event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
+              event.kind==='routine'?'今天的定期事项':'待办事项到期',
+            url:'/',tag:key})
+          status=res.status
+          result=res.ok?'sent':res.status===404||res.status===410?'gone':'failed'
+        }catch{result='failed'}
+        const transient=status===0||status===408||status===429||status>=500
+        if(result!=='failed'||!transient||attempt===1)break
+        extraAttempts++
+        await new Promise(resolve=>setTimeout(resolve,500))
+      }
       if(result==='sent')sent++;else failed++
-      await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,updated_at=CURRENT_TIMESTAMP
+      await db.prepare(`UPDATE notification_deliveries
+        SET status=?1,status_code=?2,attempts=MIN(3,attempts+?6),
+          updated_at=CURRENT_TIMESTAMP
         WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
-        .bind(result,status,sub.endpoint_hash,key,day).run()
+        .bind(result,status,sub.endpoint_hash,key,day,extraAttempts).run()
       if(result==='gone'){
         await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1').bind(sub.endpoint_hash).run()
         break

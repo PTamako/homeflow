@@ -23,6 +23,7 @@ MIGRATIONS=[
     "0016_reminder_preferences.sql",
     "0017_shopping_partial_quantity.sql",
     "0018_shopping_created_index.sql",
+    "0019_reminder_item_quiet_retry.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -35,7 +36,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","shopping_expense_links","reminder_snoozes","reminder_preferences"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}

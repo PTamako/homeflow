@@ -49,15 +49,17 @@ const queries=[
     ORDER BY m.completed_at,m.plan_type,m.plan_id,m.period_key LIMIT 501`],
   ['reminderSnoozes',"SELECT kind,item_id,until_on FROM reminder_snoozes "+
     "WHERE household_id=?1 AND user_id=?2 ORDER BY updated_at LIMIT 501"],
-  ['reminderPreferences',"SELECT advance_days FROM reminder_preferences "+
-    "WHERE household_id=?1 AND user_id=?2 LIMIT 501"]
+  ['reminderPreferences',"SELECT advance_days,quiet_start_hour,quiet_end_hour FROM reminder_preferences "+
+    "WHERE household_id=?1 AND user_id=?2 LIMIT 501"],
+  ['reminderItemPreferences',"SELECT kind,item_id,advance_days,priority FROM reminder_item_preferences "+
+    "WHERE household_id=?1 AND user_id=?2 ORDER BY updated_at LIMIT 501"]
 ]
 export const RESTORE_ORDER=queries.map(([key])=>key)
 const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   switch(key){
@@ -200,8 +202,30 @@ function normalized(key,r,h,u) {
     }
     case 'reminderPreferences': {
       if(![0,1,3,7].includes(r.advance_days))return null
-      return ["INSERT OR IGNORE INTO reminder_preferences (household_id,user_id,advance_days) VALUES(?1,?2,?3)",
-        [h,u,r.advance_days]]
+      const start=r.quiet_start_hour??null,end=r.quiet_end_hour??null
+      if(!((start===null&&end===null)||
+        (Number.isInteger(start)&&start>=0&&start<=23&&
+         Number.isInteger(end)&&end>=0&&end<=23&&start!==end)))return null
+      return ["INSERT OR IGNORE INTO reminder_preferences "+
+        "(household_id,user_id,advance_days,quiet_start_hour,quiet_end_hour) VALUES(?1,?2,?3,?4,?5)",
+        [h,u,r.advance_days,start,end]]
+    }
+    case 'reminderItemPreferences': {
+      if(!['task','routine','trip'].includes(r.kind)||typeof r.item_id!=='string'||
+         r.item_id.length<1||r.item_id.length>200||!/[0-9]/.test(r.item_id)||
+         ![0,1,3,7].includes(r.advance_days)||!['normal','important'].includes(r.priority))
+        return null
+      const table=r.kind==='task'?'tasks':r.kind==='routine'?'routines':'trips'
+      const planId=r.kind==='trip'?r.item_id.split(':')[0]:r.item_id
+      if(!id(planId))return null
+      const visibility=r.kind==='task'?'creator_user_id':'created_by'
+      // Private data is never imported into another account. Trip sub-items
+      // require the trip to be owned by the restoring user.
+      return ["INSERT OR IGNORE INTO reminder_item_preferences "+
+        "(household_id,user_id,kind,item_id,advance_days,priority) "+
+        "SELECT ?1,?2,?3,?4,?5,?6 WHERE EXISTS(SELECT 1 FROM "+table+
+        " WHERE household_id=?1 AND id=?7 AND "+visibility+"=?2)",
+        [h,u,r.kind,r.item_id,r.advance_days,r.priority,planId]]
     }
     case 'reminderSnoozes': {
       if(!['task','routine','anniversary','trip'].includes(r.kind)||
