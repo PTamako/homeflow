@@ -285,3 +285,70 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  assert.equal(anotherPrivate.body.records.memories.length,0)
   sqlite.close()
 })
+
+// Editing an existing profile must update birthday reminders without creating
+// a second family member or writing duplicate anniversary records.
+test('family profile edits drive birthday list and reminders, with no duplicate records',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'owner',password:'a-secure-test-password-123',displayName:'白ちゃん',
+   householdName:'我们的家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201,JSON.stringify(registered.body))
+ const owner=extractCookie(registered.cookie)
+ const family=await ask('/api/family','GET',undefined,owner)
+ assert.equal(family.body.profiles.length,1)
+ const p=family.body.profiles[0]
+ assert.equal(p.type,'person')
+ const first=await ask('/api/family/profiles/'+p.id,'PATCH',{
+   type:'person',displayName:'白ちゃん',birthday:'1994-11-06',
+   relation:'自己',adoptedOn:null,weightGrams:null,notes:''
+ },owner)
+ assert.equal(first.status,200,JSON.stringify(first.body))
+ const list=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
+ const birthday=list.body.items.find(e=>e.id==='profile-birthday:'+p.id)
+ assert.ok(birthday,JSON.stringify(list.body))
+ assert.equal(birthday.title,'白ちゃん的生日')
+ assert.equal(birthday.event_date,'1994-11-06')
+ assert.equal(birthday.source,'profile_birthday')
+ const reminded=await ask('/api/reminders?date=2026-11-05','GET',undefined,owner)
+ assert.equal(reminded.body.items.filter(e=>e.id==='profile-birthday:'+p.id).length,1)
+ assert.equal(reminded.body.items.find(e=>e.id==='profile-birthday:'+p.id)?.daysBefore,1)
+ const updated=await ask('/api/family/profiles/'+p.id,'PATCH',{
+   type:'person',displayName:'玉ちゃん',birthday:'1994-11-10',
+   relation:'自己',adoptedOn:null,weightGrams:null,notes:''
+ },owner)
+ assert.equal(updated.status,200)
+ const latest=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
+ assert.equal(latest.body.items.find(e=>e.id==='profile-birthday:'+p.id)?.title,'玉ちゃん的生日')
+ assert.equal(latest.body.items.find(e=>e.id==='profile-birthday:'+p.id)?.event_date,'1994-11-10')
+ const oldReminder=await ask('/api/reminders?date=2026-11-05','GET',undefined,owner)
+ assert.equal(oldReminder.body.items.some(e=>e.id==='profile-birthday:'+p.id),false)
+ const newReminder=await ask('/api/reminders?date=2026-11-09','GET',undefined,owner)
+ assert.equal(newReminder.body.items.filter(e=>e.id==='profile-birthday:'+p.id).length,1)
+ const all=await ask('/api/family','GET',undefined,owner)
+ assert.equal(all.body.profiles.length,1)
+ assert.equal(all.body.profiles[0].birthday,'1994-11-10')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM anniversaries').get().n,0)
+ // An explicitly linked birthday anniversary suppresses the synthetic copy.
+ const manual=await ask('/api/anniversaries','POST',{
+   title:'玉ちゃん生日',eventDate:'1994-11-10',repeatMode:'yearly',
+   advanceDays:[30,7,1,0],subjectProfileId:p.id,visibility:'household'
+ },owner)
+ assert.equal(manual.status,201,JSON.stringify(manual.body))
+ const merged=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
+ assert.equal(merged.body.items.filter(e=>e.subject_profile_id===p.id).length,1)
+ const pet=await ask('/api/family/profiles','POST',{
+   type:'pet',displayName:'豆沙',birthday:'2022-05-01',adoptedOn:'2022-06-01'
+ },owner)
+ assert.equal(pet.status,201)
+ const petUpdated=await ask('/api/family/profiles/'+pet.body.id,'PATCH',{
+   type:'pet',displayName:'豆沙',birthday:'2022-05-07',adoptedOn:'2022-06-01',
+   relation:'',weightGrams:5500,notes:''
+ },owner)
+ assert.equal(petUpdated.status,200)
+ const petList=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
+ assert.equal(petList.body.items.find(e=>e.id==='profile-birthday:'+pet.body.id)?.event_date,'2022-05-07')
+ sqlite.close()
+})

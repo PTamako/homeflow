@@ -6,6 +6,7 @@ import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
+import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
@@ -21,11 +22,23 @@ const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref(
 const error=ref(''),invitation=ref(''),showDone=ref(false)
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const openPetId=ref<string|null>(null)
+const editProfileId=ref<string|null>(null),profileRevision=ref(0)
 const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'}] as const
 const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.completedAt))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
+function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
+function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
+async function profileSaved(){
+  try{
+    const next=await api('/family')
+    profiles.value=next.profiles||[]
+    profileRevision.value++
+    editProfileId.value=null
+    error.value=''
+  }catch(e){error.value=(e as Error).message}
+}
 const errText=(key:string)=>{
   const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'输入格式不符合要求，请检查所有字段。',
     invalid_login_name:'登录账号格式不正确：请使用邮箱地址，或 3～36 位英文用户名（可包含数字、点、下划线和连字符）。',
@@ -159,7 +172,7 @@ async function addProfile(){
   try{
     await api('/family/profiles','POST',{displayName:name.value,type:petType.value,
       birthday:birth.value||null,adoptedOn:adopted.value||null})
-    profiles.value=(await api('/family')).profiles||[]
+    await profileSaved()
     name.value='';birth.value='';adopted.value=''
   }catch(e){error.value=(e as Error).message}
 }
@@ -218,8 +231,11 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
             <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
             <input v-model="due" type="date" aria-label="完成日期"/>
-            <select v-model="subjectId" aria-label="关联对象"><option value="">不关联成员</option>
-              <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select>
+            <label class="task-object">关联对象（可选）
+              <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
+                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+              </select></label>
+            <p class="task-object-hint">只是说明这件事与谁有关，不会指派任务，也不会改变「仅自己／家庭共享」权限。</p>
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
           <div v-if="pendingTasks.length" class="pending">
@@ -250,12 +266,25 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
             <h2><AppIcon name="users" :size="20" /> 家庭成员</h2>
             <span class="section-hint">{{ people.length }} 位成员</span>
           </div>
+          <p class="hint">点击自己的档案即可补充或修改生日。填写后自动加入每年生日提醒。</p>
           <div v-if="people.length" class="profiles">
-            <div v-for="p in people" :key="p.id" class="profile">
-              <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
-              <div class="profile-description"><b>{{ p.displayName }}</b>
-                <p>家庭成员 · {{ p.birthday||'未填写生日' }}</p>
+            <div v-for="p in people" :key="p.id" class="profile-entry">
+              <button v-if="canEditProfile(p)" type="button" class="profile profile-button"
+                :aria-expanded="editProfileId===p.id" @click="toggleProfileEdit(p.id)">
+                <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
+                <span class="profile-description"><b>{{ p.displayName }}</b>
+                  <small>{{ p.relation||'家庭成员' }} · {{ p.birthday||'未填写生日' }}</small>
+                </span>
+                <span class="profile-edit-action">{{ editProfileId===p.id?'收起':'编辑' }}</span>
+              </button>
+              <div v-else class="profile">
+                <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
+                <div class="profile-description"><b>{{ p.displayName }}</b>
+                  <p>{{ p.relation||'家庭成员' }} · {{ p.birthday||'未填写生日' }}</p>
+                </div>
               </div>
+              <ProfileEditor v-if="editProfileId===p.id&&canEditProfile(p)" :key="p.id"
+                :profile="p" @saved="profileSaved" @close="editProfileId=null"/>
             </div>
           </div>
           <p v-else class="empty">还没有家庭成员档案</p>
@@ -276,6 +305,12 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
               <AppIcon class="pet-chevron" name="chevron-down" :size="20" />
             </button>
             <div v-if="openPetId===p.id" :id="'pet-health-'+p.id" class="pet-health-content">
+              <button v-if="canEditProfile(p)" type="button" class="outline profile-pet-edit"
+                @click="toggleProfileEdit(p.id)">
+                {{ editProfileId===p.id?'收起编辑':'编辑豆沙／宠物档案' }}
+              </button>
+              <ProfileEditor v-if="editProfileId===p.id&&canEditProfile(p)" :key="p.id"
+                :profile="p" @saved="profileSaved" @close="editProfileId=null"/>
               <PetHealthPanel :pet-id="p.id" :name="p.displayName" />
             </div>
           </div>
@@ -310,7 +345,8 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'让旅行心愿变成计划':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
-      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'" />
+      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
+        :profile-revision="profileRevision" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">

@@ -74,3 +74,13 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .task-meta{display:flex;align-items:center;gap:5px}
 .hero-title{display:flex;align-items:center;gap:10px}
 .hero-title .app-icon{color:#45886c}
+
+/* Family profile editor entry and clearly separated task subject. */
+.profile-entry{min-width:0;max-width:100%}
+.profile-button{width:100%;background:#fff;color:inherit;text-align:left;cursor:pointer}
+.profile-button:focus-visible,.profile-pet-edit:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.profile-edit-action{color:#43866a;font-size:12px;white-space:nowrap;flex:none}
+.profile-pet-edit{margin:0 0 8px;font-size:12px}
+.task-form .task-object{min-width:0;max-width:100%}
+.task-object-hint{grid-column:1/-1;font-size:12px;line-height:1.6;color:#87958b;margin:-3px 0 1px}
+@media(max-width:720px){.task-object-hint{grid-column:1}}
