@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
+import {computed,ref,watch,nextTick,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import {upcomingWithinDays} from '../today-presentation.mjs'
@@ -586,6 +586,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
+      <div v-if="focusedItemId" class="focused-plan-banner">
+        <div><b>已打开对应计划</b><small>请在下方关联账目或核验完成；处理后可返回今天。</small></div>
+        <button type="button" @click="emit('backToToday')">返回今天</button>
+      </div>
+      <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
       <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
@@ -670,6 +675,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿计划</h2>
           <template v-for="w in items" :key="w.id">
+            <div :id="'plan-item-'+w.id" :class="{'focused-plan-entry':isFocused(w)}">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
@@ -679,8 +685,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
             </SwipeActions>
+            <div v-if="canEdit(w)" class="plan-action-strip">
+              <button v-if="w.target_on&&w.target_on<=today()&&w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
+                type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
+                {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
+              <button v-if="linkedGoal(w)" type="button" class="life-link"
+                @click="emit('openPlans','goal',linkedGoal(w).id)">查看关联储值</button>
+              <small v-if="linkedGoal(w)">关联储值需达到目标后，才能确认心愿。</small>
+            </div>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
+            <button v-if="isFocused(w)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
           <button v-if="listCursors.wishes" class="life-more" type="button" :disabled="pageBusy.wishes"
@@ -691,6 +707,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储值计划</h2>
           <p class="life-caption">储值方式支持累计目标、每月目标和每年目标。选定期间只读汇总家計簿收支，并可单独调整金额。</p>
           <template v-for="g in goals" :key="g.id">
+            <div :id="'plan-item-'+g.id" :class="{'focused-plan-entry':isFocused(g)}">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
@@ -706,7 +723,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='goal'&&financeDetail.id===g.id"
               :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
-              embedded-kind="goal" :embedded-id="g.id"/>
+              embedded-kind="goal" :embedded-id="g.id"
+              :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
+              :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
+              @completed="goalFinished"/>
+            <button v-if="isFocused(g)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
@@ -717,6 +739,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
+            <div :id="'plan-item-'+s.id" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
@@ -731,6 +754,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
               @saved="changed" @close="ledgerPickerId=null"/>
+            <button v-if="isFocused(s)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!visibleShopping.length" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
           <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
@@ -741,6 +766,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='trip'" class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
+            <div :id="'plan-item-'+t.id" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
