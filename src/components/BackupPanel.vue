@@ -7,7 +7,7 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
-const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','memories',
+const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
   'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const {toast,notify}=usePageToast()
