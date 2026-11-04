@@ -2,7 +2,7 @@
 import DateField from './DateField.vue'
 import {computed,onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
-type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
+type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean;purchaseQuantity:number|null}
 const props=defineProps<{shoppingId:string;linkedId?:string|null}>()
 const emit=defineEmits<{saved:[];close:[]}>()
 const connected=ref(false),loaded=ref(false),busy=ref(false),error=ref('')
@@ -12,6 +12,8 @@ const month=()=>new Date(Date.now()-30*86400000+9*3600000).toISOString().slice(0
 const start=ref(month()),end=ref(today())
 const adjustment=ref('0'),linkedAmount=ref<number|null>(null),savedMessage=ref('')
 const links=ref<Linked[]>([]),linksNeedReview=ref(false)
+const buyQty=ref(1),purchasedCount=ref(0),remainingCount=ref(0)
+const plannedQuantity=ref(1),unknownCount=ref(0),isCompleted=ref(false)
 const linkedEntryIds=computed(()=>new Set(links.value.map(x=>String(x.entryId))))
 const adjustedTotal=()=>Number(linkedAmount.value||0)+Number(adjustment.value||0)
 const signed=(n:number)=>(n<0?'−':n>0?'+':'')+'¥'+Math.abs(n).toLocaleString('ja-JP')
@@ -47,12 +49,20 @@ async function loadLinks(){
  links.value=data.items||[]
  linksNeedReview.value=!!data.needsReview
  linkedAmount.value=links.value.length?Number(data.linkedAmount||0):null
+ purchasedCount.value=Number(data.purchasedCount||0)
+ remainingCount.value=Number(data.remainingCount||0)
+ plannedQuantity.value=Number(data.plannedQuantity||1)
+ unknownCount.value=Number(data.unknownCount||0)
+ isCompleted.value=!!data.completed
 }
 async function attach(entry:Entry){
  if(busy.value)return
+ if(!Number.isInteger(buyQty.value)||buyQty.value<1||buyQty.value>9999){
+  error.value='本次购买数量请输入 1～9999 的整数';return
+ }
  busy.value=true;error.value=''
  try{
-  await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','POST',{entryId:entry.id})
+  await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','POST',{entryId:entry.id,purchaseQuantity:buyQty.value})
   await loadLinks()
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
@@ -93,7 +103,7 @@ onMounted(()=>{void check();void loadSettings()})
 <template>
  <section class="shopping-ledger">
   <b>关联家計簿真实支出</b>
-  <p class="hint">请从交易记录中选择，不自动猜测购物内容；选中后自动完成，不会再次记账。</p>
+  <p class="hint">选择真实消费并填写本次购买的件数。累计达到计划件数才完成；购物未达标会保留在进行中。不会重复记账。</p>
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
     家計簿只读联动暂不可用。当前通过 Cloudflare 私有 Service Binding 访问，
@@ -104,19 +114,27 @@ onMounted(()=>{void check();void loadSettings()})
     <label>开始日期<DateField v-model="start" /></label>
     <label>结束日期<DateField v-model="end" /></label>
    </div>
+   <label class="buy-quantity">本次购买数量
+      <input v-model.number="buyQty" type="number" min="1" max="9999" step="1" inputmode="numeric"/>
+     </label>
    <button class="ledger-search" type="button" :disabled="busy" @click="search(false)">查询家計簿支出</button>
    <div v-for="entry in entries" :key="entry.id" class="ledger-entry">
     <span>{{ entry.date }} · {{ entry.merchant||entry.category||'支出' }}
      <small>¥{{ Number(entry.amount||0).toLocaleString('ja-JP') }}</small></span>
     <button type="button" :disabled="busy||entry.type!=='expense'||linkedEntryIds.has(String(entry.id))"
-      @click="attach(entry)">{{ linkedEntryIds.has(String(entry.id))?'已关联':'关联并完成' }}</button>
+      @click="attach(entry)">{{ linkedEntryIds.has(String(entry.id))?'已关联':'关联本次购买' }}</button>
    </div>
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <div v-if="links.length" class="shopping-linked">
      <b>已关联 {{ links.length }} 笔真实消费</b>
+     <p class="hint">购买数量：已确认 {{ purchasedCount }} / 计划 {{ plannedQuantity }} 件
+       <template v-if="unknownCount"> · {{ unknownCount }} 笔历史账目未填写数量，原完成状态保留</template>
+       <template v-else> · {{ isCompleted?'已完成':'还差 '+remainingCount+' 件' }}</template>
+     </p>
      <div v-for="link in links" :key="link.entryId" class="ledger-entry">
        <span>{{ link.entry?.date||'原始明细不可用' }} · {{ link.entry?.merchant||('账目 #'+link.entryId) }}
-         <small>{{ link.entry?'¥'+Number(link.entry.amount).toLocaleString('ja-JP'):'需要重新核对' }}</small></span>
+         <small>{{ link.entry?'¥'+Number(link.entry.amount).toLocaleString('ja-JP'):'需要重新核对' }}
+        · {{ link.purchaseQuantity==null?'旧关联数量未核对':'本次 '+link.purchaseQuantity+' 件' }}</small></span>
        <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink(link.entryId)">解除这一笔</button>
      </div>
      <small v-if="linksNeedReview" class="ledger-error">部分关联明细已删除或更改，可能涉及退款，请核对并解除异常关联。</small>
@@ -148,7 +166,9 @@ onMounted(()=>{void check();void loadSettings()})
 .ledger-dates label{display:grid;gap:5px;min-width:0;font-size:12px;color:#607c6d}
 .ledger-dates input{width:100%;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #cadbd1;border-radius:9px;padding:9px;font-size:12px;background:#fff}
 .ledger-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:8px 0;border-bottom:1px solid #e1ebe4}
-.ledger-entry span{min-width:0;overflow-wrap:anywhere}.ledger-entry small{display:block;color:#789284;margin-top:3px}
+.ledger-entry span{min-width:0;overflow-wrap:anywhere}
+.buy-quantity{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#5c7b68}
+.buy-quantity input{width:90px;max-width:40%;min-height:35px;border:1px solid #d3e4d8;border-radius:9px;padding:8px;background:white}.ledger-entry small{display:block;color:#789284;margin-top:3px}
 .shopping-ledger button{border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
 .shopping-ledger button:disabled{opacity:.5}.shopping-ledger .ledger-close{background:#e4eee7;color:#3e775a}
 .shopping-ledger .ledger-unlink{background:#fff;color:#ac5e4c;border:1px solid #edc8bf}
