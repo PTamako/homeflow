@@ -1,28 +1,41 @@
 # HomeFlow · 我们的小家
 
-家庭、个人、豆沙、旅行、心愿和回忆的一体化生活 PWA。
+专为个人与家庭打造的生活 PWA：个人/共享待办、家人和豆沙档案、生日纪念日与护理、心愿→旅行、ChatGPT 旅行 JSON 导入、行李清单、照片时光轴、储蓄目标和家計簿只读关联。
 
-## 当前进度：Stage 0
+## 使用地址
 
-- Vue 3 + TypeScript + Vite 前端骨架。
-- Cloudflare Worker + 独立生产、预览 D1 数据库。
-- 安全默认：个人 API 在完整登录与权限验证完成之前一律返回 401。
-- 初始数据库 schema、回归测试与 GitHub Actions CI。
-- 当前尚未开放真实家庭数据、用户注册、照片上传与推送通知。
+- [HomeFlow 生产版](https://homeflow.yupan6706.workers.dev)
+- [GitHub Actions](https://github.com/PTamako/homeflow/actions)
+- [安全配置与验收](docs/DEPLOY_AND_VERIFY.md)
 
-## 本地
+## 截至 2026-11-04 的实际状态
 
-要求 Node.js 22.16+。使用 npm install、npm run dev、npm run check 检查前端。
-Worker 可通过 npm run worker:dev 启动（先完成本地迁移与数据库身份配置）。
-部署使用 npx wrangler deploy；预览使用 npx wrangler deploy --env preview。
+- 主分支 CI 构建、Node 双账号/隐私/财务/ZIP/旅行测试通过，生产 Worker 和独立 D1 已部署。
+- 家庭初始密钥 `HOMEFLOW_BOOTSTRAP_SECRET` 存在，但 **尚未创建任何真实用户或家庭**，请在首页初始化。
+- 离线任务支持本机队列、幂等同步和冲突提示；离线仅缓存静态页面，不会绕过登录。
+- 本机照片支持多图和 ZIP 打包备份；跨设备云相册需要用户先启用 R2 并绑定 `MEDIA`。
+- Web Push 代码与每天日本时间 08:00 的 Cron 已部署；通知需要配置 VAPID Secrets 并在 iPhone 主屏幕应用中同意授权。
+- 家計簿只读桥接已部署，但需在两边分别配置相同的独立集成密钥；未授权时不会读取账目。
+- **以上已部署不等于 iPhone/iPad 双账号、锁屏送达和数据恢复的真机验收。**
 
-## 安全边界
+## 技术栈
 
-- 生产 D1：homeflow；预览 D1：homeflow-preview。
-- 不重用家計簿 / 知学平台的登录凭据或数据库。
-- 不提交任何密码、Token、家庭照片、实际交易、R2 密钥。
-- Cloudflare Secret 需由 GitHub 仓库管理员配置，尚未配置时部署 CI 会明确跳过。
-- 生产 migration 必须先在 Preview 验证。
-- 目前公开仅有不含个人数据的健康接口和基础静态界面。
+Vue 3 + TypeScript + Vite PWA / Cloudflare Workers + D1；照片以 IndexedDB 本机存储或私有 R2 Bucket 存储，不将照片二进制写入 D1。
 
-参见 docs/STAGE_0.md 和 docs/ROADMAP.md。
+## 安全与费用
+
+独立账户、家庭权限、私人记录保护、D1 生产/预览隔离；不共享家計簿 D1，不自动新增消费记录，也不自动开通任何 Cloudflare 付费服务。
+
+## 本地开发
+
+Node.js 22：
+
+```bash
+npm install
+npm run check
+npm run dev
+```
+
+部署代码前先检查 D1 迁移（目前 0001–0007 均由 Cloudflare API 手动执行，Wrangler 迁移跟踪未补齐，**不要直接重新执行历史 ALTER**）。主分支经 GitHub Actions 构建后先部署 Preview，再部署 Production。
+
+更多信息： [模块路线](docs/ROADMAP.md)、[旅行 JSON 规则](docs/TRIP_IMPORT.md)、[上线配置与验证](docs/DEPLOY_AND_VERIFY.md)、[真实交付情况](docs/RELEASE_STATUS.md)。
