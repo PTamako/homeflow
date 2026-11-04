@@ -66,7 +66,7 @@ function normalized(table,b,s){
     default:return null
   }
 }
-async function validLinks(db,table,data,session){
+async function validLinks(db,table,data,session,requestedVisibility='private'){
   const hid=session.household_id
   if(table==='anniversaries'&&data[5]){
     return !!await db.prepare('SELECT 1 FROM family_profiles WHERE household_id=?1 AND id=?2 AND archived_at IS NULL').bind(hid,data[5]).first()
@@ -89,9 +89,13 @@ async function validLinks(db,table,data,session){
     const isProfile=tab==='family_profiles'
     const sql=isProfile
       ? 'SELECT 1 FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL'
-      : "SELECT 1 FROM "+tab+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)"
+      : "SELECT visibility FROM "+tab+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)"
     const item=await db.prepare(sql).bind(...(isProfile?[data[4],hid]:[data[4],hid,session.user_id])).first()
     if(!item)return false
+    // A household-visible memory must never disclose a title or metadata from
+    // a private wish/trip/anniversary. Reuse the existing reference lookup.
+    if(!isProfile&&requestedVisibility==='household'&&item.visibility==='private')
+      return false
   }
   return true
 }
@@ -251,7 +255,7 @@ export async function lifeRoute(request,db,path,session){
   if(!id&&request.method==='POST'){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
-    if(!vals||!await validLinks(db,table,vals,session))return bad()
+    if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
     if(table==='wishes'&&b.status==='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     const spec=catalog[table].columns
@@ -303,7 +307,7 @@ export async function lifeRoute(request,db,path,session){
     if(current.created_by!==session.user_id)return json({error:'forbidden'},403)
     const b=await readBody(request)
     const vals=normalized(table,b,session)
-    if(!vals||!await validLinks(db,table,vals,session))return bad()
+    if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
     if(table==='wishes'&&b.status==='completed'&&current.status!=='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     // Updated-at CAS where supported, column snapshot CAS on original tables
