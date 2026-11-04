@@ -609,7 +609,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
-                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
+                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}<template v-if="w.target_on"> · {{ w.target_on }}</template></small>
+                  <small v-if="linkedGoal(w)">已关联储值目标：{{ linkedGoal(w)?.title }}</small></div>
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
@@ -630,11 +631,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
                 <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
+                  <small>期初 ¥{{ Number(g.reserved_amount).toLocaleString() }} / 目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
+                  <small v-if="g.wish_id">已关联心愿计划</small></div>
+                <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
+            <FinancePanel v-if="isOwner&&financeDetail?.kind==='goal'&&financeDetail.id===g.id"
+              :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
+              embedded-kind="goal" :embedded-id="g.id"/>
           </template>
           <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储蓄目标':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
@@ -652,7 +658,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
                     <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
                 <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                  class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                  class="life-link" @click="toggleLedger(s.id)">账目与调整额</button>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
@@ -674,11 +680,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
-                <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
+                <div class="trip-card-actions">
+                  <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
+                  <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('trip',t.id)">费用</button>
+                </div>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
+            <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
+              :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
+              embedded-kind="trip" :embedded-id="t.id"/>
           </template>
           <p v-if="!trips.length" class="life-empty">{{ planScope==='active'?'暂无进行中的旅行':'暂无已结束的旅行' }}</p>
           <button v-if="listCursors.trips" class="life-more" type="button" :disabled="pageBusy.trips"
@@ -755,8 +767,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </details>
         </section>
       </div>
-      <FinancePanel :trips="trips" :goals="goals" :owner="isOwner" />
-    </template>
+     </template>
 
     <template v-else-if="mode==='memories'">
       <section class="life-card">
