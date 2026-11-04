@@ -110,6 +110,24 @@ export async function tripsRoute(request,db,path,session){
         ORDER BY COALESCE(start_on,created_at) DESC LIMIT 150`).bind(h,u).all()
     return json({items:results||[]})
   }
+  if(path==='/api/trips'&&request.method==='POST'){
+    // A regular trip can be created from the plan hub without requiring a
+    // complete import JSON. Its itinerary may be added later.
+    const b=await readBody(request)
+    const title=shortText(b?.title,150)
+    const destination=shortText(b?.destination||'',300)
+    const start=b?.startDate||null,end=b?.endDate||null
+    const budget=b?.budgetAmount??0
+    const visibility=['private','household'].includes(b?.visibility)?b.visibility:'household'
+    if(!title||(start&&!dateOk(start))||(end&&!dateOk(end))||
+       (start&&end&&start>end)||!amountOk(budget))return json({error:'invalid_input'},400)
+    const newId=crypto.randomUUID()
+    await db.prepare(`INSERT INTO trips
+      (id,household_id,created_by,visibility,title,destination,start_on,end_on,budget_amount,currency,status)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'JPY','planning')`)
+      .bind(newId,h,u,visibility,title,destination,start,end,budget).run()
+    return json({ok:true,id:newId},201)
+  }
   if(path==='/api/trips/import'&&request.method==='POST'){
     const len=Number(request.headers.get('content-length')||0)
     if(len>300000)return json({error:'import_too_large'},413)
