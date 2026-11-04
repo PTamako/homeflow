@@ -20,11 +20,6 @@ const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amoun
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
 const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
-type Settlement={periodKey:string;start:string;end:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null;legacy:boolean}
-const settlementRows=ref<Settlement[]>([]),settlementCursor=ref<string|null>(null),settlementLoading=ref(false),settlementError=ref('')
-const historyYear=ref(''),historyMonth=ref('')
-const historyYears=Array.from({length:20},(_,i)=>String(new Date().getFullYear()-i))
-const historyMonths=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const currentMarkKey=computed(()=>recurringGoal.value?String(periodKey.value):'once')
 const alreadyCompleted=computed(()=>completedPeriods.value.includes(currentMarkKey.value))
 const confirmBusy=ref(false)
@@ -112,22 +107,6 @@ async function confirmGoalCompleted(){
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
 }
-async function loadSettlementHistory(more=false){
- if(!recurringGoal.value||!target.value){settlementRows.value=[];settlementCursor.value=null;return}
- const id=target.value,year=historyYear.value,month=historyMonth.value
- settlementLoading.value=true;settlementError.value=''
- try{
-   const q=new URLSearchParams({limit:'5'})
-   if(year)q.set('year',year)
-   if(year&&month&&goalMode.value==='monthly')q.set('month',month)
-   if(more&&settlementCursor.value)q.set('cursor',settlementCursor.value)
-   const result=await api('/goals/'+encodeURIComponent(id)+'/periods?'+q.toString())
-   if(id!==target.value||year!==historyYear.value||month!==historyMonth.value)return
-   settlementRows.value=more?[...settlementRows.value,...(result.items||[])]:result.items||[]
-   settlementCursor.value=result.nextCursor||null
- }catch(e){settlementError.value=(e as Error).message}
- finally{settlementLoading.value=false}
-}
 async function settleRecurringGoal(){
  if(!recurringGoal.value||!selected.value||!goalPeriodDue.value||confirmBusy.value)return
  confirmBusy.value=true;error.value=''
@@ -140,7 +119,6 @@ async function settleRecurringGoal(){
    }else completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
    notify(data.status==='met'?'本期已结算 · 达标':
      '本期已结算 · 不足 '+fmt(Math.max(0,Number(data.differenceAmount||0)))+'，记录已保存')
-   await loadSettlementHistory()
    emit('completed',data.status==='met',key)
  }catch(e){error.value=(e as Error).message}
  finally{confirmBusy.value=false}
@@ -207,7 +185,6 @@ async function saveSettings(){
     }
     await api('/finance/settings','PUT',payload)
     notify(recurringGoal.value?'本期调整额已保存，如已结算请重新核验':'调整额和设置已保存，不会修改家計簿')
-    if(recurringGoal.value)await loadSettlementHistory()
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
@@ -257,11 +234,9 @@ watch([kind,target],()=>{
   const previousKey=periodKey.value
   resetGoalPeriod()
   void refreshLinks()
-  void loadSettlementHistory()
   if(periodKey.value===previousKey||!recurringGoal.value)void refreshSettings()
 })
-watch(kind,()=>{target.value='';historyYear.value='';historyMonth.value=''})
-watch([historyYear,historyMonth],()=>{void loadSettlementHistory()})
+watch(kind,()=>{target.value=''})
 watch(periodKey,()=>{if(recurringGoal.value&&available.value)void refreshSettings()})
 watch([start,end],()=>{if(!recurringGoal.value)netLoaded.value=false})
 watch(selected,value=>{
@@ -286,7 +261,6 @@ onMounted(()=>{
   // Focused navigation already fetched completion marks by ID; avoid
   // a duplicate D1 lookup when opening from Today.
   if(kind.value==='goal'&&!props.initialPeriodKey)void refreshCompletionMarks()
-  if(recurringGoal.value)void loadSettlementHistory()
 })
 </script>
 <template>
@@ -377,44 +351,6 @@ onMounted(()=>{
         </template>
       </template>
     </template>
-    <section v-if="recurringGoal&&target" class="settlement-history">
-      <h3>每期结算历史</h3>
-      <p class="hint">截止日期自动确定。实际金额来自家計簿家庭净收支估算与本期调整额，并非专用存款账户余额；不可核验时保留「待核验」。</p>
-      <div class="fields">
-        <label>年份
-          <select v-model="historyYear"><option value="">全部年份</option>
-            <option v-for="year in historyYears" :key="year" :value="year">{{ year }} 年</option>
-          </select>
-        </label>
-        <label v-if="goalMode==='monthly'">月份
-          <select v-model="historyMonth" :disabled="!historyYear">
-            <option value="">全年</option>
-            <option v-for="month in historyMonths" :key="month" :value="month">{{ Number(month) }} 月</option>
-          </select>
-        </label>
-      </div>
-      <p v-if="!settlementRows.length&&!settlementLoading" class="hint">暂无已截止的结算期间。</p>
-      <div v-for="item in settlementRows" :key="item.periodKey" class="settlement-item">
-        <div class="settlement-title"><b>{{ item.periodKey }}{{ goalMode==='monthly'?' 月':' 年' }}</b>
-          <span :class="['settlement-status',item.status]">{{ item.status==='met'?'已达标':item.status==='shortfall'?'未达标':'待核验' }}</span>
-        </div>
-        <small>期间 {{ item.start }} ～ {{ item.end }} · 目标 {{ fmt(item.targetAmount) }}</small>
-        <template v-if="item.actualAmount!==null">
-          <small>本期估算 {{ signed(item.actualAmount) }} · 完成率 {{ (item.actualAmount/Math.max(1,item.targetAmount)*100).toFixed(1) }}%</small>
-          <small>{{ (item.differenceAmount||0)>0?'不足 '+fmt(item.differenceAmount||0):
-            (item.differenceAmount||0)<0?'超额 '+fmt(Math.abs(item.differenceAmount||0)):'恰好达标' }}</small>
-        </template>
-        <small v-else>{{ item.legacy?'历史旧达标记录未保存金额，可重新核验':'尚未核验成功，不视为零元或未达标' }}</small>
-        <div class="settlement-actions">
-          <button type="button" class="more" @click="periodKey=item.periodKey">
-            {{ item.status==='pending'?'选择此期核验':'查看／重新核验' }}
-          </button>
-        </div>
-      </div>
-      <p v-if="settlementError" role="alert" class="error">{{ settlementError }}</p>
-      <button v-if="settlementCursor" type="button" class="more" :disabled="settlementLoading"
-        @click="loadSettlementHistory(true)">加载更多历史（每次 5 条）</button>
-    </section>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <PageToast :toast="toast" />
   </section>
@@ -438,15 +374,6 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
   background:#f4f9f5;border:1px solid #dbe9dd;border-radius:11px}
 .goal-completion-panel button{width:max-content;max-width:100%}
 .goal-completion-panel .hint{margin:0}
-.settlement-history{margin-top:16px;border-top:1px solid #e0e9e2;padding-top:12px}
-.settlement-history h3{font-size:15px;margin:0}
-.settlement-item{padding:12px 0;border-bottom:1px solid #e6ebe5;display:grid;gap:5px;font-size:12px;min-width:0}
-.settlement-item small{color:#667e70;overflow-wrap:anywhere}
-.settlement-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.settlement-status{border-radius:7px;padding:3px 8px;background:#eaf1e9;color:#517c63}
-.settlement-status.shortfall{background:#fff3e4;color:#a36c26}
-.settlement-status.pending{background:#f4f1e9;color:#827663}
-.settlement-actions{display:flex}.settlement-actions button{margin:2px 0}
 .error{font-size:12px;color:#a94d37}.success{font-size:12px;color:#3f876a}
 @media(max-width:720px){.fields{grid-template-columns:minmax(0,1fr)}}
 </style>
