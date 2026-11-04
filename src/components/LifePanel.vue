@@ -451,7 +451,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button :disabled="busy">保存</button></div>
             </form>
           </template>
-          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">今天没有需要执行的定期任务</p>
+          <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
           <template v-for="r in routines" :key="r.id">
             <SwipeActions :id="r.id" scope="today-routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -598,7 +598,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
-          <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
+          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
 
@@ -827,6 +827,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.plan-filter-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 11px;scrollbar-width:none}
+.plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
+ padding:8px 12px;min-height:36px;flex:none;font-size:12px}
+.plan-filter-tabs button.selected{background:#43866a;color:#fff;border-color:#43866a}
+.trip-card-actions{display:flex;gap:5px;flex:none;flex-wrap:wrap}
+.once-edit{background:#f6faf6;border-radius:12px;padding:12px}
+.once-remind{display:flex!important;align-items:center;gap:9px}
+.once-remind input{width:18px!important;min-height:18px!important}
+.once-actions{display:flex;gap:8px}.once-actions button{flex:1}
+.today-plan-row{gap:10px}.today-plan-row .life-details{flex:1;min-width:0}
+@media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
+ .plan-filter-tabs button{padding:7px 10px}}
+
 .life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}
 .trip-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;flex-wrap:wrap}
 .trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere}
