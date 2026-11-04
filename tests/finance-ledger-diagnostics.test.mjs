@@ -15,7 +15,7 @@ async function simulate(status,problem,expected){
   const original=bridge.fetch
   bridge.fetch=async(_url,options)=>{
     assert.equal(options.method,'GET')
-    assert.equal(options.headers.Authorization,'Bearer '+token)
+    assert.equal(options.headers.Authorization,undefined)
     return new Response(JSON.stringify(problem),{status,headers:{'content-type':'application/json'}})
   }
   try{
@@ -26,7 +26,7 @@ async function simulate(status,problem,expected){
     assert.equal(JSON.stringify(data).includes(token),false)
   }finally{bridge.fetch=original}
 }
-test('ledger auth errors are actionable and never expose the shared token',async()=>{
+test('upstream auth failures are safe and never expose legacy secret',async()=>{
   await simulate(401,{error:'not_authorized'},'ledger_auth_failed')
 })
 test('missing Pages secret is distinguished from ledger D1 failures',async()=>{
