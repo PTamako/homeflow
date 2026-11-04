@@ -237,7 +237,7 @@ onMounted(()=>{
           <label v-if="goalMode==='monthly'">选择月份
             <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" /></label>
           <label v-else>选择年份
-            <input v-model="periodKey" type="number" inputmode="numeric" min="1900" max="9998"
+            <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
               :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
           <small>本期计算范围：{{ start||'—' }} ～ {{ end||'—' }}；首期从计划开始日期算起。</small>
         </div>
