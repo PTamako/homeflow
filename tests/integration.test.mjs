@@ -367,18 +367,21 @@ test('completion-anchored interval stays checked on its due date and recurs norm
    repeatConfig:{days:3,anchor:'completion'},anchorDate:'2026-11-04',visibility:'household'
  },owner)
  assert.equal(created.status,201,JSON.stringify(created.body))
- const first=await ask('/api/routines/today?date=2026-11-04','GET',undefined,owner)
+ const baseline=await ask('/api/routines/today?date=2026-11-04','GET',undefined,owner)
+ assert.equal(baseline.body.items.some(x=>x.id===created.body.id),false,
+   'starting date is a baseline, not the first due occurrence')
+ const first=await ask('/api/routines/today?date=2026-11-07','GET',undefined,owner)
  assert.equal(first.body.items.filter(x=>x.id===created.body.id).length,1)
  const mark=await ask('/api/routines/'+created.body.id+'/mark','POST',{
-   date:'2026-11-04',status:'completed'},owner)
+   date:'2026-11-07',status:'completed'},owner)
  assert.equal(mark.status,200,JSON.stringify(mark.body))
- const today=await ask('/api/routines/today?date=2026-11-04','GET',undefined,owner)
+ const today=await ask('/api/routines/today?date=2026-11-07','GET',undefined,owner)
  assert.equal(today.body.items.filter(x=>x.id===created.body.id).length,1,
    'completed row stays visible today for the checked strikethrough')
  assert.ok(today.body.items.find(x=>x.id===created.body.id).mark.completed_at)
- const tomorrow=await ask('/api/routines/today?date=2026-11-05','GET',undefined,owner)
+ const tomorrow=await ask('/api/routines/today?date=2026-11-08','GET',undefined,owner)
  assert.equal(tomorrow.body.items.some(x=>x.id===created.body.id),false)
- const next=await ask('/api/routines/today?date=2026-11-07','GET',undefined,owner)
+ const next=await ask('/api/routines/today?date=2026-11-10','GET',undefined,owner)
  assert.equal(next.body.items.some(x=>x.id===created.body.id),true)
  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1,
    'completing a routine does not delete or duplicate it')
