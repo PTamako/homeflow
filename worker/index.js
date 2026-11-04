@@ -43,7 +43,7 @@ export default {
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session)
         if(path==='/api/plans/today'||path==='/api/plans/complete')
-           return todayPlansRoute(request,env.DB,session,path)
+           return todayPlansRoute(request,env.DB,session,path,env)
         if(path==='/api/trips'||path.startsWith('/api/trips/')||/^\/api\/wishes\/[0-9a-f-]{36}\/start-trip$/.test(path))
           return tripsRoute(request,env.DB,path,session)
         if(path==='/api/media'||path.startsWith('/api/media/'))

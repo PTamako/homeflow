@@ -97,7 +97,8 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  assert.equal(db.batches[0].length,5)
  assert.ok(db.batches[0].slice(0,4).every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
  assert.equal(db.batches[0][4].values[0],'family')
- assert.ok(db.batches[0].every(q=>!q.sql.includes('finance')&&!q.sql.includes('ledger')))
+ assert.ok(db.batches[0].every(q=>!q.sql.includes('finance_links')&&!q.sql.includes('kakebo_')),
+   'rendering Today must not query the external Kakebo ledger')
 })
 test('invalid Today date never queries D1',async()=>{
  const db=recordDb()

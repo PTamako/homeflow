@@ -64,12 +64,16 @@ export async function listPage(db,table,session,filters,options={}){
     if(filters.scope==='active')clauses.push("status NOT IN ('completed','cancelled')")
     if(filters.scope==='history')clauses.push("status IN ('completed','cancelled')")
   }else if(table==='goals'){
-    if(filters.scope==='active')push(
-      "((goal_mode='once' AND reserved_amount<target_amount) OR (goal_mode!='once' AND (target_on IS NULL OR target_on>={0})))",
-      localDate)
-    if(filters.scope==='history')push(
-      "((goal_mode='once' AND reserved_amount>=target_amount) OR (goal_mode!='once' AND target_on IS NOT NULL AND target_on<{0}))",
-      localDate)
+    // Explicit once-goal acknowledgements move to history without
+    // changing a user's accounting balances. Recurring goals stay active
+    // when expired because older periods can remain unresolved.
+    const doneMark="EXISTS (SELECT 1 FROM plan_completion_marks pcm WHERE "+
+      "pcm.household_id=goals.household_id AND pcm.plan_type='goal' "+
+      "AND pcm.plan_id=goals.id AND pcm.period_key='once')"
+    if(filters.scope==='active')
+      clauses.push("((goal_mode='once' AND reserved_amount<target_amount AND NOT ("+doneMark+")) OR goal_mode!='once')")
+    if(filters.scope==='history')
+      clauses.push("(goal_mode='once' AND (reserved_amount>=target_amount OR "+doneMark+"))")
   }else if(table==='routines'){
     if(filters.scope==='active')clauses.push('enabled=1')
     if(filters.scope==='history')clauses.push('enabled=0')

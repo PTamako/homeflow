@@ -35,5 +35,7 @@ test('Today category tabs are based on actual rows, and wish/goal confirmation i
  assert.match(app,/allToday\.value\.some\(row=>row\.kind===category\.id\)/)
  assert.match(app,/v-for="category in visibleTodayCategories"/)
  assert.match(app,/completeDuePlan\(row\.plan\)/)
- assert.match(app,/confirm\('确认这个储值目标已达标/)
+ assert.match(app,/row.done\?'✓':'核验'/)
+ assert.match(app,/ShoppingLedgerPicker/)
+ assert.doesNotMatch(app,/toggleShoppingPlan/)
 })
