@@ -109,3 +109,23 @@ test('notification scheduling only selects reminder-enabled items',()=>{
  const push=readFileSync(new URL('../worker/webpush.js',import.meta.url),'utf8')
  assert.match(push,/redirect:'manual'/)
 })
+
+test('dated purchases completed today remain visible only for that Tokyo day',async()=>{
+ const db=recordDb()
+ db.batch=async statements=>{
+   db.batches.push(statements.map(x=>({sql:x.sql,values:x.values})))
+   return [
+     {results:[{id:'done',title:'猫粮',dueOn:'2026-11-03',
+       completedAt:'2026-11-04T06:00:00.000Z'},
+       {id:'open',title:'洗衣液',dueOn:'2026-11-04',completedAt:null}]},
+     {results:[]},{results:[]},{results:[]}
+   ]
+ }
+ const response=await todayPlansRoute(url('/api/plans/today?date=2026-11-04'),db,owner)
+ assert.equal(response.status,200)
+ const x=(await response.json()).items
+ assert.deepEqual(x.map(v=>v.done),[true,false])
+ assert.equal(x[0].overdue,false)
+ assert.match(db.batches[0][0].sql,/completed_at>=\\?4/)
+ assert.ok(db.batches[0][0].values[3].startsWith('2026-11-03T15:00:00'))
+})
