@@ -95,6 +95,20 @@ onMounted(()=>{void check();void loadSettings()})
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <button v-if="linkedId" type="button" class="ledger-unlink" :disabled="busy" @click="unlink">取消已有关联</button>
   </template>
+  <div class="shopping-adjustment">
+   <b>购物金额调整</b>
+   <div class="adjustment-breakdown">
+    <span>关联消费 {{ linkedAmount===null?'尚未关联':signed(linkedAmount) }}</span>
+    <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
+    <strong>调整后金额 {{ signed(adjustedTotal()) }}</strong>
+   </div>
+   <label>手动调整额（円，可输入正负数）
+    <input v-model="adjustment" type="number" step="1" inputmode="numeric"/>
+   </label>
+   <button type="button" :disabled="busy" @click="saveAdjustment">保存调整额</button>
+   <small>调整额只保存在 HomeFlow，不会修改家計簿。未关联时显示调整额本身。</small>
+   <small v-if="savedMessage" role="status">{{ savedMessage }}</small>
+  </div>
   <p v-if="error" role="alert" class="ledger-error">{{ error }}</p>
   <button type="button" class="ledger-close" @click="emit('close')">关闭</button>
  </section>
@@ -110,6 +124,11 @@ onMounted(()=>{void check();void loadSettings()})
 .shopping-ledger button{border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
 .shopping-ledger button:disabled{opacity:.5}.shopping-ledger .ledger-close{background:#e4eee7;color:#3e775a}
 .shopping-ledger .ledger-unlink{background:#fff;color:#ac5e4c;border:1px solid #edc8bf}
+.shopping-adjustment{border-top:1px solid #d9eadf;padding-top:12px;display:grid;gap:9px}
+.shopping-adjustment>b{font-size:13px}.shopping-adjustment label{display:grid;gap:5px;font-size:12px;color:#607c6d}
+.shopping-adjustment input{width:100%;max-width:100%;box-sizing:border-box;min-height:41px;border:1px solid #cadbd1;border-radius:9px;background:#fff;padding:9px}
+.adjustment-breakdown{display:grid;gap:5px;font-size:12px;color:#607c6d}.adjustment-breakdown strong{font-size:15px;color:#264b3b}
+.shopping-adjustment small{font-size:11px;color:#718e7c}
 .ledger-error{color:#a14d37;font-size:12px}
 @media(max-width:420px){.ledger-dates{grid-template-columns:minmax(0,1fr)}}
 </style>
