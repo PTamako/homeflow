@@ -544,6 +544,48 @@ test('linked wish and savings cannot be completed without verified funding; outa
  sqlite.close()
 })
 
+test('direct plan detail fetches a record beyond five pages without broadening visibility',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ownerCreated=await ask('/api/auth/bootstrap','POST',{
+   loginName:'plan-focus-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(ownerCreated.status,201)
+ const owner=extractCookie(ownerCreated.cookie)
+ const ids=[]
+ for(let i=0;i<8;i++){
+   const created=await ask('/api/shopping','POST',{
+     title:'购物计划 '+i,quantity:1,dueOn:'2026-11-04',visibility:'household'},owner)
+   assert.equal(created.status,201,JSON.stringify(created.body))
+   ids.push(created.body.id)
+ }
+ const page=await ask('/api/shopping?scope=active&limit=5','GET',undefined,owner)
+ assert.equal(page.status,200)
+ assert.equal(page.body.items.length,5)
+ assert.equal(page.body.items.some(x=>x.id===ids[0]),false)
+ const focus=await ask('/api/shopping/'+ids[0],'GET',undefined,owner)
+ assert.equal(focus.status,200)
+ assert.equal(focus.body.item.id,ids[0])
+ assert.equal(focus.body.item.title,'购物计划 0')
+ const stranger=await ask('/api/shopping/00000000-0000-4000-8000-000000000999','GET',undefined,owner)
+ assert.equal(stranger.status,404)
+ const invalid=await ask('/api/shopping/not-a-valid-id','GET',undefined,owner)
+ assert.equal(invalid.status,400)
+ const wish=await ask('/api/wishes','POST',{
+   title:'关联储值的心愿',wishType:'purchase',visibility:'household',
+   estimatedAmount:10000,currency:'JPY',targetOn:'2026-11-04',createSavingsGoal:true},owner)
+ assert.equal(wish.status,201)
+ const linked=await ask('/api/wishes/'+wish.body.id,'GET',undefined,owner)
+ assert.equal(linked.status,200)
+ assert.equal(linked.body.item.id,wish.body.id)
+ assert.equal(linked.body.linkedGoals[0].id,wish.body.goalId)
+ const goal=await ask('/api/goals/'+wish.body.goalId,'GET',undefined,owner)
+ assert.equal(goal.status,200)
+ assert.deepEqual(goal.body.completedPeriods,[])
+ sqlite.close()
+})
+
 test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
