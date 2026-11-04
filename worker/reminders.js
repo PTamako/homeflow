@@ -16,7 +16,7 @@ export async function remindersRoute(request,db,session) {
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3)
       ORDER BY due_on LIMIT 100`).bind(hid,date,u),
-    db.prepare(`SELECT id,title,plan_json FROM trips
+    db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND status IN ('planning','active')
       AND (visibility='household' OR created_by=?2)
       ORDER BY start_on LIMIT 30`).bind(hid,u),
@@ -53,6 +53,7 @@ export async function remindersRoute(request,db,session) {
     for(const day of plan.trip.days||[])
       for(const item of day.items||[])dates.set(item.externalId,{date:day.date,title:item.title})
     for(const task of plan.trip.tasks||[]){
+      if(trip.created_by!==u && task.visibility!=='household')continue
       if(task.dueDate && task.dueDate<=date && !finished.has(trip.id+':'+task.externalId))
         announcements.push({kind:'trip',id:trip.id+':'+task.externalId,
           title:trip.title+' · '+task.title,dueOn:task.dueDate})

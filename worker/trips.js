@@ -46,6 +46,25 @@ function validatedTripPayload(p){
   return null
 }
 export {validatedTripPayload}
+// For shared trips, the imported plan can contain creator-only preparations.
+// Filter on the server: never rely on the UI to hide sensitive items.
+export function visiblePlan(original,creator){
+  if(!original||creator)return original
+  const plan=structuredClone(original)
+  const trip=plan.trip
+  if(!trip)return plan
+  trip.tasks=(trip.tasks||[]).filter(t=>t.visibility==='household')
+  trip.packingLists=(trip.packingLists||[]).filter(l=>l.visibility!=='private'&&l.visibility!=='selected_members')
+  trip.bookings=(trip.bookings||[]).filter(b=>b.visibility!=='private'&&b.visibility!=='selected_members')
+  const visibleIds=new Set([
+    ...(trip.days||[]).flatMap(d=>d.items||[]).map(x=>x.externalId),
+    ...trip.tasks.map(t=>t.externalId),
+    ...trip.packingLists.flatMap(l=>l.items||[]).map(x=>x.externalId),
+  ])
+  trip.reminders=(trip.reminders||[]).filter(r=>visibleIds.has(r.target))
+  return plan
+}
+
 export async function tripsRoute(request,db,path,session){
   const bpath=path.split('/').filter(Boolean)
   const id=bpath[2]
@@ -136,7 +155,7 @@ export async function tripsRoute(request,db,path,session){
     if(bpath[3]==='progress'&&request.method==='POST'){
       const body=await readBody(request)
       if(!body||!idOk(body.itemId)||typeof body.completed!=='boolean')return json({error:'invalid_input'},400)
-      const plan=trip.plan_json?JSON.parse(trip.plan_json):null
+      const plan=visiblePlan(trip.plan_json?JSON.parse(trip.plan_json):null,trip.created_by===u)
       const ids=new Set([...(plan?.trip?.days||[]).flatMap(d=>d.items||[]).map(x=>x.externalId),
         ...(plan?.trip?.tasks||[]).map(x=>x.externalId),
         ...(plan?.trip?.packingLists||[]).flatMap(p=>p.items||[]).map(x=>x.externalId)])
@@ -148,10 +167,16 @@ export async function tripsRoute(request,db,path,session){
       return json({ok:true})
     }
     if(request.method==='GET'){
+      const plan=visiblePlan(trip.plan_json?JSON.parse(trip.plan_json):null,trip.created_by===u)
+      const allowed=plan?.trip?new Set([
+        ...(plan.trip.days||[]).flatMap(d=>d.items||[]).map(x=>x.externalId),
+        ...(plan.trip.tasks||[]).map(x=>x.externalId),
+        ...(plan.trip.packingLists||[]).flatMap(l=>l.items||[]).map(x=>x.externalId)
+      ]):null
       const {results}=await db.prepare('SELECT item_id AS itemId,completed_at AS completedAt FROM trip_progress WHERE trip_id=?1').bind(id).all()
       return json({trip:{id:trip.id,title:trip.title,destination:trip.destination,startOn:trip.start_on,
         endOn:trip.end_on,budgetAmount:trip.budget_amount,currency:trip.currency,status:trip.status,
-        visibility:trip.visibility,plan:trip.plan_json?JSON.parse(trip.plan_json):null},progress:results||[]})
+        visibility:trip.visibility,plan},progress:allowed?(results||[]).filter(r=>allowed.has(r.itemId)):[]})
     }
     if(request.method==='PATCH'){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
