@@ -603,7 +603,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 未来 30 天的纪念日</h2>
           <p v-if="listLoading" class="life-empty" role="status">正在读取纪念日…</p>
-          <p v-else-if="!todayAnniversaries.length" class="life-empty">未来 30 天没有纪念日，可以在「家庭」查看全部重要日子。</p>
+          <p v-else-if="!todayAnniversaries.length" class="life-empty">未来 30 天暂无纪念日</p>
           <div v-for="e in (listLoading?[]:todayAnniversaries.slice(0,todayAnniversaryVisibleCount))" :key="e.id" class="life-row upcoming-anniversary">
             <div class="anniversary-subject"><b>{{ e.title }}</b>
               <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
@@ -621,7 +621,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     <template v-else-if="mode==='family'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
-        <p class="life-caption">档案生日会自动每年提醒。过去的一次性纪念日保存在历史中，可以按年月查询。</p>
+
         <div class="archive-tabs" role="group" aria-label="重要日子筛选">
           <button type="button" :class="{selected:anniversaryView==='upcoming'}"
             :aria-pressed="anniversaryView==='upcoming'" @click="anniversaryView='upcoming'">即将到来</button>
@@ -663,7 +663,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
     <template v-else-if="mode==='plans'">
       <div v-if="focusedItemId" class="focused-plan-banner">
-        <div><b>已打开对应计划</b><small>请在下方关联账目或核验完成；处理后可返回今天。</small></div>
+        <div><b>已打开对应计划</b></div>
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
@@ -671,7 +671,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <details class="life-card plan-recap">
         <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
-        <p class="life-caption">只在点击生成时读取当月完成记录，不额外查询家計簿，也不会在后台每天写入统计。</p>
+
         <div class="plan-recap-controls">
           <label>年份<select v-model="recapYear" aria-label="回顾年份">
             <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
@@ -717,12 +717,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
-        <p v-if="planScope==='history'" class="life-caption">历史不会自动删除，可按年月查找。切回「进行中」就能继续管理未完成项目。</p>
+
       </div>
       <div class="life-grid">
         <section v-if="planType==='all'||planType==='routine'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
-          <p class="life-caption">一次性任务和重复任务都由上方「新增计划」创建。到期当天自动显示在「今天」。</p>
+
           <div v-for="r in routines" :key="r.id" class="plan-task-item">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -866,7 +866,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </section>
         <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
-          <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
+          <p class="life-caption">关联实际消费后完成</p>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
@@ -989,10 +989,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </SwipeActions>
               </div>
             </template>
-            <p v-else class="life-caption">尚未导入行程，可以在下方导入 ChatGPT 制定的 JSON。</p>
+            <p v-else class="life-caption">暂无行程</p>
           </div>
           <details class="trip-import"><summary>从 ChatGPT 导入旅行计划 JSON</summary>
-            <p class="life-caption">粘贴 HomeFlow Trip v1 格式。先验证预览，再保存；更新旧计划会保留完成记录。</p>
+            <p class="life-caption">先预览再保存；更新保留完成记录。</p>
             <label>导入到哪个旅行项目？
               <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
             </label>
@@ -1017,7 +1017,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
           <label>可选照片（仅存本机）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">{{ cloudEnabled?'照片会同时保存到本机和私有云端，家庭共享范围以这条回忆为准。':'当前只在本机保存照片，不会自动跨设备同步；请定期导出 ZIP 备份。' }}</p>
+          <p class="life-caption">{{ cloudEnabled?'照片保存在本机及私有云端。':'照片仅存本机，请定期备份。' }}</p>
           <button :disabled="busy">保存到时光轴</button>
         </form>
       </section>
@@ -1034,7 +1034,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
-        <p class="life-caption">默认只显示最近 6 条，切换年月可查询旧回忆，照片按当前显示的记录加载。</p>
+
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
         <p v-else-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
         <article v-for="m in listLoading?[]:items" :key="m.id" class="memory">
