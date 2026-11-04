@@ -530,3 +530,51 @@ test('completed routine plans can be archived without losing their completion ma
  assert.equal(sqlite.prepare('SELECT COUNT(*) AS c FROM routine_marks WHERE routine_id=?').get(r.body.id).c,1)
  sqlite.close()
 })
+
+test('owner can link a shared shopping item created by family member, but cannot access their private shopping',async()=>{
+ const {db,sqlite}=makeDb()
+ sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
+ const token='another-ledger-token-0123456789012345'
+ const env={APP_ENV:'production',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234',
+   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const account=await ask('/api/auth/bootstrap','POST',{
+   loginName:'shopping-host',password:'long-test-password-2026-11',
+   displayName:'主人',householdName:'家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(account.status,201,JSON.stringify(account.body))
+ const owner=extractCookie(account.cookie)
+ const invitation=await ask('/api/auth/invitations','POST',{},owner)
+ assert.equal(invitation.status,201)
+ const account2=await ask('/api/auth/join','POST',{
+   loginName:'shopping-partner',password:'another-very-long-password-2026',
+   displayName:'家人',invitationCode:invitation.body.invitationCode})
+ assert.equal(account2.status,201,JSON.stringify(account2.body))
+ const partner=extractCookie(account2.cookie)
+ const shared=await ask('/api/shopping','POST',{title:'共享购物',quantity:1,visibility:'household'},partner)
+ const hidden=await ask('/api/shopping','POST',{title:'秘密购物',quantity:1,visibility:'private'},partner)
+ assert.equal(shared.status,201)
+ assert.equal(hidden.status,201)
+ assert.equal((await ask('/api/finance/status','GET',undefined,partner)).status,403)
+ let externalRequests=0
+ const old=globalThis.fetch
+ globalThis.fetch=async(url,opts)=>{
+   externalRequests++
+   assert.equal(opts.headers.Authorization,'Bearer '+token)
+   return new Response(JSON.stringify({entries:[{id:456,type:'expense',date:'2026-11-04',amount:1800}]}),{status:200})
+ }
+ try {
+   const notAllowed=await ask('/api/finance/shopping/'+hidden.body.id+'/link','POST',{entryId:456},owner)
+   assert.equal(notAllowed.status,403)
+   assert.equal(externalRequests,0,'private item authorization must precede external lookup')
+   const verified=await ask('/api/finance/shopping/'+shared.body.id+'/link','POST',{entryId:456},owner)
+   assert.equal(verified.status,200,JSON.stringify(verified.body))
+   const shown=await ask('/api/shopping','GET',undefined,owner)
+   assert.equal(shown.body.items.some(x=>x.id===hidden.body.id),false)
+   assert.equal(shown.body.items.find(x=>x.id===shared.body.id)?.ledger_entry_id,'456')
+   assert.ok(shown.body.items.find(x=>x.id===shared.body.id)?.completed_at)
+   const unlinked=await ask('/api/finance/shopping/'+shared.body.id+'/link','DELETE',undefined,owner)
+   assert.equal(unlinked.status,200)
+   const restored=await ask('/api/shopping','GET',undefined,owner)
+   assert.equal(restored.body.items.find(x=>x.id===shared.body.id)?.completed_at,null)
+ }finally{globalThis.fetch=old;sqlite.close()}
+})

@@ -402,7 +402,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
                 <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
                   <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
               <div class="detail-actions">
-                <button v-if="isOwner&&canEdit(s)" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
                 <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
                 <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
               </div>
@@ -419,7 +419,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
                 <label class="shopping-check"><input type="checkbox" :checked="true" :disabled="busy" @change="toggleShopping(s)"/>
                   <span class="detail-name">{{ s.title }}</span></label>
                 <div class="detail-actions">
-                  <button v-if="isOwner&&canEdit(s)" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
+                  <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
                   <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
                   <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
                 </div>
