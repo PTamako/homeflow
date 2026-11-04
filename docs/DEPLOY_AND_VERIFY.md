@@ -8,7 +8,7 @@
 - Preview Worker：`homeflow-preview`，D1 Binding `DB` → `homeflow-preview`。
 - 生产与预览 D1 的主要结构已核实至 0015：0013 完成确认表、0014 多笔购物关联表/索引/旧关联兼容触发器、0015 用户延后提醒表/索引均已在实际环境检查。历史存在两份 0009 迁移；**曾通过 Cloudflare API 手动执行 SQL，Wrangler 迁移记录未必同步，绝不对已有 D1 批量重放历史 ALTER 或旧迁移。**
 - `HOMEFLOW_BOOTSTRAP_SECRET` 已在生产 Worker 发现（只验证名称，绝不读取其内容）；生产 D1 已有 1 个家庭和 1 个用户。
-- 生产 Cron 为 `0 23 * * *` UTC，即日本时间每日 08:00。
+- 生产 Cron 为 `0 21 * * *` UTC，即日本时间每日 06:00。
 - GitHub Actions 构建、部署实际成功；新版本不自动触碰 `kakebo_jp` D1。
 
 ## 1. 首次家庭登录（必须由账号本人完成）
@@ -22,9 +22,9 @@
 1. 在你信任的本地电脑上运行 `node scripts/generate-vapid.mjs`，生成对应的一对 VAPID 密钥。
 2. Cloudflare Dashboard → Workers → `homeflow` → Settings → Variables and Secrets，分别以加密 Secret 添加 `VAPID_PUBLIC_KEY` 和 `VAPID_PRIVATE_JWK`。**私钥不要提交 GitHub，也不要发送到聊天。**
 3. 将 HomeFlow 从 iPhone Safari 添加到主屏幕，使用主屏幕 PWA 打开，在“今天”点击“开启锁屏通知”并授权。
-4. 创建一个真实到期事项，核实当日 08:00 JST 的通知与应用内提醒均可见。
+4. 创建一个真实到期事项，核实当日 06:00 JST 的通知与应用内提醒均可见。
 
-生产 Worker 已有 VAPID 公私钥 Secret 绑定，D1 有 1 条 Push 订阅，但通知发送记录为 0。仍需用真实到期提醒核实 iPhone 送达。
+生产 Worker 已有 VAPID 公私钥 Secret 绑定，之前检查到 1 条 Push 订阅；本次未独立验证其仍然有效或锁屏通知实际送达。请用真实到期提醒确认。
 
 ## 3. 私有云照片（R2 仍未启用）
 
@@ -92,4 +92,4 @@
 - 迁移 0014（购物多笔关联）及 0015（用户级提醒延后）已分别通过 Cloudflare D1 API 在 Preview 和 Production 预检、应用、核实名称/索引；两套 DB 旧单笔关联缺失数量检查为 0。此次迁移没有删除或清空任何真实记录。
 - 手工执行迁移后不得推断 Wrangler 的迁移追踪已经同步。后续新迁移应先核实实际 schema 和历史迁移元数据，**禁止在生产 D1 重放旧 SQL**。见 [Issue #56](https://github.com/PTamako/homeflow/issues/56)。
 - 真实银行专项储值不可使用家庭净收支模拟证明（[Issue #53](https://github.com/PTamako/homeflow/issues/53)）；退款原消费关系没有数据契约时必须人工核实（[Issue #54](https://github.com/PTamako/homeflow/issues/54)）。
-- iPhone/iPad、第二位家庭账号、08:00 Web Push 实际送达、完整 ZIP 恢复与照片跨端同步仍保留原本的未勾选事项，详见 [Issue #4](https://github.com/PTamako/homeflow/issues/4)。
+- iPhone/iPad、第二位家庭账号、06:00 Web Push 实际送达、完整 ZIP 恢复与照片跨端同步仍保留原本的未勾选事项，详见 [Issue #4](https://github.com/PTamako/homeflow/issues/4)。
