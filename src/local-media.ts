@@ -1,45 +1,68 @@
-const DATABASE='homeflow-local-media-v1'
-function database():Promise<IDBDatabase>{
+// Photos are private to this browser/device until the user enables R2.
+// The app never stores photo bytes in Cloudflare D1.
+const NAME='homeflow-local-media-v1'
+async function store():Promise<IDBDatabase> {
   return new Promise((resolve,reject)=>{
-    if(!('indexedDB' in window)){reject(Error('indexed_db_unavailable'));return}
-    const request=indexedDB.open(DATABASE,1)
-    request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains('photos'))db.createObjectStore('photos')}
-    request.onsuccess=()=>resolve(request.result)
-    request.onerror=()=>reject(request.error||Error('indexed_db_open_failed'))
+    if(!('indexedDB' in window))return reject(Error('本机照片存储不可用'))
+    const r=indexedDB.open(NAME,1)
+    r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('photos'))r.result.createObjectStore('photos')}
+    r.onsuccess=()=>resolve(r.result)
+    r.onerror=()=>reject(r.error||Error('本机相册打开失败'))
   })
 }
-async function operate<T>(key:string,mode:IDBTransactionMode,fn:(s:IDBObjectStore)=>IDBRequest<T>):Promise<T>{
-  const db=await database()
-  return new Promise<T>((resolve,reject)=>{
-    const tx=db.transaction('photos',mode)
-    const req=fn(tx.objectStore('photos'))
-    req.onsuccess=()=>resolve(req.result)
-    req.onerror=()=>reject(req.error||Error('indexed_db_error'))
-    tx.oncomplete=()=>db.close()
-    tx.onerror=()=>{db.close();reject(tx.error||Error('indexed_db_tx_failed'))}
-  })
-}
-async function thumbnail(file:File):Promise<Blob>{
-  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)throw Error('unsupported_photo')
-  const url=URL.createObjectURL(file)
+async function compress(file:File):Promise<Blob>{
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)throw Error('仅支持 12MB 以下的 JPEG/PNG/WebP')
+  const src=URL.createObjectURL(file)
   try{
-    const img=new Image()
-    img.src=url
-    await img.decode()
-    const factor=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight))
+    const image=new Image()
+    image.src=src
+    await image.decode()
+    if(image.naturalWidth*image.naturalHeight>35000000)throw Error('图片尺寸过大')
+    const ratio=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight))
     const canvas=document.createElement('canvas')
-    canvas.width=Math.max(1,Math.round(img.naturalWidth*factor))
-    canvas.height=Math.max(1,Math.round(img.naturalHeight*factor))
+    canvas.width=Math.max(1,Math.round(image.naturalWidth*ratio))
+    canvas.height=Math.max(1,Math.round(image.naturalHeight*ratio))
     const ctx=canvas.getContext('2d')
-    if(!ctx)throw Error('image_processing_unavailable')
-    ctx.drawImage(img,0,0,canvas.width,canvas.height)
-    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('image_encoding_failed')),'image/jpeg',0.8))
-  }finally{URL.revokeObjectURL(url)}
+    if(!ctx)throw Error('图片处理失败')
+    ctx.drawImage(image,0,0,canvas.width,canvas.height)
+    return new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('照片压缩失败')),'image/jpeg',0.8))
+  }finally{URL.revokeObjectURL(src)}
 }
 export async function saveLocalPhoto(userId:string,memoryId:string,file:File){
-  const blob=await thumbnail(file)
-  await operate(userId+':'+memoryId,'readwrite',s=>s.put(blob,userId+':'+memoryId))
+  const blob=await compress(file)
+  const db=await store()
+  const key=userId+':'+memoryId+':'+crypto.randomUUID()
+  return new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction('photos','readwrite')
+    tx.objectStore('photos').put(blob,key)
+    tx.oncomplete=()=>{db.close();resolve()}
+    tx.onerror=()=>{db.close();reject(tx.error||Error('照片存储失败'))}
+  })
 }
-export async function getLocalPhoto(userId:string,memoryId:string):Promise<Blob|null>{
-  return await operate<Blob|undefined>(userId+':'+memoryId,'readonly',s=>s.get(userId+':'+memoryId))||null
+export async function listLocalPhotos(userId:string,memoryId:string):Promise<Blob[]>{
+  const db=await store()
+  const legacy=userId+':'+memoryId
+  const begin=legacy+':'
+  const range=IDBKeyRange.bound(begin,begin+'\uffff')
+  return new Promise<Blob[]>((resolve,reject)=>{
+    const tx=db.transaction('photos','readonly'),obj=tx.objectStore('photos')
+    const all=obj.getAll(range)
+    const old=obj.get(legacy)
+    let newFiles:Blob[]=[]
+    let legacyFile:Blob|undefined
+    all.onsuccess=()=>{newFiles=(all.result||[]) as Blob[]}
+    old.onsuccess=()=>{legacyFile=old.result as Blob|undefined}
+    tx.oncomplete=()=>{db.close();resolve(legacyFile?[legacyFile,...newFiles]:newFiles)}
+    tx.onerror=()=>{db.close();reject(tx.error||Error('照片读取失败'))}
+  })
+}
+export async function downloadLocalPhoto(blob:Blob,name:string){
+  const url=URL.createObjectURL(blob)
+  try{
+    const a=document.createElement('a')
+    a.href=url;a.download=name;a.style.display='none'
+    document.body.appendChild(a);a.click();a.remove()
+  }finally{
+    setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
 }

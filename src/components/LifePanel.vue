@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ref,watch,onBeforeUnmount} from 'vue'
-import {getLocalPhoto,saveLocalPhoto} from '../local-media'
+import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto} from '../local-media'
 
 const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
@@ -12,7 +12,7 @@ const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=re
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
-const photoFile=ref<File|null>(null),photos=ref<Record<string,string>>({})
+const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 let photoUrls:string[]=[]
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
@@ -123,22 +123,22 @@ async function addMemory(){
   try{
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
       happenedOn:memoryDate.value,visibility:'private'})
-    if(photoFile.value && result.id)await saveLocalPhoto(props.userId,result.id,photoFile.value)
-    memoryTitle.value='';memoryStory.value='';photoFile.value=null
+    if(result.id)for(const f of photoFiles.value.slice(0,10))await saveLocalPhoto(props.userId,result.id,f)
+    memoryTitle.value='';memoryStory.value='';photoFiles.value=[]
     await fetchMode()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
 async function loadPhotos(){
   for(const x of photoUrls)URL.revokeObjectURL(x)
-  photoUrls=[];photos.value={}
+  photoUrls=[];photos.value={};localPhotoBlobs.value={}
   for(const m of items.value.slice(0,30)){
     try{
       if(m.created_by!==props.userId)continue
-      const b=await getLocalPhoto(props.userId,m.id)
-      if(!b)continue
-      const url=URL.createObjectURL(b)
-      photos.value[m.id]=url;photoUrls.push(url)
+      const list=await listLocalPhotos(props.userId,m.id)
+      if(!list.length)continue
+      localPhotoBlobs.value[m.id]=list
+      photos.value[m.id]=list.map(b=>{const url=URL.createObjectURL(b);photoUrls.push(url);return url})
     }catch{ /* private local storage may be unavailable in some Safari modes */ }
   }
 }
@@ -295,7 +295,7 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           <label>发生日期<input v-model="memoryDate" required type="date"/></label>
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
           <label>可选照片（仅存本机）
-            <input type="file" accept="image/jpeg,image/png,image/webp" @change="photoFile=(($event.target as HTMLInputElement).files?.[0]||null)"/></label>
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <p class="life-caption">本机照片不上传 Cloudflare，也不会出现在其他设备；开启私有云相册后才支持跨设备同步。</p>
           <button :disabled="busy">保存到时光轴</button>
         </form>
@@ -304,7 +304,12 @@ watch(()=>props.mode,fetchMode,{immediate:true})
         <p v-if="!items.length" class="life-empty">还没有回忆，先写下一件开心的小事。</p>
         <article v-for="m in items" :key="m.id" class="memory">
           <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
-          <img v-if="photos[m.id]" :src="photos[m.id]" :alt="m.title" loading="lazy"/>
+          <div v-if="photos[m.id]?.length" class="memory-photos">
+            <div v-for="(image,i) in photos[m.id]" :key="image">
+              <img :src="image" :alt="m.title+' 照片 '+(i+1)" loading="lazy"/>
+              <button type="button" class="life-link" @click="downloadLocalPhoto(localPhotoBlobs[m.id][i],m.id+'-'+(i+1)+'.jpg')">保存照片</button>
+            </div>
+          </div>
           <p>{{ m.story }}</p><small>{{ m.visibility==='private'?'🔒 私人回忆':'⌂ 家庭共享' }}</small>
         </article>
       </section>
@@ -313,6 +318,8 @@ watch(()=>props.mode,fetchMode,{immediate:true})
 </template>
 
 <style scoped>
-.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory img{width:100%;max-height:280px;object-fit:cover;border-radius:12px}
+.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
+.memory-photos button{margin-top:3px}
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
 </style>

@@ -53,10 +53,10 @@ export async function pushRoute(request,env,path,session){
     const existing=await db.prepare('SELECT user_id FROM push_subscriptions WHERE endpoint_hash=?1')
       .bind(endpointHash).first()
     if(existing&&existing.user_id!==session.user_id)return json({error:'subscription_conflict'},409)
-    await db.prepare(\`INSERT INTO push_subscriptions(endpoint_hash,household_id,user_id,endpoint,p256dh,auth_secret)
+    await db.prepare(`INSERT INTO push_subscriptions(endpoint_hash,household_id,user_id,endpoint,p256dh,auth_secret)
       VALUES(?1,?2,?3,?4,?5,?6)
       ON CONFLICT(endpoint_hash) DO UPDATE SET p256dh=excluded.p256dh,
-        auth_secret=excluded.auth_secret,updated_at=CURRENT_TIMESTAMP\`)
+        auth_secret=excluded.auth_secret,updated_at=CURRENT_TIMESTAMP`)
       .bind(endpointHash,session.household_id,session.user_id,body.endpoint,body.keys.p256dh,body.keys.auth).run()
     return json({ok:true},201)
   }
@@ -127,8 +127,8 @@ export async function runPushSchedule(env,now=Date.now()){
   if(!vapidReady(env))return {skipped:'push_not_configured'}
   const db=env.DB
   const day=new Date(now+9*3600000).toISOString().slice(0,10)
-  const {results:subscriptions=[]}=await db.prepare(\`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
-    FROM push_subscriptions ORDER BY user_id LIMIT 20\`).all()
+  const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
+    FROM push_subscriptions ORDER BY user_id LIMIT 20`).all()
   if(!subscriptions.length)return {checked:0,sent:0}
   let sent=0,failed=0,checked=0
   // Reuse a reminder read for every member; avoid duplicate D1 reads per device.
@@ -143,8 +143,8 @@ export async function runPushSchedule(env,now=Date.now()){
     const events=remindersCache.get(sub.user_id).slice(0,20)
     for(const event of events){
       const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
-      const claim=await db.prepare(\`INSERT OR IGNORE INTO notification_deliveries
-        (endpoint_hash,notification_key,sent_on,status) VALUES(?1,?2,?3,'claimed')\`)
+      const claim=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
+        (endpoint_hash,notification_key,sent_on,status) VALUES(?1,?2,?3,'claimed')`)
         .bind(sub.endpoint_hash,key,day).run()
       if(!claim.meta?.changes)continue
       checked++
@@ -157,8 +157,8 @@ export async function runPushSchedule(env,now=Date.now()){
         result=res.ok?'sent':res.status===404||res.status===410?'gone':'failed'
       }catch{result='failed'}
       if(result==='sent')sent++;else failed++
-      await db.prepare(\`UPDATE notification_deliveries SET status=?1,status_code=?2,updated_at=CURRENT_TIMESTAMP
-        WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5\`)
+      await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,updated_at=CURRENT_TIMESTAMP
+        WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
         .bind(result,status,sub.endpoint_hash,key,day).run()
       if(result==='gone'){
         await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1').bind(sub.endpoint_hash).run()
