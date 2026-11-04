@@ -82,6 +82,19 @@ export async function financeRoute(request,env,path,session){
   }
   if(!ready(env))return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
+  if(path==='/api/finance/goal/net'&&request.method==='GET'){
+    const id=url.searchParams.get('targetId')
+    if(!await financeTarget(db,h,user,'goal',id))return json({error:'not_found'},404)
+    const start=url.searchParams.get('start'),end=url.searchParams.get('end')
+    if(!validPeriod(start,end))return json({error:'invalid_range'},400)
+    try{
+      const data=await ledger(env,{summary:'net',start,end})
+      if(!Number.isSafeInteger(data.income)||!Number.isSafeInteger(data.expense)||
+         !Number.isSafeInteger(data.net)||data.income-data.expense!==data.net)
+        return json({error:'ledger_invalid_response'},502)
+      return json({start,end,income:data.income,expense:data.expense,net:data.net,readOnly:true})
+    }catch(error){return financeError(error)}
+  }
   if(path==='/api/finance/settings'&&request.method==='PUT'){
     const body=await readBody(request)
     const kind=body?.type,id=body?.targetId,amount=body?.adjustmentAmount
