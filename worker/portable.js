@@ -111,7 +111,7 @@ function normalized(key,r,h,u) {
           r.remind_enabled===0?0:1,id(r.assigned_to)?r.assigned_to:null]]
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999||!optionalDate(r.due_on)||
-         (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id)))return null
+         (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
       return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id) "+
           "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
           [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,r.completed_at?u:null,
