@@ -16,10 +16,20 @@ type User={id:string;loginName:string;role:'owner'|'member';householdId:string;h
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
 type Routine=Record<string,any>
-type TodayEntry={key:string;kind:'task'|'routine';title:string;done:boolean;task?:Task;routine?:Routine}
+type PlanKind='shopping'|'wish'|'goal'|'trip'
+type TodayKind='task'|'routine'|PlanKind
+type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string}
+type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
+const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
+const todayCategories:[{id:'all'|'task'|'routine'|'shopping'|'wish'|'goal'|'trip';label:string},...{id:'all'|'task'|'routine'|'shopping'|'wish'|'goal'|'trip';label:string}[]]=[
+ {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
+ {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
+]
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
-const todayRoutines=ref<Routine[]>([]),editingRoutine=ref<Routine|null>(null),routineBusy=ref(false)
+const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
+const todayCategory=ref<'all'|TodayKind>('all')
+const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const focusPlanType=ref('all')
 function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
@@ -48,17 +58,22 @@ const visibleTasks=computed(()=>tasks.value.filter(t=>{
  return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
    !t.dueOn||t.dueOn<=now
 }))
-const unifiedToday=computed<TodayEntry[]>(()=>{
+const allToday=computed<TodayEntry[]>(()=>{
   const standard:TodayEntry[]=visibleTasks.value.map(task=>({
     key:'task:'+task.id,kind:'task',title:task.title,done:!!task.completedAt,task
   }))
   const recurring:TodayEntry[]=todayRoutines.value.map(routine=>({
     key:'routine:'+routine.id,kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
   }))
-  // The two sources share a single completion order, without changing their
-  // independent persistence and recurrence rules.
-  return [...standard,...recurring].sort((a,b)=>Number(a.done)-Number(b.done))
+  // All plan types use one visual list, while retaining each source's own
+  // completion, privacy and recurrence rules.
+  const plans:TodayEntry[]=todayPlans.value.map(plan=>({
+    key:'plan:'+plan.kind+':'+plan.id,kind:plan.kind,title:plan.title,done:plan.done,plan
+  }))
+  return [...standard,...recurring,...plans].sort((a,b)=>Number(a.done)-Number(b.done))
 })
+const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
+  allToday.value.filter(row=>row.kind===todayCategory.value))
 const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
 function recurringLabel(r:Routine){
   return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
@@ -157,6 +172,7 @@ async function submitAuth(){
     }
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
+    if(user.value&&tab.value==='today')await reloadToday()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
@@ -171,7 +187,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
 }
 async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
 async function loadTodayRoutines(){
@@ -183,7 +199,25 @@ async function loadTodayRoutines(){
     if(date===tokyoToday()&&user.value)todayRoutines.value=result.items||[]
   }catch(e){error.value=(e as Error).message}
 }
-async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines()])}
+async function loadTodayPlans(){
+  if(!user.value)return
+  const date=tokyoToday()
+  try{
+    const result=await api('/plans/today?date='+encodeURIComponent(date))
+    if(date===tokyoToday()&&user.value)todayPlans.value=Array.isArray(result.items)?result.items:[]
+  }catch(e){error.value=(e as Error).message}
+}
+async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
+async function toggleShoppingPlan(plan:TodayPlan){
+  if(shoppingBusy.value)return
+  shoppingBusy.value=true
+  try{
+    await api('/shopping/'+plan.id+'/toggle','POST',{completed:!plan.done})
+    await loadTodayPlans()
+    notify(plan.done?'已撤销购物完成':'购物已完成')
+  }catch(e){error.value=(e as Error).message}
+  finally{shoppingBusy.value=false}
+}
 function editRoutine(r:Routine){
   if(r.created_by!==user.value?.id)return
   editingRoutine.value=editingRoutine.value?.id===r.id?null:r
@@ -304,10 +338,14 @@ watch(tab,value=>{
   clearToast()
   editingTask.value=null
   editingRoutine.value=null
-  if(value==='today'&&user.value)void reloadToday()
+  if(value==='today'){
+    todayCategory.value='all'
+    if(user.value)void reloadToday()
+  }
 })
 onMounted(async()=>{
   await refresh()
+  if(user.value&&tab.value==='today')await reloadToday()
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
