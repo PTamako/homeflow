@@ -18,6 +18,7 @@ const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',
  intervalDays:7,intervalAnchor:'fixed',remindEnabled:true,
  subjectProfileId:'',healthRecordType:'other',quantity:1,dueOn:'',
+ goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',createSavingsGoal:false,
  targetAmount:100000,reservedAmount:0,destination:'',
  startDate:'',endDate:'',budgetAmount:0
@@ -62,10 +63,12 @@ async function submit(){
     if(form.createSavingsGoal&&form.estimatedAmount<=0)throw Error('添加关联储值计划时，请填写大于零的预估金额')
     result=await send('/wishes',{...common,wishType:form.wishType,
       estimatedAmount:form.estimatedAmount,currency:'JPY',targetOn:form.targetOn||null,
-      createSavingsGoal:form.createSavingsGoal})
+      createSavingsGoal:form.createSavingsGoal,goalStartOn:form.goalStartOn})
   }else if(kind.value==='goal'){
     result=await send('/goals',{...common,targetAmount:form.targetAmount,
-      reservedAmount:form.reservedAmount,currency:'JPY',targetOn:form.targetOn||null})
+      reservedAmount:form.goalMode==='once'?form.reservedAmount:0,
+      goalMode:form.goalMode,startOn:form.startOn,
+      currency:'JPY',targetOn:form.targetOn||null})
   }else{
     result=await send('/trips',{...common,destination:form.destination,
       startDate:form.startDate||null,endDate:form.endDate||null,
@@ -136,12 +139,21 @@ async function submit(){
      <label>目标日期（可选）<input v-model="form.targetOn" type="date"/></label>
      <label class="plan-checkbox"><input v-model="form.createSavingsGoal" type="checkbox"/>
       <span>同时创建关联的储值计划 <small>目标金额默认等于心愿预估金额，可之后修改</small></span></label>
+     <label v-if="form.createSavingsGoal">储值开始日期<input v-model="form.goalStartOn" type="date" required/></label>
     </template>
     <template v-else-if="kind==='goal'">
-     <label>目标金额（日元）<input v-model.number="form.targetAmount" type="number" min="1" max="100000000000" required/></label>
-     <label>期初储蓄额（日元）<input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
-     <label>目标日期（可选）<input v-model="form.targetOn" type="date"/></label>
-     <p class="creator-tip">创建后可在储值计划详情选择家計簿收支期间、查看差额并输入正负调整额。</p>
+     <label>储值方式<select v-model="form.goalMode">
+       <option value="once">累计目标（一次性）</option>
+       <option value="monthly">每月固定目标</option>
+       <option value="yearly">每年固定目标</option>
+     </select></label>
+     <label>{{ form.goalMode==='monthly'?'每月目标金额':form.goalMode==='yearly'?'每年目标金额':'累计目标金额' }}（日元）
+       <input v-model.number="form.targetAmount" type="number" min="1" max="100000000000" required/></label>
+     <label>开始日期<input v-model="form.startOn" type="date" required/></label>
+     <label v-if="form.goalMode==='once'">期初储值额（日元）
+       <input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
+     <label>结束／目标日期（可选）<input v-model="form.targetOn" type="date" :min="form.startOn||undefined"/></label>
+     <p class="creator-tip">按日本日历月或自然年度统计。首月／首年从开始日期计算；每个期间单独保存调整额。家計簿只读汇总，不等于真实银行存款余额。</p>
     </template>
     <template v-else-if="kind==='trip'">
      <label>目的地<input v-model.trim="form.destination" maxlength="300" placeholder="例如：上海"/></label>
