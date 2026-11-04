@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {portableRoute,RESTORE_ORDER} from '../worker/portable.js'
 import {tasksRoute} from '../worker/tasks.js'
+import {lifeRoute} from '../worker/life.js'
 
 const person='11111111-1111-4111-8111-111111111111'
 const wish='22222222-2222-4222-8222-222222222222'
@@ -115,4 +116,30 @@ test('first paint and timeline do not show unrelated data while loading',()=>{
  assert.match(life,/listLoading=ref\(false\)/)
  assert.match(life,/if\(requestId!==activeFetch\)return/)
  assert.match(life,/role="status">正在读取时光轴/)
+})
+
+test('stale memory and shopping editor snapshots never overwrite newer changes',async()=>{
+ const {db,sqlite}=database()
+ try{
+  const memoryId='77777777-7777-4777-8777-777777777777'
+  sqlite.prepare('INSERT INTO memories(id,household_id,created_by,visibility,title,story,happened_on) VALUES(?,?,?,?,?,?,?)')
+   .run(memoryId,'primary','u1','household','旧回忆','旧内容','2026-11-04')
+  sqlite.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity) VALUES(?,?,?,?,?,?)')
+   .run(shop,'primary','u1','household','旧购物',1)
+  const patch=(kind,id,payload)=>lifeRoute(new Request('https://homeflow.invalid/api/'+kind+'/'+id,{
+   method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(payload)
+  }),db,'/api/'+kind+'/'+id,session)
+  const before=JSON.stringify(['旧回忆','旧内容','2026-11-04','household',null,null])
+  assert.equal((await patch('memories',memoryId,{title:'第一台修改',story:'第一条',happenedOn:'2026-11-04',
+   visibility:'household',expectedSnapshot:before})).status,200)
+  assert.equal((await patch('memories',memoryId,{title:'第二台覆盖',story:'不该保存',happenedOn:'2026-11-04',
+   visibility:'household',expectedSnapshot:before})).status,409)
+  assert.equal(sqlite.prepare('SELECT title FROM memories WHERE id=?').get(memoryId).title,'第一台修改')
+  const beforeShopping=JSON.stringify(['旧购物',1,null,null,null])
+  assert.equal((await patch('shopping',shop,{title:'第一台购物',quantity:1,visibility:'household',
+    expectedSnapshot:beforeShopping})).status,200)
+  assert.equal((await patch('shopping',shop,{title:'第二台购物',quantity:1,visibility:'household',
+    expectedSnapshot:beforeShopping})).status,409)
+  assert.equal(sqlite.prepare('SELECT title FROM shopping_items WHERE id=?').get(shop).title,'第一台购物')
+ }finally{sqlite.close()}
 })
