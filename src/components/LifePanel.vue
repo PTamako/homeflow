@@ -218,6 +218,31 @@ watch(routineSubject,id=>{
   routineHealthType.value=props.profiles.some(p=>p.id===id&&p.type==='pet')?'other':''
 })
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
+const planMemoryDraft=ref<null|{
+ kind:'wish'|'trip';id:string;title:string;happenedOn:string;story:string
+}>(null)
+function startPlanMemory(kind:'wish'|'trip',item:Row){
+ if(!canEdit(item)||item.status!=='completed')return
+ const preferred=kind==='trip'?String(item.end_on||item.endOn||''):''
+ planMemoryDraft.value={
+  kind,id:item.id,title:item.title+' · 回忆',
+  happenedOn:preferred&&preferred<=today()?preferred:today(),story:''
+ }
+}
+async function savePlanMemory(){
+ const draft=planMemoryDraft.value
+ if(!draft||busy.value||!draft.title.trim()||!draft.happenedOn)return
+ error.value='';busy.value=true
+ try{
+  await api('/memories','POST',{
+   title:draft.title,story:draft.story,happenedOn:draft.happenedOn,
+   linkedType:draft.kind,linkedId:draft.id,visibility:'private'
+  })
+  planMemoryDraft.value=null
+  notify('回忆已保存到时光轴（仅自己可见）')
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
+}
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
@@ -692,6 +717,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
               <small v-if="linkedGoal(w)">关联储值需达到目标后，才能确认心愿。</small>
             </div>
+            <button v-if="canEdit(w)&&w.status==='completed'" type="button"
+              class="life-link" :disabled="busy" @click="startPlanMemory('wish',w)">记录心愿回忆</button>
+            <form v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id"
+              class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
+              <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
+              <DateField v-model="planMemoryDraft.happenedOn" required/>
+              <textarea v-model="planMemoryDraft.story" maxlength="8000" rows="2" placeholder="记下心愿实现的故事（选填）"></textarea>
+              <div class="plan-memory-actions">
+                <button type="button" :disabled="busy" @click="planMemoryDraft=null">取消</button>
+                <button :disabled="busy||!planMemoryDraft.title.trim()">保存私人回忆</button>
+              </div>
+            </form>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
             <button v-if="isFocused(w)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
@@ -777,6 +814,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </div>
             </SwipeActions>
+            <button v-if="canEdit(t)&&t.status==='completed'" type="button"
+              class="life-link" :disabled="busy" @click="startPlanMemory('trip',t)">记录旅行回忆</button>
+            <form v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id"
+              class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
+              <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
+              <DateField v-model="planMemoryDraft.happenedOn" required/>
+              <textarea v-model="planMemoryDraft.story" maxlength="8000" rows="2" placeholder="旅行故事和感想（选填）"></textarea>
+              <div class="plan-memory-actions">
+                <button type="button" :disabled="busy" @click="planMemoryDraft=null">取消</button>
+                <button :disabled="busy||!planMemoryDraft.title.trim()">保存私人回忆</button>
+              </div>
+            </form>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
@@ -921,6 +970,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.plan-memory-form{margin:8px 0 12px;padding:10px;border:1px solid #dbe8dd;border-radius:10px;background:#f5faf6}
+.plan-memory-form textarea{min-width:0;max-width:100%;box-sizing:border-box;width:100%}
+.plan-memory-actions{display:flex;justify-content:flex-end;gap:8px}
 .focused-plan-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:12px 14px;margin-bottom:14px;background:#eef6ef;border:1px solid #cfe3d4;border-radius:13px}
 .focused-plan-banner>div{display:grid;gap:3px;min-width:0;flex:1}
