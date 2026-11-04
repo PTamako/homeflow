@@ -49,7 +49,7 @@ async function ledger(env,params){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT id FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
+  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount':'id')+' FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
