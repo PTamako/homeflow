@@ -87,10 +87,11 @@ function normalized(key,r,h,u) {
       if(!str(r.title,150)||!date(r.anchor_date)||
          !['daily','weekly','monthly','interval'].includes(r.repeat_type)||
          str(r.repeat_config,1200)===null||(r.next_due_on&&!date(r.next_due_on)))return null
-      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id) "+
-         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,(SELECT id FROM family_profiles WHERE id=?11 AND household_id=?2))",
+      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id,health_record_type) "+
+         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,(SELECT id FROM family_profiles WHERE id=?11 AND household_id=?2),?12)",
          [r.id,h,u,v,r.title,r.repeat_type,r.repeat_config,r.anchor_date,r.enabled===0?0:1,
-          r.next_due_on||null,id(r.subject_profile_id)?r.subject_profile_id:null]]
+          r.next_due_on||null,id(r.subject_profile_id)?r.subject_profile_id:null,
+          ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null]]
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999)return null
       return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by) "+
@@ -108,9 +109,13 @@ function normalized(key,r,h,u) {
          !date(r.event_on)||(r.next_due_on&&!date(r.next_due_on))||
          (r.weight_grams!=null&&(!Number.isInteger(r.weight_grams)||r.weight_grams<=0||r.weight_grams>=100000))||
          str(r.note||'',1000)===null)return null
-      return ["INSERT OR IGNORE INTO pet_health_records(id,household_id,profile_id,created_by,visibility,record_type,event_on,weight_grams,note,next_due_on) "+
-         "SELECT ?1,?2,p.id,?4,?5,?6,?7,?8,?9,?10 FROM family_profiles p WHERE p.id=?3 AND p.household_id=?2 AND p.type='pet'",
-         [r.id,h,r.profile_id,u,v,r.record_type,r.event_on,r.weight_grams??null,r.note||'',r.next_due_on||null]]
+      return ["INSERT OR IGNORE INTO pet_health_records(id,household_id,profile_id,created_by,visibility,record_type,event_on,weight_grams,note,next_due_on,source_routine_id,source_occurrence_on) "+
+         "SELECT ?1,?2,p.id,?4,?5,?6,?7,?8,?9,?10,rt.id,CASE WHEN rt.id IS NOT NULL THEN ?12 ELSE NULL END "+
+         "FROM family_profiles p LEFT JOIN routines rt ON rt.id=?11 AND rt.household_id=?2 AND rt.created_by=?4 "+
+         "WHERE p.id=?3 AND p.household_id=?2 AND p.type='pet'",
+         [r.id,h,r.profile_id,u,v,r.record_type,r.event_on,r.weight_grams??null,r.note||'',r.next_due_on||null,
+          id(r.source_routine_id)&&date(r.source_occurrence_on)?r.source_routine_id:null,
+          date(r.source_occurrence_on)?r.source_occurrence_on:null]]
     case 'routineMarks':
       if(!id(r.routine_id)||!date(r.occurrence_on))return null
       return ["INSERT OR IGNORE INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at) "+
