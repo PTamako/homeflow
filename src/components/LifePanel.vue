@@ -690,7 +690,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
                 {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
               <button v-if="linkedGoal(w)" type="button" class="life-link"
-                @click="emit('openPlans','goal',linkedGoal(w).id)">查看关联储值</button>
+                @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
               <small v-if="linkedGoal(w)">关联储值需达到目标后，才能确认心愿。</small>
             </div>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
