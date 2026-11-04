@@ -2,7 +2,7 @@ import {json,readBody,validDate,iso} from './security.js'
 import {goalPeriod} from './goal-period.js'
 import {verifiedGoalProgress} from './finance.js'
 import {jstDayOf} from './today-periods.js'
-import {closedGoalPeriods} from './goal-settlements.js'
+import {closedGoalPeriods,settleGoalPeriod} from './goal-settlements.js'
 import {goalPeriod} from './goal-period.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
@@ -33,6 +33,14 @@ async function completePlan(request,db,session,env){
     periodKey=body?.periodKey
     const window=goalPeriod(row,periodKey,today)
     if(!window||window.periodEnd>today)return json({error:'not_due'},409)
+  }
+  if(kind==='goal'&&(row.goal_mode||'once')!=='once'){
+    // Older clients may still call the former mark-complete endpoint.
+    // Route them through the same verified period settlement and never allow
+    // an unchecked acknowledgement to bypass the stored snapshot.
+    if(!body.completed)return json({error:'use_period_recheck'},409)
+    const result=await settleGoalPeriod(env,row,periodKey,today,true)
+    return json(result,result.ok?200:result.error==='not_due'?409:503)
   }
   const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
     WHERE household_id=?1 AND plan_type=?2 AND plan_id=?3 AND period_key=?4`)
