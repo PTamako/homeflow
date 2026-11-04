@@ -497,6 +497,54 @@ test('finished savings goals archive and expired unfinished trips stay active',a
  sqlite.close()
 })
 
+test('undated and early-achieved plans complete safely and portable backup restores period marks',async()=>{
+ const {db,sqlite}=makeDb()
+ const {env}=mockedProductionLedger(db,sqlite)
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'undated-backup-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10)
+ const wish=await ask('/api/wishes','POST',{
+   title:'未设置目标日期的心愿',wishType:'other',estimatedAmount:0,
+   targetOn:null,currency:'JPY',visibility:'household'},owner)
+ const earlyWish=await ask('/api/wishes','POST',{
+   title:'提前实现的心愿',wishType:'activity',estimatedAmount:0,
+   targetOn:tomorrow,currency:'JPY',visibility:'household'},owner)
+ const once=await ask('/api/goals','POST',{
+   title:'没有结束日期的结余目标',targetAmount:10000,reservedAmount:0,
+   goalMode:'once',startOn:today,targetOn:null,currency:'JPY',visibility:'household'},owner)
+ for(const created of [wish,earlyWish,once])assert.equal(created.status,201,JSON.stringify(created.body))
+ for(const id of [wish.body.id,earlyWish.body.id]){
+   const done=await ask('/api/plans/complete','POST',{kind:'wish',id,completed:true},owner)
+   assert.equal(done.status,200,JSON.stringify(done.body))
+ }
+ const funded=await ask('/api/plans/complete','POST',{kind:'goal',id:once.body.id,completed:true},owner)
+ assert.equal(funded.status,200,JSON.stringify(funded.body))
+ const exported=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(exported.status,200,JSON.stringify(exported.body))
+ const marks=exported.body.records.planCompletionMarks
+ assert.equal(marks.length,3,'every wish and one-time goal completion is portable')
+ assert.ok(marks.every(x=>!('completed_by' in x)),'a backup never embeds another member completion identity')
+ const preview=await ask('/api/portable/restore','POST',{dataset:'planCompletionMarks',items:marks,preview:true},owner)
+ assert.equal(preview.status,200,JSON.stringify(preview.body))
+ sqlite.exec('DELETE FROM plan_completion_marks')
+ const restored=await ask('/api/portable/restore','POST',{dataset:'planCompletionMarks',items:marks,confirm:true},owner)
+ assert.equal(restored.status,200,JSON.stringify(restored.body))
+ assert.equal(restored.body.inserted,3)
+ const again=await ask('/api/portable/restore','POST',{dataset:'planCompletionMarks',items:marks,confirm:true},owner)
+ assert.equal(again.status,200)
+ assert.equal(again.body.inserted,0,'restores are idempotent')
+ const undo=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:false},owner)
+ assert.equal(undo.status,200)
+ assert.equal(sqlite.prepare('SELECT status FROM wishes WHERE id=?').get(wish.body.id).status,'wished',
+   'prior status survives ZIP restoration and permits undo')
+ sqlite.close()
+})
+
 test('linked wish and savings cannot be completed without verified funding; outages fail closed',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)

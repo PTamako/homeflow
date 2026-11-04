@@ -34,14 +34,23 @@ const queries=[
     "(s.target_type='trip' AND EXISTS(SELECT 1 FROM trips t WHERE t.id=s.target_id AND t.household_id=s.household_id AND t.created_by=?2)) OR "+
     "(s.target_type='shopping' AND EXISTS(SELECT 1 FROM shopping_items p WHERE p.id=s.target_id AND p.household_id=s.household_id AND p.created_by=?2))) LIMIT 501"],
   ['goalPeriodAdjustments',"SELECT a.* FROM goal_period_adjustments a JOIN goals g ON g.id=a.goal_id AND g.household_id=a.household_id "+
-    "WHERE a.household_id=?1 AND g.created_by=?2 LIMIT 501"]
+    "WHERE a.household_id=?1 AND g.created_by=?2 LIMIT 501"],
+  // New completion records must be exported with their parent plan. The
+  // household AND creator checks prevent other members' private marks leaking.
+  ['planCompletionMarks',`SELECT m.plan_type,m.plan_id,m.period_key,m.completed_at,m.prior_status
+    FROM plan_completion_marks m WHERE m.household_id=?1 AND
+    ((m.plan_type='wish' AND EXISTS(SELECT 1 FROM wishes w WHERE w.id=m.plan_id
+       AND w.household_id=m.household_id AND w.created_by=?2))
+     OR (m.plan_type='goal' AND EXISTS(SELECT 1 FROM goals g WHERE g.id=m.plan_id
+       AND g.household_id=m.household_id AND g.created_by=?2)))
+    ORDER BY m.completed_at,m.plan_type,m.plan_id,m.period_key LIMIT 501`]
 ]
 export const RESTORE_ORDER=queries.map(([key])=>key)
 const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   switch(key){
@@ -171,6 +180,29 @@ function normalized(key,r,h,u) {
         "SELECT ?1,?2,?3,?4,?5 WHERE EXISTS(SELECT 1 FROM goals WHERE id=?2 AND household_id=?1 AND created_by=?5 "+
         "AND ((goal_mode='monthly' AND length(?3)=7) OR (goal_mode='yearly' AND length(?3)=4)))",
         [h,r.goal_id,r.period_key,r.adjustment_amount,u]]
+    }
+    case 'planCompletionMarks': {
+      if(!['wish','goal'].includes(r.plan_type)||!id(r.plan_id)||
+         typeof r.completed_at!=='string'||!/^\\d{4}-\\d{2}-\\d{2}T/.test(r.completed_at)||
+         !Number.isFinite(Date.parse(r.completed_at))||
+         (r.plan_type==='wish'&&
+           (r.period_key!=='once'||!['wished','planning','active'].includes(r.prior_status)))||
+         (r.plan_type==='goal'&&r.prior_status!=null))return null
+      const table=r.plan_type==='wish'?'wishes':'goals'
+      // Do not trust a backup's original completed_by identity. Only recreate
+      // a mark for a plan actually owned by the importing user.
+      const key=r.period_key
+      if(r.plan_type==='goal'&&key!=='once'&&
+         !/^\\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(key))return null
+      return [`INSERT OR IGNORE INTO plan_completion_marks
+        (household_id,plan_type,plan_id,period_key,completed_at,completed_by,prior_status)
+        SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE EXISTS(
+          SELECT 1 FROM ${table} WHERE id=?3 AND household_id=?1 AND created_by=?6
+          AND (?2='wish' OR
+            (goal_mode='once' AND ?4='once') OR
+            (goal_mode='monthly' AND length(?4)=7) OR
+            (goal_mode='yearly' AND length(?4)=4)))`,
+        [h,r.plan_type,r.plan_id,key,r.completed_at,u,r.prior_status??null]]
     }
     default:return null
   }

@@ -40,7 +40,7 @@ const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(s
 const goalPeriodDue=computed(()=>{
   const g=selected.value,today=dateYmd()
   if(!g||kind.value!=='goal')return false
-  if(!recurringGoal.value)return !!g.target_on&&g.target_on<=today
+  if(!recurringGoal.value)return !g.start_on||g.start_on<=today
   const key=String(periodKey.value)
   if(!(goalMode.value==='monthly'?/^\d{4}-(0[1-9]|1[0-2])$/.test(key):/^\d{4}$/.test(key)))return false
   const end=goalMode.value==='monthly'
@@ -102,7 +102,7 @@ async function confirmGoalCompleted(){
     })
     if(wasCompleted)completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
     else completedPeriods.value=[...completedPeriods.value,key]
-    notify(wasCompleted?'已撤销本期达标确认':'储值已核验达标，完成状态已保存')
+    notify(wasCompleted?'已撤销本期达标确认':'家庭净结余目标核验通过，已记录完成')
     emit('completed',!wasCompleted,key)
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
@@ -281,7 +281,7 @@ onMounted(()=>{
           <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
           <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
           <small v-if="periodFuture">所选期间还未开始，暂不查询家計簿。</small>
-          <small v-else>依家庭收支估算，不代表真实银行存款余额；资产移动不计入差额。</small>
+          <small v-else>此处仅是家計簿「家庭净收支」估算（含期初额和调整额），不代表银行余额，也不能证明这笔钱已专门存入该目标；资产移动不计入。</small>
         </div>
         <label class="adjustment-label">手动调整额（円，可输入正数或负数）
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
@@ -308,9 +308,9 @@ onMounted(()=>{
         <div v-if="kind==='goal'" class="goal-completion-panel">
           <p v-if="alreadyCompleted" class="hint">这一{{ recurringGoal?'期':'次' }}储值已确认完成。</p>
           <p v-else-if="goalPeriodDue" class="hint">
-            仅在服务器核对家計簿真实收支、已保存的调整额和期初金额后，才允许完成。
+            服务器将按「家庭净结余目标」核对真实收支、调整额和期初金额。通过只代表结余估算达标，不代表专用储蓄账户已有这笔钱。
           </p>
-          <p v-else class="hint">还没到本{{ recurringGoal?'期':'次' }}目标日期，暂不能确认达标。</p>
+          <p v-else class="hint">{{ recurringGoal?'本期尚未结束':'储值起始日期尚未到来' }}，暂不能确认。</p>
           <button type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
             {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销本期达标确认':'核验达标并完成' }}
           </button>

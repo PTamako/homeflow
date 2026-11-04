@@ -80,7 +80,10 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
   const data=await ledger(env,{summary:'net',start,end})
   const amount=opening+data.net+adjustment
   if(!Number.isSafeInteger(amount))return {ok:false,error:'ledger_invalid_response'}
+  // A verified household cash-flow estimate is NOT a bank balance or proof of
+  // earmarked savings. Keep the calculation basis explicit for future modes.
   return {ok:amount>=goal.target_amount,amount,target:goal.target_amount,start,end,
+    calculationBasis:'household_net_cashflow_estimate',
     error:amount>=goal.target_amount?null:'goal_not_funded'}
 }
 

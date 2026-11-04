@@ -21,10 +21,12 @@ async function completePlan(request,db,session,env){
   const today=tokyoToday(),stamp=iso()
   let periodKey='once'
   if(kind==='wish'){
-    if(row.target_on===null||row.target_on>today||row.status==='cancelled')
-      return json({error:'not_due'},409)
+    // A target date schedules follow-up; it must not prevent an undated or
+    // early-achieved wish from being completed in Plans.
+    if(row.status==='cancelled')return json({error:'cancelled_plan'},409)
   }else if((row.goal_mode||'once')==='once'){
-    if(!row.target_on||row.target_on>today)return json({error:'not_due'},409)
+    // One-time goals may finish early, but never before their funding period.
+    if(row.start_on&&row.start_on>today)return json({error:'not_started'},409)
   }else{
     periodKey=body?.periodKey
     const window=goalPeriod(row,periodKey,today)
