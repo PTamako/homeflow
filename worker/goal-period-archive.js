@@ -35,7 +35,10 @@ export function candidateGoalPeriods(goals,options,today=tokyoDay()){
     // Include the cursor's month/year, then use exact (end,id) keyset
     // comparison to handle multiple goals ending on the same date.
     const before=options.before?nextPeriodKey(g.goal_mode,options.before.end):''
-    for(const period of closedGoalPeriods(g,today,options.limit+2,before,options.year,options.month)){
+    for(const period of closedGoalPeriods(g,today,options.limit+2,before,options.year,
+      g.goal_mode==='monthly'?options.month:'')){
+      // Yearly periods end in their final calendar month, not a monthly period key.
+      if(options.month&&period.periodEnd.slice(5,7)!==options.month)continue
       if(options.before&&(period.periodEnd>options.before.end||
          (period.periodEnd===options.before.end&&g.id>=options.before.goalId)))continue
       candidates.push({
