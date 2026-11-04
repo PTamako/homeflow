@@ -9,7 +9,6 @@ import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
-import ShoppingLedgerPicker from './components/ShoppingLedgerPicker.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
 import SwipeActions from './components/SwipeActions.vue'
@@ -40,14 +39,46 @@ const todayVisibleCount=ref(listPageSize)
 const pendingVisibleCount=ref(listPageSize)
 const peopleVisibleCount=ref(listPageSize)
 const petsVisibleCount=ref(listPageSize)
-const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
-const shoppingLinkId=ref<string|null>(null)
+const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const settingsOpen=ref(false)
 const hasImportantReminders=ref(false)
 const importantRemindersRef=ref<{refreshIfStale:()=>void}|null>(null)
 const focusPlanType=ref('all')
-function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
+const focusPlanId=ref('')
+const focusPlanPeriodKey=ref('')
+const focusPlanScope=ref<'active'|'history'>('active')
+const focusPlanRequest=ref(0)
+let savedTodayScrollY=0
+let returningToToday=false
+function openPlans(kind:string,id='',periodKey='',done=false){
+  if(tab.value==='today'&&id)savedTodayScrollY=window.scrollY
+  focusPlanType.value=kind
+  focusPlanId.value=id
+  focusPlanPeriodKey.value=periodKey
+  focusPlanScope.value=done&&(kind==='wish'||(kind==='goal'&&(!periodKey||periodKey==='once')))
+    ?'history':'active'
+  focusPlanRequest.value++
+  tab.value='plans'
+}
+async function returnToToday(){
+  returningToToday=true
+  tab.value='today'
+  await nextTick()
+  await reloadToday()
+  await nextTick()
+  window.requestAnimationFrame(()=>window.scrollTo({top:savedTodayScrollY,behavior:'instant'}))
+  returningToToday=false
+}
+function navigateTab(value:typeof tab.value){
+  if(value==='plans'){
+    focusPlanId.value=''
+    focusPlanPeriodKey.value=''
+    focusPlanScope.value='active'
+    focusPlanRequest.value++
+  }
+  tab.value=value
+}
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
@@ -268,31 +299,6 @@ async function loadTodayPlans(){
   }catch(e){error.value=(e as Error).message}
 }
 async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
-async function completeDuePlan(plan:TodayPlan){
-  if(shoppingBusy.value||!['wish','goal'].includes(plan.kind))return
-  shoppingBusy.value=true
-  try{
-    await api('/plans/complete','POST',{kind:plan.kind,id:plan.id,
-      periodKey:plan.periodKey||'once',completed:!plan.done})
-    await loadTodayPlans()
-    notify(plan.done?'已撤销完成':'已核对完成条件，记录已保存')
-  }catch(e){
-    const code=(e as Error).message
-    error.value=code==='goal_not_funded'?'记账本核对后储值尚未达到目标，不能完成':
-      code==='ledger_verification_unavailable'?'记账本联动暂不可用，未更改完成状态':
-      code==='owner_required_for_ledger_verification'?'请由家庭管理员核对储值进度':
-      code==='invalid_goal_period'?'储值核算期间无效，请到计划检查开始和结束日期':code
-  }
-  finally{shoppingBusy.value=false}
-}
-function toggleShoppingLink(plan:TodayPlan){
-  shoppingLinkId.value=shoppingLinkId.value===plan.id?null:plan.id
-}
-async function shoppingLinked(){
-  shoppingLinkId.value=null
-  await loadTodayPlans()
-  notify('已关联实际购物支出，计划已完成')
-}
 function editRoutine(r:Routine){
   if(r.created_by!==user.value?.id)return
   editingRoutine.value=editingRoutine.value?.id===r.id?null:r
@@ -420,11 +426,12 @@ watch(tab,value=>{
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
-    todayVisibleCount.value=listPageSize
-    pendingVisibleCount.value=listPageSize
-    shoppingLinkId.value=null
-    todayCategory.value='all'
-    if(user.value)void reloadToday()
+    if(!returningToToday){
+      todayVisibleCount.value=listPageSize
+      pendingVisibleCount.value=listPageSize
+      todayCategory.value='all'
+      if(user.value)void reloadToday()
+    }
   }else if(value==='family'){
     peopleVisibleCount.value=listPageSize
     petsVisibleCount.value=listPageSize
@@ -563,16 +570,12 @@ onBeforeUnmount(()=>{
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
               @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
               <div class="task-row today-unified-row">
-                <input v-if="row.task||row.routine||row.plan?.kind==='wish'"
-                  type="checkbox" :checked="row.done"
-                  :disabled="(!!row.routine&&routineBusy)||shoppingBusy"
+                <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
+                  :disabled="!!row.routine&&routineBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
-                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):
-                    row.plan?completeDuePlan(row.plan):undefined"/>
-                <button v-else-if="row.plan?.kind==='goal'" type="button" class="today-goal-action"
-                  :disabled="shoppingBusy" :aria-label="(row.done?'撤销达标确认 ':'确认储值达标 ')+row.title"
-                  @click="completeDuePlan(row.plan)">{{ row.done?'✓':'核验' }}</button>
-                <AppIcon v-else :name="row.plan?.kind==='shopping'?(row.done?'check':'shopping'):'plane'" :size="19" />
+                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
+                <AppIcon v-else :name="row.plan?.kind==='shopping'?'shopping':
+                  row.plan?.kind==='wish'?'heart':row.plan?.kind==='goal'?'wallet':'plane'" :size="19" />
                 <div class="task-detail">
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
@@ -598,12 +601,10 @@ onBeforeUnmount(()=>{
                     </template>
                   </small>
                 </div>
-                <button v-if="row.plan?.kind==='shopping'&&user.role==='owner'" type="button"
-                  class="text-button today-plan-link" @click="toggleShoppingLink(row.plan)">
-                  {{ row.done?'查看账目':'关联消费' }}</button>
                 <button v-if="row.plan" type="button" class="text-button today-plan-link"
-                  :aria-label="'打开'+todayKindLabels[row.kind]+'计划：'+row.title"
-                  @click="openPlans(row.plan.kind)">查看计划</button>
+                  :aria-label="'前往'+todayKindLabels[row.kind]+'计划处理：'+row.title"
+                  @click="openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
+                  {{ row.done?'查看计划':'去处理' }}</button>
               </div>
             </SwipeActions>
             <form v-if="row.task&&editingTask?.id===row.task.id" class="task-edit-form" @submit.prevent="saveTaskEdit">
@@ -634,9 +635,6 @@ onBeforeUnmount(()=>{
             <LifeItemEditor v-if="row.routine&&editingRoutine?.id===row.routine.id"
               kind="routines" :item="row.routine" :profiles="profiles"
               @saved="routineSaved" @cancel="editingRoutine=null"/>
-            <ShoppingLedgerPicker v-if="row.plan?.kind==='shopping'&&shoppingLinkId===row.plan.id"
-              :shopping-id="row.plan.id" :linked-id="row.plan.ledgerEntryId"
-              @saved="shoppingLinked" @close="shoppingLinkId=null"/>
           </template>
           <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
             @click="todayVisibleCount+=listPageSize">加载更多今日待办（每次 5 条）</button>
@@ -731,13 +729,16 @@ onBeforeUnmount(()=>{
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <LifePanel :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
-        :tasks="tasks" :focus-plan-type="focusPlanType" :profile-revision="profileRevision"
-        @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks" @open-plans="openPlans" />
+         :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
+        :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
+        :focus-plan-request="focusPlanRequest" :profile-revision="profileRevision"
+        @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
+        @open-plans="openPlans" @back-to-today="returnToToday" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <PageToast :toast="toast" />
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
-      <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
+      <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="navigateTab(n.id)">
         <AppIcon :name="n.icon" :size="23" /><span>{{ n.label }}</span></button>
     </nav>
   </div>
