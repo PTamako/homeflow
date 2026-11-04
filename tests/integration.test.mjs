@@ -462,6 +462,47 @@ test('private wish memories cannot be shared by create or edit, while shared pla
  sqlite.close()
 })
 
+test('on-demand monthly plan review uses JST bounds and hides the other member private tasks',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const host=await ask('/api/auth/bootstrap','POST',{
+   loginName:'recap-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(host.status,201)
+ const owner=extractCookie(host.cookie)
+ const invitation=await ask('/api/auth/invitations','POST',{},owner)
+ assert.equal(invitation.status,201)
+ const second=await ask('/api/auth/join','POST',{
+   loginName:'recap-member',password:'another-long-test-password-321',
+   displayName:'家人',invitationCode:invitation.body.invitationCode})
+ assert.equal(second.status,201)
+ const partner=extractCookie(second.cookie)
+ const task=(title,visibility,cookie)=>ask('/api/tasks','POST',{
+   title,visibility,notes:'',dueOn:'2026-11-01'},cookie)
+ const mine=await task('我的私人任务','private',owner)
+ const shared=await task('家庭共享任务','household',owner)
+ const theirs=await task('另一个账号的私人任务','private',partner)
+ const october=await task('十月任务','private',owner)
+ for(const x of [mine,shared,theirs,october])assert.equal(x.status,201,JSON.stringify(x.body))
+ const completionInNovJst='2026-10-31T15:30:00.000Z'
+ for(const x of [mine,shared,theirs])sqlite.prepare(
+   'UPDATE tasks SET completed_at=?1 WHERE id=?2').run(completionInNovJst,x.body.id)
+ sqlite.prepare('UPDATE tasks SET completed_at=?1 WHERE id=?2')
+   .run('2026-10-31T14:59:00.000Z',october.body.id)
+ const ownerResult=await ask('/api/plans/summary?month=2026-11','GET',undefined,owner)
+ assert.equal(ownerResult.status,200,JSON.stringify(ownerResult.body))
+ assert.equal(ownerResult.body.counts.tasks,2)
+ assert.equal(ownerResult.body.total,2)
+ const partnerResult=await ask('/api/plans/summary?month=2026-11','GET',undefined,partner)
+ assert.equal(partnerResult.status,200,JSON.stringify(partnerResult.body))
+ assert.equal(partnerResult.body.counts.tasks,2)
+ assert.equal(partnerResult.body.total,2)
+ assert.equal((await ask('/api/plans/summary?month=2026-13','GET',undefined,owner)).status,400)
+ assert.equal((await ask('/api/plans/summary?month=2026-11','POST',{},owner)).status,405)
+ sqlite.close()
+})
+
 test('shopping supports two verified receipts, partial unlink, and source deletion review',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)
