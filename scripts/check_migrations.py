@@ -57,7 +57,8 @@ secondary_indexes={
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
 triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shopping",
-          "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link"}
+          "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link",
+           "invalidate_goal_settlement_adjustment_insert","invalidate_goal_settlement_adjustment_update"}
 existing_triggers={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
 assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existing_triggers}"
 added_columns={
