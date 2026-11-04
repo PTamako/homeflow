@@ -5,7 +5,7 @@ import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
-  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id']},
+  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type']},
   wishes:{columns:['title','wish_type','status','estimated_amount','currency','note']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id']},
   shopping_items:{columns:['title','quantity']},
@@ -36,7 +36,9 @@ function normalized(table,b,s){
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
-      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null]
+      const careType=b.healthRecordType||null
+      if(careType&&!['deworm','vaccination','vet','medication','grooming','other'].includes(careType))return null
+      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType]
     }
     case 'wishes':
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
@@ -64,7 +66,11 @@ async function validLinks(db,table,data,session){
   }
   if(table==='routines'){
     if(data[4] && !await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2').bind(hid,data[4]).first())return false
-    if(data[5] && !await db.prepare('SELECT 1 FROM family_profiles WHERE household_id=?1 AND id=?2 AND archived_at IS NULL').bind(hid,data[5]).first())return false
+    if(data[5]){
+      const profile=await db.prepare('SELECT type FROM family_profiles WHERE household_id=?1 AND id=?2 AND archived_at IS NULL')
+        .bind(hid,data[5]).first()
+      if(!profile || (data[6]&&profile.type!=='pet'))return false
+    }else if(data[6])return false
   }
   if(table==='goals'&&data[5]){
     const wish=await db.prepare('SELECT created_by,visibility FROM wishes WHERE id=?1 AND household_id=?2').bind(data[5],hid).first()
@@ -167,18 +173,37 @@ export async function lifeRoute(request,db,path,session){
       completed_by=excluded.completed_by,skipped_at=excluded.skipped_at`)
       .bind(id,body.date,body.status==='completed'?stamp:null,body.status==='completed'?session.user_id:null,
         body.status==='skipped'?stamp:null)
+    // Completion and its pet-care record are committed together. The unique index
+    // keeps repeated requests and multi-device taps from creating duplicate history.
+    const statements=[st]
+    if(body.status==='completed'&&rule.subject_profile_id&&rule.health_record_type){
+      statements.push(db.prepare(`INSERT INTO pet_health_records
+        (id,household_id,profile_id,created_by,visibility,record_type,event_on,note,
+         source_routine_id,source_occurrence_on)
+        SELECT ?1,?2,p.id,?3,?4,?5,?6,?7,?8,?6 FROM family_profiles p
+        WHERE p.id=?9 AND p.household_id=?2 AND p.type='pet' AND p.archived_at IS NULL
+        ON CONFLICT(source_routine_id,source_occurrence_on)
+        DO UPDATE SET deleted_at=NULL`)
+        .bind(crypto.randomUUID(),session.household_id,session.user_id,rule.visibility,
+          rule.health_record_type,body.date,rule.title,id,rule.subject_profile_id))
+    }else if(body.status!=='completed'){
+      // Undoing or skipping a day removes only the auto-generated record,
+      // never an independent health record entered manually.
+      statements.push(db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
+        WHERE household_id=?1 AND source_routine_id=?2 AND source_occurrence_on=?3
+          AND deleted_at IS NULL`).bind(session.household_id,id,body.date))
+    }
     let config={}
     try{config=JSON.parse(rule.repeat_config||'{}')}catch{}
     if(rule.repeat_type==='interval' && config.anchor==='completion'){
       const days=body.status==='open'?0:config.days
       const next=new Date(body.date+'T00:00:00Z')
       next.setUTCDate(next.getUTCDate()+days)
-      await db.batch([
-        st,
-        db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
-          .bind(next.toISOString().slice(0,10),stamp,id,session.household_id)
-      ])
-    }else await st.run()
+      statements.push(db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
+        .bind(next.toISOString().slice(0,10),stamp,id,session.household_id))
+    }
+    if(statements.length>1)await db.batch(statements)
+    else await st.run()
     return json({ok:true})
   }
   if(id&&parts[3]==='toggle'&&table==='shopping_items'&&request.method==='POST'){
