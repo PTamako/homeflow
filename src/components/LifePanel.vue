@@ -14,7 +14,7 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanRequest?:number}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number}>()
 const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
@@ -163,6 +163,9 @@ async function loadRecap(){
 }
 watch([recapYear,recapMonth],()=>{recap.value=null;recapError.value=''})
 const historicalGoalPeriods=ref<GoalPeriodArchive[]>([])
+const historicalGoalDetail=ref<{goal:Row;periodKey:string}|null>(null)
+const historicalGoalDetailLoading=ref('')
+let historicalGoalDetailRequest=0
 const historicalGoalCursor=ref<string|null>(null),historicalGoalBusy=ref(false)
 const listCursors=ref<Record<string,string|null>>({})
 const pageBusy=ref<Record<string,boolean>>({})
@@ -193,6 +196,30 @@ function listPath(kind:string,cursor?:string|null){
   }
   if(cursor)q.set('cursor',cursor)
   return '/'+kind+'?'+q.toString()
+}
+async function toggleHistoricalGoalPeriod(period:GoalPeriodArchive){
+  if(!props.isOwner)return
+  const key=period.goalId+'|'+period.periodKey
+  if(historicalGoalDetail.value?.goal.id===period.goalId&&
+      historicalGoalDetail.value.periodKey===period.periodKey){
+    historicalGoalDetail.value=null
+    return
+  }
+  if(historicalGoalDetailLoading.value===key)return
+  const requestId=++historicalGoalDetailRequest
+  historicalGoalDetailLoading.value=key
+  historicalGoalDetail.value=null
+  try{
+    const data=await api('/goals/'+encodeURIComponent(period.goalId))
+    if(requestId!==historicalGoalDetailRequest||props.mode!=='plans'||planScope.value!=='history'||
+        !historicalGoalPeriods.value.some(x=>x.goalId===period.goalId&&x.periodKey===period.periodKey))return
+    if(data.item?.id!==period.goalId)throw Error('未找到本期对应的储值计划')
+    historicalGoalDetail.value={goal:data.item,periodKey:period.periodKey}
+  }catch(e){
+    if(requestId===historicalGoalDetailRequest)error.value=(e as Error).message
+  }finally{
+    if(requestId===historicalGoalDetailRequest)historicalGoalDetailLoading.value=''
+  }
 }
 function historicalGoalPath(cursor?:string|null){
   const q=new URLSearchParams({limit:String(pageLimit)})
@@ -343,6 +370,10 @@ async function focusExactPlan(requestId:number){
     if(requestId!==activeFetch||props.mode!=='plans')return
     const item=kind==='trip'?response.trip:response.item
     if(!item?.id)throw Error('没有找到对应计划')
+    // A recurring parent stays active. Never inject it into the History
+    // list merely because an older period was opened from another page.
+    if(kind==='goal'&&planScope.value==='history'&&
+        ['monthly','yearly'].includes(item.goal_mode))return
     const target=kind==='wish'?items:kind==='goal'?goals:kind==='shopping'?other:trips
     if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
     if(kind==='wish'){
@@ -388,7 +419,7 @@ async function goalFinished(completed:boolean,periodKey:string){
   const nextScope=periodKey==='once'?(completed?'history':'active'):planScope.value
   if(planScope.value!==nextScope)planScope.value=nextScope
   else await fetchMode()
-  notify('储值核验结果已更新，可以返回今天查看。')
+  notify('本期储值核验结果已更新。')
 }
 async function fetchMode(){
   const requestId=++activeFetch
@@ -610,6 +641,11 @@ onBeforeUnmount(()=>{
   document.removeEventListener('visibilitychange',refreshOnResume)
 })
 watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
+watch([planScope,planType,planYear,planMonth],()=>{
+  historicalGoalDetailRequest++
+  historicalGoalDetail.value=null
+  historicalGoalDetailLoading.value=''
+})
 watch([planScope,planYear,planMonth],()=>{if(props.mode==='plans')void fetchMode()})
 watch([memoryYear,memoryMonth],()=>{if(props.mode==='memories')void fetchMode()})
 watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
@@ -690,7 +726,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
-      <div v-if="focusedItemId" class="focused-plan-banner">
+      <div v-if="focusedItemId&&props.focusPlanFromToday" class="focused-plan-banner">
         <div><b>已打开对应计划</b></div>
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
@@ -852,7 +888,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </form>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
-            <button v-if="isFocused(w)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            <button v-if="isFocused(w)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
@@ -866,20 +902,34 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             '按月、按年独立保存已截止的结算期间，达标和未达标都保留。整条循环计划仍在「进行中」。':
             '储值方式支持累计目标、每月目标和每年目标。每期独立核算，周期结束后在历史中保留结果。' }}</p>
           <template v-if="planScope==='history'">
-            <div v-for="period in historicalGoalPeriods" :key="period.goalId+':'+period.periodKey" class="life-row">
-              <div class="life-details">
-                <b class="detail-name">{{ period.title }} · {{ period.periodKey }}{{ period.goalMode==='monthly'?'月':'年' }}</b>
-                <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
-                <small v-if="period.actualAmount!==null">
-                  实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
-                  {{ period.status==='met'?'已达标':period.status==='shortfall'?'未达标':'待核验' }} ·
-                  {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
-                     Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
-                </small>
-                <small v-else>{{ period.status==='met'?'历史已达标（原金额未保存）':'待核验（未确认金额，不代表 ¥0）' }}</small>
+            <div v-for="period in historicalGoalPeriods" :key="period.goalId+':'+period.periodKey"
+              class="historical-goal-entry">
+              <div class="life-row">
+                <div class="life-details">
+                  <b class="detail-name">{{ period.title }} · {{ period.periodKey }}{{ period.goalMode==='monthly'?'月':'年' }}</b>
+                  <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
+                  <small v-if="period.actualAmount!==null">
+                    实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
+                    {{ period.status==='met'?'已达标':period.status==='shortfall'?'未达标':'待核验' }} ·
+                    {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
+                       Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
+                  </small>
+                  <small v-else>{{ period.status==='met'?'历史已达标（原金额未保存）':'待核验（未确认金额，不代表 ¥0）' }}</small>
+                </div>
+                <button v-if="isOwner" type="button" class="life-link"
+                  :disabled="historicalGoalDetailLoading===period.goalId+'|'+period.periodKey"
+                  @click="toggleHistoricalGoalPeriod(period)">
+                  {{ historicalGoalDetailLoading===period.goalId+'|'+period.periodKey?'读取中…':
+                    historicalGoalDetail?.goal.id===period.goalId&&historicalGoalDetail?.periodKey===period.periodKey?
+                    '收起本期':'查看本期' }}
+                </button>
               </div>
-              <button type="button" class="life-link"
-                @click="emit('openPlans','goal',period.goalId,period.periodKey)">查看本期</button>
+              <FinancePanel v-if="isOwner&&historicalGoalDetail?.goal.id===period.goalId&&
+                historicalGoalDetail?.periodKey===period.periodKey"
+                :key="'historical-goal-'+period.goalId+'-'+period.periodKey"
+                :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner"
+                embedded-kind="goal" :embedded-id="period.goalId"
+                :initial-period-key="period.periodKey" @completed="goalFinished"/>
             </div>
             <button v-if="historicalGoalCursor" type="button" class="life-more"
               :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多结算记录（每次 5 条）</button>
@@ -905,7 +955,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
               :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
               @completed="goalFinished"/>
-            <button v-if="isFocused(g)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            <button v-if="isFocused(g)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <p v-if="!goals.length&&!historicalGoalPeriods.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已截止的储值记录' }}</p>
@@ -932,7 +982,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
               @saved="shoppingLinksChanged" @close="ledgerPickerId=null"/>
-            <button v-if="isFocused(s)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            <button v-if="isFocused(s)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <p v-if="!visibleShopping.length" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
@@ -973,7 +1023,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="trip" :embedded-id="t.id"/>
-            <button v-if="isFocused(t)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            <button v-if="isFocused(t)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <p v-if="!trips.length" class="life-empty">{{ planScope==='active'?'暂无进行中的旅行':'暂无已结束的旅行' }}</p>
