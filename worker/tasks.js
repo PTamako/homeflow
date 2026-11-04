@@ -33,7 +33,7 @@ export async function tasksRoute(request,db,path,session) {
     const {results}=await db.prepare(`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
       subject_profile_id AS subjectProfileId,completed_at AS completedAt,
-      completed_by AS completedBy,created_at AS createdAt
+      completed_by AS completedBy,created_at AS createdAt,updated_at AS updatedAt
       FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
         AND (visibility='household' OR creator_user_id=?2)
         AND (?3='all' OR (?3='open' AND completed_at IS NULL)
@@ -44,13 +44,22 @@ export async function tasksRoute(request,db,path,session) {
     return json({tasks:results||[]})
   }
   if(path==='/api/tasks' && request.method==='POST'){
-    const data=validated(await readBody(request),session)
+    const body=await readBody(request)
+    const data=validated(body,session)
     if(!data||!await validateRefs(db,session,data))return json({error:'invalid_input'},400)
+    const reqId=body?.clientRequestId||null
+    if(reqId && (typeof reqId!=='string'||!/^[0-9a-f-]{36}$/.test(reqId)))return json({error:'invalid_request_id'},400)
     const id=crypto.randomUUID()
-    await db.prepare(`INSERT INTO tasks
-      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`)
-      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn).run()
+    const result=await db.prepare(`INSERT OR IGNORE INTO tasks
+      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`)
+      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId).run()
+    if(!result.meta?.changes && reqId){
+      const found=await db.prepare('SELECT id FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND client_request_id=?3')
+        .bind(household,who,reqId).first()
+      if(found)return json({ok:true,id:found.id,replayed:true})
+    }
+    if(!result.meta?.changes)return json({error:'task_creation_conflict'},409)
     return json({ok:true,id},201)
   }
   const match=path.match(/^\/api\/tasks\/([0-9a-f-]{36})$/)
@@ -74,10 +83,14 @@ export async function tasksRoute(request,db,path,session) {
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)
     const data=validated(b,session)
     if(!data||!await validateRefs(db,session,data))return json({error:'invalid_input'},400)
-    await db.prepare(`UPDATE tasks SET title=?1,notes=?2,visibility=?3,
+    if(b.expectedUpdatedAt && b.expectedUpdatedAt!==task.updated_at)
+      return json({error:'task_edit_conflict',currentUpdatedAt:task.updated_at},409)
+    const result=await db.prepare(`UPDATE tasks SET title=?1,notes=?2,visibility=?3,
       due_on=?4,assignee_user_id=?5,subject_profile_id=?6,updated_at=?7
-      WHERE id=?8 AND household_id=?9 AND creator_user_id=?10 AND deleted_at IS NULL`)
-      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,iso(),task.id,household,who).run()
+      WHERE id=?8 AND household_id=?9 AND creator_user_id=?10 AND deleted_at IS NULL
+        AND updated_at=?11`)
+      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,iso(),task.id,household,who,task.updated_at).run()
+    if(!result.meta?.changes)return json({error:'task_edit_conflict'},409)
     return json({ok:true})
   }
   if(request.method==='DELETE'){

@@ -66,3 +66,21 @@ export async function downloadLocalPhoto(blob:Blob,name:string){
     setTimeout(()=>URL.revokeObjectURL(url),1000)
   }
 }
+
+
+/** Restore one original locally compressed photo with an idempotent key. */
+export async function restoreLocalPhoto(userId:string,memoryId:string,blob:Blob,sourceKey:string):Promise<void>{
+  if(!/^[0-9a-f-]{36}$/i.test(memoryId)||blob.type!=='image/jpeg'||blob.size>5*1024*1024)
+    throw new Error('照片文件无效')
+  if(!/^[a-zA-Z0-9_.-]{1,120}$/.test(sourceKey))throw new Error('照片恢复标记无效')
+  const db=await store()
+  return new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction('photos','readwrite')
+    tx.objectStore('photos').put(blob,userId+':'+memoryId+':restore-'+sourceKey)
+    tx.oncomplete=()=>{db.close();resolve()}
+    tx.onerror=()=>{db.close();reject(tx.error||new Error('照片恢复失败'))}
+    tx.onabort=()=>{db.close();reject(tx.error||new Error('照片恢复被取消'))}
+  })
+}
+
+export async function compressPhoto(file:File):Promise<Blob>{return compress(file)}

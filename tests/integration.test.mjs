@@ -7,7 +7,7 @@ import worker from '../worker/index.js'
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -16,6 +16,7 @@ function makeDb() {
      const stmt=sqlite.prepare(sql)
      const args=[]
      return {
+       _sql:sql,
        bind(...values){args.splice(0,args.length,...values);return this},
        async first(){return stmt.get(...args)||null},
        async all(){return {results:stmt.all(...args)}},
@@ -29,10 +30,7 @@ function makeDb() {
        for (const st of statements){
          // SQLite SELECT / PRAGMA operations are read-only in this test adapter.
          if (/^\s*(SELECT|PRAGMA)/i.test(st._sql||''))results.push(await st.all())
-         else {
-           // D1 .batch() can return SELECT results, detect from stmt metadata instead.
-           try{results.push(await st.all())}catch{results.push(await st.run())}
-         }
+         else results.push(await st.run())
        }
        sqlite.exec('COMMIT')
      }catch(e){sqlite.exec('ROLLBACK');throw e}
@@ -77,6 +75,18 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  assert.equal(noOrigin.status,403)
  const made=await base('/api/tasks','POST',{title:'买生日礼物',visibility:'private'},owner)
  assert.equal(made.status,201,JSON.stringify(made.body))
+ const sameRequestId='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+ const firstOffline=await base('/api/tasks','POST',{title:'断网新建的任务',visibility:'private',clientRequestId:sameRequestId},owner)
+ const replayOffline=await base('/api/tasks','POST',{title:'断网新建的任务',visibility:'private',clientRequestId:sameRequestId},owner)
+ assert.equal(firstOffline.status,201)
+ assert.equal(replayOffline.status,200)
+ assert.equal(replayOffline.body.id,firstOffline.body.id)
+ assert.equal(replayOffline.body.replayed,true)
+ const tasksBefore=await base('/api/tasks?status=all','GET',undefined,owner)
+ assert.equal(tasksBefore.body.tasks.filter(x=>x.title==='断网新建的任务').length,1)
+ const staleEdit=await base('/api/tasks/'+firstOffline.body.id,'PATCH',
+   {title:'不应该保存的覆盖',notes:'',visibility:'private',expectedUpdatedAt:'2020-01-01T00:00:00Z'},owner)
+ assert.equal(staleEdit.status,409)
  const privateId=made.body.id
  const shared=await base('/api/tasks','POST',{title:'照顾豆沙',visibility:'household'},owner)
  assert.equal(shared.status,201,JSON.stringify(shared.body))
@@ -156,5 +166,53 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  const exportPartner=await base('/api/export','GET',undefined,partner)
  assert.equal(exportPartner.status,200)
  assert.equal(exportPartner.body.records.memories.length,0)
- sqlite.close()
+ const portableExport=await base('/api/portable','GET',undefined,owner)
+ assert.equal(portableExport.status,200,JSON.stringify(portableExport.body))
+ assert.equal(portableExport.body.schemaVersion,1)
+ const oldMem=portableExport.body.records.memories[0]
+ assert.equal(oldMem.title,'一段回忆')
+ const previewRestore=await base('/api/portable/restore','POST',
+   {dataset:'memories',items:[oldMem],preview:true},owner)
+ assert.equal(previewRestore.status,200)
+ const repeatedImport=await base('/api/portable/restore','POST',
+   {dataset:'memories',items:[oldMem],confirm:true},owner)
+ assert.equal(repeatedImport.status,200,JSON.stringify(repeatedImport.body))
+ assert.equal(repeatedImport.body.inserted,0)
+ const newMemory={...oldMem,id:'00000000-0000-4000-8000-000000000123',title:'恢复后新增的回忆'}
+ const freshImport=await base('/api/portable/restore','POST',{dataset:'memories',items:[newMemory],confirm:true},owner)
+ assert.equal(freshImport.status,200,JSON.stringify(freshImport.body))
+ assert.equal(freshImport.body.inserted,1)
+ const secondImport=await base('/api/portable/restore','POST',{dataset:'memories',items:[newMemory],confirm:true},owner)
+ assert.equal(secondImport.body.inserted,0)
+ const ownerHistory=await base('/api/memories','GET',undefined,owner)
+ assert.equal(ownerHistory.body.items.filter(x=>x.id===newMemory.id).length,1)
+ // Cloud media is private and cannot be read by the other household login.
+ const mediaObjects=new Map()
+ env.MEDIA={
+   async put(key,bytes){mediaObjects.set(key,Uint8Array.from(bytes))},
+   async get(key){const body=mediaObjects.get(key);return body?{body}:null},
+   async delete(key){mediaObjects.delete(key)}
+ }
+ const photoBytes=Uint8Array.from([255,216,255,10,11,12,13,14,15,16,17,18,19,20,255,217])
+ const photoReq=new Request(origin+'/api/media/upload?memoryId='+memory.body.id,{
+   method:'POST',headers:{cookie:owner,origin,'content-type':'image/jpeg'},body:photoBytes
+ })
+ const photoResponse=await worker.fetch(photoReq,env)
+ assert.equal(photoResponse.status,201,await photoResponse.text().catch(()=>''))
+ const metadata=await base('/api/media','GET',undefined,owner)
+ assert.equal(metadata.body.items.length,1)
+ const mediaId=metadata.body.items[0].id
+ const otherResponse=await worker.fetch(req('/api/media/'+mediaId,'GET',undefined,partner),env)
+ assert.equal(otherResponse.status,404)
+ const ownerResponse=await worker.fetch(req('/api/media/'+mediaId,'GET',undefined,owner),env)
+ assert.equal(ownerResponse.status,200)
+ assert.deepEqual(new Uint8Array(await ownerResponse.arrayBuffer()),photoBytes)
+ const cannotDelete=await worker.fetch(req('/api/media/'+mediaId,'DELETE',undefined,partner),env)
+ assert.equal(cannotDelete.status,404)
+ const deleted=await worker.fetch(req('/api/media/'+mediaId,'DELETE',undefined,owner),env)
+ assert.equal(deleted.status,200)
+ const anotherPrivate=await base('/api/portable','GET',undefined,partner)
+ assert.equal(anotherPrivate.status,200)
+ assert.equal(anotherPrivate.body.records.memories.length,0)
+  sqlite.close()
 })

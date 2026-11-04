@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import {computed,onMounted,ref,watch} from 'vue'
+import {computed,onMounted,onBeforeUnmount,ref,watch} from 'vue'
+import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
+import BackupPanel from './components/BackupPanel.vue'
 import LifePanel from './components/LifePanel.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
-type Task={id:string;title:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;completedAt:string|null}
+type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;completedAt:string|null;updatedAt:string}
 type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;user?:User;profiles?:Profile[];tasks?:Task[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 const tab=ref<'today'|'cat'|'family'|'plans'|'memories'>('today')
@@ -14,6 +16,7 @@ const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我�
 const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
 const error=ref(''),invitation=ref(''),showDone=ref(false)
+const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const nav=[{id:'today',icon:'☀',label:'今天'},{id:'plans',icon:'✓',label:'计划'},{id:'memories',icon:'▧',label:'时光轴'},{id:'cat',icon:'🐾',label:'豆沙'},{id:'family',icon:'⌂',label:'家庭'}] as const
 const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.completedAt))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
@@ -39,9 +42,10 @@ async function refresh(){
     if(user.value){
       const [a,b]=await Promise.all([api('/family'),api('/tasks?status=all')])
       profiles.value=a.profiles||[];tasks.value=b.tasks||[]
+      try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
     }
   }catch{
-    user.value=null
+    user.value=null;pendingTasks.value=[]
     try{
       const status=await api('/auth/bootstrap-status')
       initialized.value=!!status.initialized
@@ -71,18 +75,52 @@ async function logout(){
     }
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
-  user.value=null;profiles.value=[];tasks.value=[];await refresh()
+  user.value=null;profiles.value=[];tasks.value=[];pendingTasks.value=[];await refresh()
 }
 async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
 async function addTask(){
-  if(!title.value.trim())return
-  error.value='';loading.value=true
+  if(!title.value.trim()||!user.value)return
+  error.value='';loading.value=true;syncMessage.value=''
   try{
-    await api('/tasks','POST',{title:title.value,notes:'',visibility:visibility.value,dueOn:due.value||null,
-      subjectProfileId:subjectId.value||null})
-    title.value='';due.value='';subjectId.value='';await loadTasks()
+    const outcome=await sendOrQueueTask(user.value.id,'create',{title:title.value,notes:'',
+      visibility:visibility.value,dueOn:due.value||null,subjectProfileId:subjectId.value||null})
+    title.value='';due.value='';subjectId.value=''
+    if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
+    else await loadTasks()
+    pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
+async function editTask(t:Task){
+  if(!user.value||t.creatorUserId!==user.value.id)return
+  const name=prompt('修改任务内容',t.title)
+  if(name===null)return
+  const newTitle=name.trim()
+  if(!newTitle||newTitle.length>150){error.value='任务名称必须在 1～150 字符内';return}
+  error.value=''
+  try{
+    const outcome=await sendOrQueueTask(user.value.id,'edit',{
+      title:newTitle,notes:t.notes||'',visibility:t.visibility,dueOn:t.dueOn,
+      assigneeUserId:t.assigneeUserId,subjectProfileId:t.subjectProfileId,
+      expectedUpdatedAt:t.updatedAt},t.id)
+    if(outcome==='queued')syncMessage.value='修改已离线保存，稍后同步'
+    else await loadTasks()
+    pendingTasks.value=await listPending(user.value.id)
+  }catch(e){error.value=(e as Error).message}
+}
+async function flushTasks(){
+  if(!user.value)return
+  try{
+    const result=await syncPending(user.value.id)
+    pendingTasks.value=await listPending(user.value.id)
+    if(result.synced){syncMessage.value='已同步 '+result.synced+' 项任务';await loadTasks()}
+    if(result.conflicts)syncMessage.value='发现 '+result.conflicts+' 项版本冲突，请取消本机草稿并重新编辑'
+  }catch(e){syncMessage.value=(e as Error).message}
+}
+async function discardPending(id:string){
+  await removePending(id)
+  if(user.value)pendingTasks.value=await listPending(user.value.id)
+}
+function onOnline(){if(user.value)void flushTasks()}
 async function toggleTask(t:Task){
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
@@ -108,7 +146,8 @@ async function generateInvite(){
   catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{if(value==='today'&&user.value)loadTasks()})
-onMounted(refresh)
+onMounted(async()=>{await refresh();window.addEventListener('online',onOnline);if(user.value&&navigator.onLine)void flushTasks()})
+onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
 </script>
 
 <template>
@@ -155,12 +194,23 @@ onMounted(refresh)
               <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select>
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
+          <div v-if="pendingTasks.length" class="pending">
+            <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
+              <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
+            <div v-for="op in pendingTasks" :key="op.id" class="task-row">
+              <span>☁</span><div class="task-detail">{{ op.payload.title }}
+                <small>{{ op.status==='conflict'?'其他设备已修改，需要重新确认':'待网络恢复后同步' }}</small></div>
+              <button class="text-button" @click="discardPending(op.id)">取消</button>
+            </div>
+            <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
+          </div>
           <div class="row-between"><b>任务列表</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示已完成</label></div>
           <div v-if="!visibleTasks.length" class="empty">今天没有任务，添加一件小事吧。</div>
           <div v-for="t in visibleTasks" :key="t.id" class="task-row">
             <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
             <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
               <small>{{ t.visibility==='private'?'🔒 仅自己':'⌂ 家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
+            <button v-if="t.creatorUserId===user.id" class="text-button" @click="editTask(t)" :aria-label="'编辑 '+t.title">编辑</button>
             <button v-if="t.creatorUserId===user.id" class="text-button" @click="deleteTask(t)" :aria-label="'删除 '+t.title">×</button>
           </div>
         </section>
@@ -195,7 +245,8 @@ onMounted(refresh)
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
-      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" />
+      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'" />
+      <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
