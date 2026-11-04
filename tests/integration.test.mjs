@@ -467,7 +467,7 @@ test('per-user advance reminder and custom snooze preserve due dates and backup'
  assert.ok((await ask(path,'GET',undefined,owner)).body.items.some(x=>x.id===future.body.id))
  const backup=await ask('/api/portable','GET',undefined,owner)
  assert.equal(backup.status,200)
- assert.deepEqual(backup.body.records.reminderPreferences,[{advance_days:3}])
+ assert.deepEqual(backup.body.records.reminderPreferences,[{advance_days:3,quiet_start_hour:null,quiet_end_hour:null}])
  sqlite.exec('DELETE FROM reminder_preferences')
  const restored=await ask('/api/portable/restore','POST',{
    dataset:'reminderPreferences',items:backup.body.records.reminderPreferences,confirm:true},owner)
@@ -475,6 +475,71 @@ test('per-user advance reminder and custom snooze preserve due dates and backup'
  assert.equal(restored.body.inserted,1)
  assert.equal(sqlite.prepare('SELECT advance_days AS days FROM reminder_preferences').get().days,3)
  assert.equal(sqlite.prepare('SELECT due_on AS dueOn FROM tasks WHERE id=?').get(future.body.id).dueOn,plus(3))
+ sqlite.close()
+})
+
+test('quiet hours and per-item priority are per account, roundtrip via personal backup',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'test-secret-for-notifications-012345678'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'quiet-reminder-owner',password:'another-long-test-password-123',
+   displayName:'Owner',householdName:'Home',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const invite=await ask('/api/auth/invitations','POST',{},owner)
+ assert.equal(invite.status,201)
+ const joined=await ask('/api/auth/join','POST',{
+   loginName:'quiet-reminder-member',password:'another-long-password-321',
+   displayName:'Member',invitationCode:invite.body.invitationCode})
+ assert.equal(joined.status,201)
+ const member=extractCookie(joined.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=n=>new Date(Date.parse(today+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const shared=await ask('/api/tasks','POST',{title:'计划中的重要任务',dueOn:plus(7),
+   visibility:'household',notes:'',remindEnabled:true},owner)
+ assert.equal(shared.status,201,JSON.stringify(shared.body))
+ const secret=await ask('/api/tasks','POST',{title:'私密提醒',dueOn:plus(7),
+   visibility:'private',notes:'',remindEnabled:true},owner)
+ assert.equal(secret.status,201)
+ const settings=await ask('/api/reminders/preferences','PUT',
+   {advanceDays:0,quietStartHour:22,quietEndHour:6},owner)
+ assert.equal(settings.status,200,JSON.stringify(settings.body))
+ assert.equal((await ask('/api/reminders/preferences','PUT',
+   {advanceDays:0,quietStartHour:5,quietEndHour:5},owner)).status,400)
+ const add=await ask('/api/reminders/item','PUT',
+   {kind:'task',id:shared.body.id,advanceDays:7,priority:'important'},owner)
+ assert.equal(add.status,200,JSON.stringify(add.body))
+ const forbidden=await ask('/api/reminders/item','PUT',
+   {kind:'task',id:secret.body.id,advanceDays:7,priority:'important'},member)
+ assert.equal(forbidden.status,404,'other member private task cannot be customized')
+ const path='/api/reminders?date='+today
+ const result=(await ask(path,'GET',undefined,owner)).body
+ assert.equal(result.advanceDays,0)
+ assert.deepEqual(result.quietHours,{start:22,end:6})
+ const event=result.items.find(x=>x.id===shared.body.id)
+ assert.equal(event?.daysBefore,7)
+ assert.equal(event?.priority,'important')
+ const other=(await ask(path,'GET',undefined,member)).body
+ assert.deepEqual(other.quietHours,{start:null,end:null})
+ assert.ok(!other.items.some(x=>x.id===shared.body.id),'one owner item preference cannot change member scheduling')
+ const archive=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(archive.status,200)
+ assert.deepEqual(archive.body.records.reminderPreferences,
+   [{advance_days:0,quiet_start_hour:22,quiet_end_hour:6}])
+ assert.equal(archive.body.records.reminderItemPreferences.length,1)
+ sqlite.exec('DELETE FROM reminder_item_preferences')
+ sqlite.exec('DELETE FROM reminder_preferences')
+ for(const key of ['reminderPreferences','reminderItemPreferences']){
+  const restore=await ask('/api/portable/restore','POST',
+   {dataset:key,items:archive.body.records[key],confirm:true},owner)
+  assert.equal(restore.status,200,JSON.stringify(restore.body))
+  assert.equal(restore.body.inserted,1)
+ }
+ assert.equal((await ask(path,'GET',undefined,owner)).body.items.find(x=>x.id===shared.body.id)?.priority,'important')
+ const reset=await ask('/api/reminders/item','DELETE',{kind:'task',id:shared.body.id},owner)
+ assert.equal(reset.status,200)
+ assert.equal((await ask(path,'GET',undefined,owner)).body.items.some(x=>x.id===shared.body.id),false)
  sqlite.close()
 })
 
