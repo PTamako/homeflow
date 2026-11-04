@@ -6,5 +6,5 @@ ALTER TABLE routines ADD COLUMN health_record_type TEXT
 ALTER TABLE pet_health_records ADD COLUMN source_routine_id TEXT REFERENCES routines(id) ON DELETE SET NULL;
 ALTER TABLE pet_health_records ADD COLUMN source_occurrence_on TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_health_routine_occurrence
-  ON pet_health_records(source_routine_id,source_occurrence_on)
-  WHERE source_routine_id IS NOT NULL;
+  ON pet_health_records(source_routine_id,source_occurrence_on);
+-- SQLite UNIQUE indexes already allow multiple NULL values for manual entries.
