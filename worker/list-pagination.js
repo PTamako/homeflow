@@ -38,9 +38,10 @@ export function monthWindow(year,month){
 export async function listPage(db,table,session,filters,options={}){
   const sortColumn=options.sortColumn||(table==='anniversaries'?'event_date':
     table==='memories'?'happened_on':
-    table==='shopping_items'&&filters.scope==='history'?'completed_at':'created_at')
+    table==='shopping_items'&&filters.scope==='history'?'completed_at':
+    filters.scope==='history'&&['wishes','goals','routines'].includes(table)?'updated_at':'created_at')
   // SQL identifiers come only from this whitelist, never from a query parameter.
-  if(!['created_at','completed_at','happened_on','event_on','start_on','event_date'].includes(sortColumn))
+  if(!['created_at','completed_at','happened_on','event_on','start_on','event_date','updated_at'].includes(sortColumn))
     throw Error('invalid_sort_column')
   const clauses=["household_id=?1","(visibility='household' OR created_by=?2)"]
   const args=[session.household_id,session.user_id]
