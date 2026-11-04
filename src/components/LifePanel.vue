@@ -732,7 +732,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small>
                 </div>
               </div>
-            </SwipeActions>
             <div v-if="planScope==='active'&&(r.remind_enabled!==0||canCompleteRoutineEarly(r))"
               class="plan-task-footer">
               <span v-if="canCompleteRoutineEarly(r)" class="plan-task-next">下次预计：{{ routineNextDue(r) }}</span>
@@ -744,6 +743,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
               </div>
             </div>
+            </SwipeActions>
             <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
               kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -761,7 +761,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   </small>
                 </div>
               </div>
-            </SwipeActions>
             <div v-if="planScope==='active'&&t.remindEnabled!==false" class="plan-task-footer">
               <div class="plan-task-controls">
                 <button type="button" class="plan-task-subtle"
@@ -769,6 +768,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   @click="toggleReminderEditor('task',t.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
               </div>
             </div>
+            </SwipeActions>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
@@ -1104,12 +1104,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
-/* Compact, consistent task rows: the swipe surface and its controls
-   share one visual item instead of leaving reminder buttons between dividers. */
+/* Each task is one uninterrupted swipe surface (title, metadata and actions).
+   Only the outside item owns a separator; no line is painted inside a task. */
 .plan-tasks-card .life-caption{margin:0 0 8px}
 .plan-task-item{min-width:0;padding:12px 0;border-bottom:1px solid #e9eee9}
 .plan-task-item:last-of-type{border-bottom:0;padding-bottom:0}
 .plan-task-item .life-row{border:0;padding:0;min-height:0;align-items:flex-start}
+.plan-task-item :deep(.swipe-row),.plan-task-item :deep(.swipe-content){
+  border:0;box-shadow:none;margin:0;
+}
+.plan-task-item :deep(.swipe-content){background:#fff}
 .plan-task-item .life-details .detail-name{display:block;font-size:14px;line-height:1.45}
 .plan-task-item .life-details small{font-size:11px;line-height:1.55;margin-top:4px}
 .plan-task-footer{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;margin-top:8px}
