@@ -7,7 +7,6 @@ const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
 const ready=env=>{
   if(env.APP_ENV!=='production')return false
   if(typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')return false
-  if(typeof env.KAKEBO_LEDGER_READ_TOKEN!=='string'||env.KAKEBO_LEDGER_READ_TOKEN.length<32)return false
   try{
     const u=new URL(env.KAKEBO_LEDGER_API_URL)
     return u.protocol==='https:'&&u.hostname==='kakeibo-f17.pages.dev'&&
@@ -25,7 +24,7 @@ async function ledger(env,params){
     let response
     try{
       response=await env.KAKEBO_LEDGER_SERVICE.fetch(u.toString(),{method:'GET',
-        headers:{Authorization:'Bearer '+env.KAKEBO_LEDGER_READ_TOKEN,Accept:'application/json'},
+        headers:{Accept:'application/json'},
         signal:controller.signal,redirect:'error'})
     }catch(error){
       throw Error(error?.name==='AbortError'?'ledger_timeout':'ledger_network_error')
