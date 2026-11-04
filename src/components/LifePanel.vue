@@ -19,6 +19,7 @@ const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
+type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false)
 const listLoading=ref(false)
@@ -161,6 +162,8 @@ async function loadRecap(){
  finally{recapBusy.value=false}
 }
 watch([recapYear,recapMonth],()=>{recap.value=null;recapError.value=''})
+const historicalGoalPeriods=ref<GoalPeriodArchive[]>([])
+const historicalGoalCursor=ref<string|null>(null),historicalGoalBusy=ref(false)
 const listCursors=ref<Record<string,string|null>>({})
 const pageBusy=ref<Record<string,boolean>>({})
 const pageLimit=5
@@ -190,6 +193,25 @@ function listPath(kind:string,cursor?:string|null){
   }
   if(cursor)q.set('cursor',cursor)
   return '/'+kind+'?'+q.toString()
+}
+function historicalGoalPath(cursor?:string|null){
+  const q=new URLSearchParams({limit:String(pageLimit)})
+  if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
+  if(cursor)q.set('cursor',cursor)
+  return '/goals/period-archive?'+q.toString()
+}
+async function loadMoreGoalPeriods(){
+  const cursor=historicalGoalCursor.value
+  if(!cursor||historicalGoalBusy.value||props.mode!=='plans'||planScope.value!=='history')return
+  const path=historicalGoalPath(cursor)
+  historicalGoalBusy.value=true
+  try{
+    const data=await api(path)
+    if(props.mode!=='plans'||planScope.value!=='history'||path!==historicalGoalPath(cursor))return
+    historicalGoalPeriods.value=[...historicalGoalPeriods.value,...(data.items||[])]
+    historicalGoalCursor.value=data.nextCursor||null
+  }catch(e){error.value=(e as Error).message}
+  finally{historicalGoalBusy.value=false}
 }
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
@@ -400,13 +422,19 @@ async function fetchMode(){
       const selected=planType.value
       const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
-      const pages=await Promise.all(paths.map(path=>api(path)))
+      const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
+        historicalGoalPath():null
+      const pages=await Promise.all([...paths.map(path=>api(path)),
+        ...(goalArchivePath?[api(goalArchivePath)]:[])])
       if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
-         paths.some((path,i)=>path!==listPath(kinds[i])))return
+         paths.some((path,i)=>path!==listPath(kinds[i]))||
+         (goalArchivePath!==null&&goalArchivePath!==historicalGoalPath()))return
       kinds.forEach((kind,i)=>{
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
       })
+      historicalGoalPeriods.value=goalArchivePath?pages[kinds.length].items||[]:[]
+      historicalGoalCursor.value=goalArchivePath?pages[kinds.length].nextCursor||null:null
       await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
@@ -833,8 +861,29 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
         </section>
         <section v-if="planType==='all'||planType==='goal'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储值计划</h2>
-          <p class="life-caption">储值方式支持累计目标、每月目标和每年目标。选定期间只读汇总家計簿收支，并可单独调整金额。</p>
+          <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> {{ planScope==='history'?'储值计划 · 结算历史':'储值计划' }}</h2>
+          <p class="life-caption">{{ planScope==='history'?
+            '按月、按年独立保存已截止的结算期间，达标和未达标都保留。整条循环计划仍在「进行中」。':
+            '储值方式支持累计目标、每月目标和每年目标。每期独立核算，周期结束后在历史中保留结果。' }}</p>
+          <template v-if="planScope==='history'">
+            <div v-for="period in historicalGoalPeriods" :key="period.goalId+':'+period.periodKey" class="life-row">
+              <div class="life-details">
+                <b class="detail-name">{{ period.title }} · {{ period.periodKey }}{{ period.goalMode==='monthly'?'月':'年' }}</b>
+                <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
+                <small v-if="period.actualAmount!==null">
+                  实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
+                  {{ period.status==='met'?'已达标':period.status==='shortfall'?'未达标':'待核验' }} ·
+                  {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
+                     Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
+                </small>
+                <small v-else>{{ period.status==='met'?'历史已达标（原金额未保存）':'待核验（未确认金额，不代表 ¥0）' }}</small>
+              </div>
+              <button type="button" class="life-link"
+                @click="emit('openPlans','goal',period.goalId,period.periodKey)">查看本期</button>
+            </div>
+            <button v-if="historicalGoalCursor" type="button" class="life-more"
+              :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多结算记录（每次 5 条）</button>
+          </template>
           <template v-for="g in goals" :key="g.id">
             <div :id="'plan-item-'+g.id" :class="{'focused-plan-entry':isFocused(g)}">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
@@ -859,7 +908,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <button v-if="isFocused(g)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
-          <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已完成的目标' }}</p>
+          <p v-if="!goals.length&&!historicalGoalPeriods.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已截止的储值记录' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
             @click="loadMore('goals')">加载更多目标</button>
 
