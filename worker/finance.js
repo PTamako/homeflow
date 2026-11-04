@@ -42,7 +42,11 @@ async function ledger(env,params){
       throw Error('ledger_upstream_unavailable')
     }
     const data=await response.json().catch(()=>null)
-    if(!Array.isArray(data?.entries))throw Error('ledger_invalid_response')
+    if(params.summary==='net'){
+      if(!Number.isSafeInteger(data?.income)||!Number.isSafeInteger(data?.expense)||
+         !Number.isSafeInteger(data?.net)||data.income-data.expense!==data.net)
+        throw Error('ledger_invalid_response')
+    }else if(!Array.isArray(data?.entries))throw Error('ledger_invalid_response')
     return data
   }finally{clearTimeout(timeout)}
 }
