@@ -77,14 +77,12 @@ export async function tripsRoute(request,db,path,session){
       const sort='COALESCE(start_on,created_at)'
       const clauses=["household_id=?1","(visibility='household' OR created_by=?2)"]
       const args=[h,u]
-      const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-      if(filters.scope==='active'){
-        clauses.push("status NOT IN ('completed','cancelled') AND (end_on IS NULL OR end_on>=?3)")
-        args.push(today)
-      }else if(filters.scope==='history'){
-        clauses.push("(status IN ('completed','cancelled') OR (end_on IS NOT NULL AND end_on<?3))")
-        args.push(today)
-      }
+      // A past end date does not mean the trip was actually completed:
+      // unfinished travel follow-ups must remain findable under active plans.
+      if(filters.scope==='active')
+        clauses.push("status NOT IN ('completed','cancelled')")
+      else if(filters.scope==='history')
+        clauses.push("status IN ('completed','cancelled')")
       const window=monthWindow(filters.year,filters.month)
       if(window){
         const n=args.length+1
