@@ -1,16 +1,82 @@
-import {json,validDate} from './security.js'
+import {json,readBody,validDate,iso} from './security.js'
+import {goalPeriod} from './goal-period.js'
+import {earliestUnfinishedGoalPeriod,jstDayOf} from './today-periods.js'
 
-// A date-scoped digest of user-visible plans. Today's recurring occurrences and
-// regular tasks are already provided by /routines/today and /tasks; do not
-// repeat them here. One batched D1 read, no kakeibo queries on Today.
-export async function todayPlansRoute(request,db,session){
+const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
+const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+
+// Explicitly complete one wish or one savings period. These acknowledgements
+// never change balances or write to kakebo; goal periods stay independent.
+async function completePlan(request,db,session){
+  if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+  const body=await readBody(request),kind=body?.kind,id=body?.id
+  if(!['wish','goal'].includes(kind)||!idOk(id)||typeof body?.completed!=='boolean')
+    return json({error:'invalid_input'},400)
+  const table=kind==='wish'?'wishes':'goals'
+  const row=await db.prepare(`SELECT * FROM ${table} WHERE id=?1 AND household_id=?2
+    AND (visibility='household' OR created_by=?3)`)
+    .bind(id,session.household_id,session.user_id).first()
+  if(!row)return json({error:'not_found'},404)
+  const today=tokyoToday(),stamp=iso()
+  let periodKey='once'
+  if(kind==='wish'){
+    if(row.target_on===null||row.target_on>today||row.status==='cancelled')
+      return json({error:'not_due'},409)
+  }else if((row.goal_mode||'once')==='once'){
+    if(!row.target_on||row.target_on>today)return json({error:'not_due'},409)
+  }else{
+    periodKey=body?.periodKey
+    const window=goalPeriod(row,periodKey,today)
+    if(!window||window.periodEnd>today)return json({error:'not_due'},409)
+  }
+  const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
+    WHERE household_id=?1 AND plan_type=?2 AND plan_id=?3 AND period_key=?4`)
+    .bind(session.household_id,kind,id,periodKey).first()
+  if(body.completed){
+    if(kind==='wish'){
+      if(row.status==='completed')return found?json({ok:true,unchanged:true}):json({error:'already_completed'},409)
+      await db.batch([
+        db.prepare(`INSERT OR IGNORE INTO plan_completion_marks
+          (household_id,plan_type,plan_id,period_key,completed_at,completed_by,prior_status)
+          VALUES(?1,'wish',?2,'once',?3,?4,?5)`)
+          .bind(session.household_id,id,stamp,session.user_id,row.status),
+        db.prepare(`UPDATE wishes SET status='completed',updated_at=?1
+          WHERE id=?2 AND household_id=?3 AND status NOT IN ('completed','cancelled')`)
+          .bind(stamp,id,session.household_id)
+      ])
+    }else{
+      await db.prepare(`INSERT OR IGNORE INTO plan_completion_marks
+        (household_id,plan_type,plan_id,period_key,completed_at,completed_by)
+        VALUES(?1,'goal',?2,?3,?4,?5)`)
+        .bind(session.household_id,id,periodKey,stamp,session.user_id).run()
+    }
+  }else{
+    if(!found)return json({ok:true,unchanged:true})
+    if(kind==='wish'){
+      await db.batch([
+        db.prepare(`UPDATE wishes SET status=?1,updated_at=?2
+          WHERE id=?3 AND household_id=?4 AND status='completed'`)
+          .bind(['wished','planning','active'].includes(found.prior_status)?found.prior_status:'wished',
+            stamp,id,session.household_id),
+        db.prepare(`DELETE FROM plan_completion_marks
+          WHERE household_id=?1 AND plan_type='wish' AND plan_id=?2 AND period_key='once'`)
+          .bind(session.household_id,id)
+      ])
+    }else await db.prepare(`DELETE FROM plan_completion_marks
+      WHERE household_id=?1 AND plan_type='goal' AND plan_id=?2 AND period_key=?3`)
+      .bind(session.household_id,id,periodKey).run()
+  }
+  return json({ok:true,kind,id,periodKey,completed:body.completed})
+}
+
+// Date-scoped digest of overdue and today-due plans; period marks are read in
+// the same D1 batch. No additional ledger access on page load.
+export async function todayPlansRoute(request,db,session,path='/api/plans/today'){
+  if(path==='/api/plans/complete')return completePlan(request,db,session)
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
-  const date=new URL(request.url).searchParams.get('date')||
-    new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+  const date=new URL(request.url).searchParams.get('date')||tokyoToday()
   if(!validDate(date)||!date)return json({error:'invalid_input'},400)
   const h=session.household_id,u=session.user_id
-  // Retain purchases completed today in the checklist with a strikethrough;
-  // their completion marks will not be carried into tomorrow.
   const startOfDayUtc=new Date(date+'T00:00:00+09:00').toISOString()
   const batch=await db.batch([
     db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt FROM shopping_items
@@ -18,37 +84,66 @@ export async function todayPlansRoute(request,db,session){
         AND (completed_at IS NULL OR completed_at>=?4)
         AND due_on IS NOT NULL AND due_on<=?3
       ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 25`).bind(h,u,date,startOfDayUtc),
-    db.prepare(`SELECT id,title,target_on AS dueOn FROM wishes
+    db.prepare(`SELECT id,title,target_on AS dueOn,status FROM wishes
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
-        AND status NOT IN ('completed','cancelled')
-        AND target_on IS NOT NULL AND target_on<=?3
-      ORDER BY target_on,id LIMIT 25`).bind(h,u,date),
-    db.prepare(`SELECT id,title,
-      CASE WHEN goal_mode IN ('monthly','yearly') THEN ?3 ELSE target_on END AS dueOn
+        AND status!='cancelled' AND target_on IS NOT NULL AND target_on<=?3
+      ORDER BY target_on,id LIMIT 100`).bind(h,u,date),
+    db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount
       FROM goals WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
-        AND (
-          (goal_mode='once' AND reserved_amount<target_amount
-            AND target_on IS NOT NULL AND target_on<=?3)
-          OR (goal_mode='monthly' AND start_on<=?3
-            AND (target_on IS NULL OR target_on>=?3)
-            AND (?3=date(?3,'start of month','+1 month','-1 day') OR target_on=?3))
-          OR (goal_mode='yearly' AND start_on<=?3
-            AND (target_on IS NULL OR target_on>=?3)
-            AND (substr(?3,6,5)='12-31' OR target_on=?3))
-        )
-      ORDER BY dueOn,id LIMIT 25`).bind(h,u,date),
-    db.prepare(`SELECT id,title,start_on AS dueOn,destination FROM trips
+        AND ((goal_mode='once' AND target_on IS NOT NULL AND target_on<=?3)
+          OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))
+      ORDER BY created_at,id LIMIT 100`).bind(h,u,date),
+    db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
       WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
-        AND status IN ('planning','active')
-        AND start_on IS NOT NULL AND start_on<=?3
-        AND (end_on IS NULL OR end_on>=?3)
-      ORDER BY start_on,id LIMIT 25`).bind(h,u,date)
+        AND status IN ('planning','active') AND start_on IS NOT NULL AND start_on<=?3
+      ORDER BY start_on,id LIMIT 25`).bind(h,u,date),
+    db.prepare(`SELECT plan_type,plan_id,period_key,completed_at FROM plan_completion_marks
+      WHERE household_id=?1 AND (plan_type='goal' OR completed_at>=?2)
+      ORDER BY completed_at DESC LIMIT 5000`).bind(h,startOfDayUtc)
   ])
-  const types=['shopping','wish','goal','trip']
-  const items=batch.flatMap((group,i)=>(group.results||[]).map(row=>({
-    kind:types[i],id:row.id,title:row.title,dueOn:row.dueOn,
-    done:!!row.completedAt,overdue:row.dueOn<date&&!row.completedAt,
-    ...(row.destination?{destination:row.destination}:{})
-  })))
-  return json({date,items})
+  const result=[]
+  const add=(kind,row,done=false,periodKey)=>result.push({
+    kind,id:row.id,title:row.title,dueOn:row.dueOn,
+    done,overdue:row.dueOn<date&&!done,
+    ...(periodKey?{periodKey}:{}),
+    ...(row.destination?{destination:row.destination}:{}),
+    ...(kind==='trip'&&row.endOn&&row.endOn<date?{tripEnded:true}: {})
+  })
+  const marksByPlan=new Map()
+  for(const mark of batch[4].results||[]){
+    const key=mark.plan_type+':'+mark.plan_id
+    if(!marksByPlan.has(key))marksByPlan.set(key,new Map())
+    marksByPlan.get(key).set(mark.period_key,mark.completed_at)
+  }
+  for(const row of batch[0].results||[])add('shopping',row,!!row.completedAt)
+  for(const row of batch[1].results||[]){
+    const completed=marksByPlan.get('wish:'+row.id)?.get('once')
+    if(row.status!=='completed'||jstDayOf(completed)===date){
+      add('wish',row,row.status==='completed'&&jstDayOf(completed)===date)
+    }
+  }
+  for(const goal of batch[2].results||[]){
+    const marked=marksByPlan.get('goal:'+goal.id)||new Map()
+    if((goal.goal_mode||'once')==='once'){
+      const completed=marked.get('once')
+      if(completed){
+        if(jstDayOf(completed)===date)add('goal',{...goal,dueOn:goal.target_on},true,'once')
+      }else if(goal.reserved_amount<goal.target_amount){
+        add('goal',{...goal,dueOn:goal.target_on},false,'once')
+      }
+    }else{
+      const pending=earliestUnfinishedGoalPeriod(goal,date,new Set(marked.keys()))
+      if(pending)add('goal',{...goal,dueOn:pending.dueOn},false,pending.periodKey)
+      for(const [periodKey,completed] of marked){
+        if(jstDayOf(completed)!==date)continue
+        const window=goalPeriod(goal,periodKey,date)
+        if(window&&window.periodEnd<=date)add('goal',{...goal,dueOn:window.periodEnd},true,periodKey)
+      }
+    }
+  }
+  for(const row of batch[3].results||[]){
+    add('trip',{...row,dueOn:row.endOn&&row.endOn<date?row.endOn:row.dueOn})
+  }
+  result.sort((a,b)=>Number(a.done)-Number(b.done)||a.dueOn.localeCompare(b.dueOn))
+  return json({date,items:result.slice(0,100)})
 }
