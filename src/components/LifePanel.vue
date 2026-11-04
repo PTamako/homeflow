@@ -74,7 +74,6 @@ function toggleFinance(kind:'goal'|'trip',id:string){
 async function planCreated(kind:PlanType,id:string){
   planType.value=kind
   await fetchMode()
-  if(kind==='routine')emit('tasksChanged')
   notify('计划已创建'+(kind==='wish'?'，如已选择储值目标则自动关联':''))
 }
 function editOnce(t:Row){
@@ -168,6 +167,8 @@ function countdown(date:string){
   return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
 }
 function routineLabel(r:Row){
+  const config=(()=>{try{return typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return {}}})()
+  if(r.repeat_type==='weekly'&&config.excludeJapaneseHolidays)return '工作日'
   return r.repeat_type==='once'?'一次性':r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
     r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
     r.repeat_type==='workday'?'工作日':'定期'
