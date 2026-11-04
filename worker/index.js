@@ -7,6 +7,7 @@ import {mediaRoute} from './media.js'
 import {remindersRoute} from './reminders.js'
 import {backupRoute} from './backup.js'
 import {pushRoute,runPushSchedule} from './webpush.js'
+import {petsRoute} from './pets.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -28,6 +29,7 @@ export default {
         if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!sameOrigin(request))
           return json({error:'origin_forbidden'},403)
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
+        if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)

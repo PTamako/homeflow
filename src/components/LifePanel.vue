@@ -7,7 +7,7 @@ type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
-const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),routineSubject=ref('')
+const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
@@ -56,7 +56,7 @@ async function addRoutine(){
   const repeatConfig=routineRepeat.value==='interval'?{days:intervalDays.value}:routineRepeat.value==='monthly'?{day:Number(today().slice(8))}:
     routineRepeat.value==='weekly'?{weekdays:[new Date().getDay()]}:{}
   await update(()=>api('/routines','POST',{title:routineTitle.value,repeatType:routineRepeat.value,
-    repeatConfig,anchorDate:today(),subjectProfileId:routineSubject.value||null,visibility:'household'}))
+    repeatConfig:{...repeatConfig,...(routineRepeat.value==='interval'?{anchor:intervalAnchor.value}:{})},anchorDate:today(),subjectProfileId:routineSubject.value||null,visibility:'household'}))
   if(!error.value)routineTitle.value=''
 }
 async function markRoutine(r:Row,done:boolean){
@@ -164,8 +164,11 @@ watch(()=>props.mode,fetchMode,{immediate:true})
           </div>
           <form class="life-form" @submit.prevent="addRoutine">
             <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
-            <select v-model="routineRepeat"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
+            <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
             <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
+            <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
+              <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
+            </select>
             <select v-model="routineSubject" aria-label="关联成员或宠物"><option value="">不关联成员</option><option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option></select><button :disabled="busy">＋ 定期任务</button>
           </form>
         </section>

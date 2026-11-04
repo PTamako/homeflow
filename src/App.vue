@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import LifePanel from './components/LifePanel.vue'
 import PushPanel from './components/PushPanel.vue'
+import PetHealthPanel from './components/PetHealthPanel.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;completedAt:string|null}
@@ -106,6 +107,7 @@ async function generateInvite(){
   try{invitation.value=(await api('/auth/invitations','POST',{})).invitationCode||''}
   catch(e){error.value=(e as Error).message}
 }
+watch(tab,value=>{if(value==='today'&&user.value)loadTasks()})
 onMounted(refresh)
 </script>
 
@@ -186,6 +188,7 @@ onMounted(refresh)
         <section class="hero"><div><span>CAT · HOMEFLOW</span><h2>豆沙的每一天 🐾</h2><p>可以在任务中关联豆沙，护理周期会继续扩展。</p></div></section>
         <section v-for="p in pets" :key="p.id" class="panel"><h2>🐾 {{ p.displayName }}</h2>
           <p class="hint">生日：{{ p.birthday||'未填' }}　到家：{{ p.adoptedOn||'未填' }}</p></section>
+        <PetHealthPanel v-for="p in pets" :key="p.id" :pet-id="p.id" :name="p.displayName" />
         <p v-if="!pets.length" class="panel empty">先在家庭页面创建豆沙的档案吧。</p>
       </template>
       <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>

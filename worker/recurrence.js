@@ -1,3 +1,4 @@
+import {isJapaneseWorkday} from './jp-holidays.js'
 export function daysBetween(a,b){
   const [y1,m1,d1]=a.split('-').map(Number)
   const [y2,m2,d2]=b.split('-').map(Number)
@@ -10,18 +11,24 @@ export function dueOn(rule,date) {
   const c=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}
   switch(rule.repeat_type){
     case 'daily': return true
+    case 'workday': return isJapaneseWorkday(date)
     case 'weekly': {
       const wd=new Date(date+'T00:00:00Z').getUTCDay()
-      return Array.isArray(c.weekdays)&&c.weekdays.includes(wd)
+      return Array.isArray(c.weekdays)&&c.weekdays.includes(wd) && (!c.excludeJapaneseHolidays||isJapaneseWorkday(date))
     }
     case 'monthly': return Number(c.day)===Number(date.slice(8,10))
-    case 'interval': return Number.isInteger(c.days)&&c.days>=1&&c.days<=3650&&age%c.days===0
+    case 'interval': {
+      if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
+      if(c.anchor==='completion')return date>=(rule.next_due_on||rule.anchor_date)
+      return age%c.days===0
+    }
     default: return false
   }
 }
 export function validateRule(r){
-  if(!r||!['daily','weekly','monthly','interval'].includes(r.repeatType))return false
+  if(!r||!['daily','weekly','monthly','interval','workday'].includes(r.repeatType))return false
   const c=r.repeatConfig||{}
+  if(r.repeatType==='workday')return true
   if(r.repeatType==='weekly')return Array.isArray(c.weekdays)&&c.weekdays.length>0&&c.weekdays.length<=7&&
     c.weekdays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)
   if(r.repeatType==='monthly')return Number.isInteger(c.day)&&c.day>=1&&c.day<=31

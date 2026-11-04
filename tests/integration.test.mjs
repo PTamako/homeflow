@@ -7,7 +7,7 @@ import worker from '../worker/index.js'
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -116,6 +116,20 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  // Shared memory and private photo access boundary
  const memory=await base('/api/memories','POST',{title:'一段回忆',happenedOn:'2026-11-04',visibility:'private'},owner)
  assert.equal(memory.status,201)
+ const pet=await base('/api/family/profiles','POST',{displayName:'豆沙',type:'pet',birthday:'2022-05-01'},owner)
+ assert.equal(pet.status,201,JSON.stringify(pet.body))
+ const health=await base('/api/pets/'+pet.body.id+'/health','POST',{
+   recordType:'deworm',eventOn:'2026-11-04',nextDueOn:'2027-02-04',note:'example only',
+   visibility:'household'},owner)
+ assert.equal(health.status,201,JSON.stringify(health.body))
+ const healthList=await base('/api/pets/'+pet.body.id+'/health','GET',undefined,partner)
+ assert.equal(healthList.status,200)
+ assert.equal(healthList.body.records.length,1)
+ const privateHealth=await base('/api/pets/'+pet.body.id+'/health','POST',{
+   recordType:'weight',eventOn:'2026-11-04',weightGrams:5500,visibility:'private'},owner)
+ assert.equal(privateHealth.status,201)
+ const privateHealthList=await base('/api/pets/'+pet.body.id+'/health','GET',undefined,partner)
+ assert.equal(privateHealthList.body.records.length,1)
  const partnerMemory=await base('/api/memories','GET',undefined,partner)
  assert.equal(partnerMemory.body.items.length,0)
  const exportPartner=await base('/api/export','GET',undefined,partner)

@@ -8,7 +8,8 @@ const definitions=[
   ['trips',"SELECT * FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 100"],
   ['goals',"SELECT * FROM goals WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 250"],
   ['shopping',"SELECT * FROM shopping_items WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 500"],
-  ['memories',"SELECT * FROM memories WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 500"]
+  ['memories',"SELECT * FROM memories WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 500"],
+  ['petHealth',"SELECT * FROM pet_health_records WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 1000"]
 ]
 export async function backupRoute(request,db,session){
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)

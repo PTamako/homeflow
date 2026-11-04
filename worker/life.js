@@ -28,11 +28,14 @@ function normalized(table,b,s){
       const lead=Array.isArray(b.advanceDays)?b.advanceDays:[7,1,0]
       if(lead.length>10||!lead.every(x=>Number.isInteger(x)&&x>=0&&x<=365))return null
       return [title,b.eventDate,b.repeatMode,JSON.stringify([...new Set(lead)]),trim(b.note,1000),b.subjectProfileId||null]
-    case 'routines':
-      if(!ymd(b.anchorDate)||!validateRule(b))return null
+    case 'routines': {
+      const repeatType=b.repeatType==='workday'?'weekly':b.repeatType
+      const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:(b.repeatConfig||{})
+      if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
-      return [title,b.repeatType,JSON.stringify(b.repeatConfig||{}),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null]
+      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null]
+    }
     case 'wishes':
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
       if(b.status && !['wished','planning','active','completed','cancelled'].includes(b.status))return null
@@ -119,15 +122,32 @@ export async function lifeRoute(request,db,path,session){
     const body=await readBody(request)
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
-    if(!rule||!dueOn(rule,body.date))return json({error:'not_found'},404)
+    if(!rule)return json({error:'not_found'},404)
+    const existingMark=body.status==='open'?
+      await db.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?1 AND occurrence_on=?2')
+        .bind(id,body.date).first():null
+    if(!dueOn(rule,body.date) && !(body.status==='open' && existingMark))
+      return json({error:'not_found'},404)
     if(rule.visibility==='private' && rule.created_by!==session.user_id)return json({error:'forbidden'},403)
     const stamp=iso()
-    await db.prepare(`INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at)
+    const st=db.prepare(`INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at)
       VALUES(?1,?2,?3,?4,?5)
       ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET completed_at=excluded.completed_at,
       completed_by=excluded.completed_by,skipped_at=excluded.skipped_at`)
       .bind(id,body.date,body.status==='completed'?stamp:null,body.status==='completed'?session.user_id:null,
-        body.status==='skipped'?stamp:null).run()
+        body.status==='skipped'?stamp:null)
+    let config={}
+    try{config=JSON.parse(rule.repeat_config||'{}')}catch{}
+    if(rule.repeat_type==='interval' && config.anchor==='completion'){
+      const days=body.status==='open'?0:config.days
+      const next=new Date(body.date+'T00:00:00Z')
+      next.setUTCDate(next.getUTCDate()+days)
+      await db.batch([
+        st,
+        db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
+          .bind(next.toISOString().slice(0,10),stamp,id,session.household_id)
+      ])
+    }else await st.run()
     return json({ok:true})
   }
   if(id&&parts[3]==='toggle'&&table==='shopping_items'&&request.method==='POST'){
