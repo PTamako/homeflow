@@ -720,29 +720,36 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <p v-if="planScope==='history'" class="life-caption">历史不会自动删除，可按年月查找。切回「进行中」就能继续管理未完成项目。</p>
       </div>
       <div class="life-grid">
-        <section v-if="planType==='all'||planType==='routine'" class="life-card">
+        <section v-if="planType==='all'||planType==='routine'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
           <p class="life-caption">一次性任务和重复任务都由上方「新增计划」创建。到期当天自动显示在「今天」。</p>
-          <div v-for="r in routines" :key="r.id" class="routine-list-item">
+          <div v-for="r in routines" :key="r.id" class="plan-task-item">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
-              <div class="life-row" :class="{'detail-completed':r.enabled===0,'routine-has-early-complete':planScope==='active'&&canCompleteRoutineEarly(r)}">
-                <div class="life-details"><b class="detail-name">{{ r.title }}</b>
-                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small></div>
+              <div class="life-row" :class="{'detail-completed':r.enabled===0}">
+                <div class="life-details">
+                  <b class="detail-name">{{ r.title }}</b>
+                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small>
+                </div>
               </div>
             </SwipeActions>
-            <button v-if="planScope==='active'&&r.remind_enabled!==0" type="button" class="life-link"
-              @click="toggleReminderEditor('routine',r.id)">设置这项提醒</button>
+            <div v-if="planScope==='active'&&(r.remind_enabled!==0||canCompleteRoutineEarly(r))"
+              class="plan-task-footer">
+              <span v-if="canCompleteRoutineEarly(r)" class="plan-task-next">下次预计：{{ routineNextDue(r) }}</span>
+              <div class="plan-task-controls">
+                <button v-if="r.remind_enabled!==0" type="button" class="plan-task-subtle"
+                  :aria-label="'设置「'+r.title+'」的提醒'"
+                  @click="toggleReminderEditor('routine',r.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
+                <button v-if="canCompleteRoutineEarly(r)" type="button" class="plan-task-action"
+                  :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
+              </div>
+            </div>
             <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
               kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
-            <div v-if="planScope==='active'&&canCompleteRoutineEarly(r)" class="routine-early-complete">
-              <small>下次预计：{{ routineNextDue(r) }}</small>
-              <button type="button" class="life-link" :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
-            </div>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </div>
-          <template v-for="t in oneTimePlans" :key="t.id">
+          <div v-for="t in oneTimePlans" :key="t.id" class="plan-task-item">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
@@ -755,8 +762,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </div>
             </SwipeActions>
-            <button v-if="planScope==='active'&&t.remindEnabled!==false" type="button" class="life-link"
-              @click="toggleReminderEditor('task',t.id)">设置这项提醒</button>
+            <div v-if="planScope==='active'&&t.remindEnabled!==false" class="plan-task-footer">
+              <div class="plan-task-controls">
+                <button type="button" class="plan-task-subtle"
+                  :aria-label="'设置「'+t.title+'」的提醒'"
+                  @click="toggleReminderEditor('task',t.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
+              </div>
+            </div>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
@@ -769,7 +781,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit">保存修改</button>
               </div>
             </form>
-          </template>
+          </div>
           <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
@@ -1092,12 +1104,24 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
-.routine-list-item{min-width:0;border-bottom:1px solid #f0eee9}
-.routine-list-item .life-row{border-bottom:0}
-.life-row.routine-has-early-complete{padding-bottom:5px}
-.routine-early-complete{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;margin:8px 0 12px;padding:7px 9px;border:1px solid #e1eae3;border-radius:12px;background:#f5f8f5;box-sizing:border-box}
-.routine-early-complete small{flex:1;min-width:0;color:#82948b;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
-.routine-early-complete button{flex:none;font-size:12px;padding:8px 10px}
+/* Compact, consistent task rows: the swipe surface and its controls
+   share one visual item instead of leaving reminder buttons between dividers. */
+.plan-tasks-card .life-caption{margin:0 0 8px}
+.plan-task-item{min-width:0;padding:12px 0;border-bottom:1px solid #e9eee9}
+.plan-task-item:last-of-type{border-bottom:0;padding-bottom:0}
+.plan-task-item .life-row{border:0;padding:0;min-height:0;align-items:flex-start}
+.plan-task-item .life-details .detail-name{display:block;font-size:14px;line-height:1.45}
+.plan-task-item .life-details small{font-size:11px;line-height:1.55;margin-top:4px}
+.plan-task-footer{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;margin-top:8px}
+.plan-task-next{font-size:11px;line-height:1.4;color:#7d8e83;white-space:nowrap}
+.plan-task-controls{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;min-width:0}
+.plan-task-subtle,.plan-task-action{display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  min-height:31px;border:0;border-radius:9px;padding:6px 10px;font-size:11px;font-weight:650;white-space:nowrap}
+.plan-task-subtle{background:#f1f6f2;color:#527f67}
+.plan-task-action{background:#e5f1e8;color:#367a59}
+.plan-task-subtle:focus-visible,.plan-task-action:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.plan-task-action:disabled{opacity:.55}
+@media(max-width:370px){.plan-task-next{flex-basis:100%}}
 .life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}
 .trip-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;flex-wrap:wrap}
 .trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere}
