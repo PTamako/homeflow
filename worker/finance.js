@@ -53,6 +53,10 @@ async function target(db,householdId,userId,kind,id){
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
+async function savedSettings(db,h,kind,id){
+  return db.prepare('SELECT adjustment_amount,period_start,period_end FROM finance_target_settings WHERE household_id=?1 AND target_type=?2 AND target_id=?3')
+    .bind(h,kind,id).first()
+}
 const validAdjustment=n=>Number.isSafeInteger(n)&&Math.abs(n)<=100000000000
 const validPeriod=(start,end)=>dateOk(start)&&dateOk(end)&&end>=start&&
   Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z')<=3660*86400000
