@@ -388,6 +388,51 @@ test('completion-anchored interval stays checked on its due date and recurs norm
  sqlite.close()
 })
 
+test('future interval can be completed early in Plans and undone without duplicating care history',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'early-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registration.status,201)
+ const owner=extractCookie(registration.cookie)
+ const tokyoToday=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=(date,days)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10)
+ const anchor=plus(tokyoToday,-5)
+ const pet=await ask('/api/family/profiles','POST',{
+   type:'pet',displayName:'豆沙',birthday:'2022-05-02',adoptedOn:anchor
+ },owner)
+ assert.equal(pet.status,201)
+ const created=await ask('/api/routines','POST',{
+   title:'豆沙内驱',repeatType:'interval',repeatConfig:{days:90,anchor:'completion'},
+   anchorDate:anchor,subjectProfileId:pet.body.id,healthRecordType:'deworm',visibility:'household'
+ },owner)
+ assert.equal(created.status,201)
+ const before=await ask('/api/routines/today?date='+tokyoToday,'GET',undefined,owner)
+ assert.equal(before.body.items.some(x=>x.id===created.body.id),false)
+ const notAllowed=await ask('/api/routines/'+created.body.id+'/mark','POST',{
+   date:tokyoToday,status:'completed'},owner)
+ assert.equal(notAllowed.status,404,'ordinary due-only completion cannot bypass due date')
+ const marked=await ask('/api/routines/'+created.body.id+'/mark','POST',{
+   date:tokyoToday,status:'completed',early:true},owner)
+ assert.equal(marked.status,200,JSON.stringify(marked.body))
+ const stored=sqlite.prepare('SELECT next_due_on FROM routines WHERE id=?').get(created.body.id)
+ assert.equal(stored.next_due_on,plus(tokyoToday,90))
+ const current=await ask('/api/routines/today?date='+tokyoToday,'GET',undefined,owner)
+ assert.equal(current.body.items.find(x=>x.id===created.body.id)?.mark?.completed_at!=null,true)
+ const nextDay=await ask('/api/routines/today?date='+plus(tokyoToday,1),'GET',undefined,owner)
+ assert.equal(nextDay.body.items.some(x=>x.id===created.body.id),false)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE profile_id=? AND deleted_at IS NULL').get(pet.body.id).n,1)
+ const undo=await ask('/api/routines/'+created.body.id+'/mark','POST',{
+   date:tokyoToday,status:'open'},owner)
+ assert.equal(undo.status,200,JSON.stringify(undo.body))
+ assert.equal(sqlite.prepare('SELECT next_due_on FROM routines WHERE id=?').get(created.body.id).next_due_on,plus(anchor,90))
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE profile_id=? AND deleted_at IS NULL').get(pet.body.id).n,0)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)
+ sqlite.close()
+})
+
 test('uncompleted weekly and monthly routines roll over without duplicate occurrences',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
