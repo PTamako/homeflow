@@ -17,12 +17,22 @@ jobs:
           node-version: "22"
       - run: npm install --no-audit --no-fund
       - run: npm run check
+      - name: Validate complete migration manifest without touching D1
+        run: python3 scripts/check_migrations.py
       - name: Deploy isolated Preview first
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         run: npx wrangler deploy --env preview
+      - name: Verify Preview API / health and database identity
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow-preview.yupan6706.workers.dev/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='preview' and d.get('database')=='ready',d"
       - name: Deploy Production after Preview succeeds
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         run: npx wrangler deploy
+      - name: Verify Production API / health and database identity
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
       - name: Note missing deployment authorization
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
         run: echo "Deployment skipped until Cloudflare repository secrets are configured."

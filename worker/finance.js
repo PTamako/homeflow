@@ -54,7 +54,7 @@ async function ledger(env,params){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
+  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
@@ -163,40 +163,6 @@ export async function financeRoute(request,env,path,session){
     const result={adjustmentAmount:saved?.adjustment_amount||0,
       periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null,
       openingAmount:kind==='goal'?item.reserved_amount||0:null,linkedAmount:null}
-    if(kind==='shopping'&&item.ledger_entry_id){
-      try{
-        const data=await ledger(env,{ids:String(item.ledger_entry_id)})
-        const entry=data.entries.find(x=>String(x.id)===String(item.ledger_entry_id))
-        result.linkedAmount=entry?.type==='expense'?entry.amount:null
-      }catch(error){return financeError(error)}
-    }
-    return json(result)
-  }
-  if(path==='/api/finance/settings'&&request.method==='PUT'){
-    const b=await readBody(request),kind=b?.type,id=b?.targetId
-    if(!await financeTarget(db,h,user,kind,id))return json({error:'not_found'},404)
-    const amount=b?.adjustmentAmount
-    const start=kind==='goal'?(b?.periodStart||null):null
-    const end=kind==='goal'?(b?.periodEnd||null):null
-    if(!validAdjustment(amount)||(!!start!==!!end)||
-       (start&&!validPeriod(start,end)))return json({error:'invalid_input'},400)
-    await db.prepare(`INSERT INTO finance_target_settings
-      (household_id,target_type,target_id,adjustment_amount,period_start,period_end,updated_by,updated_at)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,CURRENT_TIMESTAMP)
-      ON CONFLICT(household_id,target_type,target_id)
-      DO UPDATE SET adjustment_amount=excluded.adjustment_amount,
-        period_start=excluded.period_start,period_end=excluded.period_end,
-        updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`)
-      .bind(h,kind,id,amount,start,end,user).run()
-    return json({ok:true,adjustmentAmount:amount,periodStart:start,periodEnd:end})
-  }
-  if(path==='/api/finance/settings'&&request.method==='GET'){
-    const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
-    const item=await financeTarget(db,h,user,kind,id)
-    if(!item)return json({error:'not_found'},404)
-    const saved=await savedSettings(db,h,kind,id)
-    const result={adjustmentAmount:saved?.adjustment_amount||0,
-      periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null}
     if(kind==='shopping'&&item.ledger_entry_id){
       try{
         const data=await ledger(env,{ids:String(item.ledger_entry_id)})

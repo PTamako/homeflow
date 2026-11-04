@@ -19,6 +19,8 @@ watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
+const listLoading=ref(false)
+let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
@@ -59,14 +61,8 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>('active')
-const oneTimePlans=computed(()=>(props.tasks||[])
-  .filter(t=>planScope.value==='active'?!t.completedAt:!!t.completedAt)
-  .filter(t=>{
-    if(!planYear.value||planScope.value!=='history')return true
-    const d=t.completedAt?jstDate(t.completedAt):t.dueOn||''
-    return d.startsWith(planYear.value+'-'+(planMonth.value||'')) || (!planMonth.value&&d.startsWith(planYear.value))
-  })
-  .slice(0,30))
+// Task history is independently paginated; the dashboard task snapshot is not an archive.
+const oneTimePlans=ref<Row[]>([])
 function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
 function toggleFinance(kind:'goal'|'trip',id:string){
   financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
@@ -135,7 +131,7 @@ function listPath(kind:string,cursor?:string|null){
   return '/'+kind+'?'+q.toString()
 }
 function assignRows(kind:string,rows:Row[],append=false){
-  const target=kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
+  const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
   target.value=append?[...target.value,...rows]:rows
 }
@@ -202,25 +198,35 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
   return data
 }
 async function fetchMode(){
+  const requestId=++activeFetch
+  const currentMode=props.mode
   error.value=''
+  listLoading.value=true
+  if(currentMode==='memories'){
+    items.value=[]
+    photos.value={};cloudPhotos.value={};localPhotoBlobs.value={}
+    for(const url of photoUrls)URL.revokeObjectURL(url)
+    photoUrls=[]
+  }
   try{
     if(props.mode==='today'){
       lastTodayValue=today()
       const upcoming=await api('/anniversaries/upcoming')
+      if(requestId!==activeFetch)return
       items.value=upcoming.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
       const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
       const data=await api(path)
-      if(props.mode!=='family'||past!==(anniversaryView.value==='past')||
+      if(requestId!==activeFetch||props.mode!=='family'||past!==(anniversaryView.value==='past')||
         (past&&path!==listPath('anniversaries')))return
       items.value=data.items||[]
       listCursors.value.anniversaries=past?data.nextCursor||null:null
     }else if(props.mode==='plans'){
-      const kinds=['wishes','goals','shopping','trips','routines']
+      const kinds=['wishes','goals','shopping','trips','routines','tasks']
       const paths=kinds.map(kind=>listPath(kind))
       const pages=await Promise.all(paths.map(path=>api(path)))
-      if(props.mode!=='plans'||paths.some((path,i)=>path!==listPath(kinds[i])))return
+      if(requestId!==activeFetch||props.mode!=='plans'||paths.some((path,i)=>path!==listPath(kinds[i])))return
       kinds.forEach((kind,i)=>{
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
@@ -228,12 +234,13 @@ async function fetchMode(){
     }else if(props.mode==='memories'){
       const path=listPath('memories')
       const data=await api(path)
-      if(props.mode!=='memories'||path!==listPath('memories'))return
+      if(requestId!==activeFetch||props.mode!=='memories'||path!==listPath('memories'))return
       items.value=data.items||[]
       listCursors.value.memories=data.nextCursor||null
-      await loadPhotos()
+      await loadPhotos(requestId)
     }
-  }catch(e){error.value=(e as Error).message}
+  }catch(e){if(requestId===activeFetch)error.value=(e as Error).message}
+  finally{if(requestId===activeFetch)listLoading.value=false}
 }
 async function loadReminders(){
   try{const data=await api('/reminders');dueItems.value=data.items||[];remindersLoaded.value=true}
@@ -373,11 +380,12 @@ async function addMemory(){
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
-async function loadPhotos(){
+async function loadPhotos(requestId=activeFetch){
   for(const x of photoUrls)URL.revokeObjectURL(x)
   photoUrls=[];photos.value={};localPhotoBlobs.value={};cloudPhotos.value={}
   try{
     const media=await api('/media')
+    if(requestId!==activeFetch)return
     cloudEnabled.value=!!media.cloudAvailable
     for(const item of media.items||[]){
       if(!item.memoryId)continue
@@ -386,9 +394,11 @@ async function loadPhotos(){
     }
   }catch{cloudEnabled.value=false}
   for(const m of items.value){
+    if(requestId!==activeFetch)return
     try{
       if(m.created_by!==props.userId)continue
       const list=await listLocalPhotos(props.userId,m.id)
+      if(requestId!==activeFetch)return
       if(!list.length)continue
       localPhotoBlobs.value[m.id]=list
       photos.value[m.id]=list.map(b=>{const url=URL.createObjectURL(b);photoUrls.push(url);return url})
@@ -397,6 +407,7 @@ async function loadPhotos(){
 }
 onMounted(()=>document.addEventListener('visibilitychange',refreshOnResume))
 onBeforeUnmount(()=>{
+  activeFetch++
   for(const x of photoUrls)URL.revokeObjectURL(x)
   document.removeEventListener('visibilitychange',refreshOnResume)
 })
@@ -535,9 +546,35 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
+          <template v-for="t in oneTimePlans" :key="t.id">
+            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
+              @edit="editOnce(t)" @delete="deleteOnce(t)">
+              <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
+                <div class="life-details">
+                  <b class="detail-name">{{ t.title }}</b>
+                  <small>一次性任务 · {{ t.dueOn||'无截止日期' }}
+                    <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
+                    <template v-if="t.completedAt"> · 已完成</template>
+                  </small>
+                </div>
+              </div>
+            </SwipeActions>
+            <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
+              <b>编辑一次性任务</b>
+              <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
+              <label>截止日期<DateField v-model="onceDate" /></label>
+              <label><input v-model="onceRemind" type="checkbox" /> 开启提醒</label>
+              <div class="detail-actions">
+                <button type="button" @click="onceEditing=null">取消</button>
+                <button type="submit">保存修改</button>
+              </div>
+            </form>
+          </template>
           <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
+          <button v-if="listCursors.tasks" class="life-more" type="button" :disabled="pageBusy.tasks"
+            @click="loadMore('tasks')">加载更多一次性任务</button>
 
         </section>
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
@@ -735,8 +772,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </label>
         </div>
         <p class="life-caption">默认只显示最近 6 条，切换年月可查询旧回忆，照片按当前显示的记录加载。</p>
-        <p v-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
-        <article v-for="m in items" :key="m.id" class="memory">
+        <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
+        <p v-else-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
+        <article v-for="m in listLoading?[]:items" :key="m.id" class="memory">
           <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"
             @edit="edit('memories',m)" @delete="removeItem('memories',m)">
             <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
@@ -758,7 +796,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
           <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
         </article>
-        <button v-if="listCursors.memories" type="button" class="life-more" :disabled="pageBusy.memories"
+        <button v-if="!listLoading&&listCursors.memories" type="button" class="life-more" :disabled="pageBusy.memories"
           @click="loadMore('memories')">加载更多回忆</button>
       </section>
     </template>

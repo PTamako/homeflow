@@ -98,14 +98,14 @@ export async function tripsRoute(request,db,path,session){
       }
       const sql=`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
         end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,
-        import_source_key AS importSourceKey,COALESCE(start_on,created_at) AS sortDate
+        import_source_key AS importSourceKey,updated_at AS updatedAt,COALESCE(start_on,created_at) AS sortDate
         FROM trips WHERE `+clauses.join(' AND ')+' ORDER BY '+sort+' DESC,id DESC LIMIT ?'+(args.length+1)
       const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
       const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
       return json({items,nextCursor:rows.length>filters.limit&&last?last.sortDate+'|'+last.id:null})
     }
     const {results}=await db.prepare(`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
-        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey
+        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey,updated_at AS updatedAt
         FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
         ORDER BY COALESCE(start_on,created_at) DESC LIMIT 150`).bind(h,u).all()
     return json({items:results||[]})
@@ -270,6 +270,8 @@ export async function tripsRoute(request,db,path,session){
     if(request.method==='PATCH'){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
       const b=await readBody(request)
+      if(b?.expectedUpdatedAt&&b.expectedUpdatedAt!==trip.updated_at)
+        return json({error:'trip_edit_conflict',currentUpdatedAt:trip.updated_at},409)
       if(!['planning','active','completed','cancelled'].includes(b?.status))return json({error:'invalid_input'},400)
       const title=b.title===undefined?trip.title:shortText(b.title,150)
       const destination=b.destination===undefined?trip.destination:shortText(b.destination,300)
@@ -292,10 +294,11 @@ export async function tripsRoute(request,db,path,session){
         }catch{return json({error:'invalid_saved_plan'},409)}
       }
       const timestamp=iso()
-      await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
+      const updated=await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
         status=?6,plan_json=?7,import_hash=?8,updated_at=?9
-        WHERE id=?10 AND household_id=?11 AND created_by=?12`)
-        .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u).run()
+        WHERE id=?10 AND household_id=?11 AND created_by=?12 AND updated_at=?13`)
+        .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u,trip.updated_at).run()
+      if(!updated.meta?.changes)return json({error:'trip_edit_conflict'},409)
       if(trip.wish_id&&b.status==='completed'){
         await db.prepare("UPDATE wishes SET status='completed',updated_at=?1 WHERE id=?2 AND household_id=?3")
           .bind(timestamp,trip.wish_id,h).run()
