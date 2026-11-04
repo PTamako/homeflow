@@ -38,6 +38,43 @@ tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='tab
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
           "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
+
+# Every expected object must exist before historical files can be baselined.
+secondary_indexes={
+  "idx_household_members_user","idx_family_profiles_household","idx_sessions_user","idx_sessions_expiry",
+  "idx_invitations_household","idx_tasks_household_due","idx_tasks_creator","idx_tasks_assignee",
+  "idx_anniversaries_household","idx_routines_household","idx_wishes_household",
+  "idx_trips_household_start","idx_goals_household","idx_shopping_household",
+  "idx_memories_household_time","idx_media_memory","idx_push_subs_user",
+  "idx_notification_deliveries_purge","idx_routines_next_due","idx_pet_health_profile",
+  "idx_tasks_request_id","idx_pet_health_routine_occurrence","idx_pet_health_source_task",
+  "idx_shopping_due_active","idx_wishes_target_active","idx_goals_target_on",
+  "idx_plan_completion_household_date","idx_shop_links_household",
+  "idx_reminder_snoozes_expiration","idx_shopping_household_created"
+}
+existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
+triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shopping",
+          "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link"}
+existing_triggers={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existing_triggers}"
+added_columns={
+  "users":{"password_rounds"},
+  "family_profiles":{"relation","adopted_on","weight_grams","notes","archived_at"},
+  "tasks":{"client_request_id","health_record_type","remind_enabled"},
+  "routines":{"next_due_on","health_record_type","remind_enabled"},
+  "pet_health_records":{"source_routine_id","source_occurrence_on","source_task_id"},
+  "shopping_items":{"ledger_entry_id","due_on"},
+  "wishes":{"target_on"},
+  "goals":{"goal_mode","start_on"},
+  "shopping_expense_links":{"purchase_quantity"},
+  "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
+  "notification_deliveries":{"attempts"},
+}
+for table,needed in added_columns.items():
+    found={x[1] for x in db.execute(f"PRAGMA table_info({table})")}
+    assert needed.issubset(found),f"{table} missing migration columns: {needed-found}"
+
 columns={x[1] for x in db.execute("PRAGMA table_info(users)")}
 assert "client_request_id" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
 assert "ledger_entry_id" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
