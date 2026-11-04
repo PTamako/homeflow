@@ -8,9 +8,25 @@ const sections={
   family:life.slice(life.indexOf('<template v-else-if="mode===\'family\'">'),life.indexOf('<template v-else-if="mode===\'plans\'">')),
   plans:life.slice(life.indexOf('<template v-else-if="mode===\'plans\'">'),life.indexOf('<template v-else-if="mode===\'memories\'">'))
 }
-test('today is display-only for routines and anniversaries',()=>{
- assert.ok(sections.today.includes("v-for=\"r in routines\""))
- assert.ok(sections.today.includes('routine-completed'))
+const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+test('Today combines one-off and recurring tasks in one checklist',()=>{
+ assert.ok(app.includes('<h2>今日待办</h2>'))
+ assert.ok(app.includes('v-for="row in unifiedToday"'))
+ assert.ok(app.includes('scope="today-unified"'))
+ assert.ok(app.includes("key:'task:'+task.id"))
+ assert.ok(app.includes("key:'routine:'+routine.id"))
+ assert.ok(app.includes('Number(a.done)-Number(b.done)'),'incomplete rows should precede done')
+ assert.ok(app.includes("api('/routines/today?date='"))
+ assert.ok(app.includes("api('/routines/'+r.id+'/mark'"))
+ assert.ok(app.includes('toggleTask(row.task)'))
+ assert.ok(app.includes('toggleRoutine(row.routine)'))
+ assert.ok(app.includes('editRoutine(row.routine)'))
+ assert.ok(app.includes('deleteRoutine(row.routine)'))
+ assert.ok(app.includes('kind="routines" :item="row.routine"'))
+ assert.ok(!sections.today.includes('今日定期事项'),'no duplicate routine card')
+ assert.ok(!life.includes("api('/routines/today')"),'do not double-fetch routines from D1')
+})
+test('Today preserves anniversary countdown and keeps recurring creation in Plans',()=>{
  assert.ok(sections.today.includes('countdown(e.nextOn)'))
  assert.ok(sections.today.includes(':datetime="e.nextOn"'))
  assert.ok(!sections.today.includes('submit.prevent="addRoutine"'))
