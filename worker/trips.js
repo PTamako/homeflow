@@ -298,7 +298,13 @@ export async function tripsRoute(request,db,path,session){
         .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u,trip.updated_at).run()
       if(!updated.meta?.changes)return json({error:'trip_edit_conflict'},409)
       if(trip.wish_id&&b.status==='completed'){
-        await db.prepare("UPDATE wishes SET status='completed',updated_at=?1 WHERE id=?2 AND household_id=?3")
+        // Completing a trip never bypasses a linked savings requirement.
+        // A wish with an associated goal must be fulfilled separately
+        // through /plans/complete after the ledger balance is verified.
+        await db.prepare(`UPDATE wishes SET status='completed',updated_at=?1
+          WHERE id=?2 AND household_id=?3
+            AND NOT EXISTS(SELECT 1 FROM goals
+              WHERE household_id=?3 AND wish_id=?2)`)
           .bind(timestamp,trip.wish_id,h).run()
       }
       return json({ok:true})
