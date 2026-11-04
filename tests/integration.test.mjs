@@ -352,3 +352,35 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  assert.equal(petList.body.items.find(e=>e.id==='profile-birthday:'+pet.body.id)?.event_date,'2022-05-07')
  sqlite.close()
 })
+
+test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ownerRegistered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'routine-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(ownerRegistered.status,201,JSON.stringify(ownerRegistered.body))
+ const owner=extractCookie(ownerRegistered.cookie)
+ const created=await ask('/api/routines','POST',{
+   title:'给豆沙换水',repeatType:'interval',
+   repeatConfig:{days:3,anchor:'completion'},anchorDate:'2026-11-04',visibility:'household'
+ },owner)
+ assert.equal(created.status,201,JSON.stringify(created.body))
+ const first=await ask('/api/routines/today?date=2026-11-04','GET',undefined,owner)
+ assert.equal(first.body.items.filter(x=>x.id===created.body.id).length,1)
+ const mark=await ask('/api/routines/'+created.body.id+'/mark','POST',{
+   date:'2026-11-04',status:'completed'},owner)
+ assert.equal(mark.status,200,JSON.stringify(mark.body))
+ const today=await ask('/api/routines/today?date=2026-11-04','GET',undefined,owner)
+ assert.equal(today.body.items.filter(x=>x.id===created.body.id).length,1,
+   'completed row stays visible today for the checked strikethrough')
+ assert.ok(today.body.items.find(x=>x.id===created.body.id).mark.completed_at)
+ const tomorrow=await ask('/api/routines/today?date=2026-11-05','GET',undefined,owner)
+ assert.equal(tomorrow.body.items.some(x=>x.id===created.body.id),false)
+ const next=await ask('/api/routines/today?date=2026-11-07','GET',undefined,owner)
+ assert.equal(next.body.items.some(x=>x.id===created.body.id),true)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1,
+   'completing a routine does not delete or duplicate it')
+ sqlite.close()
+})

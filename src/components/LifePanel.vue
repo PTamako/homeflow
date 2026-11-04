@@ -13,6 +13,16 @@ const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),inter
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
+function countdown(date:string){
+  const days=Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(today()+'T00:00:00Z'))/86400000)
+  if(!Number.isFinite(days))return ''
+  return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
+}
+function routineLabel(r:Row){
+  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
+    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
+    r.repeat_type==='workday'?'工作日':'定期'
+}
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
@@ -34,8 +44,8 @@ async function fetchMode(){
     }else if(props.mode==='family'){
       items.value=(await api('/anniversaries/upcoming')).items||[]
     }else if(props.mode==='plans'){
-      const [w,g,s,t]=await Promise.all([api('/wishes'),api('/goals'),api('/shopping'),api('/trips')])
-      items.value=w.items||[];goals.value=g.items||[];other.value=s.items||[];trips.value=t.items||[]
+      const [w,g,s,t,r]=await Promise.all([api('/wishes'),api('/goals'),api('/shopping'),api('/trips'),api('/routines')])
+      items.value=w.items||[];goals.value=g.items||[];other.value=s.items||[];trips.value=t.items||[];routines.value=r.items||[]
     }else if(props.mode==='memories'){
       items.value=(await api('/memories')).items||[]
       await loadPhotos()
@@ -199,41 +209,30 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
       <div class="life-grid">
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
-          <p class="life-caption">完成后保存当天记录，下次重复不会被删除。</p>
-          <p v-if="!routines.length" class="life-empty">还没有需要今天执行的重复任务</p>
-          <div v-for="r in routines" :key="r.id" class="life-row">
-            <label><input type="checkbox" :checked="!!r.mark?.completed_at" @change="markRoutine(r,!r.mark?.completed_at)"/>
-              <span>{{ r.title }}</span></label>
-            <small>{{ r.repeat_type==='daily'?'每天':r.repeat_type==='interval'?'按间隔':'按日期' }}</small>
+          <p class="life-caption">仅显示今天需要做的事项。打勾后文字划线，记录保留，下一次仍按计划出现。</p>
+          <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
+          <div v-for="r in routines" :key="r.id" class="life-row today-routine-row"
+            :class="{'routine-completed':!!r.mark?.completed_at}">
+            <label class="today-routine-label">
+              <input type="checkbox" :checked="!!r.mark?.completed_at" :disabled="busy"
+                :aria-label="(r.mark?.completed_at?'撤销完成 ':'完成 ')+r.title"
+                @change="markRoutine(r,!r.mark?.completed_at)"/>
+              <span class="routine-name">{{ r.title }}</span>
+            </label>
+            <small>{{ r.mark?.completed_at?'已完成':routineLabel(r) }}</small>
           </div>
-          <form class="life-form" @submit.prevent="addRoutine">
-            <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
-            <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
-            <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
-            <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
-              <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
-            </select>
-            <label>关联对象（可选）
-              <select v-model="routineSubject" aria-label="这项定期任务与谁有关">
-                <option value="">不关联任何人或宠物</option>
-                <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
-              </select></label>
-            <p class="life-caption">只是标记任务与谁有关，不会指定执行者或改变共享权限。</p>
-            <button :disabled="busy">＋ 定期任务</button>
-          </form>
+          
         </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
-          <p v-if="!items.length" class="life-empty">先在家庭档案填写生日，或在下方添加重要日子</p>
-          <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row">
-            <b>{{ e.title }}</b><span>{{ e.nextOn }}</span>
+          <p v-if="!items.length" class="life-empty">暂无即将到来的纪念日，可在「家庭」添加。</p>
+          <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row upcoming-anniversary">
+            <b>{{ e.title }}</b>
+            <div class="anniversary-countdown">
+              <strong>{{ countdown(e.nextOn) }}</strong>
+              <time :datetime="e.nextOn">{{ e.nextOn }}</time>
+            </div>
           </div>
-          <form class="life-form" @submit.prevent="addAnniversary">
-            <input v-model.trim="eventTitle" required maxlength="150" placeholder="生日、纪念日或自定义日期"/>
-            <input v-model="eventDate" required type="date"/>
-            <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">仅一次</option><option value="monthly">每月</option></select>
-            <button :disabled="busy">＋ 添加重要日子</button>
-          </form>
         </section>
       </div>
     </template>
@@ -253,6 +252,29 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 
     <template v-else-if="mode==='plans'">
       <div class="life-grid">
+        <section class="life-card">
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
+          <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
+          <div v-for="r in routines" :key="r.id" class="life-row">
+            <b>{{ r.title }}</b><small>{{ routineLabel(r) }}</small>
+          </div>
+          <p v-if="!routines.length" class="life-empty">还没有设置定期任务</p>
+          <form class="life-form" @submit.prevent="addRoutine">
+            <input v-model.trim="routineTitle" required maxlength="150" placeholder="例如：给豆沙换水"/>
+            <select v-model="routineRepeat"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="interval">自定义间隔</option></select>
+            <label v-if="routineRepeat==='interval'">每隔多少天<input v-model.number="intervalDays" type="number" min="1" max="3650"/></label>
+            <select v-if="routineRepeat==='interval'" v-model="intervalAnchor" aria-label="间隔计算方式">
+              <option value="fixed">按原定日期</option><option value="completion">按上次实际完成日</option>
+            </select>
+            <label>关联对象（可选）
+              <select v-model="routineSubject" aria-label="这项定期任务与谁有关">
+                <option value="">不关联任何人或宠物</option>
+                <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+              </select></label>
+            <p class="life-caption">只是标记任务与谁有关，不会指定执行者或改变共享权限。</p>
+            <button :disabled="busy">＋ 添加定期任务</button>
+          </form>
+        </section>
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <div v-for="w in items" :key="w.id" class="life-row"><div><b>{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
@@ -396,5 +418,15 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 .life-form input[type="date"]{min-inline-size:0}
 .life-form label,.trip-import label{min-width:0;max-width:100%}
 .life-form button{width:100%}
+.today-routine-label{display:flex!important;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer}
+.today-routine-label input[type="checkbox"]{width:20px;height:20px;flex:none;accent-color:#43866a}
+.today-routine-row .routine-name{overflow-wrap:anywhere}
+.today-routine-row.routine-completed .routine-name{text-decoration:line-through;color:#9daaa1}
+.today-routine-row.routine-completed small{color:#7b9d86}
+.upcoming-anniversary{align-items:center}
+.anniversary-countdown{display:grid;justify-items:end;gap:4px;text-align:right;flex:none}
+.anniversary-countdown strong{font-size:13px;color:#43866a}
+.anniversary-countdown time{font-size:12px;color:#85958b}
+@media(max-width:420px){.anniversary-countdown{max-width:45%}.upcoming-anniversary>b{max-width:55%;overflow-wrap:anywhere}}
 @media(max-width:720px){.life-grid{grid-template-columns:minmax(0,1fr)}}
 </style>

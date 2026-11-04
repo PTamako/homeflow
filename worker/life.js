@@ -123,7 +123,9 @@ export async function lifeRoute(request,db,path,session){
         .bind(session.household_id,date,session.user_id)
     ])
     const saved=new Map((marks.results||[]).map(x=>[x.routine_id,x]))
-    const due=(all.results||[]).filter(r=>dueOn(r,date))
+    // Completion-anchored interval rules advance next_due_on immediately.
+    // Retain marked occurrences in today's view so checkmarks and strikethrough remain visible.
+    const due=(all.results||[]).filter(r=>dueOn(r,date)||saved.has(r.id))
     return json({date,items:due.map(r=>({...r,mark:saved.get(r.id)||null}))})
   }
   if(id&&parts[3]==='mark'&&table==='routines'&&request.method==='POST'){
