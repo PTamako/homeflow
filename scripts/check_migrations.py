@@ -13,6 +13,7 @@ MIGRATIONS=[
     "0007_offline_tasks.sql",
     "0008_shopping_ledger.sql",
     "0009_routine_pet_care.sql",
+    "0010_task_pet_care.sql",
 ]
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
@@ -30,6 +31,8 @@ assert "password_rounds" in columns
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 assert "health_record_type" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 assert "source_routine_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_health_records)")}
+assert "health_record_type" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
+assert "source_task_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_health_records)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")
 db.execute("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u-1','demo','x','y')")
 db.execute("INSERT INTO household_members(household_id,user_id,role) VALUES('primary','u-1','owner')")
