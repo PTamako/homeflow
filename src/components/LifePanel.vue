@@ -7,12 +7,16 @@ import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import SwipeActions from './SwipeActions.vue'
+import PageToast from './PageToast.vue'
+import {usePageToast} from '../page-toast'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>}>()
 const emit=defineEmits<{editProfile:[id:string]}>()
+const {toast,notify,clear:clearToast}=usePageToast()
+watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
+const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref(''),routineHealthType=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
@@ -33,13 +37,13 @@ function editAnniversary(item:Row){
   }else edit('anniversaries',item)
 }
 function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
-async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode()}
+async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode();if(!error.value)notify('修改已保存')}
 async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
  const warning=kind==='memories'?'删除回忆后，本机照片不会一起删除，请先备份。':
    kind==='routines'?'删除定期计划？以前的完成记录会保留。':'确定删除这条记录吗？'
  if(!confirm(warning))return
- await update(()=>api('/'+kind+'/'+item.id,'DELETE'))
+ await update(()=>api('/'+kind+'/'+item.id,'DELETE'),'已删除')
  if(!error.value){editing.value=null;if(kind==='trips'&&tripDetail.value?.id===item.id)tripDetail.value=null}
 }
 const jstDate=(timestamp:string)=>{
@@ -184,9 +188,9 @@ async function loadReminders(){
   try{const data=await api('/reminders');dueItems.value=data.items||[];remindersLoaded.value=true}
   catch(e){error.value=(e as Error).message}
 }
-async function update(action:()=>Promise<any>){
-  error.value='';notice.value='';busy.value=true
-  try{await action();await fetchMode();notice.value='已保存'}
+async function update(action:()=>Promise<any>,successMessage='已保存'){
+  error.value='';busy.value=true
+  try{await action();await fetchMode();notify(successMessage)}
   catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
@@ -207,7 +211,7 @@ async function addRoutine(){
   if(!error.value)routineTitle.value=''
 }
 async function markRoutine(r:Row,done:boolean){
-  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:done?'completed':'open'}))
+  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:done?'completed':'open'}),done?'已完成':'已撤销完成')
 }
 async function addWish(){
   await update(()=>api('/wishes','POST',{title:wishTitle.value,wishType:wishType.value,
@@ -232,7 +236,7 @@ async function addShopping(){
   if(!error.value)shoppingTitle.value=''
 }
 async function toggleShopping(x:Row){
-  await update(()=>api('/shopping/'+x.id+'/toggle','POST',{completed:!x.completed_at}))
+  await update(()=>api('/shopping/'+x.id+'/toggle','POST',{completed:!x.completed_at}),x.completed_at?'已撤销完成':'已完成')
 }
 async function convertWish(w:Row){
   const destination=prompt('目的地（例如北海道）',w.title)
@@ -249,6 +253,7 @@ async function toggleTrip(id:string){
   try{
     await api('/trips/'+tripDetail.value.id+'/progress','POST',{itemId:id,completed:!itemDone(id)})
     await selectTrip(tripDetail.value.id)
+    notify('旅行事项已更新')
   }catch(e){error.value=(e as Error).message}
 }
 async function editTripItem(item:Row){
@@ -260,6 +265,7 @@ async function editTripItem(item:Row){
     const payload={title:title.trim(),...(item.quantity?{quantity:item.quantity}:{})}
     await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'PATCH',payload)
     await selectTrip(tripDetail.value.id)
+    notify('修改已保存')
   }catch(e){error.value=(e as Error).message}
 }
 async function removeTripItem(item:Row){
@@ -268,6 +274,7 @@ async function removeTripItem(item:Row){
   try{
     await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'DELETE')
     await selectTrip(tripDetail.value.id)
+    notify('旅行明细已删除')
   }catch(e){error.value=(e as Error).message}
 }
 async function previewTrip(){
@@ -288,7 +295,7 @@ async function removeCloudPhoto(id:string){
   try{
     await api('/media/'+id,'DELETE')
     await loadPhotos()
-    notice.value='云端照片已删除'
+    notify('云端照片已删除')
   }catch(e){error.value=(e as Error).message}
 }
 async function addMemory(){
@@ -305,12 +312,13 @@ async function addMemory(){
           const sent=await fetch('/api/media/upload?memoryId='+encodeURIComponent(result.id),{
             method:'POST',credentials:'same-origin',
             headers:{'content-type':'image/jpeg'},body:compressed})
-          if(!sent.ok)notice.value='本机照片已保存，但云端备份部分失败'
-        }catch{notice.value='本机照片已保存，但云端暂不可用'}
+          if(!sent.ok)notify('本机照片已保存，但云端备份部分失败','warning')
+        }catch{notify('本机照片已保存，但云端暂不可用','warning')}
       }
     }
     memoryTitle.value='';memoryStory.value='';photoFiles.value=[]
     await fetchMode()
+    if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
@@ -356,7 +364,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 <template>
   <section class="life-area">
     <p v-if="error" role="alert" class="life-error">{{ error }}</p>
-    <p v-if="notice" class="life-notice" role="status">{{ notice }}</p>
+    <PageToast :toast="toast" />
 
     <template v-if="mode==='today'">
       <section class="life-card">
