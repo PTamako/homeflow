@@ -134,7 +134,7 @@ async function restore(){
 <template>
   <section class="backup">
     <h2 class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
-    <p>为当前登录账号保存独立备份。ZIP 包括此设备的本机照片；家庭其他账号需要分别备份自己的私人记录。</p>
+    <p>仅备份当前账号及此设备照片；其他账号需分别备份。</p>
     <button :disabled="pending" @click="exportArchive">下载完整本机备份 ZIP</button>
     <label class="import-label">恢复历史备份（ZIP 或 JSON）
       <input type="file" accept=".zip,.json,application/zip,application/json"
@@ -149,7 +149,7 @@ async function restore(){
     <p v-if="status" class="success" role="status">{{ status }}</p>
     <PageToast :toast="toast" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <small>备份包括心愿与每月／每年储值的完成确认、计划日期、提醒选择、储值周期及调整额；已存在的记录不会被覆盖。账号密码、推送密钥和未同步离线任务不在备份内。云端相册尚未开通。</small>
+    <small>包含计划、储值结算及调整额；恢复不覆盖原记录。不含密码、推送密钥、未同步任务或云端照片。</small>
   </section>
 </template>
 <style scoped>
