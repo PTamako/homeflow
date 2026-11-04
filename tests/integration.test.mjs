@@ -578,3 +578,124 @@ test('owner can link a shared shopping item created by family member, but cannot
    assert.equal(restored.body.items.find(x=>x.id===shared.body.id)?.completed_at,null)
  }finally{globalThis.fetch=old;sqlite.close()}
 })
+
+test('date/month keyset pagination keeps all memories accessible without duplicates',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-bootstrap-secret-unit-test-012345'}
+ const user=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'history-owner',displayName:'回忆',password:'test-long-history-password-2026',
+   householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(user.status,201,JSON.stringify(user.body))
+ const cookie=extractCookie(user.cookie)
+ for(let i=0;i<13;i++){
+   const created=await send(env,'/api/memories','POST',{
+     title:'回忆 '+i,happenedOn:i<7?'2025-02-12':'2026-11-04',
+     visibility:'private',story:'记忆'},cookie)
+   assert.equal(created.status,201,JSON.stringify(created.body))
+ }
+ const ids=new Set()
+ let cursor=null
+ for(let page=0;page<8;page++){
+   const result=await send(env,'/api/memories?limit=4'+
+     (cursor?'&cursor='+encodeURIComponent(cursor):''),'GET',undefined,cookie)
+   assert.equal(result.status,200,JSON.stringify(result.body))
+   assert.ok(result.body.items.length<=4)
+   for(const item of result.body.items){
+     assert.equal(ids.has(item.id),false,'no duplicate in keyset pages')
+     ids.add(item.id)
+   }
+   cursor=result.body.nextCursor
+   if(!cursor)break
+ }
+ assert.equal(ids.size,13,'old records remain reachable beyond initial page')
+ const filtered=await send(env,'/api/memories?limit=20&year=2025&month=02','GET',undefined,cookie)
+ assert.equal(filtered.status,200)
+ assert.equal(filtered.body.items.length,7)
+ assert.ok(filtered.body.items.every(x=>x.happened_on.startsWith('2025-02')))
+ const year=await send(env,'/api/memories?limit=20&year=2026','GET',undefined,cookie)
+ assert.equal(year.body.items.length,6)
+ assert.equal((await send(env,'/api/memories?month=02','GET',undefined,cookie)).status,400)
+ assert.equal((await send(env,'/api/memories?limit=999','GET',undefined,cookie)).status,400)
+ sqlite.close()
+})
+
+test('completed wishes and past shopping move to history; in-progress items stay visible',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-bootstrap-secret-unit-test-012345'}
+ const owner=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'history-keeper',displayName:'主人',password:'test-long-history-password-2026',
+   householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(owner.status,201)
+ const cookie=extractCookie(owner.cookie)
+ const wishes=[]
+ for(let i=0;i<9;i++){
+   const result=await send(env,'/api/wishes','POST',{
+     title:'心愿 '+i,wishType:'other',estimatedAmount:0,visibility:'household'},cookie)
+   assert.equal(result.status,201)
+   wishes.push(result.body.id)
+ }
+ const done=await send(env,'/api/wishes/'+wishes[0],'PATCH',{
+   title:'心愿 0',wishType:'other',status:'completed',
+   estimatedAmount:0,currency:'JPY',visibility:'household'},cookie)
+ assert.equal(done.status,200,JSON.stringify(done.body))
+ const active=await send(env,'/api/wishes?scope=active&limit=3','GET',undefined,cookie)
+ assert.equal(active.body.items.length,3)
+ assert.ok(active.body.nextCursor)
+ assert.equal(active.body.items.some(x=>x.status==='completed'),false)
+ const history=await send(env,'/api/wishes?scope=history&limit=6','GET',undefined,cookie)
+ assert.equal(history.body.items.length,1)
+ assert.equal(history.body.items[0].id,wishes[0])
+ const older=await send(env,'/api/shopping','POST',{
+   title:'已买猫粮',quantity:1,visibility:'household'},cookie)
+ const open=await send(env,'/api/shopping','POST',{
+   title:'下次买猫砂',quantity:1,visibility:'household'},cookie)
+ assert.equal(older.status,201);assert.equal(open.status,201)
+ assert.equal((await send(env,'/api/shopping/'+older.body.id+'/toggle','POST',{completed:true},cookie)).status,200)
+ const yesterday=new Date(Date.now()-2*86400000).toISOString()
+ sqlite.prepare('UPDATE shopping_items SET completed_at=? WHERE id=?').run(yesterday,older.body.id)
+ const current=await send(env,'/api/shopping?scope=active&limit=6','GET',undefined,cookie)
+ assert.equal(current.body.items.some(x=>x.id===older.body.id),false)
+ assert.equal(current.body.items.some(x=>x.id===open.body.id),true)
+ const past=await send(env,'/api/shopping?scope=history&limit=6','GET',undefined,cookie)
+ assert.equal(past.body.items.some(x=>x.id===older.body.id),true)
+ sqlite.close()
+})
+
+test('pet health and travel history can be filtered by month and paged',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-bootstrap-secret-unit-test-012345'}
+ const owner=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'pet-history',displayName:'主人',password:'test-long-history-password-2026',
+   householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(owner.status,201)
+ const cookie=extractCookie(owner.cookie)
+ const pet=await send(env,'/api/family/profiles','POST',{
+   type:'pet',displayName:'豆沙',birthday:'2022-05-01',adoptedOn:'2022-06-01'},cookie)
+ assert.equal(pet.status,201,JSON.stringify(pet.body))
+ for(let i=0;i<9;i++){
+   const health=await send(env,'/api/pets/'+pet.body.id+'/health','POST',{
+     recordType:'weight',eventOn:i<5?'2025-02-12':'2026-11-04',weightGrams:5000+i,
+     nextDueOn:null,note:'体重',visibility:'household'},cookie)
+   assert.equal(health.status,201,JSON.stringify(health.body))
+ }
+ const first=await send(env,'/api/pets/'+pet.body.id+'/health?limit=3','GET',undefined,cookie)
+ assert.equal(first.body.records.length,3)
+ assert.ok(first.body.nextCursor)
+ const older=await send(env,'/api/pets/'+pet.body.id+'/health?year=2025&month=02&limit=6','GET',undefined,cookie)
+ assert.equal(older.body.records.length,5)
+ assert.ok(older.body.records.every(x=>x.eventOn==='2025-02-12'))
+ const row=sqlite.prepare('SELECT id FROM users LIMIT 1').get()
+ const household=sqlite.prepare('SELECT id FROM households LIMIT 1').get().id
+ const insert=sqlite.prepare("INSERT INTO trips(id,household_id,created_by,visibility,title,destination,start_on,end_on,status) VALUES(?,?,?,?,?,?,?,?,?)")
+ insert.run('00000000-0000-4000-8000-000000000011',household,row.id,'household',
+   '过去的旅行','仙台','2024-01-10','2024-01-13','planning')
+ insert.run('00000000-0000-4000-8000-000000000012',household,row.id,'household',
+   '明年的旅行','京都','2027-05-10','2027-05-12','planning')
+ const active=await send(env,'/api/trips?scope=active&limit=6','GET',undefined,cookie)
+ const history=await send(env,'/api/trips?scope=history&year=2024&limit=6','GET',undefined,cookie)
+ assert.equal(active.body.items.length,1,JSON.stringify(active.body))
+ assert.equal(active.body.items[0].title,'明年的旅行')
+ assert.equal(history.body.items.length,1,JSON.stringify(history.body))
+ assert.equal(history.body.items[0].title,'过去的旅行')
+ sqlite.close()
+})

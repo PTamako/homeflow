@@ -1,4 +1,5 @@
 import {json,readBody,shortText,validDate} from './security.js'
+import {listFilters,monthWindow} from './list-pagination.js'
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/.test(x)
 const goodDate=x=>typeof x==='string'&&x!==''&&validDate(x)
 export async function petsRoute(request,db,path,session){
@@ -11,6 +12,32 @@ export async function petsRoute(request,db,path,session){
  if(!pet)return json({error:'not_found'},404)
  const h=session.household_id,u=session.user_id
  if(!recordId&&request.method==='GET'){
+   const filters=listFilters(request.url)
+   if(filters?.invalid)return json({error:'invalid_input'},400)
+   if(filters){
+     const clauses=["household_id=?1","profile_id=?2","deleted_at IS NULL",
+       "(visibility='household' OR created_by=?3)"]
+     const args=[h,profileId,u]
+     const window=monthWindow(filters.year,filters.month)
+     if(window){
+       clauses.push('event_on>=?4 AND event_on<?5')
+       args.push(window.start,window.end)
+     }
+     if(filters.cursor){
+       const n=args.length+1
+       clauses.push('(event_on<?'+n+' OR (event_on=?'+(n+1)+' AND id<?'+(n+2)+'))')
+       args.push(filters.cursor.date,filters.cursor.date,filters.cursor.id)
+     }
+     const sql='SELECT id,record_type AS recordType,event_on AS eventOn,'+
+       'weight_grams AS weightGrams,note,next_due_on AS nextDueOn,'+
+       'created_by AS createdBy,visibility,created_at AS createdAt FROM pet_health_records WHERE '+
+       clauses.join(' AND ')+' ORDER BY event_on DESC,id DESC LIMIT ?'+(args.length+1)
+     const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
+     const records=(results||[]).slice(0,filters.limit)
+     const last=records[records.length-1]
+     return json({pet,records,nextCursor:(results||[]).length>filters.limit&&last?
+       last.eventOn+'|'+last.id:null})
+   }
    const {results}=await db.prepare(`SELECT id,record_type AS recordType,event_on AS eventOn,
      weight_grams AS weightGrams,note,next_due_on AS nextDueOn,
      created_by AS createdBy,visibility,created_at AS createdAt FROM pet_health_records

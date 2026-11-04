@@ -1,5 +1,6 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
+import {listFilters,listPage} from './list-pagination.js'
 import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.js'
 
 const catalog={
@@ -192,6 +193,9 @@ export async function lifeRoute(request,db,path,session){
     return json({ok:true})
   }
   if(!id&&request.method==='GET'){
+    const filters=listFilters(request.url)
+    if(filters?.invalid)return bad()
+    if(filters)return json(await listPage(db,table,session,filters))
     const items=await view(db,table,session)
     return json({items:table==='routines'?items.filter(x=>x.enabled!==0):items})
   }

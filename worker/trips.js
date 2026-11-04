@@ -1,4 +1,5 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
+import {listFilters,monthWindow} from './list-pagination.js'
 const idOk=x=>typeof x==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,99}$/.test(x)
 const textOk=(x,n=500)=>typeof x==='string'&&x.length>0&&x.length<=n
 const dateOk=x=>typeof x==='string'&&x!==''&&validDate(x)
@@ -70,6 +71,39 @@ export async function tripsRoute(request,db,path,session){
   const id=bpath[2]
   const h=session.household_id,u=session.user_id
   if(path==='/api/trips'&&request.method==='GET'){
+    const filters=listFilters(request.url)
+    if(filters?.invalid)return json({error:'invalid_input'},400)
+    if(filters){
+      const sort='COALESCE(start_on,created_at)'
+      const clauses=["household_id=?1","(visibility='household' OR created_by=?2)"]
+      const args=[h,u]
+      const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+      if(filters.scope==='active'){
+        clauses.push("status NOT IN ('completed','cancelled') AND (end_on IS NULL OR end_on>=?3)")
+        args.push(today)
+      }else if(filters.scope==='history'){
+        clauses.push("(status IN ('completed','cancelled') OR (end_on IS NOT NULL AND end_on<?3))")
+        args.push(today)
+      }
+      const window=monthWindow(filters.year,filters.month)
+      if(window){
+        const n=args.length+1
+        clauses.push(sort+'>=?'+n+' AND '+sort+'<?'+(n+1))
+        args.push(window.start,window.end)
+      }
+      if(filters.cursor){
+        const n=args.length+1
+        clauses.push('('+sort+'<?'+n+' OR ('+sort+'=?'+(n+1)+' AND id<?'+(n+2)+'))')
+        args.push(filters.cursor.date,filters.cursor.date,filters.cursor.id)
+      }
+      const sql=`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
+        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,
+        import_source_key AS importSourceKey,COALESCE(start_on,created_at) AS sortDate
+        FROM trips WHERE `+clauses.join(' AND ')+' ORDER BY '+sort+' DESC,id DESC LIMIT ?'+(args.length+1)
+      const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
+      const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
+      return json({items,nextCursor:rows.length>filters.limit&&last?last.sortDate+'|'+last.id:null})
+    }
     const {results}=await db.prepare(`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
         end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey
         FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
