@@ -1,7 +1,7 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
-import {dueOn,nextAnniversary,pendingCarryover,validateRule} from './recurrence.js'
+import {dueOn,nextAnniversary,pendingCarryover,validateRule,canCompleteEarly,addDays} from './recurrence.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -159,7 +159,11 @@ export async function lifeRoute(request,db,path,session){
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
     if(!rule)return json({error:'not_found'},404)
-    if(!dueOn(rule,body.date)){
+    // An early completion is allowed only for actual-completion-anchored
+    // intervals, on the current JST date. It is not an early due occurrence.
+    const currentJstDay=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+    const early=body.early===true&&body.status==='completed'&&body.date===currentJstDay&&canCompleteEarly(rule,body.date)
+    if(!dueOn(rule,body.date)&&!early){
       const [existing,lastResolved]=await db.batch([
         db.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?1 AND occurrence_on=?2')
           .bind(id,body.date),
@@ -203,11 +207,18 @@ export async function lifeRoute(request,db,path,session){
     let config={}
     try{config=JSON.parse(rule.repeat_config||'{}')}catch{}
     if(rule.repeat_type==='interval' && config.anchor==='completion'){
-      const days=body.status==='open'?0:config.days
-      const next=new Date(body.date+'T00:00:00Z')
-      next.setUTCDate(next.getUTCDate()+days)
-      statements.push(db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
-        .bind(next.toISOString().slice(0,10),stamp,id,session.household_id))
+      if(body.status==='completed'){
+        statements.push(db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
+          .bind(addDays(body.date,config.days),stamp,id,session.household_id))
+      }else if(body.status==='open'){
+        // Undo restores the schedule based on the most recent *earlier*
+        // completed occurrence, or the original baseline if none exists.
+        statements.push(db.prepare(`UPDATE routines SET next_due_on=date(
+          COALESCE((SELECT MAX(m.occurrence_on) FROM routine_marks m
+            WHERE m.routine_id=?1 AND m.occurrence_on<?2 AND m.completed_at IS NOT NULL),anchor_date),
+          '+'||?3||' days'),updated_at=?4 WHERE id=?1 AND household_id=?5`)
+          .bind(id,body.date,config.days,stamp,session.household_id))
+      }
     }
     if(statements.length>1)await db.batch(statements)
     else await st.run()
