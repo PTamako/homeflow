@@ -266,10 +266,19 @@ export async function lifeRoute(request,db,path,session){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session))return bad()
-    const fields=['visibility',...catalog[table].columns]
+    // Optimistic revision guard: changes from another device never overwrite an edit.
+    // Shopping and memories have no updated_at column in the original schema.
+    const revisioned=['routines','anniversaries','wishes','goals'].includes(table)
+    if(revisioned&&b.expectedUpdatedAt&&b.expectedUpdatedAt!==current.updated_at)
+      return json({error:'plan_edit_conflict',currentUpdatedAt:current.updated_at},409)
+    const fields=['visibility',...catalog[table].columns,...(revisioned?['updated_at']:[])]
+    const args=[visibilityOf(b,session),...vals,...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
+    const condition=revisioned?' AND updated_at=?'+(args.length+1):''
+    if(revisioned)args.push(current.updated_at)
     const sql='UPDATE '+table+' SET '+fields.map((c,i)=>c+'=?'+(i+1)).join(',')+
-      ' WHERE id=?'+(fields.length+1)+' AND household_id=?'+(fields.length+2)+' AND created_by=?'+(fields.length+3)
-    await db.prepare(sql).bind(visibilityOf(b,session),...vals,id,session.household_id,session.user_id).run()
+      ' WHERE id=?'+(fields.length+1)+' AND household_id=?'+(fields.length+2)+' AND created_by=?'+(fields.length+3)+condition
+    const written=await db.prepare(sql).bind(...args).run()
+    if(revisioned&&!written.meta?.changes)return json({error:'plan_edit_conflict'},409)
     return json({ok:true})
   }
   if(id&&request.method==='DELETE'){
