@@ -29,13 +29,19 @@ test('Japan calendar completion timestamp determines same-day checked visibility
  assert.equal(jstDayOf(null),'')
 })
 
-test('Today category tabs are based on actual rows, and wish/goal confirmation is accessible',()=>{
+test('Today category tabs show actual due rows while wish/goal actions live only in Plans',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  assert.match(app,/visibleTodayCategories=computed/)
  assert.match(app,/allToday\.value\.some\(row=>row\.kind===category\.id\)/)
  assert.match(app,/v-for="category in visibleTodayCategories"/)
- assert.match(app,/completeDuePlan\(row\.plan\)/)
- assert.match(app,/row.done\?'✓':'核验'/)
- assert.match(app,/ShoppingLedgerPicker/)
+ assert.match(app,/openPlans\(row\.plan\.kind,row\.plan\.id,row\.plan\.periodKey\|\|''/)
+ assert.doesNotMatch(app,/completeDuePlan/)
+ assert.doesNotMatch(app,/ShoppingLedgerPicker/)
+ const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
+ const finance=readFileSync(new URL('../src/components/FinancePanel.vue',import.meta.url),'utf8')
+ assert.match(life,/finishWish\(w\)/)
+ assert.match(life,/ShoppingLedgerPicker/)
+ assert.match(finance,/confirmGoalCompleted/)
+ assert.match(finance,/initialPeriodKey/)
  assert.doesNotMatch(app,/toggleShoppingPlan/)
 })

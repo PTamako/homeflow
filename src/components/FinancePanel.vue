@@ -5,7 +5,8 @@ import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
-const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string}>()
+const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;initialCompletedPeriods?:string[]}>()
+const emit=defineEmits<{completed:[completed:boolean,periodKey:string]}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
 const nextCursor=ref<string|null>(null),busy=ref(false),error=ref('')
@@ -18,6 +19,10 @@ const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
+const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
+const currentMarkKey=computed(()=>recurringGoal.value?String(periodKey.value):'once')
+const alreadyCompleted=computed(()=>completedPeriods.value.includes(currentMarkKey.value))
+const confirmBusy=ref(false)
 const goalMode=computed(()=>selected.value?.goal_mode||'once')
 const recurringGoal=computed(()=>kind.value==='goal'&&goalMode.value!=='once')
 const goalStartOn=computed(()=>String(selected.value?.start_on||''))
@@ -32,6 +37,18 @@ function defaultPeriodKey(){
 const actualWithAdjustment=computed(()=>total.value+Number(adjustment.value||0))
 const goalTotal=computed(()=>(recurringGoal.value?0:opening.value)+net.value+Number(adjustment.value||0))
 const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(selected.value?.target_amount||1)*100)))
+const goalPeriodDue=computed(()=>{
+  const g=selected.value,today=dateYmd()
+  if(!g||kind.value!=='goal')return false
+  if(!recurringGoal.value)return !!g.target_on&&g.target_on<=today
+  const key=String(periodKey.value)
+  if(!(goalMode.value==='monthly'?/^\d{4}-(0[1-9]|1[0-2])$/.test(key):/^\d{4}$/.test(key)))return false
+  const end=goalMode.value==='monthly'
+    ?new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5,7)),0)).toISOString().slice(0,10)
+    :key+'-12-31'
+  const last=g.target_on&&g.target_on<end?g.target_on:end
+  return !!last&&last<=today&&(!g.start_on||g.start_on<=last)
+})
 const signed=(amount:number)=>(amount<0?'−':amount>0?'+':'')+'¥'+Math.abs(Number(amount||0)).toLocaleString('ja-JP')
 
 const fmt=(amount:number)=>'¥'+Number(amount||0).toLocaleString('ja-JP')
@@ -42,6 +59,10 @@ function defaultDates(){
   end.value=dateYmd()
 }
 const ledgerErrors:Record<string,string>={
+  goal_not_funded:'家計簿核算金额尚未达到储值目标，本期继续保留未完成。',
+  ledger_verification_unavailable:'家計簿联动不可用，无法核验达标，完成状态没有改变。',
+  owner_required_for_ledger_verification:'需要家庭管理员核验储值目标。',
+  invalid_goal_period:'期间还未到期或日期不正确，请检查储值计划日期。',
   ledger_auth_failed:'家計簿联动密钥验证失败：两边密钥必须完全相同，仅使用英文字母、数字、_ 或 -。',
   ledger_source_token_missing:'家計簿生产环境未读取到联动密钥，请检查 Pages Secret 并重新部署。',
   ledger_source_db_unavailable:'家計簿接口读取数据库失败，请检查生产 D1 绑定与日志。',
@@ -60,6 +81,31 @@ async function api(path:string,method='GET',payload?:unknown):Promise<any>{
   const data=await r.json()
   if(!r.ok)throw Error(ledgerErrors[data.error]||data.error||'操作失败')
   return data
+}
+async function refreshCompletionMarks(){
+  if(kind.value!=='goal'||!target.value)return
+  try{
+    const result=await api('/goals/'+encodeURIComponent(target.value))
+    if(Array.isArray(result.completedPeriods))
+      completedPeriods.value=result.completedPeriods.filter((x:unknown)=>typeof x==='string')
+  }catch(e){error.value=(e as Error).message}
+}
+async function confirmGoalCompleted(){
+  if(kind.value!=='goal'||!selected.value||confirmBusy.value||!goalPeriodDue.value)return
+  confirmBusy.value=true;error.value=''
+  const key=currentMarkKey.value,wasCompleted=alreadyCompleted.value
+  try{
+    // Server always verifies actual Kakebo net plus the saved settings,
+    // regardless of any client-rendered progress bar.
+    await api('/plans/complete','POST',{
+      kind:'goal',id:target.value,periodKey:key,completed:!wasCompleted
+    })
+    if(wasCompleted)completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
+    else completedPeriods.value=[...completedPeriods.value,key]
+    notify(wasCompleted?'已撤销本期达标确认':'储值已核验达标，完成状态已保存')
+    emit('completed',!wasCompleted,key)
+  }catch(e){error.value=(e as Error).message}
+  finally{confirmBusy.value=false}
 }
 async function detect(){
   if(!props.owner)return
@@ -164,7 +210,7 @@ async function unlink(item:Item){
 }
 function resetGoalPeriod(){
   if(kind.value!=='goal')return
-  if(recurringGoal.value)periodKey.value=defaultPeriodKey()
+  if(recurringGoal.value)periodKey.value=props.initialPeriodKey||defaultPeriodKey()
   else if(goalStartOn.value){start.value=goalStartOn.value;end.value=dateYmd()}
 }
 watch([kind,target],()=>{
@@ -196,6 +242,9 @@ onMounted(()=>{
     if(s&&e&&Date.parse(e)-Date.parse(s)<=90*86400000){start.value=s;end.value=e}
   }
   void detect()
+  // Focused navigation already fetched completion marks by ID; avoid
+  // a duplicate D1 lookup when opening from Today.
+  if(kind.value==='goal'&&!props.initialPeriodKey)void refreshCompletionMarks()
 })
 </script>
 <template>
@@ -256,6 +305,17 @@ onMounted(()=>{
           </button>
           <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
+        <div v-if="kind==='goal'" class="goal-completion-panel">
+          <p v-if="alreadyCompleted" class="hint">这一{{ recurringGoal?'期':'次' }}储值已确认完成。</p>
+          <p v-else-if="goalPeriodDue" class="hint">
+            仅在服务器核对家計簿真实收支、已保存的调整额和期初金额后，才允许完成。
+          </p>
+          <p v-else class="hint">还没到本{{ recurringGoal?'期':'次' }}目标日期，暂不能确认达标。</p>
+          <button type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
+            {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销本期达标确认':'核验达标并完成' }}
+          </button>
+          <small class="hint">调整期间或金额后请先保存，再进行核验；不会修改家計簿原始账目。</small>
+        </div>
         <template v-if="kind==='trip'">
           <div v-for="row in visibleLinks" :key="row.linkId" class="line">
             <span>{{ row.entry?.date||'原账目已删除' }} · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
@@ -292,6 +352,10 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
 .adjustment-label{display:grid;gap:6px;margin:12px 0;font-size:12px;color:#607469}
 .adjustment-label input{width:100%;max-width:100%;box-sizing:border-box;border:1px solid #dce6dc;border-radius:10px;padding:9px;min-height:41px;background:#fff;color:#253a31}
 .finance-actions{display:flex;flex-wrap:wrap;gap:8px}
+.goal-completion-panel{display:grid;gap:8px;margin-top:14px;padding:12px;
+  background:#f4f9f5;border:1px solid #dbe9dd;border-radius:11px}
+.goal-completion-panel button{width:max-content;max-width:100%}
+.goal-completion-panel .hint{margin:0}
 .error{font-size:12px;color:#a94d37}.success{font-size:12px;color:#3f876a}
 @media(max-width:720px){.fields{grid-template-columns:minmax(0,1fr)}}
 </style>

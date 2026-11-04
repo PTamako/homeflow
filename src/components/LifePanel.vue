@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
+import {computed,ref,watch,nextTick,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import {upcomingWithinDays} from '../today-presentation.mjs'
@@ -13,8 +13,8 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string}>()
-const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string]}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanRequest?:number}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
@@ -25,6 +25,10 @@ let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
+const goalCompletionMarks=ref<string[]>([])
+const focusError=ref('')
+const focusedItemId=computed(()=>props.focusPlanId||'')
+const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value
 const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
@@ -62,7 +66,7 @@ const jstDate=(timestamp:string)=>{
  const time=Date.parse(iso)
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
-const planScope=ref<'active'|'history'>('active')
+const planScope=ref<'active'|'history'>(props.focusPlanScope||'active')
 // Task history is independently paginated; the dashboard task snapshot is not an archive.
 const oneTimePlans=ref<Row[]>([])
 function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
@@ -97,6 +101,12 @@ async function deleteOnce(t:Row){
 }
 watch(()=>props.focusPlanType,type=>{
   if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+},{immediate:true})
+watch(()=>props.focusPlanRequest,()=>{
+  if(props.mode!=='plans')return
+  const requested=props.focusPlanScope||'active'
+  if(planScope.value!==requested)planScope.value=requested
+  else void fetchMode()
 })
 
 const planYear=ref(''),planMonth=ref('')
@@ -136,7 +146,7 @@ function listPath(kind:string,cursor?:string|null){
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
-  target.value=append?[...target.value,...rows]:rows
+  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id))]:rows
 }
 async function loadMore(kind:string){
   const cursor=listCursors.value[kind]
@@ -228,10 +238,71 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
   if(!response.ok)throw Error(String(data?.error||'server_error'))
   return data
 }
+async function focusExactPlan(requestId:number){
+  const id=props.focusPlanId,kind=props.focusPlanType
+  if(!id||!['shopping','wish','goal','trip'].includes(kind||'')||
+    !/^[0-9a-f-]{36}$/i.test(id))return
+  try{
+    const endpoint=kind==='wish'?'wishes':kind==='goal'?'goals':kind==='trip'?'trips':'shopping'
+    const response=await api('/'+endpoint+'/'+encodeURIComponent(id))
+    if(requestId!==activeFetch||props.mode!=='plans')return
+    const item=kind==='trip'?response.trip:response.item
+    if(!item?.id)throw Error('没有找到对应计划')
+    const target=kind==='wish'?items:kind==='goal'?goals:kind==='shopping'?other:trips
+    if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
+    if(kind==='wish'){
+      const attached=response.linkedGoals||[]
+      for(const goal of attached)
+        if(!goals.value.some(row=>row.id===goal.id))goals.value.push(goal)
+    }
+    if(kind==='goal'){
+      goalCompletionMarks.value=Array.isArray(response.completedPeriods)?response.completedPeriods:[]
+      if(props.isOwner)financeDetail.value={kind:'goal',id}
+    }
+    if(kind==='shopping'&&props.isOwner)ledgerPickerId.value=id
+    if(kind==='trip'){
+      tripDetail.value=response.trip
+      tripProgress.value=response.progress||[]
+    }
+    await nextTick()
+    if(requestId===activeFetch&&props.focusPlanId===id)
+      document.getElementById('plan-item-'+id)?.scrollIntoView({block:'start',behavior:'instant'})
+  }catch(e){
+    if(requestId===activeFetch)focusError.value=(e as Error).message
+  }
+}
+async function finishWish(w:Row){
+  if(busy.value)return
+  if(!w.target_on||w.target_on>today()){
+    notify('心愿到期后才能确认实现，请先在计划中设置目标日期。','warning')
+    return
+  }
+  const completing=w.status!=='completed'
+  busy.value=true;error.value=''
+  try{
+    await api('/plans/complete','POST',{kind:'wish',id:w.id,completed:completing})
+    if(completing&&planScope.value!=='history')planScope.value='history'
+    else if(!completing&&planScope.value!=='active')planScope.value='active'
+    else await fetchMode()
+    notify(completing?'已验证条件并完成心愿':'心愿已恢复为进行中')
+  }catch(e){
+    const code=(e as Error).message
+    error.value=code==='goal_not_funded'?'关联储值未达标，请先核对记账本收支和调整额。':
+      code==='ledger_verification_unavailable'?'家計簿联动暂不可用，心愿没有被标记完成。':
+      code==='owner_required_for_ledger_verification'?'关联储值需家庭管理员核验。':code
+  }finally{busy.value=false}
+}
+async function goalFinished(completed:boolean,periodKey:string){
+  const nextScope=periodKey==='once'?(completed?'history':'active'):planScope.value
+  if(planScope.value!==nextScope)planScope.value=nextScope
+  else await fetchMode()
+  notify('储值核验结果已更新，可以返回今天查看。')
+}
 async function fetchMode(){
   const requestId=++activeFetch
   const currentMode=props.mode
   error.value=''
+  focusError.value=''
   listLoading.value=true
   if(currentMode==='memories'){
     items.value=[]
@@ -262,6 +333,7 @@ async function fetchMode(){
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
       })
+      await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
       const data=await api(path)
@@ -516,6 +588,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
+      <div v-if="focusedItemId" class="focused-plan-banner">
+        <div><b>已打开对应计划</b><small>请在下方关联账目或核验完成；处理后可返回今天。</small></div>
+        <button type="button" @click="emit('backToToday')">返回今天</button>
+      </div>
+      <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
       <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
@@ -600,6 +677,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿计划</h2>
           <template v-for="w in items" :key="w.id">
+            <div :id="'plan-item-'+w.id" :class="{'focused-plan-entry':isFocused(w)}">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
@@ -609,8 +687,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
             </SwipeActions>
+            <div v-if="canEdit(w)" class="plan-action-strip">
+              <button v-if="w.target_on&&w.target_on<=today()&&w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
+                type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
+                {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
+              <button v-if="linkedGoal(w)" type="button" class="life-link"
+                @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
+              <small v-if="linkedGoal(w)">关联储值需达到目标后，才能确认心愿。</small>
+            </div>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
+            <button v-if="isFocused(w)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!items.length" class="life-empty">{{ planScope==='active'?'暂无进行中的心愿':'暂无已完成的心愿' }}</p>
           <button v-if="listCursors.wishes" class="life-more" type="button" :disabled="pageBusy.wishes"
@@ -621,6 +709,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储值计划</h2>
           <p class="life-caption">储值方式支持累计目标、每月目标和每年目标。选定期间只读汇总家計簿收支，并可单独调整金额。</p>
           <template v-for="g in goals" :key="g.id">
+            <div :id="'plan-item-'+g.id" :class="{'focused-plan-entry':isFocused(g)}">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
@@ -636,7 +725,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='goal'&&financeDetail.id===g.id"
               :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
-              embedded-kind="goal" :embedded-id="g.id"/>
+              embedded-kind="goal" :embedded-id="g.id"
+              :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
+              :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
+              @completed="goalFinished"/>
+            <button v-if="isFocused(g)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!goals.length" class="life-empty">{{ planScope==='active'?'暂无进行中的储值计划':'暂无已完成的目标' }}</p>
           <button v-if="listCursors.goals" class="life-more" type="button" :disabled="pageBusy.goals"
@@ -647,6 +741,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
+            <div :id="'plan-item-'+s.id" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
@@ -661,6 +756,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
               @saved="changed" @close="ledgerPickerId=null"/>
+            <button v-if="isFocused(s)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!visibleShopping.length" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
           <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
@@ -671,6 +768,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='trip'" class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
+            <div :id="'plan-item-'+t.id" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
@@ -687,6 +785,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="trip" :embedded-id="t.id"/>
+            <button v-if="isFocused(t)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
+            </div>
           </template>
           <p v-if="!trips.length" class="life-empty">{{ planScope==='active'?'暂无进行中的旅行':'暂无已结束的旅行' }}</p>
           <button v-if="listCursors.trips" class="life-more" type="button" :disabled="pageBusy.trips"
@@ -824,6 +924,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.focused-plan-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 14px;margin-bottom:14px;background:#eef6ef;border:1px solid #cfe3d4;border-radius:13px}
+.focused-plan-banner>div{display:grid;gap:3px;min-width:0;flex:1}
+.focused-plan-banner b{font-size:13px;color:#365d47}
+.focused-plan-banner small{font-size:11px;color:#688779;line-height:1.6}
+.focused-plan-banner button,.life-return{border:0;border-radius:9px;
+  background:#43866a;color:#fff;padding:8px 10px;font-size:12px;white-space:nowrap}
+.focused-plan-entry{background:#f9fcfa;border-radius:12px;padding:2px 9px;
+  box-shadow:inset 0 0 0 1px #bbdbc5;scroll-margin-top:85px}
+.plan-action-strip{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 0}
+.plan-action-strip small{font-size:11px;color:#668776}
+.life-return{display:block;margin:10px 0 12px;background:#eaf3ec;color:#397e59}
+@media(max-width:480px){.focused-plan-banner{padding:10px;align-items:flex-start;flex-wrap:wrap}}
 .plan-filter-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 11px;scrollbar-width:none}
 .plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
  padding:8px 12px;min-height:36px;flex:none;font-size:12px}
