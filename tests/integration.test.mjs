@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -370,6 +370,56 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  assert.equal(petUpdated.status,200)
  const petList=await ask('/api/anniversaries/upcoming','GET',undefined,owner)
  assert.equal(petList.body.items.find(e=>e.id==='profile-birthday:'+pet.body.id)?.event_date,'2022-05-07')
+ sqlite.close()
+})
+
+test('reminder snooze is per-user, cross-day and preserved in portable backup',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ownerCreated=await ask('/api/auth/bootstrap','POST',{
+   loginName:'snooze-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(ownerCreated.status,201)
+ const owner=extractCookie(ownerCreated.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const nextDay=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10)
+ const yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10)
+ const task=await ask('/api/tasks','POST',{
+   title:'明天再提醒的测试任务',visibility:'household',
+   dueOn:yesterday,notes:'',remindEnabled:true},owner)
+ assert.equal(task.status,201,JSON.stringify(task.body))
+ const endpoint='/api/reminders?date='
+ const initial=await ask(endpoint+today,'GET',undefined,owner)
+ assert.equal(initial.status,200,JSON.stringify(initial.body))
+ assert.ok(initial.body.items.some(x=>x.kind==='task'&&x.id===task.body.id))
+ const snoozed=await ask('/api/reminders/snooze','POST',{
+   kind:'task',id:task.body.id,untilOn:today},owner)
+ assert.equal(snoozed.status,200,JSON.stringify(snoozed.body))
+ const after=await ask(endpoint+today,'GET',undefined,owner)
+ assert.equal(after.status,200)
+ assert.ok(!after.body.items.some(x=>x.kind==='task'&&x.id===task.body.id))
+ const tomorrow=await ask(endpoint+nextDay,'GET',undefined,owner)
+ assert.equal(tomorrow.status,200)
+ assert.ok(tomorrow.body.items.some(x=>x.kind==='task'&&x.id===task.body.id),
+   'snooze must never alter the underlying task due date')
+ const duplicate=await ask('/api/reminders/snooze','POST',{
+   kind:'task',id:task.body.id,untilOn:today},owner)
+ assert.equal(duplicate.status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reminder_snoozes').get().n,1)
+ const exportResult=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(exportResult.status,200,JSON.stringify(exportResult.body))
+ const saved=exportResult.body.records.reminderSnoozes
+ assert.equal(saved.length,1)
+ sqlite.exec('DELETE FROM reminder_snoozes')
+ const restore=await ask('/api/portable/restore','POST',{
+   dataset:'reminderSnoozes',items:saved,confirm:true},owner)
+ assert.equal(restore.status,200,JSON.stringify(restore.body))
+ assert.equal(restore.body.inserted,1)
+ const repeated=await ask('/api/portable/restore','POST',{
+   dataset:'reminderSnoozes',items:saved,confirm:true},owner)
+ assert.equal(repeated.status,200)
+ assert.equal(repeated.body.inserted,0)
  sqlite.close()
 })
 
