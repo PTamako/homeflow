@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {reactive,ref,computed,watch} from 'vue'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
@@ -85,10 +86,10 @@ async function save(){
   <label>名称<input v-model="form.title" required maxlength="150"/></label>
   <template v-if="kind==='shopping'">
    <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
-   <label>计划购买日<input v-model="form.dueOn" type="date"/></label>
+   <label>计划购买日<DateField v-model="form.dueOn" /></label>
   </template>
   <template v-else-if="kind==='anniversaries'">
-   <label>日期<input v-model="form.eventDate" type="date" required/></label>
+   <label>日期<DateField v-model="form.eventDate" required /></label>
    <label>重复<select v-model="form.repeatMode"><option value="yearly">每年</option><option value="monthly">每月</option><option value="once">一次</option></select></label>
    <label>备注<textarea v-model="form.note" maxlength="1000" rows="2"/></label>
   </template>
@@ -96,7 +97,7 @@ async function save(){
    <label>重复频率<select v-model="form.repeatType"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周（保留原设定星期）</option><option value="monthly">每月</option><option value="interval">间隔</option></select></label>
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
-   <label>起始日期<input v-model="form.anchorDate" type="date" required/></label>
+   <label>起始日期<DateField v-model="form.anchorDate" required /></label>
    <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启推送提醒（不影响今天的待办）</label>
    <label>关联对象（可选）
     <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
@@ -117,7 +118,7 @@ async function save(){
    <label>类型<select v-model="form.wishType"><option value="trip">旅行</option><option value="purchase">购物</option><option value="activity">体验</option><option value="other">其他</option></select></label>
    <label>状态<select v-model="form.status"><option value="wished">想做</option><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
    <label>预计金额（¥）<input v-model.number="form.estimatedAmount" type="number" min="0"/></label>
-   <label>目标日期（可选）<input v-model="form.targetOn" type="date"/></label>
+   <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
    <label>备注<textarea v-model="form.note" rows="2" maxlength="2000"/></label>
   </template>
   <template v-else-if="kind==='goals'">
@@ -128,19 +129,19 @@ async function save(){
    </select></label>
    <label>{{ form.goalMode==='monthly'?'每月目标金额':form.goalMode==='yearly'?'每年目标金额':'累计目标金额' }}（¥）
      <input v-model.number="form.targetAmount" type="number" min="1" required/></label>
-   <label>开始日期<input v-model="form.goalStartOn" type="date" required/></label>
+   <label>开始日期<DateField v-model="form.goalStartOn" required /></label>
    <label v-if="form.goalMode==='once'">期初储值额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
-   <label>结束／目标日期（可选）<input v-model="form.targetOn" type="date" :min="form.goalStartOn||undefined"/></label>
+   <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.goalStartOn||undefined" /></label>
    <small v-if="form.goalMode!=='once'">每个月／每年分别计算，不重复计入旧期初储值额；调整额按期间单独保存。</small>
   </template>
   <template v-else-if="kind==='memories'">
-   <label>发生日期<input v-model="form.happenedOn" type="date" required/></label>
+   <label>发生日期<DateField v-model="form.happenedOn" required /></label>
    <label>内容<textarea v-model="form.story" rows="3" maxlength="8000"/></label>
   </template>
   <template v-else-if="kind==='trips'">
    <label>目的地<input v-model="form.destination" maxlength="300"/></label>
-   <label>开始日期<input v-model="form.startOn" type="date"/></label>
-   <label>结束日期<input v-model="form.endOn" type="date"/></label>
+   <label>开始日期<DateField v-model="form.startOn" /></label>
+   <label>结束日期<DateField v-model="form.endOn" /></label>
    <label>预算（¥）<input v-model.number="form.budgetAmount" type="number" min="0"/></label>
    <label>状态<select v-model="form.status"><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
   </template>

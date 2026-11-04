@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
 const props=defineProps<{shoppingId:string;linkedId?:string|null}>()
@@ -83,8 +84,8 @@ onMounted(()=>{void check();void loadSettings()})
   </p>
   <template v-else>
    <div class="ledger-dates">
-    <label>开始日期<input v-model="start" type="date"/></label>
-    <label>结束日期<input v-model="end" type="date"/></label>
+    <label>开始日期<DateField v-model="start" /></label>
+    <label>结束日期<DateField v-model="end" /></label>
    </div>
    <button class="ledger-search" type="button" :disabled="busy" @click="search(false)">查询家計簿支出</button>
    <div v-for="entry in entries" :key="entry.id" class="ledger-entry">

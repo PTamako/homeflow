@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
@@ -84,9 +85,9 @@ watch(year,value=>{if(!value)month.value=''})
     <p class="sub">驱虫、疫苗、体重、就诊和日常护理都记录在这里；需要下次提醒时可设置日期。</p>
     <form class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
-      <label>完成日期<input v-model="eventDate" required type="date"/></label>
+      <label>完成日期<DateField v-model="eventDate" required /></label>
       <label v-if="kind==='weight'">体重（克）<input v-model.number="weight" required type="number" min="1" max="99999" placeholder="例如 5500"/></label>
-      <label v-if="kind!=='weight'">下次提醒（可选）<input v-model="nextDate" type="date" :min="eventDate"/></label>
+      <label v-if="kind!=='weight'">下次提醒（可选）<DateField v-model="nextDate" :min="eventDate" /></label>
       <label class="full">备注<input v-model="note" maxlength="1000" placeholder="使用药品、医院、身体情况等"/></label>
       <div class="full pet-form-actions">
         <button v-if="editingId" type="button" class="pet-cancel" :disabled="busy" @click="cancelEditing">取消修改</button>

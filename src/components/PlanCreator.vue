@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 
@@ -105,7 +106,7 @@ async function submit(){
        <option value="interval">自定义间隔</option>
      </select></label>
      <label>{{ form.repeatType==='once'?'计划日期':'起始日期' }}
-       <input v-model="form.date" type="date" required/></label>
+       <DateField v-model="form.date" required /></label>
      <template v-if="form.repeatType==='interval'">
       <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
       <label>计算方式<select v-model="form.intervalAnchor">
@@ -127,7 +128,7 @@ async function submit(){
     </template>
     <template v-else-if="kind==='shopping'">
      <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
-     <label>计划购买日期（可选）<input v-model="form.dueOn" type="date"/></label>
+     <label>计划购买日期（可选）<DateField v-model="form.dueOn" /></label>
      <p class="creator-tip">购买日期到来时会显示在「今天」。建好后可在购物详情关联家計簿支出和手动调整额。</p>
     </template>
     <template v-else-if="kind==='wish'">
@@ -136,10 +137,10 @@ async function submit(){
       <option value="activity">想体验</option><option value="other">其他</option>
      </select></label>
      <label>预估金额（日元）<input v-model.number="form.estimatedAmount" type="number" min="0" max="100000000000" required/></label>
-     <label>目标日期（可选）<input v-model="form.targetOn" type="date"/></label>
+     <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
      <label class="plan-checkbox"><input v-model="form.createSavingsGoal" type="checkbox"/>
       <span>同时创建关联的储值计划 <small>目标金额默认等于心愿预估金额，可之后修改</small></span></label>
-     <label v-if="form.createSavingsGoal">储值开始日期<input v-model="form.goalStartOn" type="date" required/></label>
+     <label v-if="form.createSavingsGoal">储值开始日期<DateField v-model="form.goalStartOn" required /></label>
     </template>
     <template v-else-if="kind==='goal'">
      <label>储值方式<select v-model="form.goalMode">
@@ -149,16 +150,16 @@ async function submit(){
      </select></label>
      <label>{{ form.goalMode==='monthly'?'每月目标金额':form.goalMode==='yearly'?'每年目标金额':'累计目标金额' }}（日元）
        <input v-model.number="form.targetAmount" type="number" min="1" max="100000000000" required/></label>
-     <label>开始日期<input v-model="form.startOn" type="date" required/></label>
+     <label>开始日期<DateField v-model="form.startOn" required /></label>
      <label v-if="form.goalMode==='once'">期初储值额（日元）
        <input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
-     <label>结束／目标日期（可选）<input v-model="form.targetOn" type="date" :min="form.startOn||undefined"/></label>
+     <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.startOn||undefined" /></label>
      <p class="creator-tip">按日本日历月或自然年度统计。首月／首年从开始日期计算；每个期间单独保存调整额。家計簿只读汇总，不等于真实银行存款余额。</p>
     </template>
     <template v-else-if="kind==='trip'">
      <label>目的地<input v-model.trim="form.destination" maxlength="300" placeholder="例如：上海"/></label>
-     <label>出发日期（可选）<input v-model="form.startDate" type="date"/></label>
-     <label>结束日期（可选）<input v-model="form.endDate" type="date"/></label>
+     <label>出发日期（可选）<DateField v-model="form.startDate" /></label>
+     <label>结束日期（可选）<DateField v-model="form.endDate" /></label>
      <label>旅行预算（日元）<input v-model.number="form.budgetAmount" type="number" min="0" max="100000000000"/></label>
      <p class="creator-tip">创建后可以编辑旅行信息、导入详细行程，并在旅行详情关联家計簿支出和调整额。</p>
     </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './DateField.vue'
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
@@ -242,8 +243,8 @@ onMounted(()=>{
           <small>本期计算范围：{{ start||'—' }} ～ {{ end||'—' }}；首期从计划开始日期算起。</small>
         </div>
         <div v-else class="fields">
-          <label>起始日期<input v-model="start" type="date" :min="kind==='goal'?goalStartOn||undefined:undefined"/></label>
-          <label>结束日期<input v-model="end" type="date" :min="start||undefined"/></label>
+          <label>起始日期<DateField v-model="start" :min="kind==='goal'?goalStartOn||undefined:undefined" /></label>
+          <label>结束日期<DateField v-model="end" :min="start||undefined" /></label>
         </div>
         <div class="finance-actions">
           <button type="button" :disabled="busy" @click="saveSettings">保存{{ recurringGoal?'本期':'' }}调整额{{ kind==='goal'&&!recurringGoal?'和期间':'' }}</button>

@@ -54,3 +54,43 @@ test('native date controls fit inside narrow cards across every form',()=>{
   const shopping=readFileSync(new URL('../src/components/ShoppingLedgerPicker.vue',import.meta.url),'utf8')
   assert.match(shopping,/@media\(max-width:600px\)\s*\{\.ledger-dates\s*\{grid-template-columns:minmax\(0,1fr\)/)
 })
+
+test('all 31 date fields render inside the shared iOS-safe date control',()=>{
+  const component=readFileSync(new URL('../src/components/DateField.vue',import.meta.url),'utf8')
+  assert.match(component,/type="date"/)
+  assert.match(component,/:value="modelValue \?\? ''"/)
+  assert.match(component,/:min="min"/)
+  assert.match(component,/:max="max"/)
+  assert.match(component,/:required="required"/)
+  assert.match(component,/@change="update"/)
+  assert.match(component,/position:relative/)
+  assert.match(component,/overflow:hidden/)
+  assert.match(component,/position:absolute/)
+  assert.match(component,/inline-size:100%/)
+  assert.match(component,/min-inline-size:0/)
+  assert.match(component,/选择日期/)
+  const paths=[
+    '../src/App.vue',
+    '../src/components/LifePanel.vue',
+    '../src/components/LifeItemEditor.vue',
+    '../src/components/PlanCreator.vue',
+    '../src/components/FinancePanel.vue',
+    '../src/components/ProfileEditor.vue',
+    '../src/components/PetHealthPanel.vue',
+    '../src/components/ShoppingLedgerPicker.vue'
+  ]
+  let fields=0
+  for(const path of paths){
+    const file=readFileSync(new URL(path,import.meta.url),'utf8')
+    assert.match(file,/import DateField from /,path+' imports the shared component')
+    assert.doesNotMatch(file,/<input\b[^>]*\btype="date"/,path+' must not contain an unbounded native picker')
+    const controls=[...file.matchAll(/<DateField\b[^>]*\/>/g)]
+    assert.ok(controls.length>0,path+' contains at least one date control')
+    for(const [tag] of controls)assert.match(tag,/v-model="/)
+    fields+=controls.length
+  }
+  assert.equal(fields,31,'all existing date inputs were migrated')
+  const sw=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8')
+  assert.match(sw,/homeflow-shell-v2/,'new service worker invalidates old cached shell')
+  assert.match(sw,/fetch\(req,\{cache:'no-store'\}\)/,'navigation must request current HTML')
+})
