@@ -10,12 +10,12 @@ export async function remindersRoute(request,db,session) {
   const hid=session.household_id,u=session.user_id
   const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
-    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
+    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.completed_at,m.skipped_at FROM routine_marks m
       JOIN routines r ON r.id=m.routine_id WHERE r.household_id=?1 AND m.occurrence_on=?2
       AND (r.visibility='household' OR r.created_by=?3)`).bind(hid,date,u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
-      AND completed_at IS NULL AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3)
+      AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3)
       ORDER BY due_on LIMIT 100`).bind(hid,date,u),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND status IN ('planning','active')
