@@ -64,7 +64,7 @@ test('settings combines current account, push control, reminders and logout',()=
  const push=readFileSync(new URL('../src/components/PushPanel.vue',import.meta.url),'utf8')
  const styles=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
  const menu=app.slice(app.indexOf('class="settings-popover"'),app.indexOf('<span v-else class="phase">'))
- assert.match(menu,/当前账号[\s\S]*?<PushPanel \/>[\s\S]*?<ImportantReminders[\s\S]*?退出登录/)
+ assert.match(menu,/当前账号[\s\S]*?<PushPanel[^>]*\/>[\s\S]*?<ImportantReminders[\s\S]*?退出登录/)
  assert.match(push,/开启推送/)
  assert.match(push,/关闭推送/)
  assert.match(push,/enabled\?disable\(\):enable\(\)/)
