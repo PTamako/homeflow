@@ -21,6 +21,9 @@ const queries=[
   ['anniversaries',"SELECT * FROM anniversaries WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['routines',"SELECT * FROM routines WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['shopping',"SELECT * FROM shopping_items WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
+  ['shoppingExpenseLinks',"SELECT l.shopping_id,l.external_entry_id FROM shopping_expense_links l "+
+    "JOIN shopping_items s ON s.id=l.shopping_id AND s.household_id=l.household_id "+
+    "WHERE l.household_id=?1 AND s.created_by=?2 ORDER BY l.shopping_id,l.external_entry_id LIMIT 501"],
   ['memories',"SELECT * FROM memories WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['petHealth',"SELECT * FROM pet_health_records WHERE household_id=?1 AND created_by=?2 AND deleted_at IS NULL ORDER BY created_at LIMIT 501"],
   ['routineMarks',"SELECT m.* FROM routine_marks m JOIN routines r ON r.id=m.routine_id "+
@@ -50,7 +53,7 @@ const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','planCompletionMarks','shoppingExpenseLinks'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   switch(key){
@@ -180,6 +183,14 @@ function normalized(key,r,h,u) {
         "SELECT ?1,?2,?3,?4,?5 WHERE EXISTS(SELECT 1 FROM goals WHERE id=?2 AND household_id=?1 AND created_by=?5 "+
         "AND ((goal_mode='monthly' AND length(?3)=7) OR (goal_mode='yearly' AND length(?3)=4)))",
         [h,r.goal_id,r.period_key,r.adjustment_amount,u]]
+    }
+    case 'shoppingExpenseLinks': {
+      if(!id(r.shopping_id)||!/^[1-9]\d{0,11}$/.test(String(r.external_entry_id)))return null
+      return ["INSERT OR IGNORE INTO shopping_expense_links "+
+        "(household_id,shopping_id,external_entry_id,linked_by) "+
+        "SELECT ?1,?2,?3,?4 WHERE EXISTS(SELECT 1 FROM shopping_items "+
+        "WHERE household_id=?1 AND id=?2 AND created_by=?4)",
+        [h,r.shopping_id,String(r.external_entry_id),u]]
     }
     case 'planCompletionMarks': {
       if(!['wish','goal'].includes(r.plan_type)||!id(r.plan_id)||
