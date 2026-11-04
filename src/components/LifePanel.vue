@@ -554,7 +554,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='routine'" class="life-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
           <p class="life-caption">一次性任务和重复任务都由上方「新增计划」创建。到期当天自动显示在「今天」。</p>
-          <template v-for="r in routines" :key="r.id">
+          <div v-for="r in routines" :key="r.id" class="routine-list-item">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
               <div class="life-row" :class="{'detail-completed':r.enabled===0,'routine-has-early-complete':planScope==='active'&&canCompleteRoutineEarly(r)}">
@@ -568,7 +568,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
-          </template>
+          </div>
           <template v-for="t in oneTimePlans" :key="t.id">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
@@ -839,7 +839,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
-.life-row.routine-has-early-complete{border-bottom:0;padding-bottom:5px}
+.routine-list-item{min-width:0;border-bottom:1px solid #f0eee9}
+.routine-list-item .life-row{border-bottom:0}
+.life-row.routine-has-early-complete{padding-bottom:5px}
 .routine-early-complete{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;margin:8px 0 12px;padding:7px 9px;border:1px solid #e1eae3;border-radius:12px;background:#f5f8f5;box-sizing:border-box}
 .routine-early-complete small{flex:1;min-width:0;color:#82948b;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .routine-early-complete button{flex:none;font-size:12px;padding:8px 10px}

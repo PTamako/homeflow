@@ -107,5 +107,14 @@ test('interval plan shows next due date and early-complete button together in a 
   }
   assert.match(life,/\.routine-early-complete small\{[^}]*min-width:0/)
   assert.match(life,/\.routine-early-complete button\{[^}]*flex:none/)
-  assert.match(life,/\.life-row\.routine-has-early-complete\{border-bottom:0/)
+  assert.match(life,/<div v-for="r in routines" :key="r.id" class="routine-list-item">/)
+  assert.match(life,/\.routine-list-item\{[^}]*border-bottom:1px solid #f0eee9/)
+  assert.match(life,/\.routine-list-item \.life-row\{border-bottom:0\}/)
+  assert.match(life,/\.life-row\.routine-has-early-complete\{padding-bottom:5px\}/)
+  // The divider belongs beneath the entire item, including the early-complete box.
+  const firstRoutine=life.indexOf('<div v-for="r in routines" :key="r.id" class="routine-list-item">')
+  const firstOneTime=life.indexOf('<template v-for="t in oneTimePlans"',firstRoutine)
+  const routineBlock=life.slice(firstRoutine,firstOneTime)
+  assert.ok(routineBlock.includes('class="routine-early-complete"'))
+  assert.ok(routineBlock.trimEnd().endsWith('</div>'))
 })
