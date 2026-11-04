@@ -30,8 +30,8 @@ export async function petsRoute(request,db,path,session){
      }
      const sql='SELECT id,record_type AS recordType,event_on AS eventOn,'+
        'weight_grams AS weightGrams,note,next_due_on AS nextDueOn,'+
-       'created_by AS createdBy,visibility,created_at AS createdAt,
-       source_routine_id AS sourceRoutineId FROM pet_health_records WHERE '+
+       'created_by AS createdBy,visibility,created_at AS createdAt,'+
+       'source_routine_id AS sourceRoutineId FROM pet_health_records WHERE '+
        clauses.join(' AND ')+' ORDER BY event_on DESC,id DESC LIMIT ?'+(args.length+1)
      const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
      const records=(results||[]).slice(0,filters.limit)
