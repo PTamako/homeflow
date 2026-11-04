@@ -82,6 +82,24 @@ export async function financeRoute(request,env,path,session){
   }
   if(!ready(env))return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
+  if(path==='/api/finance/settings'&&request.method==='PUT'){
+    const body=await readBody(request)
+    const kind=body?.type,id=body?.targetId,amount=body?.adjustmentAmount
+    if(!await financeTarget(db,h,user,kind,id))return json({error:'not_found'},404)
+    const start=kind==='goal'?(body?.periodStart||null):null
+    const end=kind==='goal'?(body?.periodEnd||null):null
+    if(!validAdjustment(amount)||Boolean(start)!==Boolean(end)||
+      (start&&!validPeriod(start,end)))return json({error:'invalid_input'},400)
+    await db.prepare(`INSERT INTO finance_target_settings
+      (household_id,target_type,target_id,adjustment_amount,period_start,period_end,updated_by,updated_at)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,CURRENT_TIMESTAMP)
+      ON CONFLICT(household_id,target_type,target_id) DO UPDATE SET
+      adjustment_amount=excluded.adjustment_amount,
+      period_start=excluded.period_start,period_end=excluded.period_end,
+      updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`)
+      .bind(h,kind,id,amount,start,end,user).run()
+    return json({ok:true,adjustmentAmount:amount,periodStart:start,periodEnd:end})
+  }
   if(path==='/api/finance/settings'&&request.method==='GET'){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
     const item=await financeTarget(db,h,user,kind,id)
