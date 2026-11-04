@@ -113,6 +113,20 @@ const planYear=ref(''),planMonth=ref('')
 const memoryYear=ref(''),memoryMonth=ref('')
 const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
+const recapYear=ref(today().slice(0,4)),recapMonth=ref(today().slice(5,7))
+const recap=ref<null|{month:string;total:number;counts:Record<string,number>;note:string}>(null)
+const recapBusy=ref(false),recapError=ref('')
+const recapLabels:Record<string,string>={tasks:'一次性任务',routines:'定期事项',shopping:'购物计划',wishes:'实现心愿',savings:'储值核验',trips:'完成旅行'}
+async function loadRecap(){
+ if(recapBusy.value)return
+ recapBusy.value=true;recapError.value='';recap.value=null
+ try{
+  const data=await api('/plans/summary?month='+encodeURIComponent(recapYear.value+'-'+recapMonth.value))
+  recap.value=data
+ }catch(e){recapError.value=(e as Error).message}
+ finally{recapBusy.value=false}
+}
+watch([recapYear,recapMonth],()=>{recap.value=null;recapError.value=''})
 const listCursors=ref<Record<string,string|null>>({})
 const pageBusy=ref<Record<string,boolean>>({})
 const pageLimit=5
@@ -617,6 +631,27 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
       <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
+      <details class="life-card plan-recap">
+        <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
+        <p class="life-caption">只在点击生成时读取当月完成记录，不额外查询家計簿，也不会在后台每天写入统计。</p>
+        <div class="plan-recap-controls">
+          <label>年份<select v-model="recapYear" aria-label="回顾年份">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
+          </select></label>
+          <label>月份<select v-model="recapMonth" aria-label="回顾月份">
+            <option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
+          </select></label>
+          <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
+        </div>
+        <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
+        <div v-if="recap" class="plan-recap-results">
+          <strong>{{ recap.month }} · 已完成／核验 {{ recap.total }} 次</strong>
+          <div v-for="(label,key) in recapLabels" :key="key" class="plan-recap-line">
+            <span>{{ label }}</span><b>{{ recap.counts[key]||0 }} 次</b>
+          </div>
+          <small>{{ recap.note }}</small>
+        </div>
+      </details>
       <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
           {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'shopping',label:'购物'},
@@ -970,6 +1005,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.plan-recap{margin:12px 0;padding:12px 14px}
+.plan-recap summary{cursor:pointer;display:flex;align-items:center;gap:7px;font-size:14px;font-weight:650}
+.plan-recap-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:10px}
+.plan-recap-controls label{display:grid;gap:4px;font-size:12px;min-width:80px;flex:1}
+.plan-recap-controls select{width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:8px;border-radius:9px}
+.plan-recap-controls button{min-height:40px;white-space:nowrap}
+.plan-recap-results{display:grid;gap:8px;margin-top:12px;padding:9px;border-radius:10px;background:#f5faf6}
+.plan-recap-results strong{font-size:14px}.plan-recap-results small{font-size:11px;color:#708376;line-height:1.6}
+.plan-recap-line{display:flex;justify-content:space-between;gap:12px;font-size:12px;border-top:1px solid #e3eee5;padding-top:6px}
 .plan-memory-form{margin:8px 0 12px;padding:10px;border:1px solid #dbe8dd;border-radius:10px;background:#f5faf6}
 .plan-memory-form textarea{min-width:0;max-width:100%;box-sizing:border-box;width:100%}
 .plan-memory-actions{display:flex;justify-content:flex-end;gap:8px}
