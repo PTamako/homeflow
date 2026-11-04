@@ -92,7 +92,7 @@ async function saveSettings(){
     await api('/finance/settings','PUT',{type:kind.value,targetId:target.value,
       adjustmentAmount:amount,periodStart:kind.value==='goal'?start.value:null,
       periodEnd:kind.value==='goal'?end.value:null})
-    message.value='调整额和设置已保存，不会修改家計簿'
+    notify('调整额和设置已保存，不会修改家計簿')
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
