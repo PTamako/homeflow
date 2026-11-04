@@ -52,6 +52,7 @@ async function target(db,householdId,userId,kind,id){
   return db.prepare('SELECT id FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
     .bind(id,householdId,userId).first()
 }
+// Per-target adjustments are optional and do not alter the ledger.
 const validAdjustment=n=>Number.isSafeInteger(n)&&Math.abs(n)<=100000000000
 const validPeriod=(start,end)=>dateOk(start)&&dateOk(end)&&end>=start&&
   Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z')<=3660*86400000
