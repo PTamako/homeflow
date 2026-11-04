@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {onMounted,ref} from 'vue'
-import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 const available=ref(false),enabled=ref(false),busy=ref(false),message=ref('')
