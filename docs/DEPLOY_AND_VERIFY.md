@@ -1,33 +1,75 @@
-# HomeFlow · 安全配置与上线验收
+# HomeFlow · 实际上线配置与验收（2026-11-04）
 
-## 已有资源
-- GitHub 私有仓库 PTamako/homeflow；Cloudflare Worker homeflow（生产）和 homeflow-preview（预览）。
-- 独立 D1 homeflow 与 homeflow-preview；实际建表并校验外键。
-- 本项目不需要 Cloudflare Workers AI 付费服务，也不会写入家計簿数据库。
+## 已核实的资源
 
-## 第一个账号：Bootstrap
-HomeFlow 初始无默认密码、无预置家庭账号。首次使用前，用户在 Cloudflare Workers → homeflow → Settings → Variables and Secrets 新建 encrypted Secret，名称 HOMEFLOW_BOOTSTRAP_SECRET，值为至少 32 字符的安全随机字符串。生产与预览不要复用。
-可在你自己的本地终端运行：node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-不要把这个值放入聊天、GitHub PR、仓库文件。然后在 HomeFlow 首页输入密钥创建 Owner。两人登录账号不共用密码；Owner 创建一次性邀请码给第二人。
+- 生产：https://homeflow.yupan6706.workers.dev
+- GitHub：`PTamako/homeflow`（私有）；
+- Worker：`homeflow`，D1 Binding `DB` → `homeflow`。
+- Preview Worker：`homeflow-preview`，D1 Binding `DB` → `homeflow-preview`。
+- 生产/预览数据库已完成迁移 0001–0007（REST API 手动顺序执行）。**Wrangler 的迁移日志与实际状态不一致，未经重新核对不要重放 0001–0007。**
+- `HOMEFLOW_BOOTSTRAP_SECRET` 已在生产 Worker 发现（只验证名称，绝不读取其内容）。
+- 生产 Cron 为 `0 23 * * *` UTC，即日本时间每日 08:00。
+- GitHub Actions 构建、部署实际成功；新版本不自动触碰 `kakebo_jp` D1。
 
-## Web Push（PWA 锁屏提醒）
-- 需要 VAPID_PUBLIC_KEY 和 VAPID_PRIVATE_JWK 两个 Cloudflare Worker Secret；目前代码缺失时会安全禁用推送。
-- 在本地运行 node scripts/generate-vapid.mjs，根据终端输出分别设置 Secrets；不要复制私钥到仓库或聊天。
-- 生产 Cron 默认 UTC 23:00，也就是日本时间 08:00；预览 Cron 关闭。
-- iPhone/iPad 需将 HomeFlow 添加至主屏幕，然后在应用内点击开启锁屏通知并授权。
-- Web Push 必须用真实手机订阅测试；自动化加密测试不等于已送达。
+## 1. 首次家庭登录（必须由账号本人完成）
 
-## 图片存储
-- R2 当前账号尚未启用；本机 IndexedDB 相册可保存多张压缩照片，并单张导出。
-- 若启用 R2，需要自行确认计费条款并将私有 Bucket 绑定为 MEDIA。未配置前，云照片接口返回 503，不会将照片存 D1。
-- 移除本机应用或清理 Safari 网站数据可能删除本地照片；重要照片请保留原图或及时导出。
+生产 D1 目前尚无家庭/用户记录。打开首页，选择“创建我们的家”，自行设置登录名、≥12 位密码、昵称、家庭名称；在表单中输入你已设置的 `HOMEFLOW_BOOTSTRAP_SECRET`，创建 Owner。**不要把启动密钥、登录密码发送到聊天、GitHub 或截图。**
 
-## 家計簿联动
-- 当前仅有目标金额、预留金额与 finance_links 数据模型，不表示已自动同步家計簿真实支出。
-- 只有在家計簿另行提供有明确授权的最小权限只读 API 后才能自动联动；不允许直接绑定其生产 D1 或共享会话 Cookie。
+创建后在“家庭”页面生成一次性邀请码，由另一位家庭成员使用独立登录名、密码加入。两人必须分别测试：私人的待办与回忆不可互看、共享事项可共同查看。
 
-## 回归验收
-- GitHub PR 自动测试包括真实 SQLite 两人家庭权限、官方祝日工作日排除、旅行格式解析与 AES128GCM Push 加密。
-- Cloudflare Worker 与 D1 独立环境检查必须通过；生产迁移先在预览验证。
-- iPhone Safari/主屏幕、iPad、离线编辑和相册恢复仍需真机验证；权限、数据恢复、锁屏投递不能只凭 CI 绿色就标记完成。
-- D1 迁移 0001–0006 当前通过 Cloudflare API 按顺序应用；Wrangler 的 d1_migrations 跟踪表尚未补齐，不要贸然从头运行 wrangler d1 migrations apply --remote。
+## 2. iPhone/iPad 锁屏 Web Push
+
+1. 在你信任的本地电脑上运行 `node scripts/generate-vapid.mjs`，生成对应的一对 VAPID 密钥。
+2. Cloudflare Dashboard → Workers → `homeflow` → Settings → Variables and Secrets，分别以加密 Secret 添加 `VAPID_PUBLIC_KEY` 和 `VAPID_PRIVATE_JWK`。**私钥不要提交 GitHub，也不要发送到聊天。**
+3. 将 HomeFlow 从 iPhone Safari 添加到主屏幕，使用主屏幕 PWA 打开，在“今天”点击“开启锁屏通知”并授权。
+4. 创建一个真实到期事项，核实当日 08:00 JST 的通知与应用内提醒均可见。
+
+尚未配置 VAPID 时推送会安全禁用；Cron 的存在不代表已经发送过通知。
+
+## 3. 私有云照片（R2 仍未启用）
+
+截至检查时，Cloudflare R2 API 返回 `10042 Please enable R2 through the Cloudflare Dashboard`。请先自行确认启用要求和结算条款，不能通过本项目自动付费。
+
+若决定启用：
+1. Cloudflare → R2 → 创建 **私有** Bucket，例如 `homeflow-private-photos`（不要配置公开域名）。
+2. 在 `wrangler.toml` 中为生产 Worker 增加：
+   ```toml
+   [[r2_buckets]]
+   binding = "MEDIA"
+   bucket_name = "homeflow-private-photos"
+   ```
+3. Preview 应绑定另外一个**独立**的测试 Bucket，或继续不启用 Preview 图片上传。
+4. 部署后在两台设备测试私人/共享回忆照片的访问控制、上传、删除和容量限制。
+5. R2 费用额度、滥用与备份策略请在启用前确认。
+
+未启用时，本机照片通过 IndexedDB 保存，并可在“家庭 → 备份与恢复”下载包含当前设备照片的 ZIP。清理网站数据或卸载 PWA 可能删除本机照片，请自行保留重要原图。
+
+## 4. 家計簿只读联动（已部署代码，仍需独立授权）
+
+`PTamako/kakebo_jp` PR #241 已合并并部署，新增 `GET /api/homeflow-ledger`，但**默认关闭**。
+
+由你自己在安全终端生成随机长度 ≥32 的独立令牌（不要复用家計簿登录口令）：
+- Cloudflare Pages 项目 `kakeibo` → 生产环境加密 Secret：`HOMEFLOW_LEDGER_READ_TOKEN`。
+- Cloudflare Worker `homeflow` → 生产环境加密 Secret：`KAKEBO_LEDGER_READ_TOKEN`（值与上面的只读令牌一致）。
+- `KAKEBO_LEDGER_API_URL` 已在生产环境固定为 `https://kakeibo-f17.pages.dev/api/homeflow-ledger`；**Preview 不能连接生产账本**。
+
+完成授权后，HomeFlow Owner 在“计划 → 家計簿”选择旅行/目标和日期范围，逐笔确认关联实际支出。HomeFlow 只保存外部明细 ID；不修改、复制或重分类家計簿明细。第二位家庭账号无权访问完整账目。
+
+## 5. 离线、数据导出及恢复
+
+- 离线新增待办先保存到当前设备 IndexedDB，恢复网络后用幂等请求 ID 同步；编辑前检测更新版本，出现冲突时不自动覆盖另一台设备修改。
+- “家庭 → 下载完整本机备份 ZIP”包含当前账号自行创建的服务端数据以及此设备本机照片；不包含密码、登录会话、未同步任务、另一账号私密记录及另一设备独有的照片。
+- 恢复前先服务端验证，按依赖顺序分批导入，已存在 ID 不覆盖；中断可重试。ZIP 最大约 55 MB；超过上限请先单张导出照片。
+- 因为数据可能保存在不同设备、账户，**夫妻两位需要分别备份**，每台设备的本机照片应分别保存。真正完整的跨设备照片备份仍需启用云相册并验收。
+
+## 6. 最终验收门槛
+
+- [x] GitHub CI、D1 0001–0007 迁移、生产部署与两套 DB Binding。
+- [x] 单元/真实 SQLite 双账号私人/共享权限、离线幂等、数据恢复和照片 API 权限测试。
+- [ ] 真人首次创建 Owner + 邀请第二位家人 + 两人相互隐私隔离实测。
+- [ ] iPhone/iPad PWA 安装、离线恢复、页面布局和备份恢复实测。
+- [ ] VAPID Secret 配置、Web Push 手机授权与实际送达。
+- [ ] R2 账号启用/桶绑定和跨设备私有图片验收（如用户选择启用）。
+- [ ] 家計簿两端只读 Secret 配置及真实交易 ID 关联验收。
+
+**CI 绿灯不能替代上述真机、授权或第三方资源启用。**
