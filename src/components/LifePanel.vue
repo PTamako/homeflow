@@ -3,6 +3,7 @@ import DateField from './DateField.vue'
 import {computed,ref,watch,onBeforeUnmount,onMounted} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
+import {upcomingWithinDays} from '../today-presentation.mjs'
 import FinancePanel from './FinancePanel.vue'
 import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
@@ -18,7 +19,7 @@ const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
+const error=ref(''),busy=ref(false)
 const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
@@ -32,6 +33,7 @@ const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=re
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
 const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
+const todayAnniversaries=computed<Row[]>(()=>upcomingWithinDays(items.value,displayedDay.value,30))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
 const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId||item.creatorUserId===props.userId
@@ -242,10 +244,6 @@ async function fetchMode(){
   }catch(e){if(requestId===activeFetch)error.value=(e as Error).message}
   finally{if(requestId===activeFetch)listLoading.value=false}
 }
-async function loadReminders(){
-  try{const data=await api('/reminders');dueItems.value=data.items||[];remindersLoaded.value=true}
-  catch(e){error.value=(e as Error).message}
-}
 async function update(action:()=>Promise<any>,successMessage='已保存'){
   error.value='';busy.value=true
   try{await action();await fetchMode();notify(successMessage)}
@@ -429,20 +427,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     <PageToast :toast="toast" />
 
     <template v-if="mode==='today'">
-      <section class="life-card">
-        <div class="life-row"><b class="life-heading"><AppIcon name="bell" :size="19" /> 重要提醒</b><button class="life-link" @click="loadReminders">查看今天的提醒</button></div>
-        <div v-if="remindersLoaded">
-          <p v-if="!dueItems.length" class="life-empty">今天暂无新的重要提醒</p>
-          <div v-for="x in dueItems" :key="x.kind+x.id" class="life-row">
-            <span>{{ x.title }}</span><small>{{ x.dueOn }}</small>
-          </div>
-        </div>
-      </section>
-      <!-- The recurring checklist lives in App.vue's unified Today list. -->
+      <!-- Extra reminders are pinned above today's checklist in App.vue; here only anniversaries remain. -->
         <section class="life-card">
-          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
-          <p v-if="!items.length" class="life-empty">暂无即将到来的纪念日，可在「家庭」添加。</p>
-          <div v-for="e in items.slice(0,8)" :key="e.id" class="life-row upcoming-anniversary">
+          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 未来 30 天的纪念日</h2>
+          <p v-if="listLoading" class="life-empty" role="status">正在读取纪念日…</p>
+          <p v-else-if="!todayAnniversaries.length" class="life-empty">未来 30 天没有纪念日，可以在「家庭」查看全部重要日子。</p>
+          <div v-for="e in (listLoading?[]:todayAnniversaries.slice(0,8))" :key="e.id" class="life-row upcoming-anniversary">
             <div class="anniversary-subject"><b>{{ e.title }}</b>
               <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
             </div>
