@@ -2,23 +2,41 @@ import {json,validDate,readBody} from './security.js'
 import {daysBetween,dueOn,nextAnniversary} from './recurrence.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 const stringDate=d=>typeof d==='string'&&d.length===10&&validDate(d)
+const addDays=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+const validLead=n=>[0,1,3,7].includes(n)
 export async function remindersRoute(request,db,session) {
   const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
   const url=new URL(request.url)
+  if(url.pathname==='/api/reminders/preferences'){
+    if(request.method!=='PUT')return json({error:'method_not_allowed'},405)
+    const body=await readBody(request)
+    if(!validLead(body?.advanceDays))return json({error:'invalid_input'},400)
+    await db.prepare('INSERT INTO reminder_preferences (household_id,user_id,advance_days) VALUES(?1,?2,?3) '+
+      'ON CONFLICT(household_id,user_id) DO UPDATE SET '+
+      'advance_days=excluded.advance_days,updated_at=CURRENT_TIMESTAMP')
+      .bind(session.household_id,session.user_id,body.advanceDays).run()
+    return json({ok:true,advanceDays:body.advanceDays})
+  }
   if(url.pathname==='/api/reminders/snooze'){
-    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    if(!['POST','DELETE'].includes(request.method))return json({error:'method_not_allowed'},405)
     const body=await readBody(request)
     const kind=body?.kind,itemId=body?.id,until=body?.untilOn
     const days=stringDate(until)?daysBetween(today,until):-1
     if(!['task','routine','anniversary','trip'].includes(kind)||
        typeof itemId!=='string'||itemId.length<1||itemId.length>200||
-       /[\x00-\x1f]/.test(itemId)||days<0||days>365)
+       /[\x00-\x1f]/.test(itemId)||
+       (request.method==='POST'&&(days<0||days>365)))
       return json({error:'invalid_input'},400)
-    await db.prepare(`INSERT INTO reminder_snoozes
-      (household_id,user_id,kind,item_id,until_on,updated_at)
-      VALUES(?1,?2,?3,?4,?5,CURRENT_TIMESTAMP)
-      ON CONFLICT(household_id,user_id,kind,item_id)
-      DO UPDATE SET until_on=excluded.until_on,updated_at=CURRENT_TIMESTAMP`)
+    if(request.method==='DELETE'){
+      await db.prepare('DELETE FROM reminder_snoozes WHERE household_id=?1 AND user_id=?2 AND kind=?3 AND item_id=?4')
+        .bind(session.household_id,session.user_id,kind,itemId).run()
+      return json({ok:true,cancelled:true})
+    }
+    await db.prepare('INSERT INTO reminder_snoozes '+
+      '(household_id,user_id,kind,item_id,until_on,updated_at) '+
+      'VALUES(?1,?2,?3,?4,?5,CURRENT_TIMESTAMP) '+
+      'ON CONFLICT(household_id,user_id,kind,item_id) '+
+      'DO UPDATE SET until_on=excluded.until_on,updated_at=CURRENT_TIMESTAMP')
       .bind(session.household_id,session.user_id,kind,itemId,until).run()
     return json({ok:true,kind,id:itemId,untilOn:until})
   }
