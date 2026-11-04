@@ -44,7 +44,7 @@ export async function remindersRoute(request,db,session) {
   const date=url.searchParams.get('date')||today
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
-  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes]=await db.batch([
+  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.completed_at,m.skipped_at FROM routine_marks m
@@ -52,7 +52,7 @@ export async function remindersRoute(request,db,session) {
       AND (r.visibility='household' OR r.created_by=?3)`).bind(hid,date,u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3)
-      ORDER BY due_on LIMIT 100`).bind(hid,date,u),
+      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND status IN ('planning','active')
       AND (visibility='household' OR created_by=?2)
@@ -63,8 +63,10 @@ export async function remindersRoute(request,db,session) {
       AND p.completed_at IS NOT NULL LIMIT 3000`).bind(hid,u),
     db.prepare(BIRTHDAY_PROFILES_SQL).bind(hid),
     db.prepare('SELECT kind,item_id,until_on FROM reminder_snoozes WHERE household_id=?1 AND user_id=?2 AND until_on>=?3 LIMIT 500')
-      .bind(hid,u,date)
+      .bind(hid,u,date),
+    db.prepare('SELECT advance_days FROM reminder_preferences WHERE household_id=?1 AND user_id=?2').bind(hid,u)
   ])
+  const leadDays=validLead(preference.results?.[0]?.advance_days)?preference.results[0].advance_days:0
   const announcements=[]
   for(const e of mergeProfileBirthdays(events.results,birthdayProfiles.results)){
     const next=nextAnniversary(e.event_date,e.repeat_mode,date)
@@ -76,9 +78,21 @@ export async function remindersRoute(request,db,session) {
   }
   const completed=new Set((marks.results||[]).filter(x=>x.completed_at||x.skipped_at).map(x=>x.routine_id))
   for(const r of rules.results||[]){
-    try{if(dueOn(r,date)&&!completed.has(r.id))announcements.push({kind:'routine',id:r.id,title:r.title,dueOn:date})}catch{}
+    try{
+      if(dueOn(r,date)){
+        if(!completed.has(r.id))announcements.push({kind:'routine',id:r.id,title:r.title,dueOn:date})
+      }else if(leadDays>0&&dueOn(r,addDays(date,leadDays))){
+        announcements.push({kind:'routine',id:r.id,title:r.title,
+          dueOn:addDays(date,leadDays),daysBefore:leadDays})
+      }
+    }catch{}
   }
-  for(const t of tasks.results||[])announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on})
+  for(const t of tasks.results||[]){
+    const ahead=daysBetween(date,t.due_on)
+    if(ahead<=0||ahead===leadDays)
+      announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on,
+        ...(ahead>0?{daysBefore:ahead}:{})})
+  }
   const finished=new Set((tripProgress.results||[]).map(r=>r.trip_id+':'+r.item_id))
   const plusDays=(date,offset)=>{
     const dt=new Date(date+'T00:00:00Z')
@@ -94,9 +108,13 @@ export async function remindersRoute(request,db,session) {
       for(const item of day.items||[])dates.set(item.externalId,{date:day.date,title:item.title})
     for(const task of plan.trip.tasks||[]){
       if(trip.created_by!==u && task.visibility!=='household')continue
-      if(task.dueDate && task.dueDate<=date && !finished.has(trip.id+':'+task.externalId))
-        announcements.push({kind:'trip',id:trip.id+':'+task.externalId,
-          title:trip.title+' · '+task.title,dueOn:task.dueDate})
+      if(task.dueDate&&!finished.has(trip.id+':'+task.externalId)){
+        const ahead=daysBetween(date,task.dueDate)
+        if(ahead<=0||ahead===leadDays)
+          announcements.push({kind:'trip',id:trip.id+':'+task.externalId,
+            title:trip.title+' · '+task.title,dueOn:task.dueDate,
+            ...(ahead>0?{daysBefore:ahead}:{})})
+      }
       if(task.dueDate)dates.set(task.externalId,{date:task.dueDate,title:task.title})
     }
     for(const reminder of plan.trip.reminders||[]){
@@ -109,5 +127,7 @@ export async function remindersRoute(request,db,session) {
     }
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
-  return json({date,items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id))})
+  return json({date,advanceDays:leadDays,
+    snoozed:(snoozes.results||[]).map(x=>({kind:x.kind,id:x.item_id,untilOn:x.until_on})),
+    items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id))})
 }
