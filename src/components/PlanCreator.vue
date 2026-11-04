@@ -114,7 +114,7 @@ async function submit(){
       </select></label>
      </template>
      <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/>
-      <span>开启提醒 <small>关闭后仍会在到期的「今天」页面显示，只是不推送通知</small></span></label>
+      <span>开启提醒 <small>关闭后仍显示在「今天」</small></span></label>
      <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
       <option value="">不关联</option>
       <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>
@@ -129,7 +129,7 @@ async function submit(){
     <template v-else-if="kind==='shopping'">
      <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
      <label>计划购买日期（可选）<DateField v-model="form.dueOn" /></label>
-     <p class="creator-tip">购买日期到来时会显示在「今天」。建好后可在购物详情关联家計簿支出和手动调整额。</p>
+
     </template>
     <template v-else-if="kind==='wish'">
      <label>心愿类型<select v-model="form.wishType">
@@ -139,7 +139,7 @@ async function submit(){
      <label>预估金额（日元）<input v-model.number="form.estimatedAmount" type="number" min="0" max="100000000000" required/></label>
      <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
      <label class="plan-checkbox"><input v-model="form.createSavingsGoal" type="checkbox"/>
-      <span>同时创建关联的储值计划 <small>目标金额默认等于心愿预估金额，可之后修改</small></span></label>
+      <span>同时创建关联的储值计划</span></label>
      <label v-if="form.createSavingsGoal">储值开始日期<DateField v-model="form.goalStartOn" required /></label>
     </template>
     <template v-else-if="kind==='goal'">
@@ -154,14 +154,14 @@ async function submit(){
      <label v-if="form.goalMode==='once'">期初储值额（日元）
        <input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
      <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.startOn||undefined" /></label>
-     <p class="creator-tip">按日本日历月或自然年度统计。首月／首年从开始日期计算；每个期间单独保存调整额。家計簿只读汇总，不等于真实银行存款余额。</p>
+     <p class="creator-tip">家計簿估算不代表实际存款。</p>
     </template>
     <template v-else-if="kind==='trip'">
      <label>目的地<input v-model.trim="form.destination" maxlength="300" placeholder="例如：上海"/></label>
      <label>出发日期（可选）<DateField v-model="form.startDate" /></label>
      <label>结束日期（可选）<DateField v-model="form.endDate" /></label>
      <label>旅行预算（日元）<input v-model.number="form.budgetAmount" type="number" min="0" max="100000000000"/></label>
-     <p class="creator-tip">创建后可以编辑旅行信息、导入详细行程，并在旅行详情关联家計簿支出和调整额。</p>
+
     </template>
     <label>可见范围<select v-model="form.visibility">
      <option value="household">家庭共享</option><option value="private">仅自己</option>

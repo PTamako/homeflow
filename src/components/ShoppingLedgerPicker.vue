@@ -103,11 +103,10 @@ onMounted(()=>{void check();void loadSettings()})
 <template>
  <section class="shopping-ledger">
   <b>关联家計簿真实支出</b>
-  <p class="hint">选择真实消费并填写本次购买的件数。累计达到计划件数才完成；购物未达标会保留在进行中。不会重复记账。</p>
+  <p class="hint">关联真实消费并填写件数，达到计划数量后完成。</p>
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
-    家計簿只读联动暂不可用。当前通过 Cloudflare 私有 Service Binding 访问，
-    不需要在这两个应用中重复配置旧版公共接口密钥。请检查内部桥接 Worker 状态。联动恢复前购物将保留未完成，不支持直接勾选完成。
+    家計簿联动暂不可用，请稍后重试。购物计划仍保持未完成。
   </p>
   <template v-else>
    <div class="ledger-dates">
@@ -152,7 +151,7 @@ onMounted(()=>{void check();void loadSettings()})
     <input v-model="adjustment" type="number" step="1" inputmode="numeric"/>
    </label>
    <button type="button" :disabled="busy" @click="saveAdjustment">保存调整额</button>
-   <small>调整额只保存在 HomeFlow，不会修改家計簿。未关联时显示调整额本身。</small>
+   <small>调整额仅保存在 HomeFlow，不会修改家計簿。</small>
    <small v-if="savedMessage" role="status">{{ savedMessage }}</small>
   </div>
   <p v-if="error" role="alert" class="ledger-error">{{ error }}</p>

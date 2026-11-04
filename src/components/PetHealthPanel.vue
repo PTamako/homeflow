@@ -82,7 +82,7 @@ watch(year,value=>{if(!value)month.value=''})
 <template>
   <section class="pet-card">
     <h2 class="pet-title"><AppIcon name="paw" :size="20" /> {{ name }}的健康与护理记录</h2>
-    <p class="sub">驱虫、疫苗、体重、就诊和日常护理都记录在这里；需要下次提醒时可设置日期。</p>
+
     <form class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
       <label>完成日期<DateField v-model="eventDate" required /></label>
@@ -104,7 +104,7 @@ watch(year,value=>{if(!value)month.value=''})
         <option value="">全年</option><option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
       </select></label>
     </div>
-    <p class="sub">默认显示最近 5 条，每次再加载 5 条。护理历史不会每天清空，可按年月查找。</p>
+
     <div v-if="!items.length" class="empty">该时间范围内没有护理记录。</div>
     <div v-for="r in items" :key="r.id" class="record">
       <SwipeActions :id="r.id" scope="pet-health"
