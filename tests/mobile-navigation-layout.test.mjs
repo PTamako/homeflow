@@ -94,3 +94,18 @@ test('all 31 date fields render inside the shared iOS-safe date control',()=>{
   assert.match(sw,/homeflow-shell-v2/,'new service worker invalidates old cached shell')
   assert.match(sw,/fetch\(req,\{cache:'no-store'\}\)/,'navigation must request current HTML')
 })
+
+test('interval plan shows next due date and early-complete button together in a rounded row',()=>{
+  const row=life.match(/<div v-if="planScope==='active'&&canCompleteRoutineEarly\(r\)" class="routine-early-complete">([\s\S]*?)<\/div>/)
+  assert.ok(row,'interval action row should exist')
+  assert.match(row[1],/<small>下次预计：\{\{ routineNextDue\(r\) \}\}<\/small>/)
+  assert.match(row[1],/<button[^>]*@click="completeRoutineEarly\(r\)"[^>]*>今天提前完成<\/button>/)
+  const style=life.match(/\.routine-early-complete\{([^}]+)\}/)
+  assert.ok(style,'interval action row must have its own styles')
+  for(const rule of ['display:flex','align-items:center','border:1px','border-radius:12px','background:#f5f8f5','box-sizing:border-box']){
+    assert.ok(style[1].includes(rule),'missing bounded row rule: '+rule)
+  }
+  assert.match(life,/\.routine-early-complete small\{[^}]*min-width:0/)
+  assert.match(life,/\.routine-early-complete button\{[^}]*flex:none/)
+  assert.match(life,/\.life-row\.routine-has-early-complete\{border-bottom:0/)
+})
