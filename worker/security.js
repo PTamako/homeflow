@@ -15,7 +15,7 @@ export function constantEqualHex(a, b) {
   for (let i = 0; i < a.length; i++) different |= a.charCodeAt(i) ^ b.charCodeAt(i)
   return different === 0
 }
-export const PASSWORD_ROUNDS = 160000
+export const PASSWORD_ROUNDS = 100000
 export async function hashPassword(password, salt = randomToken().slice(0,32), rounds = PASSWORD_ROUNDS) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])
   const bits = await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:encoder.encode(salt),iterations:rounds}, key, 256)
@@ -23,7 +23,7 @@ export async function hashPassword(password, salt = randomToken().slice(0,32), r
 }
 export async function passwordMatches(password, user) {
   const rounds = Number(user.password_rounds) || PASSWORD_ROUNDS
-  if (rounds < 100000 || rounds > 600000) return false
+  if (rounds !== 100000) return false
   const candidate = await hashPassword(password, user.password_salt, rounds)
   return constantEqualHex(candidate.verifier, user.password_verifier)
 }

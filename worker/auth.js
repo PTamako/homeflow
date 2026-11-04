@@ -1,7 +1,7 @@
 import {
-  cookieFrom, cookieValue, constantEqualHex, eraseCookie, hashPassword,
-  isValidLogin, iso, json, nowMs, passwordMatches, randomToken,
-  readBody, sessionFor, sha256, shortText, validPassword,
+  cookieFrom, cookieValue, constantEqualHex, eraseCookie,
+  isValidLogin, iso, json, nowMs, randomToken,
+  readBody, sha256, shortText,
 } from './security.js'
 
 const MAX_SESSIONS_MS=14*86400000
@@ -19,7 +19,9 @@ const conflict=()=>json({error:'conflict_or_expired'},409)
 function registrationFieldError(body) {
   const login=typeof body?.loginName==='string'?body.loginName.trim().toLowerCase():''
   if(!isValidLogin(login))return 'invalid_login_name'
-  if(!validPassword(body?.password))return 'invalid_password'
+  if(!/^[a-f0-9]{32}$/.test(body?.passwordSalt||'') ||
+     !/^[a-f0-9]{64}$/.test(body?.passwordProof||'') ||
+     body?.passwordRounds!==100000)return 'invalid_password_proof'
   const name=shortText(body?.displayName,60)
   if(!name||!ALLOWED_BOOTSTRAP_NAME.test(name))return 'invalid_display_name'
   return null
@@ -27,14 +29,16 @@ function registrationFieldError(body) {
 
 async function credentials(db, body, opts={}) {
   const login=String(body?.loginName||'').trim().toLowerCase()
-  const password=body?.password
-  if(!isValidLogin(login) || !validPassword(password)) return null
+  if(!isValidLogin(login)||!/^[a-f0-9]{32}$/.test(body?.passwordSalt||'')||
+     !/^[a-f0-9]{64}$/.test(body?.passwordProof||'')||body?.passwordRounds!==100000)return null
   const exists=await db.prepare('SELECT id FROM users WHERE login_name=?1').bind(login).first()
   if(exists) return null
   const name=shortText(body?.displayName,60)
   if(!name || !ALLOWED_BOOTSTRAP_NAME.test(name)) return null
-  const cryptoPassword=await hashPassword(password)
-  return {login,name,...cryptoPassword,id:crypto.randomUUID(),...opts}
+  // PBKDF2 (exactly 100,000 iterations) is performed on the user's device.
+  // The server stores a digest of the derived proof, not the proof transmitted at login.
+  const verifier=await sha256(body.passwordProof)
+  return {login,name,salt:'c1:'+body.passwordSalt,verifier,rounds:100000,id:crypto.randomUUID(),...opts}
 }
 async function limiter(db, login, request) {
   const ip=request.headers.get('CF-Connecting-IP')||'unknown'
@@ -112,16 +116,30 @@ export async function authRoute(request,env,path,session) {
       return conflict()
     }
   }
+  if(path==='/api/auth/login-challenge' && request.method==='GET') {
+    const login=String(new URL(request.url).searchParams.get('loginName')||'').trim().toLowerCase()
+    if(!isValidLogin(login))return json({error:'invalid_login_name'},400)
+    // Never compute PBKDF2 on Workers Free. This read-only route returns the account's salt.
+    const user=await db.prepare('SELECT password_salt FROM users WHERE login_name=?1 AND disabled_at IS NULL')
+      .bind(login).first()
+    const supported=typeof user?.password_salt==='string'&&/^c1:[a-f0-9]{32}$/.test(user.password_salt)
+    // Random salt when login unknown; reply does not explicitly disclose account existence.
+    return json({salt:supported?user.password_salt.slice(3):randomToken().slice(0,32),
+      rounds:100000,protocol:'pbkdf2-sha256-client-v1'})
+  }
   if(path==='/api/auth/login' && request.method==='POST') {
     const body=await readBody(request)
     const login=String(body?.loginName||'').trim().toLowerCase()
-    const password=body?.password
-    if(!isValidLogin(login)||!validPassword(password))return malformed()
+    const proof=body?.passwordProof
+    if(!isValidLogin(login)||!/^[a-f0-9]{64}$/.test(proof||''))return malformed()
     const {key,blocked}=await limiter(db,login,request)
     if(blocked)return json({error:'too_many_attempts'},429)
     const user=await db.prepare(`SELECT id,login_name,password_salt,password_verifier,password_rounds
        FROM users WHERE login_name=?1 AND disabled_at IS NULL`).bind(login).first()
-    const valid=user ? await passwordMatches(password,user) : false
+    const supported=typeof user?.password_salt==='string'&&/^c1:[a-f0-9]{32}$/.test(user.password_salt)
+    const candidate=await sha256(proof)
+    const valid=!!supported && Number(user.password_rounds)===100000 &&
+      constantEqualHex(candidate,user.password_verifier)
     if(!valid){
       await recordFailure(db,key)
       return json({error:'invalid_credentials'},401)
