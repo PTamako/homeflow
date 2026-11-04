@@ -37,6 +37,8 @@ const todayCategory=ref<'all'|TodayKind>('all')
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const settingsOpen=ref(false)
+const hasImportantReminders=ref(false)
+const importantRemindersRef=ref<{refreshIfStale:()=>void}|null>(null)
 const focusPlanType=ref('all')
 function openPlans(kind:string){focusPlanType.value=kind;tab.value='plans'}
 const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
@@ -198,6 +200,7 @@ async function submitAuth(){
 }
 async function logout(){
   settingsOpen.value=false
+  hasImportantReminders.value=false
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
     const registration=await navigator.serviceWorker?.getRegistration()
@@ -330,6 +333,10 @@ async function discardPending(id:string){
   if(tab.value==='today')notify('已取消待同步任务')
 }
 function onOnline(){if(user.value)void flushTasks()}
+function toggleSettings(){
+  settingsOpen.value=!settingsOpen.value
+  if(settingsOpen.value)importantRemindersRef.value?.refreshIfStale()
+}
 function onSettingsKeydown(event:KeyboardEvent){if(event.key==='Escape')settingsOpen.value=false}
 function onForeground(){
   if(document.visibilityState!=='visible')return
@@ -337,7 +344,7 @@ function onForeground(){
   if(d!==currentJstDay.value){
     currentJstDay.value=d
     if(user.value&&tab.value==='today')void reloadToday()
-  }
+  }else if(user.value)importantRemindersRef.value?.refreshIfStale()
 }
 async function toggleTask(t:Task){
   try{
@@ -396,14 +403,17 @@ onBeforeUnmount(()=>{
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <div v-if="authReady&&user" class="settings-anchor">
         <button class="settings-trigger" type="button" aria-controls="homeflow-settings" :aria-expanded="settingsOpen"
-          @click="settingsOpen=!settingsOpen"><AppIcon name="settings" :size="20" /> 设置</button>
-        <div v-if="settingsOpen" id="homeflow-settings" class="settings-popover" role="dialog" aria-label="HomeFlow 设置">
+          :aria-label="hasImportantReminders?'设置：今天有重要提醒':'设置'"
+          @click="toggleSettings"><AppIcon name="settings" :size="20" /> 设置
+          <span v-if="hasImportantReminders" class="settings-alert-dot" aria-hidden="true"></span></button>
+        <div v-show="settingsOpen" id="homeflow-settings" class="settings-popover" role="dialog" aria-label="HomeFlow 设置">
           <div class="settings-title"><strong>设置</strong>
             <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
           <div class="settings-section settings-account"><span>当前账号</span><b>{{ user.loginName }}</b></div>
-          <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel /></div>
+          <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel v-if="settingsOpen" /></div>
           <div class="settings-section settings-reminders">
-            <ImportantReminders :today-date="currentJstDay" :today-entry-keys="todayEntryKeys" compact />
+            <ImportantReminders ref="importantRemindersRef" :today-date="currentJstDay"
+              :today-entry-keys="todayEntryKeys" compact @presence-change="hasImportantReminders=$event" />
           </div>
           <button class="settings-logout" type="button" @click="logout">退出登录</button>
         </div>
