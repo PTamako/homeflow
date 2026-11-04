@@ -183,7 +183,7 @@ function normalized(key,r,h,u) {
     }
     case 'planCompletionMarks': {
       if(!['wish','goal'].includes(r.plan_type)||!id(r.plan_id)||
-         typeof r.completed_at!=='string'||!/^\\d{4}-\\d{2}-\\d{2}T/.test(r.completed_at)||
+         typeof r.completed_at!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(r.completed_at)||
          !Number.isFinite(Date.parse(r.completed_at))||
          (r.plan_type==='wish'&&
            (r.period_key!=='once'||!['wished','planning','active'].includes(r.prior_status)))||
@@ -193,7 +193,7 @@ function normalized(key,r,h,u) {
       // a mark for a plan actually owned by the importing user.
       const key=r.period_key
       if(r.plan_type==='goal'&&key!=='once'&&
-         !/^\\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(key))return null
+         !/^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(key))return null
       return [`INSERT OR IGNORE INTO plan_completion_marks
         (household_id,plan_type,plan_id,period_key,completed_at,completed_by,prior_status)
         SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE EXISTS(
