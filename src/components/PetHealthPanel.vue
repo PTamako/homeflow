@@ -3,7 +3,7 @@ import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
 const props=defineProps<{petId:string;name:string;userId:string}>()
-type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string}
+type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string;sourceRoutineId?:string|null}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref(''),message=ref('')
 const editingId=ref<string|null>(null)
@@ -18,7 +18,7 @@ function pageUrl(more=false){
   if(more&&nextCursor.value)query.set('cursor',nextCursor.value)
   return '/api/pets/'+props.petId+'/health?'+query
 }
-const names:Record<string,string>={weight:'体重',deworm:'驱虫',vaccination:'疫苗',vet:'看医生',medication:'用药',grooming:'梳毛/洗澡',other:'其他'}
+const names:Record<string,string>={weight:'体重',deworm:'驱虫',vaccination:'疫苗',vet:'看医生',medication:'用药',grooming:'梳毛/洗澡',other:'日常护理'}
 async function read(more=false){
  if(more&&reading.value)return
  const revision=++readRevision
@@ -107,7 +107,7 @@ watch(year,value=>{if(!value)month.value=''})
         :allow-edit="r.createdBy===props.userId" :allow-delete="r.createdBy===props.userId"
         @edit="editRecord(r)" @delete="removeRecord(r)">
         <div class="record-heading">
-          <strong>{{ names[r.recordType]||'护理' }}</strong><span>{{ r.eventOn }}</span>
+          <strong>{{ names[r.recordType]||'护理' }}<template v-if="r.sourceRoutineId"> · 定期任务</template></strong><span>{{ r.eventOn }}</span>
         </div>
       </SwipeActions>
       <p v-if="r.weightGrams">{{ (r.weightGrams/1000).toFixed(2) }} kg</p>

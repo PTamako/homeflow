@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -723,5 +723,63 @@ test('old one-time anniversaries are in history; recurring birthdays stay upcomi
  assert.equal(past.body.items.length,1)
  assert.equal(past.body.items[0].id,old.body.id)
  assert.equal((await send(env,'/api/anniversaries?scope=history&year=2023&limit=6','GET',undefined,cookie)).body.items.length,0)
+ sqlite.close()
+})
+
+test('recurring pet task completion creates exactly one linked care record, supports undo and privacy',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'care-owner',password:'care-strong-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const pet=await ask('/api/family/profiles','POST',{type:'pet',displayName:'豆沙'},owner)
+ const person=await ask('/api/family/profiles','POST',{type:'person',displayName:'家人'},owner)
+ assert.equal(pet.status,201)
+ assert.equal(person.status,201)
+ const invalid=await ask('/api/routines','POST',{
+   title:'错误关联',repeatType:'daily',repeatConfig:{},anchorDate:'2026-11-04',
+   subjectProfileId:person.body.id,healthRecordType:'other',visibility:'household'},owner)
+ assert.equal(invalid.status,400,'people cannot receive pet health records')
+ const routine=await ask('/api/routines','POST',{
+   title:'给豆沙添猫粮早',repeatType:'daily',repeatConfig:{},anchorDate:'2026-11-04',
+   subjectProfileId:pet.body.id,healthRecordType:'other',visibility:'private'},owner)
+ assert.equal(routine.status,201,JSON.stringify(routine.body))
+ const mark='/api/routines/'+routine.body.id+'/mark'
+ const health='/api/pets/'+pet.body.id+'/health'
+ for(let i=0;i<2;i++){
+   assert.equal((await ask(mark,'POST',{date:'2026-11-04',status:'completed'},owner)).status,200)
+ }
+ let records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,1,'repeat completion is idempotent')
+ assert.equal(records[0].recordType,'other')
+ assert.equal(records[0].note,'给豆沙添猫粮早')
+ assert.equal(records[0].eventOn,'2026-11-04')
+ assert.equal(records[0].visibility,'private')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM pet_health_records WHERE source_routine_id=?').get(routine.body.id).n,1)
+ assert.equal((await ask(mark,'POST',{date:'2026-11-04',status:'open'},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,0,'undo archives auto record')
+ assert.equal((await ask(mark,'POST',{date:'2026-11-04',status:'completed'},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,1,'re-check restores the same record')
+ assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM pet_health_records WHERE source_routine_id=?').get(routine.body.id).n,1)
+ assert.equal((await ask(mark,'POST',{date:'2026-11-05',status:'completed'},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,2,'each day gets its own record')
+ const standalone=await ask(health,'POST',{recordType:'grooming',eventOn:'2026-11-05',note:'手工梳毛'},owner)
+ assert.equal(standalone.status,201)
+ assert.equal((await ask(mark,'POST',{date:'2026-11-05',status:'open'},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,2,'undo must not delete manual records')
+ const newMode=await ask('/api/routines/'+routine.body.id,'PATCH',{
+   title:'给豆沙添猫粮早',repeatType:'daily',repeatConfig:{},anchorDate:'2026-11-04',
+   subjectProfileId:pet.body.id,healthRecordType:null,visibility:'private'},owner)
+ assert.equal(newMode.status,200)
+ assert.equal((await ask(mark,'POST',{date:'2026-11-06',status:'completed'},owner)).status,200)
+ records=(await ask(health,'GET',undefined,owner)).body.records
+ assert.equal(records.length,2,'disabled care sync does not create records')
  sqlite.close()
 })

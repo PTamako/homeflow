@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {reactive,ref} from 'vue'
+import {reactive,ref,computed,watch} from 'vue'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
-const props=defineProps<{kind:Kind;item:Item}>()
+const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string}>}>()
 const emit=defineEmits<{saved:[];cancel:[]}>()
 const busy=ref(false),error=ref('')
 const data=props.item
@@ -14,6 +14,7 @@ const form=reactive({
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
  repeatAnchor:String(config.anchor||'fixed'),anchorDate:String(data.anchor_date||''),
+ subjectProfileId:String(data.subject_profile_id||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
  targetAmount:Number(data.target_amount||0),reservedAmount:Number(data.reserved_amount||0),
@@ -21,6 +22,11 @@ const form=reactive({
  story:String(data.story||''),destination:String(data.destination||''),
  startOn:String(data.startOn||data.start_on||''),
  endOn:String(data.endOn||data.end_on||''),budgetAmount:Number(data.budgetAmount||data.budget_amount||0)
+})
+const routineSubjectIsPet=computed(()=>props.profiles?.some(p=>p.id===form.subjectProfileId&&p.type==='pet')||false)
+watch(()=>form.subjectProfileId,(id,previous)=>{
+ if(!routineSubjectIsPet.value)form.healthRecordType=''
+ else if(id!==previous&&!form.healthRecordType)form.healthRecordType='other'
 })
 function values(){
  const common={title:form.title.trim(),visibility:form.visibility}
@@ -41,7 +47,8 @@ function values(){
        excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
      type==='monthly'?{day:prev.day||Number(form.anchorDate.slice(-2))||1}:{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
-     assignedTo:data.assigned_to||null,subjectProfileId:data.subject_profile_id||null}
+     assignedTo:data.assigned_to||null,subjectProfileId:form.subjectProfileId||null,
+     healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
   }
   case 'wishes':
    return {...common,wishType:form.wishType,status:form.status,
@@ -86,6 +93,20 @@ async function save(){
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<input v-model="form.anchorDate" type="date" required/></label>
+   <label>关联对象（可选）
+    <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
+     <option value="">不关联任何人或宠物</option>
+     <option v-for="p in (profiles||[])" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
+    </select>
+   </label>
+   <label v-if="routineSubjectIsPet">勾选完成后同步到护理记录
+    <select v-model="form.healthRecordType" aria-label="护理记录同步类型">
+     <option value="">不自动记录</option><option value="other">日常护理</option>
+     <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
+     <option value="deworm">驱虫</option><option value="vaccination">疫苗</option>
+     <option value="vet">就诊</option>
+    </select>
+   </label>
   </template>
   <template v-else-if="kind==='wishes'">
    <label>类型<select v-model="form.wishType"><option value="trip">旅行</option><option value="purchase">购物</option><option value="activity">体验</option><option value="other">其他</option></select></label>
