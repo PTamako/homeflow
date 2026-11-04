@@ -13,9 +13,15 @@ MIGRATIONS=[
     "0007_offline_tasks.sql",
     "0008_shopping_ledger.sql",
     "0009_finance_target_settings.sql",
+    "0009_routine_pet_care.sql",
+    "0010_task_pet_care.sql",
     "0011_unified_plan_hub.sql",
     "0012_savings_goal_cadence.sql",
 ]
+files={p.name for p in (ROOT/"migrations").glob("*.sql")}
+assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
+# 0009 is a historical duplicate prefix, so file names (not numeric prefixes)
+# form the canonical order. Never replay them against an existing D1 database.
 db=sqlite3.connect(":memory:")
 db.execute("PRAGMA foreign_keys=ON")
 for migration in MIGRATIONS:
@@ -35,6 +41,12 @@ assert "target_on" in {x[1] for x in db.execute("PRAGMA table_info(wishes)")}
 assert "due_on" in {x[1] for x in db.execute("PRAGMA table_info(shopping_items)")}
 assert {"goal_mode","start_on"}.issubset({x[1] for x in db.execute("PRAGMA table_info(goals)")})
 assert "password_rounds" in columns
+assert "health_record_type" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
+assert "source_routine_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_health_records)")}
+assert "source_task_id" in {x[1] for x in db.execute("PRAGMA table_info(pet_health_records)")}
+assert "remind_enabled" in {x[1] for x in db.execute("PRAGMA table_info(tasks)")}
+assert "goal_mode" in {x[1] for x in db.execute("PRAGMA table_info(goals)")}
+assert "goal_period_adjustments" in tables
 assert "next_due_on" in {x[1] for x in db.execute("PRAGMA table_info(routines)")}
 db.execute("INSERT INTO households(id,display_name) VALUES('primary','Demo')")
 db.execute("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u-1','demo','x','y')")
