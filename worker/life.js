@@ -250,7 +250,7 @@ export async function lifeRoute(request,db,path,session){
         db.prepare(query).bind(id,session.household_id,session.user_id,visibility,...vals),
         db.prepare("INSERT INTO goals (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,target_on,wish_id,goal_mode,start_on) VALUES(?1,?2,?3,?4,?5,?6,0,?7,?8,?9,'once',?10)")
           .bind(goalId,session.household_id,session.user_id,visibility,
-            trim(b.title+' · 储蓄目标',150),b.estimatedAmount,b.currency||'JPY',
+            trim(b.title+' · 储值计划',150),b.estimatedAmount,b.currency||'JPY',
             b.goalTargetOn||b.targetOn||null,id,b.goalStartOn||new Date(Date.now()+9*3600000).toISOString().slice(0,10))
       ])
       return json({ok:true,id,goalId},201)
