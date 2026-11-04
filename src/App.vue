@@ -9,6 +9,8 @@ import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
 import SwipeActions from './components/SwipeActions.vue'
+import PageToast from './components/PageToast.vue'
+import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
@@ -23,6 +25,7 @@ const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
 const error=ref(''),invitation=ref(''),showDone=ref(false)
+const {toast,notify,clear:clearToast}=usePageToast()
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const openPetId=ref<string|null>(null)
 const editProfileId=ref<string|null>(null),profileRevision=ref(0)
@@ -68,6 +71,7 @@ async function profileSaved(){
     profileRevision.value++
     editProfileId.value=null
     error.value=''
+    notify('档案已保存')
   }catch(e){error.value=(e as Error).message}
 }
 const errText=(key:string)=>{
@@ -142,6 +146,7 @@ async function logout(){
     }
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
+  clearToast()
   user.value=null;profiles.value=[];tasks.value=[];pendingTasks.value=[];await refresh()
 }
 async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
@@ -154,7 +159,7 @@ async function addTask(){
       healthRecordType:newTaskPet.value?taskCareType.value||null:null})
     title.value='';due.value='';subjectId.value='';taskCareType.value=''
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
-    else await loadTasks()
+    else {await loadTasks();notify('任务已添加')}
     pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
@@ -178,7 +183,7 @@ async function saveTaskEdit(){
       healthRecordType:editTaskPet.value?t.healthRecordType||null:null,
       expectedUpdatedAt:t.expectedUpdatedAt},t.id)
     if(outcome==='queued')syncMessage.value='修改已离线保存，稍后同步'
-    else await loadTasks()
+    else {await loadTasks();notify('修改已保存')}
     editingTask.value=null
     pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}
@@ -188,13 +193,14 @@ async function flushTasks(){
   try{
     const result=await syncPending(user.value.id)
     pendingTasks.value=await listPending(user.value.id)
-    if(result.synced){syncMessage.value='已同步 '+result.synced+' 项任务';await loadTasks()}
+    if(result.synced){syncMessage.value='';await loadTasks();if(tab.value==='today')notify('已同步 '+result.synced+' 项任务')}
     if(result.conflicts)syncMessage.value='发现 '+result.conflicts+' 项版本冲突，请取消本机草稿并重新编辑'
   }catch(e){syncMessage.value=(e as Error).message}
 }
 async function discardPending(id:string){
   await removePending(id)
   if(user.value)pendingTasks.value=await listPending(user.value.id)
+  if(tab.value==='today')notify('已取消待同步任务')
 }
 function onOnline(){if(user.value)void flushTasks()}
 function onForeground(){
@@ -208,11 +214,12 @@ function onForeground(){
 async function toggleTask(t:Task){
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
+    notify(t.completedAt?'已撤销完成':'任务已完成')
   }catch(e){error.value=(e as Error).message}
 }
 async function deleteTask(t:Task){
   if(!confirm('删除这条任务？'))return
-  try{await api('/tasks/'+t.id,'DELETE');await loadTasks()}
+  try{await api('/tasks/'+t.id,'DELETE');await loadTasks();notify('任务已删除')}
   catch(e){error.value=(e as Error).message}
 }
 async function addProfile(){
@@ -226,10 +233,10 @@ async function addProfile(){
 }
 async function generateInvite(){
   error.value=''
-  try{invitation.value=(await api('/auth/invitations','POST',{})).invitationCode||''}
+  try{invitation.value=(await api('/auth/invitations','POST',{})).invitationCode||'';notify('邀请码已生成')}
   catch(e){error.value=(e as Error).message}
 }
-watch(tab,value=>{if(value==='today'&&user.value)loadTasks()})
+watch(tab,value=>{clearToast();if(value==='today'&&user.value)loadTasks()})
 onMounted(async()=>{
   await refresh()
   window.addEventListener('online',onOnline)
@@ -444,6 +451,7 @@ onBeforeUnmount(()=>{
         :profile-revision="profileRevision" @edit-profile="openBirthdayProfileEditor" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
+    <PageToast :toast="toast" />
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">
         <AppIcon :name="n.icon" :size="23" /><span>{{ n.label }}</span></button>
