@@ -124,7 +124,7 @@ export async function goalPeriodsRoute(request,env,path,session){
   if(!shown.length)return json({items:[],nextCursor:null})
   const keys=shown.map(x=>x.periodKey)
   const placeholders=keys.map((_,i)=>'?'+(i+3)).join(',')
-  const {results}=await db.prepare(`SELECT s.period_key,s.period_start,s.period_end,
+  const {results}=await db.prepare(`SELECT k.period_key,s.period_start,s.period_end,
     s.target_amount,s.actual_amount,s.difference_amount,s.status,s.settled_at,
     m.completed_at AS legacy_completed_at
     FROM (SELECT period_key FROM goal_period_settlements WHERE household_id=?1
