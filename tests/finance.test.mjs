@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {financeRoute,canUseLedger} from '../worker/finance.js'
 const prod={APP_ENV:'production',KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',
-  KAKEBO_LEDGER_READ_TOKEN:'example-secret-12345678901234567890'}
+  KAKEBO_LEDGER_READ_TOKEN:'example-secret-12345678901234567890',
+  KAKEBO_LEDGER_SERVICE:{fetch:(...args)=>globalThis.fetch(...args)}}
 const owner={user_id:'owner',household_id:'primary',role:'owner'}
 const member={user_id:'member',household_id:'primary',role:'member'}
 function request(path,method='GET',data){
@@ -10,9 +11,9 @@ function request(path,method='GET',data){
  if(data!==undefined){init.headers={'content-type':'application/json'};init.body=JSON.stringify(data)}
  return new Request('https://homeflow.example'+path,init)
 }
-test('disabled secrets or preview never expose ledger',async()=>{
+test('missing internal service binding or preview never expose ledger',async()=>{
  const env={...prod}
- delete env.KAKEBO_LEDGER_READ_TOKEN
+ delete env.KAKEBO_LEDGER_SERVICE
  assert.equal(canUseLedger(env,owner),false)
  const res=await financeRoute(request('/api/finance/status'),env,'/api/finance/status',owner)
  assert.deepEqual(await res.json(),{connected:false,readOnly:true,ownerOnly:true})
@@ -34,7 +35,7 @@ test('search response returns only current upstream projection',async()=>{
  globalThis.fetch=async (url,options)=>{
    seen=String(url)
    assert.equal(options.method,'GET')
-   assert.equal(options.headers.Authorization,'Bearer '+prod.KAKEBO_LEDGER_READ_TOKEN)
+   assert.equal(options.headers.Authorization,undefined)
    return new Response(JSON.stringify({entries:[{id:3,date:'2026-11-03',amount:1000,merchant:'演示',type:'expense',category:'交通'}],nextCursor:null}),
     {status:200,headers:{'content-type':'application/json'}})
  }

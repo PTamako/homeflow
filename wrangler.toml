@@ -18,6 +18,12 @@ crons = ["0 23 * * *"] # Daily 08:00 Asia/Tokyo
 APP_ENV = "production"
 KAKEBO_LEDGER_API_URL = "https://kakeibo-f17.pages.dev/api/homeflow-ledger"
 
+# Internal-only read-only ledger Worker; production only, not bound in Preview.
+# kakeibo D1 remains bound to the isolated target Worker, not HomeFlow.
+[[services]]
+binding = "KAKEBO_LEDGER_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "homeflow"

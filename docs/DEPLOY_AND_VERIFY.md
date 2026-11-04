@@ -44,16 +44,18 @@
 
 未启用时，本机照片通过 IndexedDB 保存，并可在“家庭 → 备份与恢复”下载包含当前设备照片的 ZIP。清理网站数据或卸载 PWA 可能删除本机照片，请自行保留重要原图。
 
-## 4. 家計簿只读联动（已部署代码，仍需独立授权）
+## 4. 家計簿只读联动（Cloudflare 私有 Service Binding）
 
-`PTamako/kakebo_jp` PR #241 已合并并部署，新增 `GET /api/homeflow-ledger`，但**默认关闭**。
+生产 HomeFlow Worker 使用 `KAKEBO_LEDGER_SERVICE` → `kakeibo-homeflow-bridge` 私有服务绑定，**不再通过公开 `pages.dev` URL 获取明细**。
 
-由你自己在安全终端生成随机长度 ≥32 的独立令牌（不要复用家計簿登录口令）：
-- Cloudflare Pages 项目 `kakeibo` → 生产环境加密 Secret：`HOMEFLOW_LEDGER_READ_TOKEN`。
-- Cloudflare Worker `homeflow` → 生产环境加密 Secret：`KAKEBO_LEDGER_READ_TOKEN`（值与上面的只读令牌一致）。
-- `KAKEBO_LEDGER_API_URL` 已在生产环境固定为 `https://kakeibo-f17.pages.dev/api/homeflow-ledger`；**Preview 不能连接生产账本**。
+- 桥接 Worker 的 `workers.dev`、Preview URL 均已关闭，也不设公开路由。
+- 桥接 Worker 单独绑定生产家計簿 D1，只允许 `GET /api/homeflow-ledger`，单页最多 50 笔、每次日期最多 90 天，只返回六个字段。
+- HomeFlow 仅 Owner 可以请求真实支出，只有经过明确确认的外部 ID 被保存到 HomeFlow D1；私人事项和其他账户仍受登录及权限控制。
+- HomeFlow Preview 没有该 Service Binding；不会读取生产账本。无需给 HomeFlow 直接绑定家計簿 D1。
+- 先前在 Pages `HOMEFLOW_LEDGER_READ_TOKEN`、HomeFlow `KAKEBO_LEDGER_READ_TOKEN` 设置的两个 Secret 用于旧公网接口；**内部服务绑定方式不再传送这两个 Secret**。可保留它们，不会影响新功能。
+- 安全来源代码与测试：`PTamako/kakebo_jp` 的 `workers/homeflow-service-bridge.js` 和 `wrangler.homeflow-bridge.toml`。
 
-完成授权后，HomeFlow Owner 在“计划 → 家計簿”选择旅行/目标和日期范围，逐笔确认关联实际支出。HomeFlow 只保存外部明细 ID；不修改、复制或重分类家計簿明细。第二位家庭账号无权访问完整账目。
+上线验收：Owner 在“计划 → 家計簿”选择旅行/目标和日期范围，查出家計簿实际支出，逐笔确认关联；测试后检查取消关联不影响家計簿原账目。未完成真人端到端验收前，不要声称联动完全可用。
 
 ## 5. 离线、数据导出及恢复
 
@@ -70,6 +72,6 @@
 - [ ] iPhone/iPad PWA 安装、离线恢复、页面布局和备份恢复实测。
 - [ ] VAPID Secret 配置、Web Push 手机授权与实际送达。
 - [ ] R2 账号启用/桶绑定和跨设备私有图片验收（如用户选择启用）。
-- [ ] 家計簿两端只读 Secret 配置及真实交易 ID 关联验收。
+- [ ] 家計簿私有 Service Binding 的真实交易 ID 关联与取消关联验收。
 
 **CI 绿灯不能替代上述真机、授权或第三方资源启用。**

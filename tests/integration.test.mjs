@@ -472,7 +472,8 @@ test('shopping links to a verified kakebo expense and edits / removes details sa
  sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
  const token='test-read-token-012345678901234567890'
  const env={APP_ENV:'production',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234',
-   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token}
+   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token,
+    KAKEBO_LEDGER_SERVICE:{fetch:(...args)=>globalThis.fetch(...args)}}
  const ownerRegistered=await send(env,'/api/auth/bootstrap','POST',{
    loginName:'shopping-owner',password:'another-long-test-password-123',
    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
@@ -483,7 +484,7 @@ test('shopping links to a verified kakebo expense and edits / removes details sa
  const originalFetch=globalThis.fetch
  globalThis.fetch=async(url,options)=>{
    assert.match(String(url),/kakeibo-f17\.pages\.dev\/api\/homeflow-ledger\?ids=123/)
-   assert.equal(options.headers.Authorization,'Bearer '+token)
+   assert.equal(options.headers.Authorization,undefined)
    assert.equal(options.method,'GET')
    return new Response(JSON.stringify({entries:[{id:123,date:'2026-11-04',type:'expense',amount:800,merchant:'超市'}]}),
      {status:200,headers:{'content-type':'application/json'}})
@@ -536,7 +537,8 @@ test('owner can link a shared shopping item created by family member, but cannot
  sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
  const token='another-ledger-token-0123456789012345'
  const env={APP_ENV:'production',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234',
-   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token}
+   KAKEBO_LEDGER_API_URL:'https://kakeibo-f17.pages.dev/api/homeflow-ledger',KAKEBO_LEDGER_READ_TOKEN:token,
+    KAKEBO_LEDGER_SERVICE:{fetch:(...args)=>globalThis.fetch(...args)}}
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
  const account=await ask('/api/auth/bootstrap','POST',{
    loginName:'shopping-host',password:'long-test-password-2026-11',
@@ -559,7 +561,7 @@ test('owner can link a shared shopping item created by family member, but cannot
  const old=globalThis.fetch
  globalThis.fetch=async(url,opts)=>{
    externalRequests++
-   assert.equal(opts.headers.Authorization,'Bearer '+token)
+   assert.equal(opts.headers.Authorization,undefined)
    return new Response(JSON.stringify({entries:[{id:456,type:'expense',date:'2026-11-04',amount:1800}]}),{status:200})
  }
  try {
