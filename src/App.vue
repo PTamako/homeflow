@@ -471,7 +471,7 @@ onBeforeUnmount(()=>{
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                     </template>
                     <template v-else-if="row.plan">
-                      {{ row.done?'今天已完成':row.plan.overdue?'逾期未完成 · 顺延':'今天的计划' }} · {{ row.plan.dueOn }}
+                      {{ row.done?'今天已完成':row.plan.kind==='trip'?'旅行进行中':row.plan.overdue?'逾期未完成 · 顺延':'今天的计划' }} · {{ row.plan.dueOn }}
                       <template v-if="row.plan.destination"> · {{ row.plan.destination }}</template>
                     </template>
                   </small>
