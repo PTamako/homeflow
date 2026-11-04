@@ -65,8 +65,7 @@ onBeforeUnmount(()=>{serial++})
      </select>
     </label>
    </div>
-   <small class="editor-hint">仅适用于当前账号，不修改原计划的截止日期。
-    {{ customized?'正在使用单项设置':'正在使用账号默认设置（提前 '+defaultDays+' 天）' }}</small>
+   <small class="editor-hint">{{ customized?'单项设置':'账号默认（提前 '+defaultDays+' 天）' }} · 不改截止日期</small>
    <div class="editor-actions">
     <button type="button" :disabled="busy" @click="save()">保存</button>
     <button v-if="customized" type="button" :disabled="busy" @click="save(true)">恢复默认</button>
