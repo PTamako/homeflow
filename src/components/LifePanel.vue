@@ -53,6 +53,19 @@ function editAnniversary(item:Row){
 }
 function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
 async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode();if(!error.value)notify('修改已保存')}
+async function shoppingLinksChanged(){
+ // Refresh only the edited shopping row, not all six plan categories,
+ // and keep the same Kakebo candidate page and scroll position.
+ const id=ledgerPickerId.value
+ if(!id)return
+ try{
+  const data=await api('/shopping/'+encodeURIComponent(id))
+  const idx=other.value.findIndex(x=>x.id===id)
+  if(idx>=0&&data.item)other.value.splice(idx,1,data.item)
+  else await fetchMode()
+  notify('购物关联已更新，可继续选择其他消费')
+ }catch(e){error.value=(e as Error).message}
+}
 async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
  const warning=kind==='memories'?'删除回忆后，本机照片不会一起删除，请先备份。':
@@ -824,7 +837,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
               kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
-              @saved="changed" @close="ledgerPickerId=null"/>
+              @saved="shoppingLinksChanged" @close="ledgerPickerId=null"/>
             <button v-if="isFocused(s)" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>

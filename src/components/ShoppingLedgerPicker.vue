@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {onMounted,ref} from 'vue'
+import {computed,onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
 type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
 const props=defineProps<{shoppingId:string;linkedId?:string|null}>()
@@ -12,6 +12,7 @@ const month=()=>new Date(Date.now()-30*86400000+9*3600000).toISOString().slice(0
 const start=ref(month()),end=ref(today())
 const adjustment=ref('0'),linkedAmount=ref<number|null>(null),savedMessage=ref('')
 const links=ref<Linked[]>([]),linksNeedReview=ref(false)
+const linkedEntryIds=computed(()=>new Set(links.value.map(x=>String(x.entryId))))
 const adjustedTotal=()=>Number(linkedAmount.value||0)+Number(adjustment.value||0)
 const signed=(n:number)=>(n<0?'−':n>0?'+':'')+'¥'+Math.abs(n).toLocaleString('ja-JP')
 async function call(path:string,method='GET',body?:any){
@@ -52,6 +53,7 @@ async function attach(entry:Entry){
  busy.value=true;error.value=''
  try{
   await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','POST',{entryId:entry.id})
+  await loadLinks()
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
@@ -63,6 +65,7 @@ async function unlink(entryId?:string|number){
  try{
   await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','DELETE',
     entryId===undefined?undefined:{entryId})
+  await loadLinks()
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
@@ -105,7 +108,8 @@ onMounted(()=>{void check();void loadSettings()})
    <div v-for="entry in entries" :key="entry.id" class="ledger-entry">
     <span>{{ entry.date }} · {{ entry.merchant||entry.category||'支出' }}
      <small>¥{{ Number(entry.amount||0).toLocaleString('ja-JP') }}</small></span>
-    <button type="button" :disabled="busy||entry.type!=='expense'" @click="attach(entry)">关联并完成</button>
+    <button type="button" :disabled="busy||entry.type!=='expense'||linkedEntryIds.has(String(entry.id))"
+      @click="attach(entry)">{{ linkedEntryIds.has(String(entry.id))?'已关联':'关联并完成' }}</button>
    </div>
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <div v-if="links.length" class="shopping-linked">
