@@ -9,6 +9,7 @@ import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
+import ShoppingLedgerPicker from './components/ShoppingLedgerPicker.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
 import SwipeActions from './components/SwipeActions.vue'
@@ -20,7 +21,7 @@ type Task={id:string;title:string;notes:string;visibility:'private'|'household';
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
-type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string;periodKey?:string;tripEnded?:boolean}
+type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string;periodKey?:string;tripEnded?:boolean;ledgerEntryId?:string|null}
 type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
 const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
 const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
@@ -40,6 +41,7 @@ const pendingVisibleCount=ref(listPageSize)
 const peopleVisibleCount=ref(listPageSize)
 const petsVisibleCount=ref(listPageSize)
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
+const shoppingLinkId=ref<string|null>(null)
 const tab=ref<'today'|'family'|'plans'|'memories'>('today')
 const settingsOpen=ref(false)
 const hasImportantReminders=ref(false)
@@ -259,7 +261,8 @@ async function loadTodayPlans(){
           id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
           dueOn:String(x.dueOn||''),done:!!x.done,overdue:!!x.overdue,
           destination:typeof x.destination==='string'?x.destination:undefined,
-          periodKey:typeof x.periodKey==='string'?x.periodKey:undefined,tripEnded:!!x.tripEnded
+          periodKey:typeof x.periodKey==='string'?x.periodKey:undefined,tripEnded:!!x.tripEnded,
+          ledgerEntryId:typeof x.ledgerEntryId==='string'?x.ledgerEntryId:null
         }))
     }
   }catch(e){error.value=(e as Error).message}
@@ -267,26 +270,28 @@ async function loadTodayPlans(){
 async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
 async function completeDuePlan(plan:TodayPlan){
   if(shoppingBusy.value||!['wish','goal'].includes(plan.kind))return
-  if(plan.kind==='goal'&&!plan.done&&
-    !confirm('确认这个储值目标已达标？这只记录完成状态，不会修改家計簿账目或储值金额。'))return
   shoppingBusy.value=true
   try{
     await api('/plans/complete','POST',{kind:plan.kind,id:plan.id,
       periodKey:plan.periodKey||'once',completed:!plan.done})
     await loadTodayPlans()
-    notify(plan.done?'已撤销完成':'已记录完成，后续未完成期间仍会顺延')
-  }catch(e){error.value=(e as Error).message}
+    notify(plan.done?'已撤销完成':'已核对完成条件，记录已保存')
+  }catch(e){
+    const code=(e as Error).message
+    error.value=code==='goal_not_funded'?'记账本核对后储值尚未达到目标，不能完成':
+      code==='ledger_verification_unavailable'?'记账本联动暂不可用，未更改完成状态':
+      code==='owner_required_for_ledger_verification'?'请由家庭管理员核对储值进度':
+      code==='invalid_goal_period'?'储值核算期间无效，请到计划检查开始和结束日期':code
+  }
   finally{shoppingBusy.value=false}
 }
-async function toggleShoppingPlan(plan:TodayPlan){
-  if(shoppingBusy.value)return
-  shoppingBusy.value=true
-  try{
-    await api('/shopping/'+plan.id+'/toggle','POST',{completed:!plan.done})
-    await loadTodayPlans()
-    notify(plan.done?'已撤销购物完成':'购物已完成')
-  }catch(e){error.value=(e as Error).message}
-  finally{shoppingBusy.value=false}
+function toggleShoppingLink(plan:TodayPlan){
+  shoppingLinkId.value=shoppingLinkId.value===plan.id?null:plan.id
+}
+async function shoppingLinked(){
+  shoppingLinkId.value=null
+  await loadTodayPlans()
+  notify('已关联实际购物支出，计划已完成')
 }
 function editRoutine(r:Routine){
   if(r.created_by!==user.value?.id)return
@@ -417,6 +422,7 @@ watch(tab,value=>{
   if(value==='today'){
     todayVisibleCount.value=listPageSize
     pendingVisibleCount.value=listPageSize
+    shoppingLinkId.value=null
     todayCategory.value='all'
     if(user.value)void reloadToday()
   }else if(value==='family'){
@@ -557,17 +563,16 @@ onBeforeUnmount(()=>{
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
               @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
               <div class="task-row today-unified-row">
-                <input v-if="row.task||row.routine||row.plan?.kind==='shopping'||row.plan?.kind==='wish'"
+                <input v-if="row.task||row.routine||row.plan?.kind==='wish'"
                   type="checkbox" :checked="row.done"
                   :disabled="(!!row.routine&&routineBusy)||shoppingBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
                   @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):
-                    row.plan?.kind==='shopping'?toggleShoppingPlan(row.plan):
                     row.plan?completeDuePlan(row.plan):undefined"/>
                 <button v-else-if="row.plan?.kind==='goal'" type="button" class="today-goal-action"
                   :disabled="shoppingBusy" :aria-label="(row.done?'撤销达标确认 ':'确认储值达标 ')+row.title"
-                  @click="completeDuePlan(row.plan)">{{ row.done?'✓':'达标' }}</button>
-                <AppIcon v-else name="plane" :size="19" />
+                  @click="completeDuePlan(row.plan)">{{ row.done?'✓':'核验' }}</button>
+                <AppIcon v-else :name="row.plan?.kind==='shopping'?(row.done?'check':'shopping'):'plane'" :size="19" />
                 <div class="task-detail">
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
@@ -593,6 +598,9 @@ onBeforeUnmount(()=>{
                     </template>
                   </small>
                 </div>
+                <button v-if="row.plan?.kind==='shopping'&&user.role==='owner'" type="button"
+                  class="text-button today-plan-link" @click="toggleShoppingLink(row.plan)">
+                  {{ row.done?'查看账目':'关联消费' }}</button>
                 <button v-if="row.plan" type="button" class="text-button today-plan-link"
                   :aria-label="'打开'+todayKindLabels[row.kind]+'计划：'+row.title"
                   @click="openPlans(row.plan.kind)">查看计划</button>
@@ -626,6 +634,9 @@ onBeforeUnmount(()=>{
             <LifeItemEditor v-if="row.routine&&editingRoutine?.id===row.routine.id"
               kind="routines" :item="row.routine" :profiles="profiles"
               @saved="routineSaved" @cancel="editingRoutine=null"/>
+            <ShoppingLedgerPicker v-if="row.plan?.kind==='shopping'&&shoppingLinkId===row.plan.id"
+              :shopping-id="row.plan.id" :linked-id="row.plan.ledgerEntryId"
+              @saved="shoppingLinked" @close="shoppingLinkId=null"/>
           </template>
           <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
             @click="todayVisibleCount+=listPageSize">加载更多今日待办（每次 5 条）</button>
