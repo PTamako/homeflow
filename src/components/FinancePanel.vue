@@ -196,8 +196,8 @@ onMounted(()=>{
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值进度 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
-    <p class="hint">旅行计划逐笔关联真实消费；储蓄目标按选定期间的收支差额计算。两者都能手填正负调整额，不修改原账目。</p>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值计划 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
+    <p class="hint">旅行计划关联实际消费；储值计划可按累计、每月或每年目标计算期间收支差额。调整额按所选期间保存，不修改原账目。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
       家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
@@ -205,7 +205,7 @@ onMounted(()=>{
     <template v-else>
       <div v-if="!embeddedId" class="fields">
         <label>关联对象
-          <select v-model="kind"><option value="trip">旅行计划</option><option value="goal">储蓄目标</option></select>
+          <select v-model="kind"><option value="trip">旅行计划</option><option value="goal">储值计划</option></select>
         </label>
         <label>选择项目
           <select v-model="target"><option value="">请选择</option>
@@ -221,23 +221,32 @@ onMounted(()=>{
           <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
         </div>
         <div v-else class="summary">
-          <span>目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
-          <span>期初储蓄额 {{ fmt(opening) }}</span>
-          <span>期间收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
-          <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
-          <strong v-if="netLoaded">储蓄进度金额 {{ signed(goalTotal) }}</strong>
-          <small v-if="netLoaded">完成率 {{ goalProgress.toFixed(1) }}%</small>
-          <small v-else>点击读取期间收支差额后计算进度；不包含资产移动。</small>
+          <span>{{ modeLabel }}目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
+          <span v-if="!recurringGoal">期初储值额 {{ fmt(opening) }}</span>
+          <span>{{ recurringGoal?'本期':'所选期间' }}收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
+          <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
+          <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
+          <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
+          <small v-if="periodFuture">所选期间还未开始，暂不查询家計簿。</small>
+          <small v-else>依家庭收支估算，不代表真实银行存款余额；资产移动不计入差额。</small>
         </div>
         <label class="adjustment-label">手动调整额（円，可输入正数或负数）
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
         </label>
-        <div class="fields">
-          <label>起始日期<input v-model="start" type="date"/></label>
-          <label>结束日期<input v-model="end" type="date"/></label>
+        <div v-if="recurringGoal" class="fields">
+          <label v-if="goalMode==='monthly'">选择月份
+            <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" /></label>
+          <label v-else>选择年份
+            <input v-model="periodKey" type="number" inputmode="numeric" min="1900" max="9998"
+              :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
+          <small>本期计算范围：{{ start||'—' }} ～ {{ end||'—' }}；首期从计划开始日期算起。</small>
+        </div>
+        <div v-else class="fields">
+          <label>起始日期<input v-model="start" type="date" :min="kind==='goal'?goalStartOn||undefined:undefined"/></label>
+          <label>结束日期<input v-model="end" type="date" :min="start||undefined"/></label>
         </div>
         <div class="finance-actions">
-          <button type="button" :disabled="busy" @click="saveSettings">保存调整额{{ kind==='goal'?'和期间':'' }}</button>
+          <button type="button" :disabled="busy" @click="saveSettings">保存{{ recurringGoal?'本期':'' }}调整额{{ kind==='goal'&&!recurringGoal?'和期间':'' }}</button>
           <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
             {{ netBusy?'读取中…':'刷新收支差额' }}
           </button>
