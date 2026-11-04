@@ -50,11 +50,13 @@ const focusPlanType=ref('all')
 const focusPlanId=ref('')
 const focusPlanPeriodKey=ref('')
 const focusPlanScope=ref<'active'|'history'>('active')
+const focusPlanFromToday=ref(false)
 const focusPlanRequest=ref(0)
 let savedTodayScrollY=0
 let returningToToday=false
 function openPlans(kind:string,id='',periodKey='',done=false){
-  if(tab.value==='today'&&id)savedTodayScrollY=window.scrollY
+  focusPlanFromToday.value=tab.value==='today'&&!!id
+  if(focusPlanFromToday.value)savedTodayScrollY=window.scrollY
   focusPlanType.value=kind
   focusPlanId.value=id
   focusPlanPeriodKey.value=periodKey
@@ -77,6 +79,7 @@ function navigateTab(value:typeof tab.value){
     focusPlanId.value=''
     focusPlanPeriodKey.value=''
     focusPlanScope.value='active'
+    focusPlanFromToday.value=false
     focusPlanRequest.value++
   }
   tab.value=value
@@ -753,6 +756,7 @@ onBeforeUnmount(()=>{
       <LifePanel :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
          :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
+         :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
         @open-plans="openPlans" @back-to-today="returnToToday" />
