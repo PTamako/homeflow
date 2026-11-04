@@ -162,3 +162,27 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
   min-inline-size:0;
   max-inline-size:100%;
 }
+
+/* Compact, right-aligned settings popover shared by all four tabs. */
+.topbar{position:relative;z-index:40}
+.settings-anchor{position:relative;flex:none}
+.settings-trigger{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;
+  padding:7px 12px;border:1px solid #d8e6db;border-radius:12px;background:#e9f3eb;color:#35795e;
+  font-size:13px;font-weight:700;white-space:nowrap}
+.settings-trigger:focus-visible,.settings-close:focus-visible,.settings-logout:focus-visible{
+  outline:2px solid #43866a;outline-offset:3px}
+.settings-overlay{position:fixed;inset:0;z-index:39;background:transparent}
+.settings-popover{position:absolute;top:calc(100% + 10px);right:0;width:min(336px,calc(100vw - 32px));
+  max-height:min(72dvh,560px);overflow-y:auto;overscroll-behavior:contain;
+  background:#fff;border:1px solid #e3eae3;box-shadow:0 14px 36px #263f3126;
+  border-radius:18px;padding:14px 16px;z-index:41;overflow-wrap:anywhere}
+.settings-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:16px}
+.settings-close{border:0;background:#eef4ee;border-radius:9px;color:#597b67;width:30px;height:30px;font-size:22px;line-height:1}
+.settings-section{padding:13px 0;border-bottom:1px solid #edf0eb;min-width:0}
+.settings-section>b{font-size:14px}
+.settings-account{display:grid;gap:5px}
+.settings-account span{font-size:11px;color:#84978a}
+.settings-account b{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.settings-logout{margin-top:13px;border:0;background:#f8f0ed;border-radius:11px;
+  color:#9e5648;padding:11px 13px;font-size:13px;font-weight:700;width:100%;text-align:center}
+@media(max-width:520px){.settings-popover{max-height:calc(100dvh - 140px)}}
