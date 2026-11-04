@@ -13,3 +13,7 @@ HomeFlow 产品流程：心愿 → 计划 → 执行 → 完成 → 回忆。
 | 6 | 数据备份恢复、免费额度优化、双端验收 | iPhone/iPad、R2 限额、D1 查询消耗与离线恢复 |
 
 数据处理原则：家庭共享不等于所有个人任务公开；豆沙是宠物家庭成员而不是账号；财务数据以家計簿为真实账本；所有业务记录必须可备份并保留历史。
+
+## 后续的外部依赖与验收（截至 2026-11-04）
+
+已通过 PR #47–#52 完善无日期完成、备份恢复、多笔购物、推送延后、回忆联动和按需月度复盘。尚不可将路线视为全部验收完成：专项真实资金核验 [#53](https://github.com/PTamako/homeflow/issues/53)、退款与部分购买 [#54](https://github.com/PTamako/homeflow/issues/54)、更多提前提醒 [#55](https://github.com/PTamako/homeflow/issues/55)、D1/双端验收 [#56](https://github.com/PTamako/homeflow/issues/56) 及人工真机 [#4](https://github.com/PTamako/homeflow/issues/4)。
