@@ -110,7 +110,6 @@ const anniversaryVisibleCount=ref(pageLimit)
 const todayAnniversaryVisibleCount=ref(pageLimit)
 const anniversaryView=ref<'upcoming'|'past'>('upcoming')
 const anniversaryYear=ref(''),anniversaryMonth=ref('')
-watch(anniversaryView,()=>{anniversaryVisibleCount.value=pageLimit})
 const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
   items.value.slice(0,anniversaryVisibleCount.value))
 const visibleShopping=computed(()=>other.value)
@@ -443,7 +442,7 @@ watch(()=>[props.mode,props.profileRevision],fetchMode,{immediate:true})
 watch([planScope,planYear,planMonth],()=>{if(props.mode==='plans')void fetchMode()})
 watch([memoryYear,memoryMonth],()=>{if(props.mode==='memories')void fetchMode()})
 watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
-  anniversaryExpanded.value=false
+  anniversaryVisibleCount.value=pageLimit
   if(props.mode==='family')void fetchMode()
 })
 watch(anniversaryYear,value=>{if(!value)anniversaryMonth.value=''})
