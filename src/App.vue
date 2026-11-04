@@ -204,7 +204,14 @@ async function loadTodayPlans(){
   const date=tokyoToday()
   try{
     const result=await api('/plans/today?date='+encodeURIComponent(date))
-    if(date===tokyoToday()&&user.value)todayPlans.value=Array.isArray(result.items)?result.items:[]
+    if(date===tokyoToday()&&user.value){
+      todayPlans.value=(result.items||[]).filter(x=>['shopping','wish','goal','trip'].includes(String(x.kind))).
+        map((x):TodayPlan=>({
+          id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
+          dueOn:String(x.dueOn||''),done:!!x.done,overdue:!!x.overdue,
+          destination:typeof x.destination==='string'?x.destination:undefined
+        }))
+    }
   }catch(e){error.value=(e as Error).message}
 }
 async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
