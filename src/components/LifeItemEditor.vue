@@ -138,7 +138,7 @@ async function save(){
    <label>开始日期<DateField v-model="form.goalStartOn" required /></label>
    <label v-if="form.goalMode==='once'">期初储值额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
    <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.goalStartOn||undefined" /></label>
-   <small v-if="form.goalMode!=='once'">每个月／每年分别计算，不重复计入旧期初储值额；调整额按期间单独保存。</small>
+   <small v-if="form.goalMode!=='once'">各期独立结算、保存调整额</small>
   </template>
   <template v-else-if="kind==='memories'">
    <label>发生日期<DateField v-model="form.happenedOn" required /></label>
