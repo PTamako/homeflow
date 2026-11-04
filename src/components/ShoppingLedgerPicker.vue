@@ -8,6 +8,9 @@ const entries=ref<Entry[]>([]),cursor=ref<string|null>(null)
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const month=()=>new Date(Date.now()-30*86400000+9*3600000).toISOString().slice(0,10)
 const start=ref(month()),end=ref(today())
+const adjustment=ref('0'),linkedAmount=ref<number|null>(null),savedMessage=ref('')
+const adjustedTotal=()=>Number(linkedAmount.value||0)+Number(adjustment.value||0)
+const signed=(n:number)=>(n<0?'−':n>0?'+':'')+'¥'+Math.abs(n).toLocaleString('ja-JP')
 async function call(path:string,method='GET',body?:any){
  const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
   ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
@@ -47,7 +50,27 @@ async function unlink(){
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-onMounted(check)
+async function loadSettings(){
+ try{
+  const q=new URLSearchParams({type:'shopping',targetId:props.shoppingId})
+  const data=await call('/finance/settings?'+q)
+  adjustment.value=String(data.adjustmentAmount||0)
+  linkedAmount.value=Number.isSafeInteger(data.linkedAmount)?data.linkedAmount:null
+ }catch(e){error.value=(e as Error).message}
+}
+async function saveAdjustment(){
+ if(busy.value)return
+ const value=Number(adjustment.value)
+ if(!/^-?\d+$/.test(adjustment.value.trim())||!Number.isSafeInteger(value)||Math.abs(value)>100000000000){
+  error.value='调整额请输入整数日元';return
+ }
+ busy.value=true;error.value='';savedMessage.value=''
+ try{
+  await call('/finance/settings','PUT',{type:'shopping',targetId:props.shoppingId,adjustmentAmount:value})
+  savedMessage.value='调整额已保存，原始账目未改变'
+ }catch(e){error.value=(e as Error).message}finally{busy.value=false}
+}
+onMounted(()=>{void check();void loadSettings()})
 </script>
 <template>
  <section class="shopping-ledger">
