@@ -15,6 +15,7 @@ async function simulate(status,problem,expected){
   const original=bridge.fetch
   bridge.fetch=async(_url,options)=>{
     assert.equal(options.method,'GET')
+    assert.equal(options.redirect,'manual')
     assert.equal(options.headers.Authorization,undefined)
     return new Response(JSON.stringify(problem),{status,headers:{'content-type':'application/json'}})
   }
@@ -65,4 +66,19 @@ test('production refuses to fall back to public pages.dev when binding is absent
     assert.equal(response.status,503)
     assert.equal((await response.json()).error,'integration_not_configured')
   }finally{env.KAKEBO_LEDGER_SERVICE=saved}
+})
+
+test('Cloudflare Service Binding never follows redirects or uses unsupported error policy',async()=>{
+  const original=bridge.fetch
+  bridge.fetch=async(_url,options)=>{
+    assert.equal(options.method,'GET')
+    assert.equal(options.redirect,'manual')
+    assert.equal(options.signal?.aborted,false)
+    return new Response(null,{status:302,headers:{location:'https://example.invalid/'}})
+  }
+  try{
+    const response=await financeRoute(request(),env,'/api/finance/candidates',session)
+    assert.equal(response.status,502)
+    assert.deepEqual(await response.json(),{error:'ledger_upstream_unavailable'})
+  }finally{bridge.fetch=original}
 })
