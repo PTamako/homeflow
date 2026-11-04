@@ -353,6 +353,80 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  sqlite.close()
 })
 
+test('dated shopping, wishes and savings goals carry forward until explicitly completed',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ownerRegistered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'followup-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(ownerRegistered.status,201)
+ const owner=extractCookie(ownerRegistered.cookie)
+ const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const yesterday=plus(today,-1),tomorrow=plus(today,1)
+ const previousMonth=new Date(Date.parse(today+'T00:00:00Z'))
+ previousMonth.setUTCDate(1);previousMonth.setUTCMonth(previousMonth.getUTCMonth()-1)
+ const lastMonthKey=previousMonth.toISOString().slice(0,7)
+ const shopping=await ask('/api/shopping','POST',{
+   title:'计划购物未购买',quantity:1,dueOn:yesterday,visibility:'household'},owner)
+ const wish=await ask('/api/wishes','POST',{
+   title:'没有实现的心愿',wishType:'purchase',estimatedAmount:0,
+   targetOn:yesterday,currency:'JPY',visibility:'household'},owner)
+ const saving=await ask('/api/goals','POST',{
+   title:'本月储值',targetAmount:5000,reservedAmount:0,
+   goalMode:'monthly',startOn:lastMonthKey+'-01',currency:'JPY',visibility:'household'},owner)
+ const once=await ask('/api/goals','POST',{
+   title:'一次性储值',targetAmount:10000,reservedAmount:0,
+   goalMode:'once',startOn:yesterday,targetOn:yesterday,currency:'JPY',visibility:'household'},owner)
+ const trip=await ask('/api/trips','POST',{
+   title:'未收尾旅行',destination:'大阪',startDate:yesterday,endDate:yesterday,
+   budgetAmount:3000,visibility:'household'},owner)
+ for(const created of [shopping,wish,saving,once,trip])assert.equal(created.status,201,JSON.stringify(created.body))
+ let rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
+ const get=(kind,id)=>rows.find(x=>x.kind===kind&&x.id===id)
+ assert.equal(get('shopping',shopping.body.id).overdue,true)
+ assert.equal(get('wish',wish.body.id).overdue,true)
+ assert.equal(get('goal',once.body.id).overdue,true)
+ assert.equal(get('goal',saving.body.id).periodKey,lastMonthKey)
+ assert.equal(get('trip',trip.body.id).tripEnded,true)
+ assert.equal((await ask('/api/plans/complete','POST',
+   {kind:'goal',id:saving.body.id,periodKey:today.slice(0,7),completed:true},owner)).status,409,
+   'current monthly goal must not complete before the end of its period')
+
+ const wishDone=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:true},owner)
+ assert.equal(wishDone.status,200,JSON.stringify(wishDone.body))
+ const saved=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
+ assert.equal(saved.status,200,JSON.stringify(saved.body))
+ const onceDone=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:once.body.id,completed:true},owner)
+ assert.equal(onceDone.status,200,JSON.stringify(onceDone.body))
+ const bought=await ask('/api/shopping/'+shopping.body.id+'/toggle','POST',{completed:true},owner)
+ assert.equal(bought.status,200)
+ rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
+ assert.equal(get('wish',wish.body.id).done,true)
+ assert.equal(get('goal',saving.body.id).done,true)
+ assert.equal(get('goal',once.body.id).done,true)
+ assert.equal(get('shopping',shopping.body.id).done,true)
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks").get().n,3)
+ rows=(await ask('/api/plans/today?date='+tomorrow,'GET',undefined,owner)).body.items
+ assert.equal(get('wish',wish.body.id),undefined,'wish disappears on next JST day')
+ assert.equal(get('goal',once.body.id),undefined,'one-time saving disappears after completion')
+ assert.equal(get('shopping',shopping.body.id),undefined,'purchased item disappears next day')
+ assert.ok(get('trip',trip.body.id),'unfinished trip follows up after return')
+ const undoWish=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:false},owner)
+ assert.equal(undoWish.status,200)
+ const undoGoal=await ask('/api/plans/complete','POST',{
+   kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:false},owner)
+ assert.equal(undoGoal.status,200)
+ rows=(await ask('/api/plans/today?date='+tomorrow,'GET',undefined,owner)).body.items
+ assert.equal(get('wish',wish.body.id).done,false)
+ assert.equal(get('goal',saving.body.id).periodKey,lastMonthKey)
+ assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(wish.body.id).status,'wished')
+ sqlite.close()
+})
+
 test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
