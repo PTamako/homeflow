@@ -423,6 +423,45 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
  sqlite.close()
 })
 
+test('private wish memories cannot be shared by create or edit, while shared plan links work',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const created=await ask('/api/auth/bootstrap','POST',{
+   loginName:'memory-link-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(created.status,201)
+ const owner=extractCookie(created.cookie)
+ const wish=(visibility,title)=>ask('/api/wishes','POST',{
+   title,wishType:'activity',estimatedAmount:0,currency:'JPY',visibility
+ },owner)
+ const secret=await wish('private','私人礼物')
+ const shared=await wish('household','家庭旅行心愿')
+ assert.equal(secret.status,201)
+ assert.equal(shared.status,201)
+ const memory=(planId,visibility)=>ask('/api/memories','POST',{
+   title:'珍贵的一天',story:'值得记住',happenedOn:'2026-11-04',
+   linkedType:'wish',linkedId:planId,visibility
+ },owner)
+ const leak=await memory(secret.body.id,'household')
+ assert.equal(leak.status,400,'sharing a private linked plan leaks source metadata')
+ const privateMemory=await memory(secret.body.id,'private')
+ assert.equal(privateMemory.status,201,JSON.stringify(privateMemory.body))
+ const allowed=await memory(shared.body.id,'household')
+ assert.equal(allowed.status,201,JSON.stringify(allowed.body))
+ const edit=await ask('/api/memories/'+privateMemory.body.id,'PATCH',{
+   title:'珍贵的一天',story:'值得记住',happenedOn:'2026-11-04',
+   linkedType:'wish',linkedId:secret.body.id,visibility:'household'
+ },owner)
+ assert.equal(edit.status,400,'editing cannot leak an existing private linked memory')
+ const safe=sqlite.prepare('SELECT visibility,linked_type,linked_id FROM memories WHERE id=?')
+   .get(privateMemory.body.id)
+ assert.equal(safe.visibility,'private')
+ assert.equal(safe.linked_type,'wish')
+ assert.equal(safe.linked_id,secret.body.id)
+ sqlite.close()
+})
+
 test('shopping supports two verified receipts, partial unlink, and source deletion review',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)
