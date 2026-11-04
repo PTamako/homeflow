@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,onBeforeUnmount,ref,watch} from 'vue'
+import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import BackupPanel from './components/BackupPanel.vue'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
@@ -8,6 +8,7 @@ import PushPanel from './components/PushPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
+import SwipeActions from './components/SwipeActions.vue'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;completedAt:string|null;updatedAt:string}
@@ -41,6 +42,15 @@ const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
+async function openBirthdayProfileEditor(id:string){
+  const profile=profiles.value.find(p=>p.id===id)
+  if(!profile||!canEditProfile(profile))return
+  tab.value='family'
+  editProfileId.value=id
+  if(profile.type==='pet')openPetId.value=id
+  await nextTick()
+  document.getElementById('profile-'+id)?.scrollIntoView({behavior:'smooth',block:'center'})
+}
 async function profileSaved(){
   try{
     const next=await api('/family')
@@ -277,14 +287,16 @@ onBeforeUnmount(()=>{
           </div>
           <div class="row-between"><b>今日待办</b><label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label></div>
           <div v-if="!visibleTasks.length" class="empty">今天没有任务，添加一件小事吧。</div>
-          <div v-for="t in visibleTasks" :key="t.id" class="task-row">
-            <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
-            <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
-              <small class="task-meta"><AppIcon :name="t.visibility==='private'?'shield':'house'" :size="14" />
-                {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
-            <button v-if="t.creatorUserId===user.id" class="text-button" @click="editTask(t)" :aria-label="'编辑 '+t.title">编辑</button>
-            <button v-if="t.creatorUserId===user.id" class="text-button" @click="deleteTask(t)" :aria-label="'删除 '+t.title">×</button>
-          </div>
+          <SwipeActions v-for="t in visibleTasks" :key="t.id" :id="t.id" scope="today-tasks"
+            :allow-edit="t.creatorUserId===user.id" :allow-delete="t.creatorUserId===user.id"
+            @edit="editTask(t)" @delete="deleteTask(t)">
+            <div class="task-row">
+              <input type="checkbox" :checked="!!t.completedAt" :aria-label="'完成 '+t.title" @change="toggleTask(t)"/>
+              <div class="task-detail"><div :class="{done:!!t.completedAt}">{{ t.title }}</div>
+                <small class="task-meta"><AppIcon :name="t.visibility==='private'?'shield':'house'" :size="14" />
+                  {{ t.visibility==='private'?'仅自己':'家庭共享' }} · {{ t.dueOn||'无截止日' }}</small></div>
+            </div>
+          </SwipeActions>
         </section>
       </template>
       <template v-else-if="tab==='family'">
@@ -295,7 +307,7 @@ onBeforeUnmount(()=>{
           </div>
           <p class="hint">点击自己的档案即可补充或修改生日。填写后自动加入每年生日提醒。</p>
           <div v-if="people.length" class="profiles">
-            <div v-for="p in people" :key="p.id" class="profile-entry">
+            <div v-for="p in people" :key="p.id" :id="'profile-'+p.id" class="profile-entry">
               <button v-if="canEditProfile(p)" type="button" class="profile profile-button"
                 :aria-expanded="editProfileId===p.id" @click="toggleProfileEdit(p.id)">
                 <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
@@ -322,7 +334,7 @@ onBeforeUnmount(()=>{
             <span class="section-hint">{{ pets.length }} 只宠物</span>
           </div>
           <p class="hint">点击宠物卡片，查看体重、驱虫、疫苗和护理记录。</p>
-          <div v-for="p in pets" :key="p.id" class="pet-profile-entry">
+          <div v-for="p in pets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
             <button type="button" class="pet-profile-trigger" :aria-expanded="openPetId===p.id"
               :aria-controls="'pet-health-'+p.id" @click="togglePet(p.id)">
               <span class="profile-symbol"><AppIcon name="paw" :size="22" /></span>
@@ -373,7 +385,7 @@ onBeforeUnmount(()=>{
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
       <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
-        :profile-revision="profileRevision" />
+        :profile-revision="profileRevision" @edit-profile="openBirthdayProfileEditor" />
       <BackupPanel v-if="tab==='family'" :user-id="user.id" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">

@@ -84,3 +84,16 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .task-form .task-object{min-width:0;max-width:100%}
 .task-object-hint{grid-column:1/-1;font-size:12px;line-height:1.6;color:#87958b;margin:-3px 0 1px}
 @media(max-width:720px){.task-object-hint{grid-column:1}}
+
+/* Installed PWA only: disallow accidental viewport zoom while keeping page scrolling. */
+.homeflow-installed, .homeflow-installed body{touch-action:manipulation}
+.task-row{min-width:0;max-width:100%}
+
+/* iOS Safari focuses and zooms inputs with text below 16px, even inside PWAs.
+   Use accessible native-size controls in the installed app instead of triggering
+   unwanted viewport magnification. Browser Safari keeps its regular zoom. */
+@media(max-width:720px){
+  .homeflow-installed input,
+  .homeflow-installed select,
+  .homeflow-installed textarea{font-size:16px!important}
+}
