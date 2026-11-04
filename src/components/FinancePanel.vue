@@ -6,7 +6,7 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
 const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;initialCompletedPeriods?:string[]}>()
-const emit=defineEmits<{completed:[]}>()
+const emit=defineEmits<{completed:[completed:boolean,periodKey:string]}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
 const nextCursor=ref<string|null>(null),busy=ref(false),error=ref('')
@@ -42,7 +42,7 @@ const goalPeriodDue=computed(()=>{
   if(!g||kind.value!=='goal')return false
   if(!recurringGoal.value)return !!g.target_on&&g.target_on<=today
   const key=String(periodKey.value)
-  if(!/^(\d{4})(-\d{2})?$/.test(key))return false
+  if(!(goalMode.value==='monthly'?/^\d{4}-(0[1-9]|1[0-2])$/.test(key):/^\d{4}$/.test(key)))return false
   const end=goalMode.value==='monthly'
     ?new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5,7)),0)).toISOString().slice(0,10)
     :key+'-12-31'
@@ -103,7 +103,7 @@ async function confirmGoalCompleted(){
     if(wasCompleted)completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
     else completedPeriods.value=[...completedPeriods.value,key]
     notify(wasCompleted?'已撤销本期达标确认':'储值已核验达标，完成状态已保存')
-    emit('completed')
+    emit('completed',!wasCompleted,key)
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
 }
