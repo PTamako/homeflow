@@ -320,9 +320,6 @@ async function addShopping(){
   await update(()=>api('/shopping','POST',{title:shoppingTitle.value,quantity:1,visibility:'household'}))
   if(!error.value)shoppingTitle.value=''
 }
-async function toggleShopping(x:Row){
-  await update(()=>api('/shopping/'+x.id+'/toggle','POST',{completed:!x.completed_at}),x.completed_at?'已撤销完成':'已完成')
-}
 async function convertWish(w:Row){
   const destination=prompt('目的地（例如北海道）',w.title)
   if(!destination)return
@@ -653,11 +650,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
-                <label class="shopping-check"><input type="checkbox" :checked="!!s.completed_at" :disabled="busy" @change="toggleShopping(s)"/>
-                  <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
+                <div class="shopping-check"><span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
+                    <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small>
+                    <small v-else>待关联真实购物支出</small></span></div>
                 <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                  class="life-link" @click="toggleLedger(s.id)">账目与调整额</button>
+                  class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'账目与调整额':'关联购物支出' }}</button>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
