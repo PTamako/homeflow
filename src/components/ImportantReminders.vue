@@ -5,34 +5,49 @@ import {additionalReminders} from '../today-presentation.mjs'
 
 type Reminder={id:string;kind:string;title:string;dueOn:string}
 const props=withDefaults(defineProps<{todayDate:string;todayEntryKeys:string[];compact?:boolean}>(),{compact:false})
+const emit=defineEmits<{presenceChange:[hasReminders:boolean]}>()
 const items=ref<Reminder[]>([])
+const lastLoadedAt=ref(0),loadedDate=ref('')
 const loading=ref(false)
 const error=ref('')
 let requestId=0
-const visibleReminders=computed(()=>additionalReminders(items.value,props.todayEntryKeys) as Reminder[])
+const visibleReminders=computed(()=>loadedDate.value===props.todayDate
+ ? additionalReminders(items.value,props.todayEntryKeys) as Reminder[] : [])
 
 async function load(){
  const current=++requestId
+ const date=props.todayDate
  loading.value=true
  error.value=''
+ loadedDate.value=''
  try{
-  const res=await fetch('/api/reminders?date='+encodeURIComponent(props.todayDate),{
+  const res=await fetch('/api/reminders?date='+encodeURIComponent(date),{
    credentials:'same-origin',cache:'no-store'})
   if(!res.ok)throw Error('无法读取今天的重要提醒')
   const data=await res.json() as {items?:Reminder[]}
   if(current!==requestId)return
   items.value=data.items||[]
+  loadedDate.value=date
  }catch(e){
   if(current!==requestId)return
   items.value=[]
   error.value=(e as Error).message
  }finally{
-  if(current===requestId)loading.value=false
+  if(current===requestId){
+    lastLoadedAt.value=Date.now()
+    loading.value=false
+  }
  }
 }
-// Load on settings menu opening, refresh on JST date rollover,
-// and ignore stale responses when the menu closes.
+// The badge and menu consume the same in-memory result: no second D1 read.
+function refreshIfStale(){
+ if(!loading.value&&Date.now()-lastLoadedAt.value>15*60*1000)void load()
+}
+defineExpose({refreshIfStale})
 watch(()=>props.todayDate,()=>{void load()},{immediate:true})
+watch([visibleReminders,loading,error],([rows,isLoading,loadError])=>{
+ emit('presenceChange',!isLoading&&!loadError&&rows.length>0)
+},{immediate:true})
 onBeforeUnmount(()=>{requestId++})
 </script>
 
