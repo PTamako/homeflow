@@ -14,7 +14,7 @@ type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
-const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref('')
+const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref(''),routineHealthType=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
@@ -118,6 +118,13 @@ function routineLabel(r:Row){
     r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
     r.repeat_type==='workday'?'工作日':'定期'
 }
+function profileName(id:string|null|undefined){
+  return props.profiles.find(p=>p.id===id)?.displayName||''
+}
+const routineSubjectIsPet=computed(()=>props.profiles.some(p=>p.id===routineSubject.value&&p.type==='pet'))
+watch(routineSubject,id=>{
+  routineHealthType.value=props.profiles.some(p=>p.id===id&&p.type==='pet')?'other':''
+})
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
@@ -194,7 +201,9 @@ async function addRoutine(){
   const repeatConfig=routineRepeat.value==='interval'?{days:intervalDays.value}:routineRepeat.value==='monthly'?{day:Number(today().slice(8))}:
     routineRepeat.value==='weekly'?{weekdays:[new Date().getDay()]}:{}
   await update(()=>api('/routines','POST',{title:routineTitle.value,repeatType:routineRepeat.value,
-    repeatConfig:{...repeatConfig,...(routineRepeat.value==='interval'?{anchor:intervalAnchor.value}:{})},anchorDate:today(),subjectProfileId:routineSubject.value||null,visibility:'household'}))
+    repeatConfig:{...repeatConfig,...(routineRepeat.value==='interval'?{anchor:intervalAnchor.value}:{})},anchorDate:today(),
+    subjectProfileId:routineSubject.value||null,healthRecordType:routineSubjectIsPet.value?routineHealthType.value||null:null,
+    visibility:'household'}))
   if(!error.value)routineTitle.value=''
 }
 async function markRoutine(r:Row,done:boolean){
@@ -374,11 +383,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     @change="markRoutine(r,!r.mark?.completed_at)"/>
                   <span class="routine-name">{{ r.title }}</span>
                 </label>
-                <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}</small>
+                <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-              kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
+              kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
           
         </section>
@@ -474,11 +483,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
               <div class="life-row" :class="{'detail-completed':r.enabled===0}">
                 <div class="life-details"><b class="detail-name">{{ r.title }}</b>
-                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}</small></div>
+                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small></div>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-              kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
+              kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
           <p v-if="!routines.length" class="life-empty">{{ planScope==='active'?'还没有设置定期任务':'暂无已归档的定期计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
@@ -495,7 +504,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <option value="">不关联任何人或宠物</option>
                 <option v-for="p in props.profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
               </select></label>
-            <p class="life-caption">只是标记任务与谁有关，不会指定执行者或改变共享权限。</p>
+            <label v-if="routineSubjectIsPet">勾选完成后同步到宠物护理记录
+              <select v-model="routineHealthType" aria-label="完成任务后写入哪种护理记录">
+                <option value="">不自动记录</option><option value="other">日常护理</option>
+                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
+                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option>
+                <option value="vet">就诊</option>
+              </select></label>
+            <p class="life-caption">关联对象不会改变任务权限。关联宠物后，可选择完成时自动写入护理历史；同一天不会重复记录。</p>
             <button :disabled="busy">＋ 添加定期任务</button>
           </form>
         </section>
