@@ -1,4 +1,5 @@
 import {iso,json,readBody,shortText,validDate} from './security.js'
+import {listFilters,monthWindow} from './list-pagination.js'
 function validated(body,session) {
   const title=shortText(body?.title,150),notes=shortText(body?.notes??'',1000)
   const visibility=body?.visibility
@@ -37,6 +38,37 @@ async function validateRefs(db,session,data) {
 export async function tasksRoute(request,db,path,session) {
   const household=session.household_id,who=session.user_id
   if(path==='/api/tasks' && request.method==='GET'){
+    // Plans and history use bounded keyset pages; no COUNT(*) or deep OFFSET scans.
+    const filters=listFilters(request.url)
+    if(filters?.invalid)return json({error:'invalid_input'},400)
+    if(filters){
+      const column=filters.scope==='history'?'completed_at':'created_at'
+      const where=["household_id=?1","deleted_at IS NULL",
+        "(visibility='household' OR creator_user_id=?2)"]
+      const args=[household,who]
+      if(filters.scope==='active')where.push("completed_at IS NULL")
+      if(filters.scope==='history')where.push("completed_at IS NOT NULL")
+      const window=monthWindow(filters.year,filters.month)
+      if(window){
+        where.push(column+'>=?'+(args.length+1)+' AND '+column+'<?'+(args.length+2))
+        args.push(window.start,window.end)
+      }
+      if(filters.cursor){
+        where.push('('+column+'<?'+(args.length+1)+' OR ('+column+'=?'+(args.length+2)+
+          ' AND id<?'+(args.length+3)+'))')
+        args.push(filters.cursor.date,filters.cursor.date,filters.cursor.id)
+      }
+      const sql=`SELECT id,title,notes,visibility,due_on AS dueOn,
+        creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
+        subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
+        completed_at AS completedAt,remind_enabled AS remindEnabled,
+        created_at AS createdAt,updated_at AS updatedAt FROM tasks
+        WHERE `+where.join(' AND ')+' ORDER BY '+column+' DESC,id DESC LIMIT ?'+(args.length+1)
+      const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
+      const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
+      return json({items,nextCursor:rows.length>filters.limit&&last?
+        (filters.scope==='history'?last.completedAt:last.createdAt)+'|'+last.id:null})
+    }
     const url=new URL(request.url)
     const mode=url.searchParams.get('status')||'open'
     if(!['open','done','all'].includes(mode))return json({error:'invalid_status'},400)
