@@ -20,6 +20,11 @@ const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amoun
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
 const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
+type Settlement={periodKey:string;start:string;end:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null;legacy:boolean}
+const settlementRows=ref<Settlement[]>([]),settlementCursor=ref<string|null>(null),settlementLoading=ref(false),settlementError=ref('')
+const historyYear=ref(''),historyMonth=ref('')
+const historyYears=Array.from({length:20},(_,i)=>String(new Date().getFullYear()-i))
+const historyMonths=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const currentMarkKey=computed(()=>recurringGoal.value?String(periodKey.value):'once')
 const alreadyCompleted=computed(()=>completedPeriods.value.includes(currentMarkKey.value))
 const confirmBusy=ref(false)
@@ -47,7 +52,7 @@ const goalPeriodDue=computed(()=>{
     ?new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5,7)),0)).toISOString().slice(0,10)
     :key+'-12-31'
   const last=g.target_on&&g.target_on<end?g.target_on:end
-  return !!last&&last<=today&&(!g.start_on||g.start_on<=last)
+  return !!last&&last<today&&(!g.start_on||g.start_on<=last)
 })
 const signed=(amount:number)=>(amount<0?'−':amount>0?'+':'')+'¥'+Math.abs(Number(amount||0)).toLocaleString('ja-JP')
 
@@ -106,6 +111,39 @@ async function confirmGoalCompleted(){
     emit('completed',!wasCompleted,key)
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
+}
+async function loadSettlementHistory(more=false){
+ if(!recurringGoal.value||!target.value){settlementRows.value=[];settlementCursor.value=null;return}
+ const id=target.value,year=historyYear.value,month=historyMonth.value
+ settlementLoading.value=true;settlementError.value=''
+ try{
+   const q=new URLSearchParams({limit:'5'})
+   if(year)q.set('year',year)
+   if(year&&month&&goalMode.value==='monthly')q.set('month',month)
+   if(more&&settlementCursor.value)q.set('cursor',settlementCursor.value)
+   const result=await api('/goals/'+encodeURIComponent(id)+'/periods?'+q.toString())
+   if(id!==target.value||year!==historyYear.value||month!==historyMonth.value)return
+   settlementRows.value=more?[...settlementRows.value,...(result.items||[])]:result.items||[]
+   settlementCursor.value=result.nextCursor||null
+ }catch(e){settlementError.value=(e as Error).message}
+ finally{settlementLoading.value=false}
+}
+async function settleRecurringGoal(){
+ if(!recurringGoal.value||!selected.value||!goalPeriodDue.value||confirmBusy.value)return
+ confirmBusy.value=true;error.value=''
+ try{
+   const data=await api('/goals/'+encodeURIComponent(target.value)+'/periods/settle','POST',
+     {periodKey:String(periodKey.value)})
+   const key=String(periodKey.value)
+   if(data.status==='met'){
+     if(!completedPeriods.value.includes(key))completedPeriods.value=[...completedPeriods.value,key]
+   }else completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
+   notify(data.status==='met'?'本期已结算 · 达标':
+     '本期已结算 · 不足 '+fmt(Math.max(0,Number(data.differenceAmount||0)))+'，记录已保存')
+   await loadSettlementHistory()
+   emit('completed',data.status==='met',key)
+ }catch(e){error.value=(e as Error).message}
+ finally{confirmBusy.value=false}
 }
 async function detect(){
   if(!props.owner)return
@@ -168,7 +206,8 @@ async function saveSettings(){
       payload.periodEnd=kind.value==='goal'?end.value:null
     }
     await api('/finance/settings','PUT',payload)
-    notify(recurringGoal.value?'本月／本年的调整额已保存':'调整额和设置已保存，不会修改家計簿')
+    notify(recurringGoal.value?'本期调整额已保存，如已结算请重新核验':'调整额和设置已保存，不会修改家計簿')
+    if(recurringGoal.value)await loadSettlementHistory()
     if(kind.value==='goal')await loadGoalNet()
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
@@ -218,9 +257,11 @@ watch([kind,target],()=>{
   const previousKey=periodKey.value
   resetGoalPeriod()
   void refreshLinks()
+  void loadSettlementHistory()
   if(periodKey.value===previousKey||!recurringGoal.value)void refreshSettings()
 })
-watch(kind,()=>{target.value=''})
+watch(kind,()=>{target.value='';historyYear.value='';historyMonth.value=''})
+watch([historyYear,historyMonth],()=>{void loadSettlementHistory()})
 watch(periodKey,()=>{if(recurringGoal.value&&available.value)void refreshSettings()})
 watch([start,end],()=>{if(!recurringGoal.value)netLoaded.value=false})
 watch(selected,value=>{
@@ -245,6 +286,7 @@ onMounted(()=>{
   // Focused navigation already fetched completion marks by ID; avoid
   // a duplicate D1 lookup when opening from Today.
   if(kind.value==='goal'&&!props.initialPeriodKey)void refreshCompletionMarks()
+  if(recurringGoal.value)void loadSettlementHistory()
 })
 </script>
 <template>
