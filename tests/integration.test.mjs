@@ -373,6 +373,53 @@ test('family profile edits drive birthday list and reminders, with no duplicate 
  sqlite.close()
 })
 
+test('shopping supports two verified receipts, partial unlink, and source deletion review',async()=>{
+ const {db,sqlite}=makeDb()
+ const {env,amount}=mockedProductionLedger(db,sqlite)
+ amount.expenses.push({id:124,date:'2026-11-04',type:'expense',amount:1400,merchant:'第二次购买'})
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const registered=await ask('/api/auth/bootstrap','POST',{
+   loginName:'multi-shopping-owner',password:'another-long-test-password-123',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(registered.status,201)
+ const owner=extractCookie(registered.cookie)
+ const item=await ask('/api/shopping','POST',{title:'分两次购买',quantity:2,visibility:'household'},owner)
+ assert.equal(item.status,201)
+ const link='/api/finance/shopping/'+item.body.id+'/link'
+ const list='/api/finance/shopping/'+item.body.id+'/links'
+ for(const entryId of [123,124]){
+   const connected=await ask(link,'POST',{entryId},owner)
+   assert.equal(connected.status,200,JSON.stringify(connected.body))
+ }
+ const linked=await ask(list,'GET',undefined,owner)
+ assert.equal(linked.status,200,JSON.stringify(linked.body))
+ assert.equal(linked.body.items.length,2)
+ assert.equal(linked.body.linkedAmount,4900)
+ assert.equal(linked.body.needsReview,false)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,2)
+ const repeated=await ask(link,'POST',{entryId:123},owner)
+ assert.equal(repeated.status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,2)
+ const snapshot=await ask('/api/portable','GET',undefined,owner)
+ assert.equal(snapshot.status,200,JSON.stringify(snapshot.body))
+ assert.equal(snapshot.body.records.shoppingExpenseLinks.length,2)
+ const part=await ask(link,'DELETE',{entryId:123},owner)
+ assert.equal(part.status,200)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links').get().n,1)
+ assert.ok(sqlite.prepare('SELECT completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id).done)
+ amount.expenses.pop()
+ const review=await ask(list,'GET',undefined,owner)
+ assert.equal(review.status,200)
+ assert.equal(review.body.needsReview,true)
+ assert.equal(review.body.linkedAmount,0,'unavailable or refunded source is not counted as live expense')
+ const clear=await ask(link,'DELETE',undefined,owner)
+ assert.equal(clear.status,200)
+ const status=sqlite.prepare('SELECT ledger_entry_id AS entry,completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id)
+ assert.equal(status.entry,null)
+ assert.equal(status.done,null)
+ sqlite.close()
+})
+
 test('dated shopping, wishes and savings goals carry forward until verified completion',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)
