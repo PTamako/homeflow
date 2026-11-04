@@ -16,6 +16,15 @@ const createSession=async(db, userId) => {
 const malformed=()=>json({error:'invalid_input'},400)
 const conflict=()=>json({error:'conflict_or_expired'},409)
 
+function registrationFieldError(body) {
+  const login=typeof body?.loginName==='string'?body.loginName.trim().toLowerCase():''
+  if(!isValidLogin(login))return 'invalid_login_name'
+  if(!validPassword(body?.password))return 'invalid_password'
+  const name=shortText(body?.displayName,60)
+  if(!name||!ALLOWED_BOOTSTRAP_NAME.test(name))return 'invalid_display_name'
+  return null
+}
+
 async function credentials(db, body, opts={}) {
   const login=String(body?.loginName||'').trim().toLowerCase()
   const password=body?.password
@@ -72,8 +81,10 @@ export async function authRoute(request,env,path,session) {
     // Both values are hashed first, then compared without early-exit.
     const [sent,expected]=await Promise.all([sha256(body.bootstrapSecret),sha256(env.HOMEFLOW_BOOTSTRAP_SECRET)])
     if(!constantEqualHex(sent,expected)) return json({error:'bootstrap_not_authorized'},403)
+    const fieldError=registrationFieldError(body)
+    if(fieldError)return json({error:fieldError},400)
     const account=await credentials(db,body)
-    if(!account) return malformed()
+    if(!account)return json({error:'login_name_taken'},409)
     const householdId='primary'
     const householdName=shortText(body.householdName,60)||'我们的小家'
     try {
@@ -136,13 +147,16 @@ export async function authRoute(request,env,path,session) {
   if(path==='/api/auth/join' && request.method==='POST') {
     const body=await readBody(request)
     if(!body || typeof body.invitationCode!=='string' || !/^[a-f0-9]{64}$/.test(body.invitationCode))
-      return malformed()
-    const account=await credentials(db,body)
-    if(!account)return malformed()
+      return json({error:'invalid_invitation_code'},400)
+    const fieldError=registrationFieldError(body)
+    if(fieldError)return json({error:fieldError},400)
+    // Validate the invitation before checking account availability or hashing a password.
     const hashed=await sha256(body.invitationCode)
     const invite=await db.prepare(`SELECT household_id FROM invitations WHERE token_hash=?1
       AND used_at IS NULL AND expires_at>?2`).bind(hashed,nowMs()).first()
     if(!invite)return conflict()
+    const account=await credentials(db,body)
+    if(!account)return json({error:'login_name_taken'},409)
     try {
       // Transactional conditional INSERTs; token is also marked redeemed exactly once.
       await db.batch([

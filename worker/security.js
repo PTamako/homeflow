@@ -94,6 +94,20 @@ export async function verifiedDatabase(env) {
   }catch{return false}
 }
 export function isValidLogin(login) {
-  return /^[a-zA-Z0-9._-]{3,36}$/.test(login)
+  if(typeof login!=='string')return false
+  // Keep existing 3–36 character usernames working unchanged.
+  if(/^[a-zA-Z0-9._-]{3,36}$/.test(login))return true
+  // Also allow an email as a login identifier. This is NOT email ownership verification.
+  if(login.length>254||login.length<3)return false
+  const parts=login.split('@')
+  if(parts.length!==2)return false
+  const [local,domain]=parts
+  if(!local||local.length>64||local.startsWith('.')||local.endsWith('.')||local.includes('..'))return false
+  if(!/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local))return false
+  if(!domain||domain.length>253||!domain.includes('.'))return false
+  const labels=domain.split('.')
+  return labels.every(label=>label.length<=63&&
+    /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label))
+    &&labels[labels.length-1].length>=2
 }
 export const iso = () => new Date().toISOString()

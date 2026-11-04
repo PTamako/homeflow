@@ -22,7 +22,12 @@ const nav=[{id:'today',icon:'☀',label:'今天'},{id:'plans',icon:'✓',label:'
 const visibleTasks=computed(()=>tasks.value.filter(t=>showDone.value||!t.completedAt))
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const errText=(key:string)=>{
-  const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'请检查输入（密码至少 12 位）',
+  const map:Record<string,string>={invalid_credentials:'账号或密码错误',invalid_input:'输入格式不符合要求，请检查所有字段。',
+    invalid_login_name:'登录账号格式不正确：请使用邮箱地址，或 3～36 位英文用户名（可包含数字、点、下划线和连字符）。',
+    invalid_password:'密码需为 12～128 个字符，UTF-8 编码不超过 300 字节。',
+    invalid_display_name:'昵称需为 1～60 个字符，可使用中文、日文、英文字母和数字。',
+    login_name_taken:'这个登录账号已经被使用，请换一个。',
+    invalid_invitation_code:'邀请码格式不正确，请向家人重新获取。',
     bootstrap_not_configured:'请先在生产 Worker 配置 HOMEFLOW_BOOTSTRAP_SECRET',bootstrap_secret_too_short:'已找到 Cloudflare Secret，但长度不足 32 字符。请在生产 Worker 重设为至少 32 位随机值。',bootstrap_not_authorized:'启动密钥不正确',
     not_authenticated:'请登录',conflict_or_expired:'邀请码过期、已使用或账号重复',household_full:'家庭已有两个账号',
     too_many_attempts:'尝试次数过多，请稍后重试',environment_or_database_not_ready:'数据库迁移或绑定尚未完成',
@@ -163,9 +168,12 @@ onBeforeUnmount(()=>window.removeEventListener('online',onOnline))
         <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':'登录 HomeFlow' }}</h2>
         <p v-if="authMode==='bootstrap'&&bootstrapIssue==='missing'" role="alert" class="error">生产 Worker 中尚未找到 HOMEFLOW_BOOTSTRAP_SECRET，请在 Cloudflare 设置至少 32 位的加密 Secret。</p>
         <p v-if="authMode==='bootstrap'&&bootstrapIssue==='too_short'" role="alert" class="error">Cloudflare Secret 已存在，但长度不足 32 字符。请在生产 Worker 的 Variables and Secrets 中更新密钥值。</p>
-        <label>登录账号<input v-model="login" required maxlength="36" autocomplete="username" placeholder="字母、数字和下划线"/></label>
+        <label>登录账号（邮箱或用户名）
+          <input v-model.trim="login" required maxlength="254" autocomplete="username" autocapitalize="none"
+            spellcheck="false" placeholder="例如 name@example.com"/></label>
+        <p class="hint">也可使用 3～36 位英文用户名。邮箱目前仅作为登录账号，不会发送验证邮件。</p>
         <label v-if="authMode!=='login'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
-        <label>密码<input v-model="password" required type="password" minlength="12" autocomplete="current-password" placeholder="至少 12 位"/></label>
+        <label>密码<input v-model="password" required type="password" minlength="12" maxlength="128" autocomplete="current-password" placeholder="12～128 位"/></label>
         <template v-if="authMode==='bootstrap'">
           <label>家庭名称<input v-model="householdName" maxlength="60" /></label>
           <label>家庭启动密钥<input v-model="bootstrapSecret" type="password" autocomplete="off" required placeholder="Cloudflare Worker Secret"/></label>
