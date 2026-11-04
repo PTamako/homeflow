@@ -266,19 +266,31 @@ export async function lifeRoute(request,db,path,session){
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session))return bad()
-    // Optimistic revision guard: changes from another device never overwrite an edit.
-    // Shopping and memories have no updated_at column in the original schema.
+    // Updated-at CAS where supported, column snapshot CAS on original tables
+    // without updated_at. No migrations or additional D1 reads required.
     const revisioned=['routines','anniversaries','wishes','goals'].includes(table)
+    const snapshotColumns=table==='shopping_items'?
+      ['title','quantity','due_on','completed_at','ledger_entry_id']:
+      table==='memories'?['title','story','happened_on','visibility','linked_type','linked_id']:[]
     if(revisioned&&b.expectedUpdatedAt&&b.expectedUpdatedAt!==current.updated_at)
       return json({error:'plan_edit_conflict',currentUpdatedAt:current.updated_at},409)
+    if(snapshotColumns.length&&b.expectedSnapshot!==undefined&&
+       b.expectedSnapshot!==JSON.stringify(snapshotColumns.map(c=>current[c]??null)))
+      return json({error:'plan_edit_conflict'},409)
     const fields=['visibility',...catalog[table].columns,...(revisioned?['updated_at']:[])]
     const args=[visibilityOf(b,session),...vals,...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
-    const condition=revisioned?' AND updated_at=?'+(args.length+1):''
-    if(revisioned)args.push(current.updated_at)
+    let condition=''
+    if(revisioned){
+      condition=' AND updated_at=?'+(args.length+1)
+      args.push(current.updated_at)
+    }else for(const col of snapshotColumns){
+      condition+=' AND '+col+' IS ?'+(args.length+1)
+      args.push(current[col]??null)
+    }
     const sql='UPDATE '+table+' SET '+fields.map((c,i)=>c+'=?'+(i+1)).join(',')+
       ' WHERE id=?'+(fields.length+1)+' AND household_id=?'+(fields.length+2)+' AND created_by=?'+(fields.length+3)+condition
     const written=await db.prepare(sql).bind(...args).run()
-    if(revisioned&&!written.meta?.changes)return json({error:'plan_edit_conflict'},409)
+    if(!written.meta?.changes)return json({error:'plan_edit_conflict'},409)
     return json({ok:true})
   }
   if(id&&request.method==='DELETE'){
