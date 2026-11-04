@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import SwipeActions from './SwipeActions.vue'
 const props=defineProps<{petId:string;name:string;userId:string}>()
 type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;note:string;nextDueOn:string|null;createdBy:string}
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
@@ -102,11 +103,13 @@ watch(year,value=>{if(!value)month.value=''})
     <p class="sub">默认显示最近 6 条。护理历史不会每天清空，可按年月查找。</p>
     <div v-if="!items.length" class="empty">该时间范围内没有护理记录。</div>
     <div v-for="r in items" :key="r.id" class="record">
-      <div><strong>{{ names[r.recordType]||'护理' }}</strong><span>{{ r.eventOn }}</span></div>
-      <div v-if="r.createdBy===props.userId" class="record-actions">
-        <button type="button" :disabled="busy" @click="editRecord(r)">编辑</button>
-        <button type="button" :disabled="busy" class="pet-remove" @click="removeRecord(r)">删除</button>
-      </div>
+      <SwipeActions :id="r.id" scope="pet-health"
+        :allow-edit="r.createdBy===props.userId" :allow-delete="r.createdBy===props.userId"
+        @edit="editRecord(r)" @delete="removeRecord(r)">
+        <div class="record-heading">
+          <strong>{{ names[r.recordType]||'护理' }}</strong><span>{{ r.eventOn }}</span>
+        </div>
+      </SwipeActions>
       <p v-if="r.weightGrams">{{ (r.weightGrams/1000).toFixed(2) }} kg</p>
       <p v-if="r.note">{{ r.note }}</p>
       <small v-if="r.nextDueOn">下次计划：{{ r.nextDueOn }}</small>
@@ -125,11 +128,8 @@ watch(year,value=>{if(!value)month.value=''})
 .pet-form-actions{display:flex;justify-content:flex-end;gap:10px}
 .pet-form-actions button{flex:1}
 .pet-form-actions .pet-cancel{color:#478467;background:#e7f1e9}
-.record-actions{display:flex!important;justify-content:flex-end!important;gap:8px!important;margin:6px 0}
-.record-actions button{border:0;padding:7px 11px;border-radius:9px;background:#edf6ee;color:#43866a;font-size:12px}
-.record-actions .pet-remove{background:#fff0ea;color:#ad5d4e}
 .record{padding:12px 0;border-top:1px solid #f1eee8;font-size:13px}
-.record div{display:flex;justify-content:space-between;gap:12px}
+.record-heading{display:flex;justify-content:space-between;gap:12px;padding:6px 0}
 .record div span,.record small{color:#85958b;font-size:11px}
 .record p{line-height:1.6;white-space:pre-wrap;margin:5px 0}
 .error{color:#a24e38;background:#fff0e8;padding:10px;border-radius:10px}

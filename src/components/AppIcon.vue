@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   name: 'sun'|'clipboard-check'|'images'|'house'|'paw'|'users'|'calendar-heart'|'repeat'|
-    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'
+    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'
   size?: number
 }>(), {size:22})
 </script>
@@ -65,6 +65,9 @@ withDefaults(defineProps<{
       <path d="m5 12 5 5L20 7"/>
     </template>
     <template v-else-if="name==='chevron-down'"><path d="m6 9 6 6 6-6"/></template>
+    <template v-else-if="name==='ellipsis'">
+      <circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>
+    </template>
   </svg>
 </template>
 <style scoped>

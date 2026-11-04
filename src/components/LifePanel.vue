@@ -5,8 +5,10 @@ import FinancePanel from './FinancePanel.vue'
 import AppIcon from './AppIcon.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
+import SwipeActions from './SwipeActions.vue'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>}>()
+const emit=defineEmits<{editProfile:[id:string]}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
@@ -19,6 +21,16 @@ const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
 const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId
+const canEditBirthday=(item:Row)=>{
+  if(item.source!=='profile_birthday')return false
+  const profile=props.profiles.find(p=>p.id===item.subject_profile_id)
+  return !!profile&&(props.isOwner||profile.memberUserId===props.userId)
+}
+function editAnniversary(item:Row){
+  if(item.source==='profile_birthday'){
+    if(canEditBirthday(item))emit('editProfile',item.subject_profile_id)
+  }else edit('anniversaries',item)
+}
 function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
 async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode()}
 async function removeItem(kind:EditableKind,item:Row){
@@ -350,16 +362,22 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
           <p class="life-caption">每天更新。已完成的记录不会带到明天；未完成事项会顺延到下一适用日。</p>
           <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
-          <div v-for="r in routines" :key="r.id" class="life-row today-routine-row"
-            :class="{'routine-completed':!!r.mark?.completed_at}">
-            <label class="today-routine-label">
-              <input type="checkbox" :checked="!!r.mark?.completed_at" :disabled="busy"
-                :aria-label="(r.mark?.completed_at?'撤销完成 ':'完成 ')+r.title"
-                @change="markRoutine(r,!r.mark?.completed_at)"/>
-              <span class="routine-name">{{ r.title }}</span>
-            </label>
-            <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}</small>
-          </div>
+          <template v-for="r in routines" :key="r.id">
+            <SwipeActions :id="r.id" scope="today-routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
+              @edit="edit('routines',r)" @delete="removeItem('routines',r)">
+              <div class="life-row today-routine-row" :class="{'routine-completed':!!r.mark?.completed_at}">
+                <label class="today-routine-label">
+                  <input type="checkbox" :checked="!!r.mark?.completed_at" :disabled="busy"
+                    :aria-label="(r.mark?.completed_at?'撤销完成 ':'完成 ')+r.title"
+                    @change="markRoutine(r,!r.mark?.completed_at)"/>
+                  <span class="routine-name">{{ r.title }}</span>
+                </label>
+                <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}</small>
+              </div>
+            </SwipeActions>
+            <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
+              kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
+          </template>
           
         </section>
         <section class="life-card">
@@ -398,12 +416,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
         <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
-          <div class="life-row"><div class="life-details"><b>{{ e.title }}</b><small>{{ e.nextOn||e.event_date }}</small></div>
-            <div v-if="canEdit(e)" class="detail-actions">
-              <button type="button" class="life-link" @click="edit('anniversaries',e)">编辑</button>
-              <button type="button" class="life-link life-danger" @click="removeItem('anniversaries',e)">删除</button>
-            </div>
-          </div>
+          <SwipeActions :id="e.id" scope="anniversaries"
+            :allow-edit="canEdit(e)||canEditBirthday(e)" :allow-delete="canEdit(e)"
+            @edit="editAnniversary(e)" @delete="removeItem('anniversaries',e)">
+            <div class="life-row"><div class="life-details"><b>{{ e.title }}</b>
+              <small>{{ e.nextOn||e.event_date }}</small></div></div>
+          </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
         </template>
@@ -447,13 +465,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 定期任务设置</h2>
           <p class="life-caption">在这里添加重复任务；到期当天自动显示在「今天」。</p>
           <template v-for="r in routines" :key="r.id">
-            <div class="life-row" :class="{'detail-completed':r.enabled===0}">
-              <div class="life-details"><b class="detail-name">{{ r.title }}</b><small>{{ r.enabled===0?'已停用':routineLabel(r) }}</small></div>
-              <div v-if="canEdit(r)" class="detail-actions">
-                <button type="button" class="life-link" @click="edit('routines',r)">编辑</button>
-                <button type="button" class="life-link life-danger" @click="removeItem('routines',r)">删除</button>
+            <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
+              @edit="edit('routines',r)" @delete="removeItem('routines',r)">
+              <div class="life-row" :class="{'detail-completed':r.enabled===0}">
+                <div class="life-details"><b class="detail-name">{{ r.title }}</b>
+                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}</small></div>
               </div>
-            </div>
+            </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" @saved="changed" @cancel="editing=null"/>
           </template>
@@ -479,14 +497,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿清单</h2>
           <template v-for="w in items" :key="w.id">
-            <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
-              <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
-              <div class="detail-actions">
-                <button v-if="w.wish_type==='trip'&&w.status!=='completed'" type="button" class="life-link" @click="convertWish(w)">计划</button>
-                <button v-if="canEdit(w)" type="button" class="life-link" @click="edit('wishes',w)">编辑</button>
-                <button v-if="canEdit(w)" type="button" class="life-link life-danger" @click="removeItem('wishes',w)">删除</button>
+            <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
+              @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
+              <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
+                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}</small></div>
+                <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
+                  type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
-            </div>
+            </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
           </template>
@@ -505,14 +523,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> 储蓄目标</h2>
           <p class="life-caption">预留金额不等于银行余额，也不会被当成家計簿支出。</p>
           <template v-for="g in goals" :key="g.id">
-            <div class="life-row" :class="{'detail-completed':Number(g.reserved_amount)>=Number(g.target_amount)}">
-              <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
-              <div v-if="canEdit(g)" class="detail-actions">
-                <button type="button" class="life-link" @click="edit('goals',g)">编辑</button>
-                <button type="button" class="life-link life-danger" @click="removeItem('goals',g)">删除</button>
+            <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
+              @edit="edit('goals',g)" @delete="removeItem('goals',g)">
+              <div class="life-row" :class="{'detail-completed':Number(g.reserved_amount)>=Number(g.target_amount)}">
+                <div class="life-details"><b class="detail-name">{{ g.title }}</b>
+                  <small>¥{{ Number(g.reserved_amount).toLocaleString() }} / ¥{{ Number(g.target_amount).toLocaleString() }}</small></div>
               </div>
-            </div>
+            </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
           </template>
@@ -530,16 +547,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 家庭购物</h2>
           <p class="life-caption">关联家計簿真实支出后自动完成；当天变灰并划线，次日移入历史。</p>
           <template v-for="s in visibleShopping" :key="s.id">
-            <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
-              <label class="shopping-check"><input type="checkbox" :checked="!!s.completed_at" :disabled="busy" @change="toggleShopping(s)"/>
-                <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                  <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
-              <div class="detail-actions">
-                <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button" class="life-link" @click="toggleLedger(s.id)">关联账目</button>
-                <button v-if="canEdit(s)" type="button" class="life-link" @click="edit('shopping',s)">编辑</button>
-                <button v-if="canEdit(s)" type="button" class="life-link life-danger" @click="removeItem('shopping',s)">删除</button>
+            <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
+              @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
+              <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
+                <label class="shopping-check"><input type="checkbox" :checked="!!s.completed_at" :disabled="busy" @change="toggleShopping(s)"/>
+                  <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
+                    <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small></span></label>
+                <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
+                  class="life-link" @click="toggleLedger(s.id)">关联账目</button>
               </div>
-            </div>
+            </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
               kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
@@ -556,15 +573,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
           <template v-for="t in trips" :key="t.id">
-            <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
-              <div class="life-details"><b class="detail-name">{{ t.title }}</b>
-                <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
-              <div class="detail-actions">
+            <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
+              @edit="edit('trips',t)" @delete="removeItem('trips',t)">
+              <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'||(t.endOn&&t.endOn<today())}">
+                <div class="life-details"><b class="detail-name">{{ t.title }}</b>
+                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
                 <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
-                <button v-if="canEdit(t)" type="button" class="life-link" @click="edit('trips',t)">编辑</button>
-                <button v-if="canEdit(t)" type="button" class="life-link life-danger" @click="removeItem('trips',t)">删除</button>
               </div>
-            </div>
+            </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
           </template>
@@ -575,51 +591,55 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <h3>{{ tripDetail.title }}</h3>
             <template v-if="tripDetail.plan">
               <div v-for="d in tripDetail.plan.trip.days" :key="d.date" class="trip-day"><b>{{ d.date }}</b>
-                <div v-for="it in d.items" :key="it.externalId" class="trip-detail-row">
+                <SwipeActions v-for="it in d.items" :key="it.externalId" :id="it.externalId" :scope="'trip-'+tripDetail.id"
+                    :allow-edit="tripDetail.createdBy===props.userId"
+                    :allow-delete="tripDetail.createdBy===props.userId"
+                    @edit="editTripItem(it)" @delete="removeTripItem(it)">
+                  <div class="trip-detail-row">
                   <label class="trip-item" :class="{done:itemDone(it.externalId)}">
                     <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
                     <span>{{ it.startTime||'待定' }} · {{ it.title }}</span>
                   </label>
-                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
-                    <button type="button" @click="editTripItem(it)">编辑</button>
-                    <button type="button" class="remove" @click="removeTripItem(it)">删除</button>
-                  </div>
-                </div></div>
+                </div>
+                </SwipeActions></div>
               <div v-if="tripDetail.plan.trip.tasks?.length" class="trip-day">
                 <b class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 出发前待办</b>
-                <div v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" class="trip-detail-row">
+                <SwipeActions v-for="task in tripDetail.plan.trip.tasks" :key="task.externalId" :id="task.externalId" :scope="'trip-'+tripDetail.id"
+                    :allow-edit="tripDetail.createdBy===props.userId"
+                    :allow-delete="tripDetail.createdBy===props.userId"
+                    @edit="editTripItem(task)" @delete="removeTripItem(task)">
+                  <div class="trip-detail-row">
                   <label class="trip-item" :class="{done:itemDone(task.externalId)}">
                     <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
                     <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
                   </label>
-                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
-                    <button type="button" @click="editTripItem(task)">编辑</button>
-                    <button type="button" class="remove" @click="removeTripItem(task)">删除</button>
-                  </div>
                 </div>
+                </SwipeActions>
               </div>
               <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
                 <b class="life-heading"><AppIcon name="shopping" :size="18" /> 行李清单 · {{ list.owner }}</b>
-                <div v-for="piece in list.items" :key="piece.externalId" class="trip-detail-row">
+                <SwipeActions v-for="piece in list.items" :key="piece.externalId" :id="piece.externalId" :scope="'trip-'+tripDetail.id"
+                    :allow-edit="tripDetail.createdBy===props.userId"
+                    :allow-delete="tripDetail.createdBy===props.userId"
+                    @edit="editTripItem(piece)" @delete="removeTripItem(piece)">
+                  <div class="trip-detail-row">
                   <label class="trip-item" :class="{done:itemDone(piece.externalId)}">
                     <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
                     <span>{{ piece.label }} × {{ piece.quantity }}</span>
                   </label>
-                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
-                    <button type="button" @click="editTripItem(piece)">编辑</button>
-                    <button type="button" class="remove" @click="removeTripItem(piece)">删除</button>
-                  </div>
                 </div>
+                </SwipeActions>
               </div>
               <div v-if="tripDetail.plan.trip.bookings?.length" class="trip-day">
                 <b class="life-heading"><AppIcon name="plane" :size="18" /> 交通和预订</b>
-                <div v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" class="trip-detail-row">
+                <SwipeActions v-for="booking in tripDetail.plan.trip.bookings" :key="booking.externalId" :id="booking.externalId" :scope="'trip-'+tripDetail.id"
+                    :allow-edit="tripDetail.createdBy===props.userId"
+                    :allow-delete="tripDetail.createdBy===props.userId"
+                    @edit="editTripItem(booking)" @delete="removeTripItem(booking)">
+                  <div class="trip-detail-row">
                   <span>{{ booking.title }} · {{ booking.status }}</span>
-                  <div v-if="tripDetail.createdBy===props.userId" class="trip-item-actions">
-                    <button type="button" @click="editTripItem(booking)">编辑</button>
-                    <button type="button" class="remove" @click="removeTripItem(booking)">删除</button>
-                  </div>
                 </div>
+                </SwipeActions>
               </div>
             </template>
             <p v-else class="life-caption">尚未导入行程，可以在下方导入 ChatGPT 制定的 JSON。</p>
@@ -671,11 +691,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <p class="life-caption">默认只显示最近 6 条，切换年月可查询旧回忆，照片按当前显示的记录加载。</p>
         <p v-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
         <article v-for="m in items" :key="m.id" class="memory">
-          <time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3>
-          <div v-if="canEdit(m)" class="detail-actions">
-            <button type="button" class="life-link" @click="edit('memories',m)">编辑</button>
-            <button type="button" class="life-link life-danger" @click="removeItem('memories',m)">删除</button>
-          </div>
+          <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"
+            @edit="edit('memories',m)" @delete="removeItem('memories',m)">
+            <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
+          </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='memories'&&editing.item.id===m.id"
             kind="memories" :item="m" @saved="changed" @cancel="editing=null"/>
           <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
