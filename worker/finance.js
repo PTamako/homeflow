@@ -21,12 +21,28 @@ async function ledger(env,params){
   const controller=new AbortController()
   const timeout=setTimeout(()=>controller.abort(),8000)
   try{
-    const response=await fetch(u.toString(),{method:'GET',
-      headers:{Authorization:'Bearer '+env.KAKEBO_LEDGER_READ_TOKEN,Accept:'application/json'},
-      signal:controller.signal,redirect:'error'})
-    if(!response.ok)throw Error('ledger_unavailable_'+response.status)
-    const data=await response.json()
-    if(!Array.isArray(data.entries))throw Error('invalid_ledger_payload')
+    let response
+    try{
+      response=await fetch(u.toString(),{method:'GET',
+        headers:{Authorization:'Bearer '+env.KAKEBO_LEDGER_READ_TOKEN,Accept:'application/json'},
+        signal:controller.signal,redirect:'error'})
+    }catch(error){
+      throw Error(error?.name==='AbortError'?'ledger_timeout':'ledger_network_error')
+    }
+    if(!response.ok){
+      const problem=await response.json().catch(()=>null)
+      if(response.status===401)throw Error('ledger_auth_failed')
+      if(response.status===403)throw Error('ledger_access_blocked')
+      if(response.status===404)throw Error('ledger_endpoint_missing')
+      if(response.status===503){
+        if(problem?.error==='integration_disabled')throw Error('ledger_source_token_missing')
+        if(problem?.error==='ledger_read_unavailable')throw Error('ledger_source_db_unavailable')
+        throw Error('ledger_source_unavailable')
+      }
+      throw Error('ledger_upstream_unavailable')
+    }
+    const data=await response.json().catch(()=>null)
+    if(!Array.isArray(data?.entries))throw Error('ledger_invalid_response')
     return data
   }finally{clearTimeout(timeout)}
 }
@@ -36,7 +52,13 @@ async function target(db,householdId,userId,kind,id){
   return db.prepare('SELECT id FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
     .bind(id,householdId,userId).first()
 }
-const financeError=()=>json({error:'ledger_connection_unavailable'},502)
+const LEDGER_ERROR_CODES=new Set([
+  'ledger_auth_failed','ledger_access_blocked','ledger_endpoint_missing',
+  'ledger_source_token_missing','ledger_source_db_unavailable','ledger_source_unavailable',
+  'ledger_upstream_unavailable','ledger_invalid_response','ledger_timeout','ledger_network_error'
+])
+const financeError=error=>json({error:LEDGER_ERROR_CODES.has(error?.message)
+  ?error.message:'ledger_connection_unavailable'},502)
 export async function financeRoute(request,env,path,session){
   if(session.role!=='owner')return json({error:'forbidden'},403)
   const db=env.DB
@@ -47,8 +69,8 @@ export async function financeRoute(request,env,path,session){
   const url=new URL(request.url),user=session.user_id,h=session.household_id
   const shop=path.match(/^\/api\/finance\/shopping\/([0-9a-f-]{36})\/link$/i)
   if(shop&&(request.method==='POST'||request.method==='DELETE')){
-    // Owner can verify family-shared purchases; other members' private
-    // shopping items remain inaccessible. Never expose kakebo records to members.
+    // Owner may verify any household-shared shopping item. Private items
+    // created by other family members remain inaccessible.
     const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2')
       .bind(shop[1],h).first()
     if(!item)return json({error:'not_found'},404)
@@ -67,7 +89,7 @@ export async function financeRoute(request,env,path,session){
       await db.prepare("UPDATE shopping_items SET ledger_entry_id=?1,completed_at=?2,completed_by=?3 WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3)")
         .bind(entryId,new Date().toISOString(),user,item.id,h).run()
       return json({ok:true,linked:true,completed:true})
-    }catch{return financeError()}
+    }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/candidates'&&request.method==='GET'){
     const start=url.searchParams.get('start'),end=url.searchParams.get('end'),cursor=url.searchParams.get('cursor')
@@ -76,7 +98,7 @@ export async function financeRoute(request,env,path,session){
     try{
       const data=await ledger(env,{start,end,limit:50,cursor})
       return json({entries:data.entries,nextCursor:data.nextCursor||null,readOnly:true})
-    }catch{return financeError()}
+    }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/links'&&request.method==='GET'){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
@@ -94,7 +116,7 @@ export async function financeRoute(request,env,path,session){
         entry:lookup.get(String(x.entryId))||null}))
       const total=items.reduce((a,x)=>a+(x.entry?.type==='expense'&&Number.isSafeInteger(x.entry?.amount)?x.entry.amount:0),0)
       return json({items,total,matched:items.filter(x=>x.entry).length,readOnly:true})
-    }catch{return financeError()}
+    }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/links'&&request.method==='POST'){
     const b=await readBody(request)
@@ -110,7 +132,7 @@ export async function financeRoute(request,env,path,session){
         'VALUES(?1,?2,?3,?4,?5,?6)')
         .bind(crypto.randomUUID(),h,user,kind,id,entryId).run()
       return json({ok:true},201)
-    }catch{return financeError()}
+    }catch(error){return financeError(error)}
   }
   const match=path.match(/^\/api\/finance\/links\/([0-9a-f-]{36})$/)
   if(match&&request.method==='DELETE'){

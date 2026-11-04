@@ -16,11 +16,24 @@ function defaultDates(){
   start.value=date.toISOString().slice(0,10)
   end.value=dateYmd()
 }
+const ledgerErrors:Record<string,string>={
+  ledger_auth_failed:'家計簿联动密钥验证失败：两边密钥必须完全相同，仅使用英文字母、数字、_ 或 -。',
+  ledger_source_token_missing:'家計簿生产环境未读取到联动密钥，请检查 Pages Secret 并重新部署。',
+  ledger_source_db_unavailable:'家計簿接口读取数据库失败，请检查生产 D1 绑定与日志。',
+  ledger_source_unavailable:'家計簿接口暂时不可用（503），请检查 Pages 部署与运行日志。',
+  ledger_endpoint_missing:'找不到家計簿联动接口（404），请确认生产部署包含对应 API。',
+  ledger_access_blocked:'家計簿联动接口拒绝访问（403），请检查安全或访问规则。',
+  ledger_network_error:'HomeFlow 无法连接家計簿接口，请检查网络或 Cloudflare 请求日志。',
+  ledger_timeout:'家計簿接口响应超时，请稍后重试。',
+  ledger_invalid_response:'家計簿接口返回的数据格式不正确。',
+  ledger_upstream_unavailable:'家計簿接口返回错误，请检查 Cloudflare 运行日志。',
+  ledger_connection_unavailable:'家計簿联动失败，当前无法定位具体原因。'
+}
 async function api(path:string,method='GET',payload?:unknown):Promise<any>{
   const r=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
     ...(payload===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(payload)})})
   const data=await r.json()
-  if(!r.ok)throw Error(data.error||'操作失败')
+  if(!r.ok)throw Error(ledgerErrors[data.error]||data.error||'操作失败')
   return data
 }
 async function detect(){
