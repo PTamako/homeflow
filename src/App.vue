@@ -30,6 +30,7 @@ type Data={ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:bo
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
+const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false),shoppingBusy=ref(false)
@@ -140,23 +141,37 @@ async function api(path:string,method='GET',payload?:unknown):Promise<Data>{
   return data
 }
 async function refresh(){
+  authFailure.value=''
   try{
     user.value=(await api('/auth/me')).user||null
-    if(user.value){
+  }catch(e){
+    // Only an actual 401 means signed out. Network or database errors must
+    // never show a misleading login form or clear the existing session state.
+    if((e as Error).message!=='请登录'){
+      authFailure.value=(e as Error).message
+      return
+    }
+    user.value=null;pendingTasks.value=[]
+  }
+  if(user.value){
+    try{
       const [a,b]=await Promise.all([api('/family'),api('/tasks?status=all')])
       profiles.value=a.profiles||[];tasks.value=b.tasks||[]
       await loadTodayRoutines()
       try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
-    }
-  }catch{
-    user.value=null;pendingTasks.value=[]
+    }catch(e){error.value=(e as Error).message}
+  }else{
     try{
       const status=await api('/auth/bootstrap-status')
       initialized.value=!!status.initialized
       bootstrapIssue.value=status.bootstrapIssue||null
       if(!status.initialized)authMode.value='bootstrap'
-    }catch{}
+    }catch(e){authFailure.value=(e as Error).message}
   }
+}
+async function retryAuth(){
+  authReady.value=false
+  try{await refresh()}finally{authReady.value=true}
 }
 async function submitAuth(){
   error.value='';loading.value=true
@@ -375,6 +390,13 @@ onBeforeUnmount(()=>{
       <span v-else class="phase">OUR LITTLE HOME</span></header>
     <main v-if="!authReady" class="auth-content" aria-live="polite">
       <section class="panel" role="status"><h2>正在打开我们的小家…</h2><p class="hint">正在确认登录状态与家庭资料。</p></section>
+    </main>
+    <main v-else-if="authFailure" class="auth-content">
+      <section class="panel"><h2>暂时无法连接 HomeFlow</h2>
+        <p role="alert" class="error">{{ authFailure }}</p>
+        <p class="hint">会话尚未确认为失效；不会强制显示登录页。</p>
+        <button class="primary" type="button" @click="retryAuth">重新连接</button>
+      </section>
     </main>
     <main v-else-if="!user" class="auth-content">
       <div class="eyebrow">OUR LITTLE HOME</div><h1>欢迎回家 ♡</h1><p class="lead">家人的共享生活，以及自己的小秘密。</p>
