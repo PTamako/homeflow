@@ -158,11 +158,24 @@ async function unlink(item:Item){
     await refreshLinks();notify('已取消关联，原记账明细不受影响')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-watch([kind,target],()=>{entries.value=[];nextCursor.value=null;refreshLinks();refreshSettings()})
+function resetGoalPeriod(){
+  if(kind.value!=='goal')return
+  if(recurringGoal.value)periodKey.value=defaultPeriodKey()
+  else if(goalStartOn.value){start.value=goalStartOn.value;end.value=dateYmd()}
+}
+watch([kind,target],()=>{
+  entries.value=[];nextCursor.value=null
+  const previousKey=periodKey.value
+  resetGoalPeriod()
+  void refreshLinks()
+  if(periodKey.value===previousKey||!recurringGoal.value)void refreshSettings()
+})
 watch(kind,()=>{target.value=''})
-watch([start,end],()=>{netLoaded.value=false})
+watch(periodKey,()=>{if(recurringGoal.value&&available.value)void refreshSettings()})
+watch([start,end],()=>{if(!recurringGoal.value)netLoaded.value=false})
 watch(selected,value=>{
   if(!value)return
+  if(kind.value==='goal'){resetGoalPeriod();return}
   const s=value.startOn||value.start_on
   const e=value.endOn||value.end_on
   if(s&&e){
@@ -173,7 +186,8 @@ watch(selected,value=>{
 onMounted(()=>{
   defaultDates()
   const x=selected.value
-  if(x&&kind.value==='trip'){
+  if(kind.value==='goal')resetGoalPeriod()
+  else if(x&&kind.value==='trip'){
     const s=x.startOn||x.start_on,e=x.endOn||x.end_on
     if(s&&e&&Date.parse(e)-Date.parse(s)<=90*86400000){start.value=s;end.value=e}
   }
