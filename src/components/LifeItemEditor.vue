@@ -95,7 +95,7 @@ async function save(){
   </template>
   <template v-else-if="kind==='goals'">
    <label>目标金额（¥）<input v-model.number="form.targetAmount" type="number" min="1" required/></label>
-   <label>已预留金额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
+   <label>期初储蓄额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
    <label>目标日期<input v-model="form.targetOn" type="date"/></label>
   </template>
   <template v-else-if="kind==='memories'">
