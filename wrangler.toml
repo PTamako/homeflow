@@ -12,7 +12,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [triggers]
-crons = ["0 23 * * *"] # Daily 08:00 Asia/Tokyo
+crons = ["0 21 * * *"] # Daily 06:00 Asia/Tokyo (UTC 21:00 previous calendar day)
 
 [vars]
 APP_ENV = "production"
