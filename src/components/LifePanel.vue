@@ -155,8 +155,8 @@ async function fetchMode(){
   try{
     if(props.mode==='today'){
       lastTodayValue=today()
-      const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
-      routines.value=r.items||[];items.value=a.items||[]
+      const upcoming=await api('/anniversaries/upcoming')
+      items.value=upcoming.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
       const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
@@ -209,9 +209,6 @@ async function addRoutine(){
     subjectProfileId:routineSubject.value||null,healthRecordType:routineSubjectIsPet.value?routineHealthType.value||null:null,
     visibility:'household'}))
   if(!error.value)routineTitle.value=''
-}
-async function markRoutine(r:Row,done:boolean){
-  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:done?'completed':'open'}),done?'已完成':'已撤销完成')
 }
 async function addWish(){
   await update(()=>api('/wishes','POST',{title:wishTitle.value,wishType:wishType.value,
@@ -376,29 +373,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
         </div>
       </section>
-      <div class="life-grid">
-        <section class="life-card">
-          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 今日定期事项</h2>
-          <p class="life-caption">每天更新。已完成的记录不会带到明天；未完成事项会顺延到下一适用日。</p>
-          <p v-if="!routines.length" class="life-empty">今天没有需要执行的定期任务</p>
-          <template v-for="r in routines" :key="r.id">
-            <SwipeActions :id="r.id" scope="today-routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
-              @edit="edit('routines',r)" @delete="removeItem('routines',r)">
-              <div class="life-row today-routine-row" :class="{'routine-completed':!!r.mark?.completed_at}">
-                <label class="today-routine-label">
-                  <input type="checkbox" :checked="!!r.mark?.completed_at" :disabled="busy"
-                    :aria-label="(r.mark?.completed_at?'撤销完成 ':'完成 ')+r.title"
-                    @change="markRoutine(r,!r.mark?.completed_at)"/>
-                  <span class="routine-name">{{ r.title }}</span>
-                </label>
-                <small>{{ r.mark?.completed_at?'已完成':r.carriedFrom?'未完成 · 顺延至今天':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
-              </div>
-            </SwipeActions>
-            <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-              kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
-          </template>
-          
-        </section>
+      <!-- The recurring checklist lives in App.vue's unified Today list. -->
         <section class="life-card">
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 即将到来的纪念日</h2>
           <p v-if="!items.length" class="life-empty">暂无即将到来的纪念日，可在「家庭」添加。</p>
@@ -412,7 +387,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
           </div>
         </section>
-      </div>
     </template>
 
     <template v-else-if="mode==='family'">
