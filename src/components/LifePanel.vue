@@ -292,8 +292,10 @@ async function finishWish(w:Row){
       code==='owner_required_for_ledger_verification'?'关联储值需家庭管理员核验。':code
   }finally{busy.value=false}
 }
-async function goalFinished(){
-  await fetchMode()
+async function goalFinished(completed:boolean,periodKey:string){
+  const nextScope=periodKey==='once'?(completed?'history':'active'):planScope.value
+  if(planScope.value!==nextScope)planScope.value=nextScope
+  else await fetchMode()
   notify('储值核验结果已更新，可以返回今天查看。')
 }
 async function fetchMode(){
