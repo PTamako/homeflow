@@ -105,12 +105,14 @@ const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const listCursors=ref<Record<string,string|null>>({})
 const pageBusy=ref<Record<string,boolean>>({})
-const pageLimit=6
-const anniversaryExpanded=ref(false)
+const pageLimit=5
+const anniversaryVisibleCount=ref(pageLimit)
+const todayAnniversaryVisibleCount=ref(pageLimit)
 const anniversaryView=ref<'upcoming'|'past'>('upcoming')
 const anniversaryYear=ref(''),anniversaryMonth=ref('')
+watch(anniversaryView,()=>{anniversaryVisibleCount.value=pageLimit})
 const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
-  anniversaryExpanded.value?items.value:items.value.slice(0,5))
+  items.value.slice(0,anniversaryVisibleCount.value))
 const visibleShopping=computed(()=>other.value)
 
 function listPath(kind:string,cursor?:string|null){
@@ -460,7 +462,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 未来 30 天的纪念日</h2>
           <p v-if="listLoading" class="life-empty" role="status">正在读取纪念日…</p>
           <p v-else-if="!todayAnniversaries.length" class="life-empty">未来 30 天没有纪念日，可以在「家庭」查看全部重要日子。</p>
-          <div v-for="e in (listLoading?[]:todayAnniversaries.slice(0,8))" :key="e.id" class="life-row upcoming-anniversary">
+          <div v-for="e in (listLoading?[]:todayAnniversaries.slice(0,todayAnniversaryVisibleCount))" :key="e.id" class="life-row upcoming-anniversary">
             <div class="anniversary-subject"><b>{{ e.title }}</b>
               <small v-if="milestone(e)" class="anniversary-milestone">{{ milestone(e) }}</small>
             </div>
@@ -469,6 +471,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <time :datetime="e.nextOn">{{ e.nextOn }}</time>
             </div>
           </div>
+          <button v-if="todayAnniversaries.length>todayAnniversaryVisibleCount" type="button" class="life-more"
+            @click="todayAnniversaryVisibleCount+=pageLimit">加载更多纪念日（每次 5 条）</button>
         </section>
     </template>
 
@@ -503,9 +507,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
         </template>
-        <button v-if="anniversaryView==='upcoming'&&items.length>5" type="button" class="life-more" @click="anniversaryExpanded=!anniversaryExpanded">
-          {{ anniversaryExpanded?'收起重要日子':'查看全部重要日子（'+items.length+'）' }}
-        </button>
+        <button v-if="anniversaryView==='upcoming'&&items.length>anniversaryVisibleCount" type="button" class="life-more"
+          @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子（每次 5 条）</button>
         <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <form class="life-form" @submit.prevent="addAnniversary">
