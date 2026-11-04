@@ -507,9 +507,22 @@ test('quiet hours and per-item priority are per account, roundtrip via personal 
  assert.equal(settings.status,200,JSON.stringify(settings.body))
  assert.equal((await ask('/api/reminders/preferences','PUT',
    {advanceDays:0,quietStartHour:5,quietEndHour:5},owner)).status,400)
+ const beforeEditor=await ask('/api/reminders/item?kind=task&id='+shared.body.id,'GET',undefined,owner)
+ assert.equal(beforeEditor.status,200)
+ assert.deepEqual(beforeEditor.body,{kind:'task',id:shared.body.id,
+   customized:false,defaultDays:0,advanceDays:0,priority:'normal'})
  const add=await ask('/api/reminders/item','PUT',
    {kind:'task',id:shared.body.id,advanceDays:7,priority:'important'},owner)
  assert.equal(add.status,200,JSON.stringify(add.body))
+ const savedEditor=await ask('/api/reminders/item?kind=task&id='+shared.body.id,'GET',undefined,owner)
+ assert.equal(savedEditor.status,200)
+ assert.equal(savedEditor.body.customized,true)
+ assert.equal(savedEditor.body.advanceDays,7)
+ assert.equal(savedEditor.body.priority,'important')
+ const memberEditor=await ask('/api/reminders/item?kind=task&id='+shared.body.id,'GET',undefined,member)
+ assert.equal(memberEditor.status,200)
+ assert.equal(memberEditor.body.customized,false,'shared task allows independent user settings')
+ assert.equal((await ask('/api/reminders/item?kind=task&id='+secret.body.id,'GET',undefined,member)).status,404)
  const forbidden=await ask('/api/reminders/item','PUT',
    {kind:'task',id:secret.body.id,advanceDays:7,priority:'important'},member)
  assert.equal(forbidden.status,404,'other member private task cannot be customized')
