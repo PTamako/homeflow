@@ -278,6 +278,25 @@ export async function lifeRoute(request,db,path,session){
     return json({ok:true,id},201)
   }
   if(id&&!hexId(id))return bad()
+  // Exact one-record lookup is used only when a Today item opens its plan
+  // beyond the first five list rows. Keep visibility/household checks in SQL.
+  if(id&&request.method==='GET'){
+    const item=await getObject(db,table,id,session)
+    if(!item)return json({error:'not_found'},404)
+    if(table==='wishes'){
+      const {results}=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND wish_id=?2
+        AND (visibility='household' OR created_by=?3) LIMIT 20`)
+        .bind(session.household_id,id,session.user_id).all()
+      return json({item,linkedGoals:results||[]})
+    }
+    if(table==='goals'){
+      const {results}=await db.prepare(`SELECT period_key FROM plan_completion_marks
+        WHERE household_id=?1 AND plan_type='goal' AND plan_id=?2 LIMIT 120`)
+        .bind(session.household_id,id).all()
+      return json({item,completedPeriods:(results||[]).map(r=>r.period_key)})
+    }
+    return json({item})
+  }
   if(id && request.method==='PATCH'){
     const current=await getObject(db,table,id,session)
     if(!current)return json({error:'not_found'},404)
