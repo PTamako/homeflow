@@ -2,6 +2,7 @@
 import DateField from './DateField.vue'
 import {onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
+type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
 const props=defineProps<{shoppingId:string;linkedId?:string|null}>()
 const emit=defineEmits<{saved:[];close:[]}>()
 const connected=ref(false),loaded=ref(false),busy=ref(false),error=ref('')
@@ -10,6 +11,7 @@ const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const month=()=>new Date(Date.now()-30*86400000+9*3600000).toISOString().slice(0,10)
 const start=ref(month()),end=ref(today())
 const adjustment=ref('0'),linkedAmount=ref<number|null>(null),savedMessage=ref('')
+const links=ref<Linked[]>([]),linksNeedReview=ref(false)
 const adjustedTotal=()=>Number(linkedAmount.value||0)+Number(adjustment.value||0)
 const signed=(n:number)=>(n<0?'−':n>0?'+':'')+'¥'+Math.abs(n).toLocaleString('ja-JP')
 async function call(path:string,method='GET',body?:any){
@@ -20,7 +22,11 @@ async function call(path:string,method='GET',body?:any){
  return result
 }
 async function check(){
- try{const status=await call('/finance/status');connected.value=!!status.connected}
+ try{
+  const status=await call('/finance/status')
+  connected.value=!!status.connected
+  if(connected.value)await loadLinks()
+ }
  catch(e){error.value=(e as Error).message}
  finally{loaded.value=true}
 }
@@ -35,6 +41,12 @@ async function search(more=false){
   cursor.value=data.nextCursor||null
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
+async function loadLinks(){
+ const data=await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/links')
+ links.value=data.items||[]
+ linksNeedReview.value=!!data.needsReview
+ linkedAmount.value=links.value.length?Number(data.linkedAmount||0):null
+}
 async function attach(entry:Entry){
  if(busy.value)return
  busy.value=true;error.value=''
@@ -43,11 +55,14 @@ async function attach(entry:Entry){
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-async function unlink(){
- if(busy.value||!confirm('取消这笔消费关联并将购物项恢复为未完成吗？家計簿明细不会被删除。'))return
+async function unlink(entryId?:string|number){
+ if(busy.value||!confirm(entryId===undefined
+   ?'解除全部关联？购物项将恢复为未完成，家計簿交易不会删除。'
+   :'解除这笔消费关联吗？如果还有其他关联，购物项会保持完成。'))return
  busy.value=true;error.value=''
  try{
-  await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','DELETE')
+  await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','DELETE',
+    entryId===undefined?undefined:{entryId})
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
@@ -56,7 +71,6 @@ async function loadSettings(){
   const q=new URLSearchParams({type:'shopping',targetId:props.shoppingId})
   const data=await call('/finance/settings?'+q)
   adjustment.value=String(data.adjustmentAmount||0)
-  linkedAmount.value=Number.isSafeInteger(data.linkedAmount)?data.linkedAmount:null
  }catch(e){error.value=(e as Error).message}
 }
 async function saveAdjustment(){
@@ -94,7 +108,16 @@ onMounted(()=>{void check();void loadSettings()})
     <button type="button" :disabled="busy||entry.type!=='expense'" @click="attach(entry)">关联并完成</button>
    </div>
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
-   <button v-if="linkedId" type="button" class="ledger-unlink" :disabled="busy" @click="unlink">取消已有关联</button>
+   <div v-if="links.length" class="shopping-linked">
+     <b>已关联 {{ links.length }} 笔真实消费</b>
+     <div v-for="link in links" :key="link.entryId" class="ledger-entry">
+       <span>{{ link.entry?.date||'原始明细不可用' }} · {{ link.entry?.merchant||('账目 #'+link.entryId) }}
+         <small>{{ link.entry?'¥'+Number(link.entry.amount).toLocaleString('ja-JP'):'需要重新核对' }}</small></span>
+       <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink(link.entryId)">解除这一笔</button>
+     </div>
+     <small v-if="linksNeedReview" class="ledger-error">部分关联明细已删除或更改，可能涉及退款，请核对并解除异常关联。</small>
+     <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink()">解除全部关联</button>
+   </div>
   </template>
   <div class="shopping-adjustment">
    <b>购物金额调整</b>
@@ -125,6 +148,8 @@ onMounted(()=>{void check();void loadSettings()})
 .shopping-ledger button{border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
 .shopping-ledger button:disabled{opacity:.5}.shopping-ledger .ledger-close{background:#e4eee7;color:#3e775a}
 .shopping-ledger .ledger-unlink{background:#fff;color:#ac5e4c;border:1px solid #edc8bf}
+.shopping-linked{display:grid;gap:8px;padding:9px 0;border-top:1px solid #d9eadf}
+.shopping-linked>b{font-size:12px;color:#496c59}
 .shopping-adjustment{border-top:1px solid #d9eadf;padding-top:12px;display:grid;gap:9px}
 .shopping-adjustment>b{font-size:13px}.shopping-adjustment label{display:grid;gap:5px;font-size:12px;color:#607c6d}
 .shopping-adjustment input{width:100%;max-width:100%;box-sizing:border-box;min-height:41px;border:1px solid #cadbd1;border-radius:9px;background:#fff;padding:9px}
