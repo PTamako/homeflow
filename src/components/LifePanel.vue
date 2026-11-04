@@ -15,6 +15,7 @@ const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),inter
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
 const shoppingTitle=ref('')
+const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
 const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId
@@ -33,8 +34,8 @@ const jstDate=(timestamp:string)=>{
  const time=Date.parse(iso)
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
-const visibleShopping=computed(()=>other.value.filter(x=>!x.completed_at||jstDate(x.completed_at)===today()))
-const shoppingHistory=computed(()=>other.value.filter(x=>!!x.completed_at&&jstDate(x.completed_at)!==today()))
+const visibleShopping=computed(()=>other.value.filter(x=>!x.completed_at||jstDate(x.completed_at)===displayedDay.value))
+const shoppingHistory=computed(()=>other.value.filter(x=>!!x.completed_at&&jstDate(x.completed_at)!==displayedDay.value))
 function toggleLedger(id:string){ledgerPickerId.value=ledgerPickerId.value===id?null:id;editing.value=null}
 
 function countdown(date:string){
@@ -54,7 +55,12 @@ const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetai
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
-  if(props.mode==='today' && document.visibilityState==='visible' && lastTodayValue!==today())void fetchMode()
+  if(document.visibilityState!=='visible')return
+  const current=today()
+  if(displayedDay.value!==current){
+    displayedDay.value=current
+    if(props.mode==='today'||props.mode==='plans')void fetchMode()
+  }
 }
 async function api(path:string,method='GET',body?:unknown):Promise<any>{
   const response=await fetch('/api'+path,{method,cache:'no-store',credentials:'same-origin',
