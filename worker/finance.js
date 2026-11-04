@@ -53,6 +53,13 @@ async function target(db,householdId,userId,kind,id){
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
+async function financeTarget(db,h,user,kind,id){
+  if(!['goal','trip','shopping'].includes(kind)||!idOk(id))return null
+  if(kind==='shopping')return db.prepare(
+    "SELECT id,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+      .bind(id,h,user).first()
+  return target(db,h,user,kind,id)
+}
 async function savedSettings(db,h,kind,id){
   return db.prepare('SELECT adjustment_amount,period_start,period_end FROM finance_target_settings WHERE household_id=?1 AND target_type=?2 AND target_id=?3')
     .bind(h,kind,id).first()
