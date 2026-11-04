@@ -45,7 +45,6 @@ async function save(){
 <template>
   <form class="profile-editor" @submit.prevent="save">
     <h3><AppIcon name="users" :size="18" /> 编辑{{ profile.type==='pet'?'宠物':'家庭成员' }}资料</h3>
-    <p class="profile-editor-hint">修改已有档案，不会创建重复成员。生日保存后自动在「重要日子」每年提醒。</p>
     <div class="profile-editor-grid">
       <label class="wide">昵称或名字
         <input v-model="form.displayName" required maxlength="60" placeholder="姓名或昵称"/>
