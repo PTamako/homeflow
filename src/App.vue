@@ -20,7 +20,7 @@ type Task={id:string;title:string;notes:string;visibility:'private'|'household';
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
-type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string}
+type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string;periodKey?:string;tripEnded?:boolean}
 type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
 const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
 const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
@@ -81,13 +81,19 @@ const allToday=computed<TodayEntry[]>(()=>{
   // All plan types use one visual list, while retaining each source's own
   // completion, privacy and recurrence rules.
   const plans:TodayEntry[]=todayPlans.value.map(plan=>({
-    key:'plan:'+plan.kind+':'+plan.id,kind:plan.kind,title:plan.title,done:plan.done,plan
+    key:'plan:'+plan.kind+':'+plan.id+(plan.periodKey?':'+plan.periodKey:''),kind:plan.kind,
+    title:plan.title,done:plan.done,plan
   }))
   return [...standard,...recurring,...plans].sort((a,b)=>Number(a.done)-Number(b.done))
 })
 const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
+const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
+  category.id==='all'||allToday.value.some(row=>row.kind===category.id)))
 const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
   allToday.value.filter(row=>row.kind===todayCategory.value))
+watch(visibleTodayCategories,categories=>{
+  if(!categories.some(category=>category.id===todayCategory.value))todayCategory.value='all'
+})
 const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
 const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))
 const visiblePendingTasks=computed(()=>pendingTasks.value.slice(0,pendingVisibleCount.value))
@@ -252,12 +258,26 @@ async function loadTodayPlans(){
         map((x):TodayPlan=>({
           id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
           dueOn:String(x.dueOn||''),done:!!x.done,overdue:!!x.overdue,
-          destination:typeof x.destination==='string'?x.destination:undefined
+          destination:typeof x.destination==='string'?x.destination:undefined,
+          periodKey:typeof x.periodKey==='string'?x.periodKey:undefined,tripEnded:!!x.tripEnded
         }))
     }
   }catch(e){error.value=(e as Error).message}
 }
 async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
+async function completeDuePlan(plan:TodayPlan){
+  if(shoppingBusy.value||!['wish','goal'].includes(plan.kind))return
+  if(plan.kind==='goal'&&!plan.done&&
+    !confirm('确认这个储值目标已达标？这只记录完成状态，不会修改家計簿账目或储值金额。'))return
+  shoppingBusy.value=true
+  try{
+    await api('/plans/complete','POST',{kind:plan.kind,id:plan.id,
+      periodKey:plan.periodKey||'once',completed:!plan.done})
+    await loadTodayPlans()
+    notify(plan.done?'已撤销完成':'已记录完成，后续未完成期间仍会顺延')
+  }catch(e){error.value=(e as Error).message}
+  finally{shoppingBusy.value=false}
+}
 async function toggleShoppingPlan(plan:TodayPlan){
   if(shoppingBusy.value)return
   shoppingBusy.value=true
@@ -524,11 +544,11 @@ onBeforeUnmount(()=>{
             <label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label>
           </div>
           <div class="today-category-tabs" role="group" aria-label="今日待办分类">
-            <button v-for="category in todayCategories" :key="category.id" type="button"
+            <button v-for="category in visibleTodayCategories" :key="category.id" type="button"
               :class="{selected:todayCategory===category.id}" :aria-pressed="todayCategory===category.id"
               @click="todayCategory=category.id">{{ category.label }}</button>
           </div>
-          <p class="today-unified-hint">默认显示各类今日事项，每次展示 5 条；到期未完成的计划继续顺延，完成的定期事项第二天重置。</p>
+          <p class="today-unified-hint">只显示今天到期及逾期未完成的事项，每次展示 5 条；购物、心愿会一直顺延至完成，储值按期分别确认。</p>
           <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
@@ -537,11 +557,17 @@ onBeforeUnmount(()=>{
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
               @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
               <div class="task-row today-unified-row">
-                <input v-if="row.task||row.routine||row.plan?.kind==='shopping'" type="checkbox" :checked="row.done"
+                <input v-if="row.task||row.routine||row.plan?.kind==='shopping'||row.plan?.kind==='wish'"
+                  type="checkbox" :checked="row.done"
                   :disabled="(!!row.routine&&routineBusy)||shoppingBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
-                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):row.plan?toggleShoppingPlan(row.plan):undefined"/>
-                <AppIcon v-else :name="row.plan?.kind==='wish'?'heart':row.plan?.kind==='goal'?'wallet':'plane'" :size="19" />
+                  @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):
+                    row.plan?.kind==='shopping'?toggleShoppingPlan(row.plan):
+                    row.plan?completeDuePlan(row.plan):undefined"/>
+                <button v-else-if="row.plan?.kind==='goal'" type="button" class="today-goal-action"
+                  :disabled="shoppingBusy" :aria-label="(row.done?'撤销达标确认 ':'确认储值达标 ')+row.title"
+                  @click="completeDuePlan(row.plan)">{{ row.done?'✓':'达标' }}</button>
+                <AppIcon v-else name="plane" :size="19" />
                 <div class="task-detail">
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
@@ -558,7 +584,11 @@ onBeforeUnmount(()=>{
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                     </template>
                     <template v-else-if="row.plan">
-                      {{ row.done?'今天已完成':row.plan.kind==='trip'?'旅行进行中':row.plan.overdue?'逾期未完成 · 顺延':'今天的计划' }} · {{ row.plan.dueOn }}
+                      {{ row.done?'今天已完成':row.plan.kind==='trip'?(row.plan.tripEnded?'旅行未收尾 · 顺延':'旅行进行中'):
+                         row.plan.overdue?'逾期未完成 · 顺延':'今天到期' }} · {{ row.plan.dueOn }}
+                      <template v-if="row.plan.kind==='goal'&&row.plan.periodKey&&row.plan.periodKey!=='once'">
+                        · {{ row.plan.periodKey }}{{ row.plan.periodKey.length===7?'月':'年' }}目标
+                      </template>
                       <template v-if="row.plan.destination"> · {{ row.plan.destination }}</template>
                     </template>
                   </small>
