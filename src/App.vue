@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DateField from './components/DateField.vue'
 import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import BackupPanel from './components/BackupPanel.vue'
@@ -407,7 +408,7 @@ onBeforeUnmount(()=>{
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
             <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
-            <input v-model="due" type="date" aria-label="完成日期"/>
+            <DateField v-model="due" aria-label="完成日期" />
             <label class="task-object">关联对象（可选）
               <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
                 <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
@@ -487,7 +488,7 @@ onBeforeUnmount(()=>{
               <label>可见范围<select v-model="editingTask.visibility">
                 <option value="private">仅自己</option><option value="household">家庭共享</option>
               </select></label>
-              <label>截止日期<input v-model="editingTask.dueOn" type="date"/></label>
+              <label>截止日期<DateField v-model="editingTask.dueOn" /></label>
               <label>关联对象（可选）
                 <select v-model="editingTask.subjectProfileId" @change="changedEditingSubject">
                   <option value="">不关联任何人或宠物</option>
@@ -578,10 +579,10 @@ onBeforeUnmount(()=>{
               <select v-model="petType"><option value="person">家庭成员</option><option value="pet">宠物</option></select>
             </label>
             <label>生日（可选）
-              <input v-model="birth" type="date" />
+              <DateField v-model="birth" />
             </label>
             <label v-if="petType==='pet'">到家日（可选）
-              <input v-model="adopted" type="date" />
+              <DateField v-model="adopted" />
             </label>
             <button class="primary field-wide">添加档案</button>
           </form>
