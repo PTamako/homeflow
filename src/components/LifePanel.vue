@@ -61,14 +61,8 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>('active')
-const oneTimePlans=computed(()=>(props.tasks||[])
-  .filter(t=>planScope.value==='active'?!t.completedAt:!!t.completedAt)
-  .filter(t=>{
-    if(!planYear.value||planScope.value!=='history')return true
-    const d=t.completedAt?jstDate(t.completedAt):t.dueOn||''
-    return d.startsWith(planYear.value+'-'+(planMonth.value||'')) || (!planMonth.value&&d.startsWith(planYear.value))
-  })
-  .slice(0,30))
+// Task history is independently paginated; the dashboard task snapshot is not an archive.
+const oneTimePlans=ref<Row[]>([])
 function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
 function toggleFinance(kind:'goal'|'trip',id:string){
   financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
@@ -137,7 +131,7 @@ function listPath(kind:string,cursor?:string|null){
   return '/'+kind+'?'+q.toString()
 }
 function assignRows(kind:string,rows:Row[],append=false){
-  const target=kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
+  const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
   target.value=append?[...target.value,...rows]:rows
 }
@@ -229,7 +223,7 @@ async function fetchMode(){
       items.value=data.items||[]
       listCursors.value.anniversaries=past?data.nextCursor||null:null
     }else if(props.mode==='plans'){
-      const kinds=['wishes','goals','shopping','trips','routines']
+      const kinds=['wishes','goals','shopping','trips','routines','tasks']
       const paths=kinds.map(kind=>listPath(kind))
       const pages=await Promise.all(paths.map(path=>api(path)))
       if(requestId!==activeFetch||props.mode!=='plans'||paths.some((path,i)=>path!==listPath(kinds[i])))return
@@ -552,9 +546,35 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </template>
+          <template v-for="t in oneTimePlans" :key="t.id">
+            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
+              @edit="editOnce(t)" @delete="deleteOnce(t)">
+              <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
+                <div class="life-details">
+                  <b class="detail-name">{{ t.title }}</b>
+                  <small>一次性任务 · {{ t.dueOn||'无截止日期' }}
+                    <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
+                    <template v-if="t.completedAt"> · 已完成</template>
+                  </small>
+                </div>
+              </div>
+            </SwipeActions>
+            <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
+              <b>编辑一次性任务</b>
+              <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
+              <label>截止日期<DateField v-model="onceDate" /></label>
+              <label><input v-model="onceRemind" type="checkbox" /> 开启提醒</label>
+              <div class="detail-actions">
+                <button type="button" @click="onceEditing=null">取消</button>
+                <button type="submit">保存修改</button>
+              </div>
+            </form>
+          </template>
           <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
+          <button v-if="listCursors.tasks" class="life-more" type="button" :disabled="pageBusy.tasks"
+            @click="loadMore('tasks')">加载更多一次性任务</button>
 
         </section>
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
