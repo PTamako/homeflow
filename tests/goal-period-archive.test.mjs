@@ -39,6 +39,10 @@ test('yearly goals generate one history record per closed year without ending th
  const p=candidateGoalPeriods([yearly],archiveFilter('https://x.invalid?limit=5'),'2027-01-01')
  assert.deepEqual(p.map(x=>x.periodKey),['2026','2025'])
  assert.equal(p[0].periodEnd,'2026-12-31')
+ assert.deepEqual(candidateGoalPeriods([yearly],
+   archiveFilter('https://x.invalid?year=2026&month=12'),'2027-01-01').map(x=>x.periodKey),['2026'])
+ assert.deepEqual(candidateGoalPeriods([yearly],
+   archiveFilter('https://x.invalid?year=2026&month=11'),'2027-01-01'),[])
 })
 
 test('history supports end-period year/month and five-item cursor pagination without duplicates',()=>{
