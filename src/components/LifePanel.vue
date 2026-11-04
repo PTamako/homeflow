@@ -13,8 +13,8 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string}>()
-const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string]}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanRequest?:number}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
@@ -25,6 +25,10 @@ let activeFetch=0
 type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
+const goalCompletionMarks=ref<string[]>([])
+const focusError=ref('')
+const focusedItemId=computed(()=>props.focusPlanId||'')
+const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value
 const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
@@ -62,7 +66,7 @@ const jstDate=(timestamp:string)=>{
  const time=Date.parse(iso)
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
-const planScope=ref<'active'|'history'>('active')
+const planScope=ref<'active'|'history'>(props.focusPlanScope||'active')
 // Task history is independently paginated; the dashboard task snapshot is not an archive.
 const oneTimePlans=ref<Row[]>([])
 function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
@@ -97,6 +101,12 @@ async function deleteOnce(t:Row){
 }
 watch(()=>props.focusPlanType,type=>{
   if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+},{immediate:true})
+watch(()=>props.focusPlanRequest,()=>{
+  if(props.mode!=='plans')return
+  const requested=props.focusPlanScope||'active'
+  if(planScope.value!==requested)planScope.value=requested
+  else void fetchMode()
 })
 
 const planYear=ref(''),planMonth=ref('')
@@ -136,7 +146,7 @@ function listPath(kind:string,cursor?:string|null){
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
-  target.value=append?[...target.value,...rows]:rows
+  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id))]:rows
 }
 async function loadMore(kind:string){
   const cursor=listCursors.value[kind]
@@ -228,10 +238,69 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
   if(!response.ok)throw Error(String(data?.error||'server_error'))
   return data
 }
+async function focusExactPlan(requestId:number){
+  const id=props.focusPlanId,kind=props.focusPlanType
+  if(!id||!['shopping','wish','goal','trip'].includes(kind||'')||
+    !/^[0-9a-f-]{36}$/i.test(id))return
+  try{
+    const endpoint=kind==='wish'?'wishes':kind==='goal'?'goals':kind==='trip'?'trips':'shopping'
+    const response=await api('/'+endpoint+'/'+encodeURIComponent(id))
+    if(requestId!==activeFetch||props.mode!=='plans')return
+    const item=kind==='trip'?response.trip:response.item
+    if(!item?.id)throw Error('没有找到对应计划')
+    const target=kind==='wish'?items:kind==='goal'?goals:kind==='shopping'?other:trips
+    if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
+    if(kind==='wish'){
+      const attached=response.linkedGoals||[]
+      for(const goal of attached)
+        if(!goals.value.some(row=>row.id===goal.id))goals.value.push(goal)
+    }
+    if(kind==='goal'){
+      goalCompletionMarks.value=Array.isArray(response.completedPeriods)?response.completedPeriods:[]
+      if(props.isOwner)financeDetail.value={kind:'goal',id}
+    }
+    if(kind==='shopping'&&props.isOwner)ledgerPickerId.value=id
+    if(kind==='trip'){
+      tripDetail.value=response.trip
+      tripProgress.value=response.progress||[]
+    }
+    await nextTick()
+    if(requestId===activeFetch&&props.focusPlanId===id)
+      document.getElementById('plan-item-'+id)?.scrollIntoView({block:'start',behavior:'instant'})
+  }catch(e){
+    if(requestId===activeFetch)focusError.value=(e as Error).message
+  }
+}
+async function finishWish(w:Row){
+  if(busy.value)return
+  if(!w.target_on||w.target_on>today()){
+    notify('心愿到期后才能确认实现，请先在计划中设置目标日期。','warning')
+    return
+  }
+  const completing=w.status!=='completed'
+  busy.value=true;error.value=''
+  try{
+    await api('/plans/complete','POST',{kind:'wish',id:w.id,completed:completing})
+    if(completing&&planScope.value!=='history')planScope.value='history'
+    else if(!completing&&planScope.value!=='active')planScope.value='active'
+    else await fetchMode()
+    notify(completing?'已验证条件并完成心愿':'心愿已恢复为进行中')
+  }catch(e){
+    const code=(e as Error).message
+    error.value=code==='goal_not_funded'?'关联储值未达标，请先核对记账本收支和调整额。':
+      code==='ledger_verification_unavailable'?'家計簿联动暂不可用，心愿没有被标记完成。':
+      code==='owner_required_for_ledger_verification'?'关联储值需家庭管理员核验。':code
+  }finally{busy.value=false}
+}
+async function goalFinished(){
+  await fetchMode()
+  notify('储值核验结果已更新，可以返回今天查看。')
+}
 async function fetchMode(){
   const requestId=++activeFetch
   const currentMode=props.mode
   error.value=''
+  focusError.value=''
   listLoading.value=true
   if(currentMode==='memories'){
     items.value=[]
@@ -262,6 +331,7 @@ async function fetchMode(){
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
       })
+      await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
       const data=await api(path)
