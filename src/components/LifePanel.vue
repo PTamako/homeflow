@@ -168,7 +168,7 @@ function countdown(date:string){
   return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
 }
 function routineLabel(r:Row){
-  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
+  return r.repeat_type==='once'?'一次性':r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
     r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
     r.repeat_type==='workday'?'工作日':'定期'
 }
@@ -205,8 +205,8 @@ async function fetchMode(){
   try{
     if(props.mode==='today'){
       lastTodayValue=today()
-      const [r,a]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming')])
-      routines.value=r.items||[];items.value=a.items||[]
+      const [r,a,p]=await Promise.all([api('/routines/today'),api('/anniversaries/upcoming'),api('/plans/today')])
+      routines.value=r.items||[];items.value=a.items||[];todayPlans.value=p.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
       const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
