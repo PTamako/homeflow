@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {ref,watch,onBeforeUnmount} from 'vue'
 import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto} from '../local-media'
+import FinancePanel from './FinancePanel.vue'
 
-const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;profiles:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{mode:'today'|'family'|'cat'|'plans'|'memories';userId:string;isOwner:boolean;profiles:Array<{id:string;displayName:string;type:string}>}>()
 type Row=Record<string,any>
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),notice=ref(''),busy=ref(false),dueItems=ref<Row[]>([]),remindersLoaded=ref(false)
@@ -257,6 +258,8 @@ watch(()=>props.mode,fetchMode,{immediate:true})
             <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
             <button class="life-link" @click="selectTrip(t.id)">查看行程</button></div>
           <div v-if="tripDetail" class="trip-detail">
+            <FinancePanel v-if="props.isOwner && tripDetail.createdBy===props.userId"
+              :trip-id="tripDetail.id" :trip-title="tripDetail.title" />
             <h3>{{ tripDetail.title }}</h3>
             <template v-if="tripDetail.plan">
               <div v-for="d in tripDetail.plan.trip.days" :key="d.date" class="trip-day"><b>{{ d.date }}</b>

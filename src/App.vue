@@ -195,7 +195,7 @@ onMounted(refresh)
         <h2>{{ tab==='plans'?'让旅行心愿变成计划 ✈':'把值得纪念的时刻留下来 ♡' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
       <PushPanel v-if="tab==='today'" />
-      <LifePanel :mode="tab" :user-id="user.id" :profiles="profiles" />
+      <LifePanel :mode="tab" :user-id="user.id" :is-owner="user.role==='owner'" :profiles="profiles" />
     </main>
     <nav v-if="user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="tab=n.id">

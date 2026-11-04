@@ -8,6 +8,7 @@ import {remindersRoute} from './reminders.js'
 import {backupRoute} from './backup.js'
 import {pushRoute,runPushSchedule} from './webpush.js'
 import {petsRoute} from './pets.js'
+import {financeRoute} from './finance.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -35,6 +36,7 @@ export default {
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
         if(path==='/api/reminders')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
+        if(path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session)
         if(path==='/api/trips'||path.startsWith('/api/trips/')||/^\/api\/wishes\/[0-9a-f-]{36}\/start-trip$/.test(path))
