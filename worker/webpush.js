@@ -405,8 +405,10 @@ export async function sendCompletionFeedback(env,session,event){
     try{
       const reply=await deliverToHouseholdUser(env,session.household_id,recipientId,{
         title,body:message,url:'/?'+params.toString(),
-        tag:'homeflow-done-'+event.kind+'-'+event.id,
-        priority:'normal',recordInInbox:true
+        // Fresh completion notifications must not replace yesterday's banner.
+        tag:'homeflow-done-'+event.kind+'-'+event.id+'-'+event.completedAt.replace(/[^0-9]/g,''),
+        // Apple Web Push uses the high Urgency hint to attempt immediate delivery.
+        priority:'important',recordInInbox:true
       },'complete:'+event.kind+':'+event.id+':'+event.completedAt,Date.now(),{
         id:notificationId,senderId:session.user_id,kind:event.kind,
         sourceId:event.id,title,message,

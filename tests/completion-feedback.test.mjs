@@ -103,3 +103,14 @@ test('feedback is best-effort and completed push opens historical plan',()=>{
  assert.match(sw,/completed:target\.searchParams\.get\('taskDone'\)==='1'/)
  assert.match(read('src/components/TodayNotifications.vue'),/item\.message\.startsWith\('已完成 · '\)/)
 })
+
+test('completion banners have high Apple Web Push urgency and unique tags',()=>{
+ const web=read('worker/webpush.js')
+ assert.match(web,/tag:'homeflow-done-'\+event\.kind\+'-'\+event\.id\+'-'\+event\.completedAt\.replace/)
+ assert.match(web,/priority:'important',recordInInbox:true/)
+ assert.match(web,/Urgency:data\.priority==='important'\?'high':'normal'/)
+ const setting=read('src/components/PushPanel.vue')
+ assert.match(setting,/Notification\.permission/)
+ assert.match(setting,/permission==='granted'&&!!subscription/)
+ assert.match(setting,/设置 → 通知 → HomeFlow/)
+})

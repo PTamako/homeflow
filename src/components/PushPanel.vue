@@ -30,7 +30,15 @@ async function discover(){
     }
     available.value=true
     const registration=await navigator.serviceWorker.ready
-    enabled.value=!!await registration.pushManager.getSubscription()
+    const subscription=await registration.pushManager.getSubscription()
+    const permission=Notification.permission
+    enabled.value=permission==='granted'&&!!subscription
+    if(permission==='denied')
+      message.value='iPhone 已禁止 HomeFlow 通知。请到「设置 → 通知 → HomeFlow」开启通知横幅、锁定屏幕和通知中心。'
+    else if(permission==='default')
+      message.value='此设备尚未授权通知，点击「开启推送」进行授权。'
+    else if(!subscription)
+      message.value='没有找到此设备的推送订阅，请重新开启推送。'
   }catch{message.value='暂时无法检测推送状态。'}
 }
 async function enable(){
