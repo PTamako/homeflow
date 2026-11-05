@@ -476,7 +476,7 @@ function onForeground(){
     importantRemindersRef.value?.refreshIfStale()
     if(tab.value==='today')todayNotificationsRef.value?.refresh()
   }
-
+}
 async function toggleTask(t:Task){
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
