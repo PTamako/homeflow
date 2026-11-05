@@ -929,7 +929,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 :key="'historical-goal-'+period.goalId+'-'+period.periodKey"
                 :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner"
                 embedded-kind="goal" :embedded-id="period.goalId"
-                :initial-period-key="period.periodKey" @completed="goalFinished"/>
+                :initial-period-key="period.periodKey" :fixed-period-key="period.periodKey"
+                @completed="goalFinished"/>
             </div>
             <button v-if="historicalGoalCursor" type="button" class="life-more"
               :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多结算记录（每次 5 条）</button>

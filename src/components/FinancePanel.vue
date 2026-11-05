@@ -5,7 +5,7 @@ import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
-const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;initialCompletedPeriods?:string[]}>()
+const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;fixedPeriodKey?:string;initialCompletedPeriods?:string[]}>()
 const emit=defineEmits<{completed:[completed:boolean,periodKey:string]}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
@@ -25,6 +25,7 @@ const alreadyCompleted=computed(()=>completedPeriods.value.includes(currentMarkK
 const confirmBusy=ref(false)
 const goalMode=computed(()=>selected.value?.goal_mode||'once')
 const recurringGoal=computed(()=>kind.value==='goal'&&goalMode.value!=='once')
+const lockedPeriod=computed(()=>recurringGoal.value&&!!props.fixedPeriodKey)
 const goalStartOn=computed(()=>String(selected.value?.start_on||''))
 const modeLabel=computed(()=>goalMode.value==='monthly'?'每月':goalMode.value==='yearly'?'每年':'累计')
 function defaultPeriodKey(){
@@ -226,7 +227,7 @@ async function unlink(item:Item){
 }
 function resetGoalPeriod(){
   if(kind.value!=='goal')return
-  if(recurringGoal.value)periodKey.value=props.initialPeriodKey||defaultPeriodKey()
+  if(recurringGoal.value)periodKey.value=props.fixedPeriodKey||props.initialPeriodKey||defaultPeriodKey()
   else if(goalStartOn.value){start.value=goalStartOn.value;end.value=dateYmd()}
 }
 watch([kind,target],()=>{
@@ -237,7 +238,13 @@ watch([kind,target],()=>{
   if(periodKey.value===previousKey||!recurringGoal.value)void refreshSettings()
 })
 watch(kind,()=>{target.value=''})
-watch(periodKey,()=>{if(recurringGoal.value&&available.value)void refreshSettings()})
+watch(periodKey,()=>{
+  if(lockedPeriod.value&&periodKey.value!==props.fixedPeriodKey){
+    periodKey.value=props.fixedPeriodKey||''
+    return
+  }
+  if(recurringGoal.value&&available.value)void refreshSettings()
+})
 watch([start,end],()=>{if(!recurringGoal.value)netLoaded.value=false})
 watch(selected,value=>{
   if(!value)return
@@ -303,7 +310,11 @@ onMounted(()=>{
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
         </label>
         <div v-if="recurringGoal" class="fields">
-          <label v-if="goalMode==='monthly'">选择月份
+          <div v-if="lockedPeriod" class="locked-period">
+            <span>结算期间</span>
+            <strong>{{ goalMode==='monthly'?periodKey.replace('-','年')+'月':periodKey+'年' }}</strong>
+          </div>
+          <label v-else-if="goalMode==='monthly'">选择月份
             <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" /></label>
           <label v-else>选择年份
             <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
@@ -369,6 +380,8 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
 .line .unlink{background:#f3f5ee;color:#758978}.more{margin-top:8px;background:#eef5ed;color:#488d6c}
 .adjustment-label{display:grid;gap:6px;margin:12px 0;font-size:12px;color:#607469}
 .adjustment-label input{width:100%;max-width:100%;box-sizing:border-box;border:1px solid #dce6dc;border-radius:10px;padding:9px;min-height:41px;background:#fff;color:#253a31}
+.locked-period{display:grid;gap:5px;min-width:0;font-size:12px;color:#607469}
+.locked-period strong{background:#f3f7f3;border:1px solid #dce6dc;border-radius:10px;padding:10px 12px;min-height:41px;box-sizing:border-box;font-size:15px;font-weight:600;color:#263f33}
 .finance-actions{display:flex;flex-wrap:wrap;gap:8px}
 .goal-completion-panel{display:grid;gap:8px;margin-top:14px;padding:12px;
   background:#f4f9f5;border:1px solid #dbe9dd;border-radius:11px}
