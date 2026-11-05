@@ -27,12 +27,13 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={hiddenTodayKeys?:string[];goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
 const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
+const dismissedTodayKeys=ref<string[]>([])
 const goalReviews=ref<GoalReview[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
@@ -149,7 +150,9 @@ const allToday=computed<TodayEntry[]>(()=>{
     key:'plan:'+plan.kind+':'+plan.id+(plan.periodKey?':'+plan.periodKey:''),kind:plan.kind,
     title:plan.title,done:plan.done,plan
   }))
-  return [...standard,...recurring,...plans].sort((a,b)=>Number(a.done)-Number(b.done))
+  return [...standard,...recurring,...plans]
+    .filter(row=>!dismissedTodayKeys.value.includes(row.key))
+    .sort((a,b)=>Number(a.done)-Number(b.done))
 })
 const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
 const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
@@ -317,13 +320,20 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];dismissedTodayKeys.value=[];pendingTasks.value=[];await refresh()
 }
 function todayTasksUrl(){
  const date=tokyoToday()
  return '/tasks?status=all&today='+date
 }
-async function loadTasks(){tasks.value=(await api(todayTasksUrl())).tasks||[]}
+async function loadTasks(){
+ const date=tokyoToday()
+ const result=await api(todayTasksUrl())
+ if(date===tokyoToday()){
+   tasks.value=result.tasks||[]
+   dismissedTodayKeys.value=result.hiddenTodayKeys||[]
+ }
+}
 async function loadTodayRoutines(){
   if(!user.value)return
   const date=tokyoToday()
@@ -366,13 +376,15 @@ async function routineSaved(){
   await loadTodayRoutines()
   notify('定期计划已保存')
 }
-async function deleteRoutine(r:Routine){
-  if(r.created_by!==user.value?.id||!confirm('删除定期计划？以前的完成记录会保留。'))return
+// Today's red action hides only this displayed occurrence, never the source plan.
+// One-off overdue tasks may appear again tomorrow; completed marks and pet care stay intact.
+async function dismissToday(row:TodayEntry){
+  if(!confirm('仅从今天移除这条明细？原计划和完成记录会保留；未完成事项明天可能重新出现。'))return
   try{
-    await api('/routines/'+r.id,'DELETE')
-    editingRoutine.value=null
-    await loadTodayRoutines()
-    notify('定期计划已删除')
+    const date=tokyoToday()
+    await api('/tasks/today/dismiss','POST',{date,itemKey:row.key})
+    if(date===tokyoToday())dismissedTodayKeys.value=[...new Set([...dismissedTodayKeys.value,row.key])]
+    notify('已从今天移除，原计划保留')
   }catch(e){error.value=(e as Error).message}
 }
 async function toggleRoutine(r:Routine){
@@ -439,11 +451,6 @@ async function toggleTask(t:Task){
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
     notify(t.completedAt?'已撤销完成':'任务已完成')
   }catch(e){error.value=(e as Error).message}
-}
-async function deleteTask(t:Task){
-  if(!confirm('删除这条任务？'))return
-  try{await api('/tasks/'+t.id,'DELETE');await loadTasks();notify('任务已删除')}
-  catch(e){error.value=(e as Error).message}
 }
 async function addProfile(){
   error.value=''
@@ -586,9 +593,9 @@ onBeforeUnmount(()=>{
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
               :allow-edit="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
-              :allow-delete="row.task?.creatorUserId===user.id || row.routine?.created_by===user.id"
+              :allow-delete="true" delete-label="从今天移除"
               @edit="row.task?editTask(row.task):row.routine?editRoutine(row.routine):undefined"
-              @delete="row.task?deleteTask(row.task):row.routine?deleteRoutine(row.routine):undefined">
+              @delete="dismissToday(row)">
               <div class="task-row today-unified-row">
                 <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
                   :disabled="!!row.routine&&routineBusy"
