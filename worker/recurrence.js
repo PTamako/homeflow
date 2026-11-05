@@ -29,7 +29,11 @@ export function dueOn(rule,date) {
       const wd=new Date(date+'T00:00:00Z').getUTCDay()
       return Array.isArray(c.weekdays)&&c.weekdays.includes(wd) && (!c.excludeJapaneseHolidays||isJapaneseWorkday(date))
     }
-    case 'monthly': return Number(c.day)===Number(date.slice(8,10))
+    case 'monthly': {
+      const [year,month,day]=date.split('-').map(Number)
+      const last=new Date(Date.UTC(year,month,0)).getUTCDate()
+      return day===Math.min(Number(c.day),last)
+    }
     case 'interval': {
       if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
       // anchor_date is the baseline, not a due occurrence. A first dose is
