@@ -11,11 +11,12 @@ import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
+import {uniquePlanRows} from '../plan-list-identity.mjs'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean}>()
-const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[]}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
@@ -112,6 +113,12 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>(props.focusPlanScope||'active')
+function changePlanScope(value:'active'|'history'){
+  if(planScope.value===value)return
+  planScope.value=value
+  // Explicit tab navigation ends the focused deep-link session.
+  if(props.focusPlanId)emit('clearPlanFocus')
+}
 // Task history is independently paginated; the dashboard task snapshot is not an archive.
 const oneTimePlans=ref<Row[]>([])
 function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
@@ -266,7 +273,7 @@ async function loadMoreGoalPeriods(){
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
-  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id&&existing.periodOn===row.periodOn))]:rows
+  target.value=uniquePlanRows(append?[...target.value,...rows]:rows,kind,planScope.value)
 }
 async function loadMore(kind:string){
   const cursor=listCursors.value[kind]
@@ -410,7 +417,7 @@ async function focusExactPlan(requestId:number){
     // Active plans have one row per plan ID; historical routine occurrences are distinct by period.
     const listed=target.value.some(row=>row.id===item.id&&
       (kind!=='routine'||planScope.value!=='history'||row.periodOn===item.periodOn))
-    if(!listed)target.value=[item,...target.value]
+    if(!listed)target.value=uniquePlanRows([item,...target.value],kind==='task'?'tasks':kind==='routine'?'routines':kind,planScope.value)
     if(kind==='wish'){
       for(const related of response.linkedGoals||[]){
         if(!goals.value.some(row=>row.id===related.id))goals.value.push(related)
@@ -798,9 +805,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <div v-if="planType!=='unscheduled'" class="archive-toolbar">
         <div class="archive-tabs" role="group" aria-label="计划记录筛选">
           <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
-            @click="planScope='active'">进行中</button>
+            @click="changePlanScope('active')">进行中</button>
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
-            @click="planScope='history'">已完成／历史</button>
+            @click="changePlanScope('history')">已完成／历史</button>
         </div>
         <div v-if="planScope==='history'" class="archive-date-filters">
           <label>年份
