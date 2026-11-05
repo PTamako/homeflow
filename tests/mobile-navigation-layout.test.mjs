@@ -92,7 +92,7 @@ test('all mobile date fields, including the shared one-time form, use the iOS-sa
   }
   assert.ok(fields>=31,'all date fields, including newly added editors, use the shared iOS-safe control')
   const sw=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8')
-  assert.match(sw,/homeflow-shell-v3/,'new service worker invalidates older cached shells')
+  assert.match(sw,/homeflow-shell-v4/,'new service worker invalidates older cached shells')
   assert.match(sw,/fetch\(req,\{cache:'no-store'\}\)/,'navigation must request current HTML')
 })
 

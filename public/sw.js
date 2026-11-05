@@ -1,5 +1,5 @@
 // Cache only same-origin static assets; NEVER cache private /api endpoints.
-const CACHE='homeflow-shell-v3'
+const CACHE='homeflow-shell-v4'
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'])))
   self.skipWaiting()
