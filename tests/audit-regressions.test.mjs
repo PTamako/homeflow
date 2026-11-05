@@ -124,6 +124,27 @@ test('first paint and timeline do not show unrelated data while loading',()=>{
  assert.match(life,/role="status">正在读取时光轴/)
 })
 
+test('shopping backfill completes previously partial linked purchases without changing receipt records',()=>{
+ const {sqlite}=database()
+ try{
+  const shoppingId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  sqlite.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity) VALUES(?,?,?,?,?,?)')
+    .run(shoppingId,'primary','u1','household','三瓶洗发水',3)
+  sqlite.prepare('INSERT INTO shopping_expense_links(household_id,shopping_id,external_entry_id,linked_by,purchase_quantity) VALUES(?,?,?,?,?)')
+    .run('primary',shoppingId,'123','u1',1)
+  assert.equal(sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?').get(shoppingId).completed_at,null)
+  const migration=readFileSync(new URL('../migrations/0026_shopping_any_receipt_complete.sql',import.meta.url),'utf8')
+  sqlite.exec(migration)
+  const item=sqlite.prepare('SELECT completed_at,completed_by FROM shopping_items WHERE id=?').get(shoppingId)
+  assert.ok(item.completed_at)
+  assert.equal(item.completed_by,'u1')
+  assert.equal(sqlite.prepare('SELECT purchase_quantity FROM shopping_expense_links WHERE shopping_id=?').get(shoppingId).purchase_quantity,1)
+  sqlite.exec(migration)
+  assert.deepEqual(sqlite.prepare('SELECT completed_at,completed_by FROM shopping_items WHERE id=?').get(shoppingId),item,
+    'running the backfill again must not rewrite the completion')
+ }finally{sqlite.close()}
+})
+
 test('stale memory and shopping editor snapshots never overwrite newer changes',async()=>{
  const {db,sqlite}=database()
  try{
