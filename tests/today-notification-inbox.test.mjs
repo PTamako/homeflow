@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {readFileSync} from 'node:fs'
+import {jstNotificationDay,saveNotification,purgeOldNotifications,notificationsRoute}
+  from '../worker/notifications.js'
+const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8')
+const A='11111111-1111-4111-8111-111111111111'
+const B='22222222-2222-4222-8222-222222222222'
+const ID='33333333-3333-4333-8333-333333333333'
+const session={household_id:'home',user_id:B}
+const request=(url,method='GET')=>new Request('https://homeflow.invalid'+url,{method})
+
+test('JST calendar day changes at Tokyo midnight, not at UTC midnight',()=>{
+ assert.equal(jstNotificationDay(Date.parse('2026-11-05T14:59:59Z')),'2026-11-05')
+ assert.equal(jstNotificationDay(Date.parse('2026-11-05T15:00:00Z')),'2026-11-06')
+})
+
+test('notifications list uses recipient-only or sender-only scope, current day and LIMIT 6',async()=>{
+ const queries=[]
+ const db={prepare(sql){return {bind(...args){
+  queries.push({sql,args})
+  return {sql,args}
+ }}},async batch(){return [
+   {results:[{id:ID,createdAt:'2026-11-05 07:00:00'}]},
+   {results:[{count:2}]}
+ ]}}
+ const result=await notificationsRoute(request('/api/notifications/today?view=received'),db,
+   '/api/notifications/today',session)
+ assert.equal(result.status,200)
+ assert.equal((await result.json()).unreadCount,2)
+ assert.match(queries[0].sql,/n.recipient_user_id=\?3/)
+ assert.match(queries[0].sql,/n.sent_devices>0/)
+ assert.match(queries[0].sql,/n.local_day=\?2/)
+ assert.match(queries[0].sql,/LIMIT 6/)
+ assert.deepEqual(queries[0].args.slice(0,1),['home'])
+ assert.equal(queries[0].args[2],B)
+ assert.match(queries[1].sql,/read_at IS NULL/)
+ const sent=await notificationsRoute(request('/api/notifications/today?view=sent'),db,
+  '/api/notifications/today',session)
+ assert.equal(sent.status,200)
+ assert.match(queries[2].sql,/n.sender_user_id=\?3/)
+ assert.doesNotMatch(queries[2].sql,/AND n.sent_devices>0/)
+})
+
+test('only recipient from current household can mark today delivery as read',async()=>{
+ const queries=[]
+ let changed=0
+ const db={prepare(sql){return {bind(...args){
+  queries.push({sql,args})
+  return {run:async()=>({meta:{changes:changed}}),first:async()=>({count:0})}
+ }}}}
+ const path='/api/notifications/'+ID+'/read'
+ const forbidden=await notificationsRoute(request(path,'POST'),db,path,session)
+ assert.equal(forbidden.status,404)
+ assert.match(queries[0].sql,/recipient_user_id=\?3/)
+ assert.match(queries[0].sql,/local_day=\?4/)
+ assert.equal(queries[0].args[2],B)
+ changed=1
+ const ok=await notificationsRoute(request(path,'POST'),db,path,session)
+ assert.equal(ok.status,200)
+ assert.equal((await ok.json()).unreadCount,0)
+ assert.match(queries[2].sql,/recipient_user_id=\?2/)
+})
+
+test('saving a logical push uses one insert and typed delivery result',async()=>{
+ const queries=[]
+ const db={prepare(sql){return {bind(...args){
+  queries.push({sql,args})
+  return {run:async()=>({meta:{changes:1}})}
+ }}}}
+ await saveNotification(db,{id:ID,householdId:'home',senderId:A,recipientId:B,
+  kind:'task',sourceId:ID,title:'照顾豆沙',message:'记得喂药',
+  sentDevices:1,failedDevices:1,localDay:'2026-11-05'})
+ assert.equal(queries.length,1)
+ assert.match(queries[0].sql,/ON CONFLICT\(recipient_user_id,local_day,dedupe_key\)/)
+ assert.equal(queries[0].args[8],'partial')
+ assert.equal(queries[0].args[3],B)
+})
+
+test('old notification cleanup cannot delete any task or plan rows',async()=>{
+ const queries=[]
+ const db={prepare(sql){return {bind(...args){queries.push({sql,args});return {
+  run:async()=>({meta:{changes:3}})
+ }}}}}
+ await purgeOldNotifications(db,Date.parse('2026-11-05T21:00:00Z'))
+ assert.match(queries[0].sql,/^DELETE FROM notification_inbox WHERE local_day<\?1$/)
+ assert.equal(queries[0].args[0],'2026-11-06')
+})
+
+test('today UI, 06:00 push and installed PWA keep unread notification badges',()=>{
+ const app=read('src/App.vue'),ui=read('src/components/TodayNotifications.vue')
+ const sw=read('public/sw.js'),web=read('worker/webpush.js')
+ const worker=read('worker/index.js')
+ assert.match(app,/TodayNotifications ref="todayNotificationsRef"/)
+ assert.match(app,/n.id==='today'&&unreadNotificationCount>0/)
+ assert.match(app,/badge.setAppBadge\?\./)
+ assert.match(ui,/我收到的/)
+ assert.match(ui,/我发送的/)
+ assert.match(ui,/标记已读/)
+ assert.match(sw,/self.navigator.setAppBadge/)
+ assert.match(sw,/homeflow-open-notification/)
+ assert.match(web,/saveNotification\(db/)
+ assert.match(web,/dedupeKey:'scheduled:'\+key/)
+ assert.match(web,/recordInInbox:true/)
+ assert.match(worker,/purgeOldNotifications/)
+})
