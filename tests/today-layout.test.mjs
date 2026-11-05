@@ -21,14 +21,18 @@ test('Today combines one-off and recurring tasks in one checklist',()=>{
  assert.ok(app.includes("api('/routines/'+r.id+'/mark'"))
  assert.ok(app.includes('toggleTask(row.task)'))
  assert.ok(app.includes('toggleRoutine(row.routine)'))
- assert.ok(app.includes('editRoutine(row.routine)'))
+ assert.ok(app.includes(':allow-edit="false" :allow-delete="true" delete-label="从今天移除"'))
  assert.ok(app.includes('@delete="dismissToday(row)"'))
  assert.ok(app.includes('delete-label="从今天移除"'))
  assert.ok(app.includes("api('/tasks/today/dismiss','POST'"))
  assert.ok(app.includes('dismissedTodayKeys.value.includes(row.key)'))
  assert.ok(!app.includes('deleteRoutine(row.routine)'), 'Today must never delete the recurring source')
  assert.ok(!app.includes('deleteTask(row.task)'), 'Today must never delete the one-off source')
- assert.ok(app.includes('kind="routines" :item="row.routine"'))
+ assert.ok(!app.includes('editingRoutine'), 'Today must not embed a recurring-plan editor')
+ assert.ok(!app.includes('editingTask'), 'Today must not embed a one-time editor')
+ assert.ok(!app.includes('sendOrQueueTask'), 'Today should not write plan edits')
+ assert.ok(app.includes("openPlans('task',row.task.id,'',row.done)"),
+   'one-time items must navigate to Plans to edit')
  assert.ok(!sections.today.includes('今日定期事项'),'no duplicate routine card')
  assert.ok(!life.includes("api('/routines/today')"),'do not double-fetch routines from D1')
 })
@@ -183,4 +187,17 @@ test('Today dismissals preserve source plans, history and per-user view semantic
  assert.match(migration,/PRIMARY KEY \(household_id,user_id,view_on,item_key\)/)
  assert.match(app,/:allow-delete="true" delete-label="从今天移除"/)
  assert.match(app,/原计划和完成记录会保留/)
+})
+
+test('Today only offers deletion and plan navigation; editing stays in the Plans page',()=>{
+ const today=app.slice(app.indexOf('<template v-for="row in visibleToday"'),
+   app.indexOf('加载更多今日待办（每次 5 条）'))
+ assert.match(today,/:allow-edit="false" :allow-delete="true" delete-label="从今天移除"/)
+ assert.doesNotMatch(today,/@edit=|task-edit-form|<LifeItemEditor/)
+ assert.match(today,/@delete="dismissToday\(row\)"/)
+ assert.match(today, /row\.task\?openPlans\('task',row\.task\.id,'',row\.done\)/)
+ assert.ok(life.includes('@edit="editOnce(t)"'), 'one-time edits remain in Plans')
+ assert.ok(life.includes("@edit=\"edit('routines',r)\""), 'recurring edits remain in Plans')
+ assert.match(app, /focusPlanScope\.value=done&&\(kind==='task'\|\|kind==='routine'/,
+   'completed one-off task must navigate to the correct history tab')
 })
