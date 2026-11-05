@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {computed,onMounted,ref,watch} from 'vue'
+import {computed,nextTick,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
@@ -10,6 +10,8 @@ type Health={id:string;recordType:string;eventOn:string;weightGrams:number|null;
 const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref('')
 const editingId=ref<string|null>(null)
+const showHealthForm=ref(false)
+const healthFormEl=ref<HTMLFormElement|null>(null)
 const {toast,notify}=usePageToast()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
@@ -63,10 +65,16 @@ async function read(more=false){
 function editRecord(r:Health){
   editingId.value=r.id;kind.value=r.recordType;eventDate.value=r.eventOn
   nextDate.value=r.nextDueOn||'';weight.value=r.weightGrams;note.value=r.note||''
-  error.value=''
+  error.value='';showHealthForm.value=true
+  void nextTick(()=>healthFormEl.value?.scrollIntoView({behavior:'smooth',block:'nearest'}))
 }
 function cancelEditing(){
-  editingId.value=null;note.value='';nextDate.value='';weight.value=null
+  editingId.value=null;kind.value='deworm';eventDate.value=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+  note.value='';nextDate.value='';weight.value=null;showHealthForm.value=false;error.value=''
+}
+function toggleHealthForm(){
+  if(showHealthForm.value)cancelEditing()
+  else {editingId.value=null;showHealthForm.value=true}
 }
 async function removeRecord(r:Health){
   if(r.createdBy!==props.userId||!confirm('删除这条护理记录吗？已单独建立的提醒任务不会被自动删除。'))return
@@ -91,15 +99,14 @@ async function create(){
   if(!r.ok)throw Error(data.error||'保存失败')
   await read()
   void loadWeightTrend()
-  note.value='';nextDate.value='';weight.value=null
   const edited=!!editingId.value
-  editingId.value=null
+  cancelEditing()
   notify(edited?'护理记录已更新':data.createdReminder?'已保存，并创建下次提醒':'护理记录已保存')
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
 onMounted(()=>{void read();void loadWeightTrend()})
-watch(()=>props.petId,()=>{weightPoints.value=[];void read();void loadWeightTrend()})
+watch(()=>props.petId,()=>{cancelEditing();weightPoints.value=[];void read();void loadWeightTrend()})
 watch([year,month],()=>void read())
 watch(year,value=>{if(!value)month.value=''})
 </script>
@@ -118,14 +125,19 @@ watch(year,value=>{if(!value)month.value=''})
       </svg>
     </div>
 
-    <form class="pet-form" @submit.prevent="create">
+    <button type="button" class="pet-more" :aria-expanded="showHealthForm"
+      :aria-controls="'pet-health-form-'+petId" :disabled="busy" @click="toggleHealthForm">
+      {{ showHealthForm?'收起表单':'＋ 添加护理记录' }}
+    </button>
+    <form v-if="showHealthForm" :id="'pet-health-form-'+petId" ref="healthFormEl"
+      class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
       <label>完成日期<DateField v-model="eventDate" required /></label>
       <label v-if="kind==='weight'">体重（克）<input v-model.number="weight" required type="number" min="1" max="99999" placeholder="例如 5500"/></label>
       <label v-if="kind!=='weight'">下次提醒（可选）<DateField v-model="nextDate" :min="eventDate" /></label>
       <label class="full">备注<input v-model="note" maxlength="1000" placeholder="使用药品、医院、身体情况等"/></label>
       <div class="full pet-form-actions">
-        <button v-if="editingId" type="button" class="pet-cancel" :disabled="busy" @click="cancelEditing">取消修改</button>
+        <button type="button" class="pet-cancel" :disabled="busy" @click="cancelEditing">取消</button>
         <button :disabled="busy">{{ busy?'保存中…':editingId?'保存修改':'＋ 保存健康记录' }}</button>
       </div>
     </form>

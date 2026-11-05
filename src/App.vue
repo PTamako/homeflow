@@ -102,6 +102,15 @@ const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tok
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
+const showProfileForm=ref(false)
+function closeProfileForm(){
+  showProfileForm.value=false
+  name.value='';petType.value='pet';birth.value='';adopted.value=''
+}
+function toggleProfileForm(){
+  if(showProfileForm.value)closeProfileForm()
+  else showProfileForm.value=true
+}
 const error=ref('')
 const {toast,notify,clear:clearToast}=usePageToast()
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
@@ -447,7 +456,7 @@ async function addProfile(){
     await api('/family/profiles','POST',{displayName:name.value,type:petType.value,
       birthday:birth.value||null,adoptedOn:adopted.value||null})
     await profileSaved()
-    name.value='';birth.value='';adopted.value=''
+    closeProfileForm()
   }catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{
@@ -740,8 +749,12 @@ onBeforeUnmount(()=>{
           <p v-if="!pets.length" class="empty">尚无宠物档案，可以在下方添加豆沙。</p>
         </section>
         <section v-if="user.role==='owner'" class="panel">
-          <h2>添加家庭或宠物档案</h2>
-          <form class="profile-form" @submit.prevent="addProfile">
+          <button type="button" class="outline" :aria-expanded="showProfileForm"
+            aria-controls="new-family-profile-form" @click="toggleProfileForm">
+            {{ showProfileForm?'收起表单':'＋ 添加家庭或宠物档案' }}
+          </button>
+          <form v-if="showProfileForm" id="new-family-profile-form" class="profile-form"
+            @submit.prevent="addProfile">
             <label class="field-wide">昵称或名字
               <input v-model="name" required maxlength="60" placeholder="例如：豆沙" />
             </label>
@@ -754,7 +767,10 @@ onBeforeUnmount(()=>{
             <label v-if="petType==='pet'">到家日（可选）
               <DateField v-model="adopted" />
             </label>
-            <button class="primary field-wide">添加档案</button>
+            <div class="field-wide profile-form-actions">
+              <button type="button" class="outline" @click="closeProfileForm">取消</button>
+              <button type="submit" class="primary">添加档案</button>
+            </div>
           </form>
         </section>
       </template>
