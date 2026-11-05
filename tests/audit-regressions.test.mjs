@@ -362,7 +362,8 @@ test('soft-deleted task recycling is five-row keyed and creator-only',async()=>{
   const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,deleted_at) VALUES(?, 'primary','u1','household',?,?)")
   for(let i=0;i<7;i++)insert.run('ffff'+String(i).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Deleted '+i,'2026-11-05T10:00:'+String(i).padStart(2,'0')+'.000Z')
   const request=async(path,method='GET',who=session)=>{
-   const r=await tasksRoute(new Request('https://homeflow.test'+path,{method}),db,path,who)
+   const r=await tasksRoute(new Request('https://homeflow.test'+path,{method}),db,
+     new URL('https://homeflow.test'+path).pathname,who)
    return {status:r.status,body:await r.json()}
   }
   const first=await request('/api/tasks/trash?limit=5')
