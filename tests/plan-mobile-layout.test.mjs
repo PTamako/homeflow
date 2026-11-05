@@ -8,7 +8,7 @@ const swipe=readFileSync(new URL('../src/components/SwipeActions.vue',import.met
 test('Plans focus deep links wait for rendering and keep row under mobile safe area',()=>{
   assert.match(life,/requestAnimationFrame\(\(\)=>\{/)
   assert.match(life,/getBoundingClientRect\(\)\.top\+window\.scrollY-176/)
-  assert.match(life,/requestId!==activeFetch\|\|props\.focusPlanId!==id/)
+  assert.match(life,/requestId!==activeFetch\|\|focusedItemId\.value!==id/)
   assert.match(life,/focusPlanFromToday/)
 })
 
@@ -25,4 +25,14 @@ test('Swipe edit/delete cues remain available but are compact and header-aligned
   assert.match(swipe,/\.swipe-stripes span\{[^}]*height:19px/)
   assert.match(swipe,/<button v-if="allowEdit" type="button" class="edit"/)
   assert.match(swipe,/<button v-if="allowDelete" type="button" class="delete"/)
+})
+
+test('a historical Today deep link never duplicates a row when switching to active plans',()=>{
+  const focus=life.slice(life.indexOf('async function focusExactPlan('),life.indexOf('async function finishWish('))
+  const scopeGuard=focus.indexOf('if(props.focusPlanScope!==planScope.value)return')
+  const apiCall=focus.indexOf('const response=await api(')
+  assert.ok(scopeGuard>=0&&scopeGuard<apiCall,'scope must be checked before fetching focused record')
+  assert.match(life,/const focusedItemId=computed\(\(\)=>props\.focusPlanScope===planScope\.value/)
+  assert.match(focus,/kind!=='routine'\|\|planScope\.value!=='history'\|\|row\.periodOn===item\.periodOn/)
+  assert.match(focus,/if\(!listed\)target\.value=\[item,\.\.\.target\.value\]/)
 })
