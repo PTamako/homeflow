@@ -71,8 +71,13 @@ export default {
   },
   async scheduled(controller,env,ctx){
     if(!await verifiedDatabase(env))return
-    ctx.waitUntil(Promise.allSettled([
-      runPushSchedule(env),runGoalSettlementSchedule(env)
-    ]))
+    ctx.waitUntil((async()=>{
+      const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env)])
+      // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
+      const summary=jobs.map((job,index)=>job.status==='fulfilled'?
+        {job:index===0?'push':'savings',...job.value}:
+        {job:index===0?'push':'savings',failed:1,reason:'unexpected'})
+      console.info('homeflow_daily_jobs',JSON.stringify(summary))
+    })())
   }
 }

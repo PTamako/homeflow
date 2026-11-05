@@ -291,6 +291,20 @@ function normalized(key,r,h,u) {
 export async function portableRoute(request,db,path,session){
   const household=session.household_id,user=session.user_id
   if(path==='/api/portable'&&request.method==='GET'){
+    const params=new URL(request.url).searchParams
+    if(params.has('dataset')){
+      const key=params.get('dataset')
+      const raw=params.get('cursor')||'0'
+      if(!allowed.has(key)||!/^(0|[1-9][0-9]{0,5})$/.test(raw)||
+         Number(raw)>50000||Number(raw)%100!==0)return json({error:'invalid_export_cursor'},400)
+      const [,source,tag]=queries.find(([name])=>name===key)
+      const sql=source.replace(/LIMIT 501\s*$/,'LIMIT 101 OFFSET '+Number(raw))
+      const query=db.prepare(sql)
+      const {results}=await (tag==='family'?query.bind(household):query.bind(household,user)).all()
+      const rows=results||[]
+      return json({dataset:key,items:rows.slice(0,100),
+        nextCursor:rows.length>100?String(Number(raw)+100):null})
+    }
     const statements=queries.map(([key,sql,tag])=>{
       const q=db.prepare(sql)
       return tag==='family'?q.bind(household):q.bind(household,user)
