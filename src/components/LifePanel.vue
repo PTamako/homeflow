@@ -937,9 +937,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
                 <div class="life-details">
                   <b class="detail-name">{{ t.title }}</b>
-                  <small>一次性任务 · {{ t.dueOn||'无截止日期' }}
+                  <small class="once-task-summary">一次性任务 · {{ t.dueOn||'无截止日期' }}
                     <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
-                    <template v-if="t.completedAt"> · 已完成</template> · 发起人：{{ memberName(t.creatorUserId) }} · 处理人：{{ memberName(t.assigneeUserId) }}
+                    <template v-if="t.completedAt"> · 已完成</template>
+                  </small>
+                  <small class="once-task-identity">
+                    <span>发起人：{{ memberName(t.creatorUserId) }}</span>
+                    <span>处理人：{{ memberName(t.assigneeUserId) }}</span>
                   </small>
                 </div>
                 <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
@@ -980,21 +984,41 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </form>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
-            <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
-              <b>编辑一次性任务</b>
-              <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
-              <label>截止日期<DateField v-model="onceDate" /></label>
-              <label><input v-model="onceRemind" type="checkbox" /> 开启提醒</label>
-              <label>处理人<select v-model="onceAssignee" aria-label="修改任务处理人"
-                @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null">
-                <option value="">未指派</option>
-                <option v-for="member in (props.members||[])" :key="member.id" :value="member.id" :disabled="onceVisibility==='private'&&member.id!==props.userId">{{ member.loginName }}</option>
-              </select></label>
-              <label>可见范围<select v-model="onceVisibility"
-                @change="onceVisibility==='private'&&onceAssignee!==props.userId?onceAssignee=props.userId:''">
-                <option value="household">家庭共享</option><option value="private">仅自己</option>
-              </select></label>
-              <div class="detail-actions">
+            <form v-if="onceEditing?.id===t.id" class="detail-editor once-task-editor"
+              @submit.prevent="saveOnce" aria-label="编辑一次性任务">
+              <b class="once-editor-title">编辑任务</b>
+              <label class="once-edit-field">
+                <span>任务名称</span>
+                <input v-model="onceTitle" maxlength="150" required aria-label="任务名称" />
+              </label>
+              <label class="once-edit-field">
+                <span>截止日期</span>
+                <DateField v-model="onceDate" />
+              </label>
+              <label class="once-edit-remind">
+                <input v-model="onceRemind" type="checkbox" />
+                <span>开启提醒</span>
+              </label>
+              <label class="once-edit-field">
+                <span>处理人</span>
+                <select v-model="onceAssignee" aria-label="修改任务处理人"
+                  @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null">
+                  <option value="">未指派</option>
+                  <option v-for="member in (props.members||[])" :key="member.id" :value="member.id"
+                    :disabled="onceVisibility==='private'&&member.id!==props.userId">
+                    {{ memberName(member.id) }}
+                  </option>
+                </select>
+              </label>
+              <label class="once-edit-field">
+                <span>可见范围</span>
+                <select v-model="onceVisibility" aria-label="任务可见范围"
+                  @change="onceVisibility==='private'&&onceAssignee!==props.userId?onceAssignee=props.userId:''">
+                  <option value="household">家庭共享</option>
+                  <option value="private">仅自己</option>
+                </select>
+              </label>
+              <div class="detail-actions once-edit-actions">
                 <button type="button" @click="onceEditing=null">取消</button>
                 <button type="submit">保存修改</button>
               </div>
@@ -1518,4 +1542,67 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .task-push-actions button{border:1px solid #ccdcd0;border-radius:8px;background:#fff;padding:8px 12px;color:#3b7054;font-weight:650;font-size:12px}
 .task-push-actions button[type=submit]{background:#43866a;color:#fff;border-color:#43866a}
 .task-push-actions button:disabled{opacity:.6}
+
+/* One-time task editor lives in LifePanel; sibling component scoped CSS does
+   not reach it. Keep every field in its own bounded mobile row. */
+.once-task-identity{display:flex!important;flex-wrap:wrap;column-gap:12px;row-gap:3px}
+.once-task-identity span{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.plan-tasks-card .once-task-editor{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:12px;
+  width:100%;max-width:100%;min-width:0;box-sizing:border-box;
+  margin:12px 0 4px;padding:15px;border:1px solid #dbe7dd;
+  border-radius:13px;background:#f8faf8
+}
+.once-task-editor .once-editor-title{
+  display:block;font-size:14px;font-weight:700;line-height:1.5;
+  color:#334d3d;margin:0 0 1px
+}
+.once-task-editor .once-edit-field{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:6px;
+  min-width:0;max-width:100%;font-size:12px;font-weight:600;
+  line-height:1.5;color:#617669
+}
+.once-task-editor .once-edit-field>span{display:block;min-width:0}
+.once-task-editor .once-edit-field>input,
+.once-task-editor .once-edit-field>select{
+  display:block;box-sizing:border-box;
+  inline-size:100%;min-inline-size:0;max-inline-size:100%;
+  block-size:44px;min-block-size:44px;padding:9px 12px;
+  border:1px solid #d4e0d6;border-radius:10px;
+  background:#fff;color:#273e30;font-size:16px;
+  text-overflow:ellipsis
+}
+.once-task-editor .once-edit-field>select{white-space:nowrap;overflow:hidden}
+.once-task-editor .once-edit-field :deep(.date-field){
+  inline-size:100%;min-inline-size:0;max-inline-size:100%
+}
+.once-task-editor .once-edit-remind{
+  display:flex;align-items:center;gap:10px;min-width:0;
+  padding:2px 0;font-size:13px;font-weight:500;color:#344a3a
+}
+.once-task-editor .once-edit-remind>input[type="checkbox"]{
+  flex:0 0 19px;inline-size:19px;block-size:19px;margin:0;
+  accent-color:#43866a
+}
+.once-task-editor .once-edit-actions{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;gap:10px;margin-top:3px;min-width:0
+}
+.once-task-editor .once-edit-actions>button{
+  min-width:0;min-height:42px;border-radius:10px;
+  border:1px solid #c9dccc;background:#fff;color:#547a61;
+  font-size:13px;font-weight:700;padding:9px 11px
+}
+.once-task-editor .once-edit-actions>button[type="submit"]{
+  border-color:#43866a;background:#43866a;color:#fff
+}
+.once-task-editor .once-edit-field>input:focus-visible,
+.once-task-editor .once-edit-field>select:focus-visible,
+.once-task-editor .once-edit-actions>button:focus-visible{
+  outline:2px solid #43866a;outline-offset:2px
+}
+@media(max-width:480px){
+  .plan-tasks-card .once-task-editor{padding:12px;gap:11px}
+  .once-task-editor .once-edit-actions{gap:8px}
+}
 </style>
