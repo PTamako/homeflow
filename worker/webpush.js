@@ -360,3 +360,62 @@ export async function runPushSchedule(env,now=Date.now()){
   }
   return {checked,sent,failed}
 }
+
+/**
+ * Completion feedback: unassigned shared tasks reach all OTHER members;
+ * assigned shared tasks reach the creator/dispatcher. No self-notifications,
+ * or disclosure of private tasks.
+ */
+export function completionRecipientIds(memberIds,event){
+  if(event.visibility!=='household')return []
+  const target=event.assigneeId?event.creatorId:null
+  return [...new Set(memberIds)].filter(id=>typeof id==='string'&&
+    id!==event.actorId&&(!target||id===target))
+}
+
+export async function sendCompletionFeedback(env,session,event){
+  if(!vapidReady(env))return {skipped:'push_not_configured'}
+  if(!session?.household_id||!session?.user_id||!['task','routine','shopping'].includes(event?.kind)||
+    !UUID.test(event?.id||'')||!UUID.test(event?.creatorId||'')||
+    typeof event?.title!=='string'||typeof event?.completedAt!=='string')
+    return {skipped:'invalid_completion'}
+  if(event.visibility!=='household')return {skipped:'private_completion'}
+  const db=env.DB
+  // One household-scoped roster read with the actor's linked profile name.
+  const {results:members=[]}=await db.prepare(`SELECT m.user_id AS userId,
+      COALESCE((SELECT fp.display_name FROM family_profiles fp
+        WHERE fp.household_id=?1 AND fp.member_user_id=?2
+          AND fp.type='person' AND fp.archived_at IS NULL LIMIT 1),'家庭成员') AS actorName
+      FROM household_members m JOIN users u ON u.id=m.user_id
+      WHERE m.household_id=?1 AND u.disabled_at IS NULL LIMIT 10`)
+    .bind(session.household_id,session.user_id).all()
+  const recipients=completionRecipientIds(members.map(m=>m.userId),{
+    ...event,actorId:session.user_id})
+  const actorName=String(members[0]?.actorName||'家庭成员').slice(0,60)
+  let sent=0,failed=0
+  for(const recipientId of recipients){
+    const notificationId=crypto.randomUUID()
+    const params=new URLSearchParams({taskType:event.kind,taskId:event.id,
+      taskDone:'1',notificationId})
+    if(event.kind==='routine'&&/^\d{4}-\d{2}-\d{2}$/.test(event.periodOn||''))
+      params.set('taskPeriod',event.periodOn)
+    const title=(String(event.title).slice(0,65)+' · 已完成').slice(0,90)
+    const message='已完成 · '+actorName+
+      (event.kind==='routine'&&event.periodOn?' · '+event.periodOn:'')
+    try{
+      const reply=await deliverToHouseholdUser(env,session.household_id,recipientId,{
+        title,body:message,url:'/?'+params.toString(),
+        tag:'homeflow-done-'+event.kind+'-'+event.id,
+        priority:'normal',recordInInbox:true
+      },'complete:'+event.kind+':'+event.id+':'+event.completedAt,Date.now(),{
+        id:notificationId,senderId:session.user_id,kind:event.kind,
+        sourceId:event.id,title,message,
+        dedupeKey:'complete:'+event.kind+':'+event.id+':'+event.completedAt
+      })
+      const data=await reply.json()
+      sent+=Number(data?.sent||0)
+      failed+=Number(data?.failed||0)
+    }catch{failed++}
+  }
+  return {recipients:recipients.length,sent,failed}
+}

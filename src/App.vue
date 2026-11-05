@@ -94,7 +94,7 @@ function openPlans(kind:string,id='',periodKey='',done=false){
   focusPlanType.value=kind
   focusPlanId.value=id
   focusPlanPeriodKey.value=periodKey
-  focusPlanScope.value=done&&(kind==='task'||kind==='routine'||kind==='wish'||(kind==='goal'&&(!periodKey||periodKey==='once')))
+  focusPlanScope.value=done&&(kind==='task'||kind==='routine'||kind==='shopping'||kind==='wish'||(kind==='goal'&&(!periodKey||periodKey==='once')))
     ?'history':'active'
   focusPlanRequest.value++
   tab.value='plans'
@@ -108,9 +108,10 @@ async function returnToToday(){
   window.requestAnimationFrame(()=>window.scrollTo({top:savedTodayScrollY,behavior:'instant'}))
   returningToToday=false
 }
-function openIncomingTask(kind:string|null,id:string|null){
+function openIncomingTask(kind:string|null,id:string|null,done=false,periodKey=''){
  if(!user.value||!['task','routine','shopping'].includes(kind||'')||!/^[a-f0-9-]{36}$/i.test(id||''))return false
- openPlans(kind!,id!)
+ const period=kind==='routine'&&/^\d{4}-\d{2}-\d{2}$/.test(periodKey)?periodKey:''
+ openPlans(kind!,id!,period,done)
  return true
 }
 function openIncomingNotification(id:string|null){
@@ -126,12 +127,14 @@ function onNotificationFocused(id:string){
 function consumeTaskLink(){
  const url=new URL(window.location.href)
  const notificationId=url.searchParams.get('notificationId')
- const openedTask=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'))
+ const openedTask=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'),
+   url.searchParams.get('taskDone')==='1',url.searchParams.get('taskPeriod')||'')
  const openedNotice=!openedTask&&openIncomingNotification(notificationId)
  if(openedTask&&notificationId)void markNotificationRead(notificationId)
  if(!openedTask&&!openedNotice)return false
  url.searchParams.delete('notificationId')
  url.searchParams.delete('taskType');url.searchParams.delete('taskId')
+ url.searchParams.delete('taskDone');url.searchParams.delete('taskPeriod')
  window.history.replaceState(null,'',url.pathname+url.search+url.hash)
  return true
 }
@@ -140,7 +143,8 @@ function onPushMessage(event:MessageEvent){
  const payload=event.data
  if(payload?.type==='homeflow-open-notification')openIncomingNotification(payload.id)
  if(payload?.type==='homeflow-open-task'){
-   const opened=openIncomingTask(payload.kind,payload.id)
+   const opened=openIncomingTask(payload.kind,payload.id,payload.completed===true,
+     payload.periodKey||'')
    if(payload.notificationId){
      if(opened)void markNotificationRead(payload.notificationId)
      else openIncomingNotification(payload.notificationId)
@@ -596,7 +600,7 @@ onBeforeUnmount(()=>{
         <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
           :user-id="user.id" :today-entry-keys="todayEntryKeys" :member-profiles="profiles" @unread-change="setUnreadNotificationCount"
           :focus-notification-id="notificationToOpen" :focus-request="notificationOpenRequest"
-          @focus-handled="onNotificationFocused" @open-plan="(kind,id)=>openPlans(kind,id)" />
+          @focus-handled="onNotificationFocused" @open-plan="(kind,id,periodKey,done)=>openPlans(kind,id,periodKey,done)" />
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
           <div class="row-between"><b>重要提醒 · 储值计划</b></div>
           <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">

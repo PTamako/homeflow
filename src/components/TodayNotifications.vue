@@ -12,7 +12,7 @@ type Notice={
 const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[];
  memberProfiles:Array<{memberUserId:string|null;displayName:string}>;
  focusNotificationId:string;focusRequest:number}>()
-const emit=defineEmits<{unreadChange:[number];openPlan:[string,string];focusHandled:[string]}>()
+const emit=defineEmits<{unreadChange:[number];openPlan:[string,string,string,boolean];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
 const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null)
@@ -91,7 +91,10 @@ async function markRead(item:Notice){
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
  if(item.sourceId&&['task','routine','shopping'].includes(item.kind)){
-   emit('openPlan',item.kind,item.sourceId)
+   const done=item.message.startsWith('已完成 · ')
+   const period=done&&item.kind==='routine'
+     ?item.message.match(/ · (\d{4}-\d{2}-\d{2})$/)?.[1]||'':''
+   emit('openPlan',item.kind,item.sourceId,period,done)
  }
 }
 async function showIncomingNotification(id:string){

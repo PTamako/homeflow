@@ -9,7 +9,7 @@ import {tripsRoute} from './trips.js'
 import {mediaRoute} from './media.js'
 import {remindersRoute} from './reminders.js'
 import {backupRoute} from './backup.js'
-import {pushRoute,runPushSchedule} from './webpush.js'
+import {pushRoute,runPushSchedule,sendCompletionFeedback} from './webpush.js'
 import {petsRoute} from './pets.js'
 import {financeRoute} from './finance.js'
 import {goalPeriodsRoute,runGoalSettlementSchedule} from './goal-settlements.js'
@@ -20,7 +20,7 @@ import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     const url=new URL(request.url),path=url.pathname
     if(path==='/api/health'){
       if(request.method!=='GET')return json({error:'method_not_allowed'},405)
@@ -37,6 +37,11 @@ export default {
         if(requiresLogin&&!session)return json({error:'not_authenticated'},401)
         if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!sameOrigin(request))
           return json({error:'origin_forbidden'},403)
+        // Completion push is best-effort and cannot invalidate a committed task.
+        const onComplete=typeof ctx?.waitUntil==='function'
+          ? event=>ctx.waitUntil(sendCompletionFeedback(env,session,event)
+              .catch(()=>console.warn('homeflow_completion_feedback_failed')))
+          : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
@@ -47,9 +52,9 @@ export default {
         if(path==='/api/export')return backupRoute(request,env.DB,session)
         if(path==='/api/recycle'||path==='/api/recycle/restore'||path==='/api/recycle/empty')return recycleRoute(request,env.DB,path,session)
         if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
-        if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)
+        if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session,onComplete)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
-          return tasksRoute(request,env.DB,path,session)
+          return tasksRoute(request,env.DB,path,session,onComplete)
         if(path==='/api/search')return searchRoute(request,env.DB,session)
         if(path==='/api/plans/summary')return planSummaryRoute(request,env.DB,session)
         if(path==='/api/plans/today'||path==='/api/plans/complete')
@@ -63,7 +68,7 @@ export default {
         if(/^\/api\/goals\/[0-9a-f-]{36}\/periods(?:\/settle)?$/i.test(path))
           return goalPeriodsRoute(request,env,path,session)
         if(/^\/api\/(anniversaries|routines|wishes|goals|shopping|memories)(\/|$)/.test(path))
-          return lifeRoute(request,env.DB,path,session)
+          return lifeRoute(request,env.DB,path,session,onComplete)
         return json({error:'not_found'},404)
       }catch{
         return json({error:'server_error'},500)

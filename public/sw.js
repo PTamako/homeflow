@@ -63,6 +63,8 @@ self.addEventListener('notificationclick',event=>{
         if(target.searchParams.has('taskId')){
           client.postMessage({type:'homeflow-open-task',
             kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId'),
+            completed:target.searchParams.get('taskDone')==='1',
+            periodKey:target.searchParams.get('taskPeriod'),
             notificationId:target.searchParams.get('notificationId')})
         }else if(target.searchParams.has('notificationId')){
           client.postMessage({type:'homeflow-open-notification',

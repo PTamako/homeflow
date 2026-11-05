@@ -115,7 +115,7 @@ const LEDGER_ERROR_CODES=new Set([
 ])
 const financeError=error=>json({error:LEDGER_ERROR_CODES.has(error?.message)
   ?error.message:'ledger_connection_unavailable'},502)
-export async function financeRoute(request,env,path,session){
+export async function financeRoute(request,env,path,session,onComplete=null){
   if(session.role!=='owner')return json({error:'forbidden'},403)
   const db=env.DB
   if(path==='/api/finance/status'&&request.method==='GET'){
@@ -208,7 +208,7 @@ export async function financeRoute(request,env,path,session){
      (shop&&(request.method==='POST'||request.method==='DELETE'))){
     // Owner may see shared items but never a different member's private item.
     const shoppingId=(shopList||shop)[1]
-    const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
+    const item=await db.prepare('SELECT id,title,created_by,assigned_to,visibility,ledger_entry_id,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
       .bind(shoppingId,h).first()
     if(!item)return json({error:'not_found'},404)
     if(item.created_by!==user&&item.visibility!=='household')return json({error:'forbidden'},403)
@@ -265,7 +265,7 @@ export async function financeRoute(request,env,path,session){
       if(!found.entries.some(x=>String(x.id)===entryId&&x.type==='expense'))
         return json({error:'entry_not_found'},404)
       const stamp=new Date().toISOString()
-      await db.batch([
+      const results=await db.batch([
         db.prepare('INSERT OR IGNORE INTO shopping_expense_links '+
           '(household_id,shopping_id,external_entry_id,linked_by,purchase_quantity) VALUES(?1,?2,?3,?4,?5)')
           .bind(h,item.id,entryId,user,purchaseQuantity),
@@ -274,9 +274,13 @@ export async function financeRoute(request,env,path,session){
           // A verified receipt completes this item regardless of its planned quantity.
           'completed_at=COALESCE(completed_at,?2),'+
           'completed_by=COALESCE(completed_by,?3) '+
-          "WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3)")
+          "WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3) AND completed_at IS NULL")
           .bind(entryId,stamp,user,item.id,h)
       ])
+      if(Number(results?.[1]?.meta?.changes||0)>0)
+        onComplete?.({kind:'shopping',id:item.id,title:item.title,
+          creatorId:item.created_by,assigneeId:item.assigned_to,
+          visibility:item.visibility,completedAt:stamp})
       return json({ok:true,linked:true})
     }catch(error){return financeError(error)}
   }

@@ -60,7 +60,7 @@ function parseTodayItemKey(key){
   }else return null
   return {table,id:uuid,ownerColumn:kind==='task'?'creator_user_id':'created_by'}
 }
-export async function tasksRoute(request,db,path,session) {
+export async function tasksRoute(request,db,path,session,onComplete=null) {
   const household=session.household_id,who=session.user_id
   if(path==='/api/tasks/today/dismiss'){
     if(request.method!=='POST')return json({error:'method_not_allowed'},405)
@@ -228,6 +228,7 @@ export async function tasksRoute(request,db,path,session) {
           AND (visibility='household' OR creator_user_id=?2)
           AND ${b.completed?'completed_at IS NULL':'completed_at IS NOT NULL'}`)
         .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household)
+      let changed=0
       if(b.completed && task.subject_profile_id && task.health_record_type){
         const care=db.prepare(`INSERT INTO pet_health_records
           (id,household_id,profile_id,created_by,visibility,record_type,event_on,note,source_task_id)
@@ -238,13 +239,22 @@ export async function tasksRoute(request,db,path,session) {
             AND t.deleted_at IS NULL AND p.type='pet' AND p.archived_at IS NULL
           ON CONFLICT(source_task_id) DO UPDATE SET deleted_at=NULL`)
           .bind(crypto.randomUUID(),who,date,task.id,household,stamp)
-        await db.batch([update,care])
+        const results=await db.batch([update,care])
+        changed=Number(results?.[0]?.meta?.changes||0)
       }else if(!b.completed){
         const archive=db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
           WHERE household_id=?1 AND source_task_id=?2 AND deleted_at IS NULL`)
           .bind(household,task.id)
-        await db.batch([update,archive])
-      }else await update.run()
+        const results=await db.batch([update,archive])
+        changed=Number(results?.[0]?.meta?.changes||0)
+      }else{
+        const result=await update.run()
+        changed=Number(result?.meta?.changes||0)
+      }
+      if(!changed)return json({ok:true,unchanged:true})
+      if(b.completed)onComplete?.({kind:'task',id:task.id,title:task.title,
+        creatorId:task.creator_user_id,assigneeId:task.assignee_user_id,
+        visibility:task.visibility,completedAt:stamp})
       return json({ok:true})
     }
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)

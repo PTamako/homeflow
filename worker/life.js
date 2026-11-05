@@ -127,7 +127,7 @@ async function getObject(db,table,id,session){
     " WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,session.household_id,session.user_id).first()
 }
-export async function lifeRoute(request,db,path,session){
+export async function lifeRoute(request,db,path,session,onComplete=null){
   const parts=path.split('/').filter(Boolean),kind=parts[1],table=plural[kind]
   if(!table||!catalog[table])return json({error:'not_found'},404)
   const id=parts[2]
@@ -227,7 +227,8 @@ export async function lifeRoute(request,db,path,session){
       VALUES(?1,?2,?3,?4,?5)
       ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET
         completed_at=excluded.completed_at,completed_by=excluded.completed_by,
-        skipped_at=excluded.skipped_at`)
+        skipped_at=excluded.skipped_at
+      WHERE excluded.completed_at IS NULL OR routine_marks.completed_at IS NULL`)
       .bind(id,recordOn,body.status==='completed'?completedStamp:null,
         body.status==='completed'?session.user_id:null,
         body.status==='skipped'?stamp:null)]
@@ -263,7 +264,11 @@ export async function lifeRoute(request,db,path,session){
           .bind(id,recordOn,config.days,stamp,session.household_id))
       }
     }
-    await db.batch(statements)
+    const results=await db.batch(statements)
+    if(body.status==='completed'&&Number(results?.[0]?.meta?.changes||0)>0)
+      onComplete?.({kind:'routine',id:rule.id,title:rule.title,
+        creatorId:rule.created_by,assigneeId:rule.assigned_to,
+        visibility:rule.visibility,completedAt:stamp,periodOn})
     return json({ok:true,periodOn,completedOn:body.status==='completed'?actual:null})
   }
   if(id&&parts[3]==='toggle'&&table==='shopping_items'&&request.method==='POST'){
