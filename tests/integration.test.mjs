@@ -1239,6 +1239,43 @@ test('new weekly occurrences may be completed early only once and never enter fu
  sqlite.close()
 })
 
+test('early-completed routine suppresses advance and due-day reminders until undone',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const boot=await ask('/api/auth/bootstrap','POST',{
+   loginName:'ahead-routine-owner',password:'a-long-test-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(boot.status,201)
+ const owner=extractCookie(boot.cookie)
+ const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=(value,n)=>new Date(Date.parse(value+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const future=plus(day,3),weekday=new Date(future+'T00:00:00Z').getUTCDay()
+ const routine=await ask('/api/routines','POST',{
+   title:'豆沙零食日',repeatType:'weekly',repeatConfig:{weekdays:[weekday]},
+   anchorDate:day,visibility:'household',remindEnabled:true
+ },owner)
+ assert.equal(routine.status,201,JSON.stringify(routine.body))
+ assert.equal((await ask('/api/reminders/preferences','PUT',{advanceDays:3},owner)).status,200)
+ const before=await ask('/api/reminders?date='+day,'GET',undefined,owner)
+ assert.ok(before.body.items.some(x=>x.kind==='routine'&&x.id===routine.body.id&&x.dueOn===future),
+   JSON.stringify(before.body))
+ const completed=await ask('/api/routines/'+routine.body.id+'/mark','POST',
+   {date:day,periodOn:future,status:'completed',early:true},owner)
+ assert.equal(completed.status,200,JSON.stringify(completed.body))
+ for(const date of [day,future]){
+  const result=await ask('/api/reminders?date='+date,'GET',undefined,owner)
+  assert.ok(!result.body.items.some(x=>x.kind==='routine'&&x.id===routine.body.id),
+    'no redundant reminder on '+date+': '+JSON.stringify(result.body))
+ }
+ const undo=await ask('/api/routines/'+routine.body.id+'/mark','POST',
+  {date:day,periodOn:future,status:'open'},owner)
+ assert.equal(undo.status,200,JSON.stringify(undo.body))
+ const restored=await ask('/api/reminders?date='+day,'GET',undefined,owner)
+ assert.ok(restored.body.items.some(x=>x.kind==='routine'&&x.id===routine.body.id))
+ sqlite.close()
+})
+
 test('shopping links to a verified kakebo expense and edits / removes details safely',async()=>{
  const {db,sqlite}=makeDb()
  sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
