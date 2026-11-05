@@ -97,8 +97,8 @@ test('all mobile date fields, including the shared one-time form, use the iOS-sa
 })
 
 test('routine plans share compact rows and genuine per-period historical states',()=>{
-  const begin=life.indexOf('<template v-if="planScope===\'history\'">',life.indexOf('class="plan-tasks-card"'))
-  const routine=life.slice(begin,life.indexOf('<div v-for="t in oneTimePlans"',begin))
+  const begin=life.indexOf('<template v-if="entry.kind===\'routine\'&&planScope===\'history\'">',life.indexOf('class="plan-tasks-card"'))
+  const routine=life.slice(begin,life.indexOf('<template v-else>',begin))
   assert.ok(begin>=0)
   assert.match(routine,/class="plan-task-head"/)
   assert.match(routine,/class="routine-compact"/)
@@ -115,7 +115,7 @@ test('routine plans share compact rows and genuine per-period historical states'
   assert.match(routine,/expandedTaskMenu==='routine:'\+r\.id/)
   assert.doesNotMatch(routine,/<details class="routine-menu">/)
   assert.match(routine,/class="routine-inline-actions"/)
-  const once=life.slice(life.indexOf('<div v-for="t in oneTimePlans"'),life.indexOf('!routines.length&&!oneTimePlans.length'))
+  const once=life.slice(life.indexOf('<div v-for="t in [entry.item]"'),life.indexOf('!routines.length&&!oneTimePlans.length'))
   assert.match(once,/scope="one-time-plans"/)
   assert.match(once,/completeOnce\(t\)/)
   assert.match(once,/toggleReminderEditor\('task',t\.id\)/)
