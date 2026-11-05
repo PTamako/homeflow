@@ -585,7 +585,7 @@ async function fetchMode(){
       const selected=planType.value
       const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
-      const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
+      const goalArchivePath=props.isOwner&&planScope.value==='history'&&['all','goal'].includes(selected)?
         historicalGoalPath():null
       const pages=await Promise.all([...paths.map(path=>api(path)),
         ...(goalArchivePath?[api(goalArchivePath)]:[])])
