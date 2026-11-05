@@ -27,6 +27,7 @@ MIGRATIONS=[
     "0020_goal_period_settlements.sql",
     "0021_account_recovery.sql",
     "0022_recycle_plans.sql",
+    "0023_today_dismissals.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -39,7 +40,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
