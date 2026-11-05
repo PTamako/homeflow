@@ -811,33 +811,61 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
-          <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id" :id="'plan-item-'+r.id"
-            class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
-            <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
-              @edit="edit('routines',r)" @delete="removeItem('routines',r)">
-              <div class="life-row" :class="{'detail-completed':r.enabled===0}">
-                <div class="life-details">
-                  <b class="detail-name">{{ r.title }}</b>
-                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small>
-                </div>
+          <template v-if="planScope==='history'">
+            <div v-for="r in (planType==='unscheduled'?[]:routines)"
+              :key="r.id+':'+r.periodOn" :id="'plan-item-'+r.id"
+              class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
+              <div class="plan-task-head">
+                <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
+                <span class="routine-state" :class="'state-'+r.status">
+                  {{ r.status==='completed'?'已完成':r.status==='skipped'?'已跳过':'未完成' }}
+                </span>
               </div>
-            <div v-if="planScope==='active'&&(r.remind_enabled!==0||canCompleteRoutineEarly(r))"
-              class="plan-task-footer">
-              <span v-if="canCompleteRoutineEarly(r)" class="plan-task-next">下次预计：{{ routineNextDue(r) }}</span>
-              <div class="plan-task-controls">
-                <button v-if="r.remind_enabled!==0" type="button" class="plan-task-subtle"
-                  :aria-label="'设置「'+r.title+'」的提醒'"
-                  @click="toggleReminderEditor('routine',r.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
-                <button v-if="canCompleteRoutineEarly(r)" type="button" class="plan-task-action"
-                  :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
+              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
+              <div class="plan-task-footer">
+                <span class="plan-task-next">{{ r.periodOn }} 期<template v-if="r.completedOn"> · 实际 {{ r.completedOn }}</template></span>
+                <button v-if="r.status!=='missed'" type="button" class="routine-text-action" :disabled="busy"
+                  @click="undoRoutineHistory(r)">撤销</button>
               </div>
             </div>
-            </SwipeActions>
-            <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
-              kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
-            <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-              kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
-          </div>
+          </template>
+          <template v-else>
+            <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id"
+              :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
+              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
+                @edit="edit('routines',r)" @delete="removeItem('routines',r)">
+                <div class="routine-compact">
+                  <div class="plan-task-head">
+                    <b class="detail-name">{{ r.title }}</b>
+                    <details class="routine-menu">
+                      <summary :aria-label="'更多操作：'+r.title">···</summary>
+                      <div class="routine-menu-items">
+                        <button type="button" @click="toggleReminderEditor('routine',r.id)">提醒设置</button>
+                        <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
+                          @click="completeCurrentRoutine(r,'skipped')">跳过本期</button>
+                        <button v-if="canEdit(r)" type="button" @click="edit('routines',r)">编辑计划</button>
+                      </div>
+                    </details>
+                  </div>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template></small>
+                  <div class="plan-task-footer">
+                    <span class="plan-task-next">
+                      {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?'逾期 '+r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
+                    </span>
+                    <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button" class="routine-text-action"
+                      :disabled="busy" @click="completeCurrentRoutine(r,'completed')">完成本期</button>
+                    <button v-else-if="canCompleteRoutineEarly(r)" type="button" class="routine-text-action"
+                      :disabled="busy" @click="completeRoutineEarly(r)">提前完成</button>
+                    <span v-else-if="r.completedToday" class="routine-state state-completed">今天已完成</span>
+                  </div>
+                </div>
+              </SwipeActions>
+              <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
+                kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
+              <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
+                kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
+            </div>
+          </template>
           <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
