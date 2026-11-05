@@ -103,7 +103,7 @@ onMounted(()=>{void check();void loadSettings()})
 <template>
  <section class="shopping-ledger">
   <b>关联家計簿真实支出</b>
-  <p class="hint">关联真实消费并填写件数，达到计划数量后完成。</p>
+  <p class="hint">关联消费，达到数量后自动完成。</p>
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
     家計簿联动暂不可用，请稍后重试。购物计划仍保持未完成。
@@ -125,9 +125,9 @@ onMounted(()=>{void check();void loadSettings()})
    </div>
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <div v-if="links.length" class="shopping-linked">
-     <b>已关联 {{ links.length }} 笔真实消费</b>
-     <p class="hint">购买数量：已确认 {{ purchasedCount }} / 计划 {{ plannedQuantity }} 件
-       <template v-if="unknownCount"> · {{ unknownCount }} 笔历史账目未填写数量，原完成状态保留</template>
+     <b>已关联 {{ links.length }} 笔消费</b>
+     <p class="hint">数量 {{ purchasedCount }} / {{ plannedQuantity }} 件
+       <template v-if="unknownCount"> · {{ unknownCount }} 笔历史账目数量待核对</template>
        <template v-else> · {{ isCompleted?'已完成':'还差 '+remainingCount+' 件' }}</template>
      </p>
      <div v-for="link in links" :key="link.entryId" class="ledger-entry">
@@ -136,7 +136,7 @@ onMounted(()=>{void check();void loadSettings()})
         · {{ link.purchaseQuantity==null?'旧关联数量未核对':'本次 '+link.purchaseQuantity+' 件' }}</small></span>
        <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink(link.entryId)">解除这一笔</button>
      </div>
-     <small v-if="linksNeedReview" class="ledger-error">部分关联明细已删除或更改，可能涉及退款，请核对并解除异常关联。</small>
+     <small v-if="linksNeedReview" class="ledger-error">关联消费已变更，请核对。</small>
      <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink()">解除全部关联</button>
    </div>
   </template>
@@ -147,11 +147,10 @@ onMounted(()=>{void check();void loadSettings()})
     <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
     <strong>调整后金额 {{ signed(adjustedTotal()) }}</strong>
    </div>
-   <label>手动调整额（円，可输入正负数）
+   <label>调整额（日元，可为负数）
     <input v-model="adjustment" type="number" step="1" inputmode="numeric"/>
    </label>
    <button type="button" :disabled="busy" @click="saveAdjustment">保存调整额</button>
-   <small>调整额仅保存在 HomeFlow，不会修改家計簿。</small>
    <small v-if="savedMessage" role="status">{{ savedMessage }}</small>
   </div>
   <p v-if="error" role="alert" class="ledger-error">{{ error }}</p>
