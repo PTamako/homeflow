@@ -498,3 +498,123 @@ test('portable backup preserves deleted flags for a goal, wish and ordinary task
    assert.equal(target.sqlite.prepare('SELECT wish_id FROM goals WHERE id=?').get(ids.goals).wish_id,ids.wishes)
  }finally{source.sqlite.close();target.sqlite.close()}
 })
+
+
+test('recycle uses D1-safe four-source reads with a stable cross-kind five-item cursor',async()=>{
+ const {db,sqlite}=database()
+ const rows=[
+  ['task','tasks','creator_user_id',"title","'任务'"],
+  ['routine','routines','created_by',"title,repeat_type,anchor_date","'定期','daily','2026-11-01'"],
+  ['anniversary','anniversaries','created_by',"title,event_date,repeat_mode","'纪念','2026-12-01','yearly'"],
+  ['shopping','shopping_items','created_by',"title","'购物'"],
+  ['wish','wishes','created_by',"title,wish_type","'心愿','purchase'"],
+  ['goal','goals','created_by',"title,target_amount","'储值',1000"],
+  ['trip','trips','created_by',"title","'旅行'"],
+  ['memory','memories','created_by',"title,happened_on","'回忆','2026-11-05'"]
+ ]
+ try{
+  for(let i=0;i<rows.length;i++){
+   const [kind,table,creator,columns,values]=rows[i]
+   const id='eeee'+String(i).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+   sqlite.prepare('INSERT INTO '+table+'(id,household_id,'+creator+',visibility,'+columns+',deleted_at) VALUES(?,\'primary\',\'u1\',\'private\','+values+',?)')
+    .run(id,'2026-11-05T00:00:0'+i+'.000Z')
+  }
+  const boundedDb={...db,async batch(statements){
+   assert.equal(statements.length,2,'the read is two bounded D1 statements')
+   for(const statement of statements){
+    assert.ok((statement._sql.match(/UNION ALL/g)||[]).length<=3,'D1 supports each four-source compound SELECT')
+   }
+   return db.batch(statements)
+  }}
+  const fetchPage=async(cursor)=>{
+   const uri='https://homeflow.test/api/recycle'+(cursor?'?cursor='+encodeURIComponent(cursor):'')
+   const response=await recycleRoute(new Request(uri),boundedDb,'/api/recycle',session)
+   assert.equal(response.status,200)
+   return response.json()
+  }
+  const first=await fetchPage()
+  const second=await fetchPage(first.nextCursor)
+  assert.equal(first.items.length,5)
+  assert.equal(second.items.length,3)
+  assert.equal(second.nextCursor,null)
+  assert.deepEqual([...first.items,...second.items].map(x=>x.kind),
+   ['memory','trip','goal','wish','shopping','anniversary','routine','task'])
+  const bad=await recycleRoute(new Request('https://homeflow.test/api/recycle?cursor=bad'),
+    boundedDb,'/api/recycle',session)
+  assert.equal(bad.status,400)
+ }finally{sqlite.close()}
+})
+
+test('manual recycle clearing requires confirmation, respects ownership and protects linked photos',async()=>{
+ const {db,sqlite}=database()
+ const ids={
+  task:'bbbb0001-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  active:'bbbb0002-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  other:'bbbb0003-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  shop:'bbbb0004-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  wish:'bbbb0005-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  goal:'bbbb0006-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  photo:'bbbb0007-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  memory:'bbbb0008-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  keptWish:'bbbb0009-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  keptTrip:'bbbb0010-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ }
+ const time='2026-11-05T02:00:00.000Z'
+ const request=(path,body)=>new Request('https://homeflow.test'+path,{method:'POST',
+  headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+ const count=(table,id)=>sqlite.prepare('SELECT COUNT(*) AS n FROM '+table+' WHERE id=?').get(id).n
+ try{
+  sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u2','member','x','y')")
+  sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('primary','u2','member')")
+  const taskInsert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,deleted_at) VALUES(?,'primary',?,'private','task',?)")
+  taskInsert.run(ids.task,'u1',time)
+  taskInsert.run(ids.active,'u1',null)
+  taskInsert.run(ids.other,'u2',time)
+  sqlite.prepare("INSERT INTO shopping_items(id,household_id,created_by,visibility,title,deleted_at) VALUES(?,'primary','u1','private','shopping',?)").run(ids.shop,time)
+  sqlite.prepare("INSERT INTO shopping_expense_links(household_id,shopping_id,external_entry_id,linked_by,purchase_quantity) VALUES('primary',?,'receipt-1','u1',1)").run(ids.shop)
+  const wishInsert=sqlite.prepare("INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,deleted_at) VALUES(?,'primary','u1','private','wish','purchase',?)")
+  wishInsert.run(ids.wish,time)
+  wishInsert.run(ids.keptWish,time)
+  sqlite.prepare("INSERT INTO goals(id,household_id,created_by,visibility,title,target_amount,wish_id,deleted_at) VALUES(?,'primary','u1','private','goal',1000,?,?)").run(ids.goal,ids.wish,time)
+  sqlite.prepare("INSERT INTO goal_period_settlements(household_id,goal_id,period_key,period_start,period_end,target_amount,status) VALUES('primary',?,'once','2026-11-01','2026-11-30',1000,'pending')").run(ids.goal)
+  sqlite.prepare("INSERT INTO trips(id,household_id,created_by,visibility,title,wish_id) VALUES(?,'primary','u1','private','active trip',?)").run(ids.keptTrip,ids.keptWish)
+  const memoryInsert=sqlite.prepare("INSERT INTO memories(id,household_id,created_by,visibility,title,happened_on,deleted_at) VALUES(?,'primary','u1','private','memory','2026-11-05',?)")
+  memoryInsert.run(ids.photo,time)
+  memoryInsert.run(ids.memory,time)
+  sqlite.prepare("INSERT INTO media_assets(id,household_id,uploaded_by,visibility,memory_id,storage_key,mime_type,byte_size) VALUES('asset-1','primary','u1','private',?,'private/picture','image/jpeg',10)").run(ids.photo)
+
+  const invalid=await recycleRoute(request('/api/recycle/empty',{confirm:false}),db,'/api/recycle/empty',session)
+  assert.equal(invalid.status,400)
+  assert.equal(count('tasks',ids.task),1,'invalid request cannot delete anything')
+  const foreign=await recycleRoute(request('/api/recycle/empty',{confirm:'PERMANENTLY_EMPTY_RECYCLE_BIN'}),db,'/api/recycle/empty',{...session,user_id:'u2'})
+  assert.equal(foreign.status,200)
+  assert.equal((await foreign.json()).deleted,1)
+  assert.equal(count('tasks',ids.task),1,'second account cannot empty the first account trash')
+  const response=await recycleRoute(request('/api/recycle/empty',{confirm:'PERMANENTLY_EMPTY_RECYCLE_BIN'}),
+    db,'/api/recycle/empty',session)
+  assert.equal(response.status,200,await response.clone().text())
+  const result=await response.json()
+  assert.equal(result.deleted,5,'only unblocked deleted items are physically purged')
+  for(const item of ['task','shop','wish','goal','memory'])assert.equal(count(
+   item==='task'?'tasks':item==='shop'?'shopping_items':item==='wish'?'wishes':item==='goal'?'goals':'memories',
+   ids[item]),0,item)
+  assert.equal(count('tasks',ids.active),1)
+  assert.equal(count('memories',ids.photo),1,'keep memories with media')
+  assert.equal(count('wishes',ids.keptWish),1,'keep wishes linked to a surviving trip')
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links WHERE shopping_id=?').get(ids.shop).n,0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM goal_period_settlements WHERE goal_id=?').get(ids.goal).n,0)
+  assert.equal(sqlite.prepare('SELECT memory_id FROM media_assets WHERE id=?').get('asset-1').memory_id,ids.photo)
+  const after=await recycleRoute(new Request('https://homeflow.test/api/recycle'),db,'/api/recycle',session)
+  assert.deepEqual(new Set((await after.json()).items.map(x=>x.id)),new Set([ids.photo,ids.keptWish]))
+ }finally{sqlite.close()}
+})
+
+test('recycle UI preserves genuine empty state and requires a second explicit click to purge',()=>{
+ const ui=readFileSync(new URL('../src/components/TrashPanel.vue',import.meta.url),'utf8')
+ assert.match(ui,/loaded&&!busy&&!error&&!rows\.length/)
+ assert.match(ui,/confirmEmpty\.value\|\|busy\.value/)
+ assert.match(ui,/PERMANENTLY_EMPTY_RECYCLE_BIN/)
+ assert.match(ui,/回收箱读取失败，请重试/)
+ assert.match(ui,/确认永久清空/)
+ assert.doesNotMatch(ui,/error\.value=\(e as Error\)\.message/)
+})
