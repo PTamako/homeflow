@@ -146,7 +146,7 @@ test('Today new-task form opens only from its own button, outside the checklist'
  assert.match(app,/ref="newTaskTitleInput" v-model="title"/)
  assert.match(app,/void nextTick\(\(\)=>newTaskTitleInput.value\?\.focus\(\)\)/)
  assert.match(app,/async function addTask\(\)\{[\s\S]*?pendingTasks.value=await listPending\(user.value.id\)\s+closeAddTask\(true\)/)
- assert.match(app,/watch\(tab,value=>\{\s+showAddTask.value=false/)
+ assert.match(app,/watch\(tab,value=>\{\s+clearToast\(\)\s+showAddTask.value=false/)
  assert.match(app,/@click="closeAddTask\(\);openPlans\('unscheduled'\)"/)
  const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
  assert.match(css,/\.task-create-overlay\{position:fixed;inset:0;z-index:100/)
