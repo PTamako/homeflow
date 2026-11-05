@@ -140,14 +140,14 @@ async function deliver(sub,env,data){
 // The household membership join prevents delivery to removed or unrelated accounts.
 const UUID=/^[a-f0-9-]{36}$/i
 async function sendTaskPush(env,session,body){
-  if(!['task','routine'].includes(body?.kind)||!UUID.test(body?.id||''))return json({error:'invalid_input'},400)
+  if(!['task','routine','shopping'].includes(body?.kind)||!UUID.test(body?.id||''))return json({error:'invalid_input'},400)
   const note=body?.message===undefined?'':typeof body.message==='string'?
     body.message.trim().replace(/\s+/g,' '):null
   if(note===null||note.length>120)return json({error:'invalid_input'},400)
-  const routine=body.kind==='routine'
-  const table=routine?'routines':'tasks'
-  const creator=routine?'t.created_by':'t.creator_user_id'
-  const assignee=routine?'t.assigned_to':'t.assignee_user_id'
+  const routine=body.kind==='routine',shopping=body.kind==='shopping'
+  const table=routine?'routines':shopping?'shopping_items':'tasks'
+  const creator=routine||shopping?'t.created_by':'t.creator_user_id'
+  const assignee=routine||shopping?'t.assigned_to':'t.assignee_user_id'
   const due=routine?'t.next_due_on':'t.due_on'
   const status=routine?'t.enabled=1':'t.completed_at IS NULL'
   // Trusted table/column identifiers are selected from the two constants above.

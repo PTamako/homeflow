@@ -3,7 +3,7 @@ import test from 'node:test'
 import worker from '../worker/index.js'
 import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
 const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
-function environment(name='preview',database='homeflow-preview',migration='0023_today_dismissals.sql'){
+function environment(name='preview',database='homeflow-preview',migration='0024_shopping_assignee.sql'){
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},

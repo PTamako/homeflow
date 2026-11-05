@@ -3,7 +3,7 @@ import {ref,watch,onBeforeUnmount} from 'vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{kind:'task'|'routine'|'trip';itemId:string}>()
+const props=defineProps<{kind:'task'|'routine'|'shopping'|'trip';itemId:string}>()
 const emit=defineEmits<{close:[];saved:[]}>()
 const loading=ref(false),busy=ref(false),error=ref('')
 const lead=ref(0),defaultDays=ref(0),priority=ref<'normal'|'important'>('normal')

@@ -38,7 +38,7 @@ export async function remindersRoute(request,db,session) {
       {kind:url.searchParams.get('kind'),id:url.searchParams.get('id')}:
       await readBody(request)
     const kind=body?.kind,id=body?.id
-    if(!['task','routine','trip'].includes(kind)||!itemIdOk(id)||
+    if(!['task','routine','shopping','trip'].includes(kind)||!itemIdOk(id)||
       (request.method==='PUT'&&(!validLead(body?.advanceDays)||!priorityOk(body?.priority))))
       return json({error:'invalid_input'},400)
     const hid=session.household_id,u=session.user_id
@@ -48,6 +48,9 @@ export async function remindersRoute(request,db,session) {
         .bind(id,hid,u).first()
     }else if(kind==='routine'){
       allowed=!!await db.prepare("SELECT id FROM routines WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
+        .bind(id,hid,u).first()
+    }else if(kind==='shopping'){
+      allowed=!!await db.prepare("SELECT id FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
         .bind(id,hid,u).first()
     }else{
       const cut=id.indexOf(':'),tripId=id.slice(0,cut),externalId=id.slice(cut+1)
@@ -119,7 +122,7 @@ export async function remindersRoute(request,db,session) {
   const date=url.searchParams.get('date')||today
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
-  const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
+  const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) AND (assigned_to=?2 OR assigned_to IS NULL) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at FROM routine_marks m
@@ -128,6 +131,10 @@ export async function remindersRoute(request,db,session) {
       AND (r.visibility='household' OR r.created_by=?4)`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3) AND (assignee_user_id=?3 OR assignee_user_id IS NULL)
+      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
+    db.prepare(`SELECT id,title,due_on FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
+      AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
+      AND (visibility='household' OR created_by=?3) AND (assigned_to=?3 OR assigned_to IS NULL)
       ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')
@@ -179,6 +186,13 @@ export async function remindersRoute(request,db,session) {
     if(ahead<=0||ahead===opts.days)
       announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on,priority:opts.priority,
         ...(ahead>0?{daysBefore:ahead}:{})})
+  }
+  for(const item of shopping.results||[]){
+    const ahead=daysBetween(date,item.due_on)
+    const opts=forItem('shopping',item.id)
+    if(ahead<=0||ahead===opts.days)
+      announcements.push({kind:'shopping',id:item.id,title:item.title,dueOn:item.due_on,
+        priority:opts.priority,...(ahead>0?{daysBefore:ahead}:{})})
   }
   const finished=new Set((tripProgress.results||[]).map(r=>r.trip_id+':'+r.item_id))
   const plusDays=(date,offset)=>{

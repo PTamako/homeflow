@@ -11,7 +11,7 @@ const catalog={
   routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
   wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id','goal_mode','start_on']},
-  shopping_items:{columns:['title','quantity','due_on']},
+  shopping_items:{columns:['title','quantity','due_on','assigned_to']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
 }
 const plural={anniversaries:'anniversaries',routines:'routines',wishes:'wishes',goals:'goals',shopping:'shopping_items',memories:'memories'}
@@ -65,7 +65,8 @@ function normalized(table,b,s){
     case 'shopping_items':
       if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>9999)return null
       if(b.dueOn&&!ymd(b.dueOn))return null
-      return [title,b.quantity,b.dueOn||null]
+      if(b.assignedTo&&!hexId(b.assignedTo))return null
+      return [title,b.quantity,b.dueOn||null,b.assignedTo||null]
     case 'memories':
       if(!ymd(b.happenedOn))return null
       if(b.linkedType&&!['trip','wish','profile','anniversary'].includes(b.linkedType))return null
@@ -87,6 +88,11 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
         .bind(hid,data[5]).first()
       if(!profile || (data[6]&&profile.type!=='pet'))return false
     }else if(data[6])return false
+  }
+  if(table==='shopping_items'&&data[3]){
+    if(requestedVisibility==='private'&&data[3]!==session.user_id)return false
+    return !!await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
+      .bind(hid,data[3]).first()
   }
   if(table==='goals'&&data[5]){
     const wish=await db.prepare('SELECT created_by,visibility FROM wishes WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL').bind(data[5],hid).first()
@@ -357,7 +363,7 @@ export async function lifeRoute(request,db,path,session){
     // without updated_at. No migrations or additional D1 reads required.
     const revisioned=['routines','anniversaries','wishes','goals'].includes(table)
     const snapshotColumns=table==='shopping_items'?
-      ['title','quantity','due_on','completed_at','ledger_entry_id']:
+      ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to']:
       table==='memories'?['title','story','happened_on','visibility','linked_type','linked_id']:[]
     if(revisioned&&b.expectedUpdatedAt&&b.expectedUpdatedAt!==current.updated_at)
       return json({error:'plan_edit_conflict',currentUpdatedAt:current.updated_at},409)

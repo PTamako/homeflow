@@ -80,7 +80,7 @@ async function returnToToday(){
   returningToToday=false
 }
 function openIncomingTask(kind:string|null,id:string|null){
- if(!user.value||!['task','routine'].includes(kind||'')||!/^[a-f0-9-]{36}$/i.test(id||''))return false
+ if(!user.value||!['task','routine','shopping'].includes(kind||'')||!/^[a-f0-9-]{36}$/i.test(id||''))return false
  openPlans(kind!,id!)
  return true
 }
