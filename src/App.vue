@@ -8,6 +8,7 @@ import LifePanel from './components/LifePanel.vue'
 import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
+import SecurityPanel from './components/SecurityPanel.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
@@ -476,6 +477,7 @@ onBeforeUnmount(()=>{
           <div class="settings-title"><strong>设置</strong>
             <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
           <div class="settings-section settings-account"><span>当前账号</span><b>{{ user.loginName }}</b></div>
+          <div class="settings-section"><SecurityPanel v-if="settingsOpen" :login-name="user.loginName"/></div>
           <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel v-if="settingsOpen" /></div>
           <div class="settings-section settings-reminders">
             <ImportantReminders ref="importantRemindersRef" :today-date="currentJstDay"

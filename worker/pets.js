@@ -9,7 +9,7 @@ const linkedTaskWasGenerated=(task,record,name)=>!!task&&task.deleted_at===null&
  task.title===reminderTitle(name,record.record_type)&&
  (task.notes||'')===(record.note||'')&&task.due_on===record.next_due_on
 export async function petsRoute(request,db,path,session){
- const match=path.match(/^\/api\/pets\/([0-9a-f-]{36})\/health(?:\/([0-9a-f-]{36}))?$/)
+ const match=path.match(/^\/api\/pets\/([0-9a-f-]{36})\/health(?:\/([0-9a-f-]{36}|trend))?$/)
  if(!match)return json({error:'not_found'},404)
  const [profileId,recordId]=match.slice(1)
  const pet=await db.prepare(`SELECT id,display_name FROM family_profiles
@@ -17,6 +17,17 @@ export async function petsRoute(request,db,path,session){
    .bind(profileId,session.household_id).first()
  if(!pet)return json({error:'not_found'},404)
  const h=session.household_id,u=session.user_id
+ if(recordId==='trend'){
+   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
+   // Read only when a pet profile is opened. Latest 24 weight observations,
+   // never fetch every health record or another member's private readings.
+   const {results}=await db.prepare(`SELECT event_on AS eventOn,weight_grams AS weightGrams
+     FROM pet_health_records WHERE household_id=?1 AND profile_id=?2
+     AND deleted_at IS NULL AND record_type='weight' AND weight_grams IS NOT NULL
+     AND (visibility='household' OR created_by=?3)
+     ORDER BY event_on DESC,id DESC LIMIT 24`).bind(h,profileId,u).all()
+   return json({points:(results||[]).reverse()})
+ }
  if(!recordId&&request.method==='GET'){
    const filters=listFilters(request.url)
    if(filters?.invalid)return json({error:'invalid_input'},400)

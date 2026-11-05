@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import {ref} from 'vue'
+import {computed,ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
 import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
+const backupStorageKey='homeflow-last-local-export:'+props.userId
+const lastExportAt=ref('')
+try{lastExportAt.value=localStorage.getItem(backupStorageKey)||''}catch{}
+const backupOld=computed(()=>!lastExportAt.value||
+  !Number.isFinite(Date.parse(lastExportAt.value))||
+  Date.now()-Date.parse(lastExportAt.value)>30*86400000)
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
   'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','reminderSnoozes','reminderPreferences','reminderItemPreferences']
@@ -68,6 +74,8 @@ async function exportArchive(){
     }
     const archive=zipSync(files,{level:0})
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')
+    lastExportAt.value=new Date().toISOString()
+    try{localStorage.setItem(backupStorageKey,lastExportAt.value)}catch{}
     notify('备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机照片')
   }catch(e){error.value=(e as Error).message}
   finally{pending.value=false}
@@ -150,6 +158,8 @@ async function restore(){
   <section class="backup">
     <h2 class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
     <p>仅备份当前账号及此设备照片；其他账号需分别备份。</p>
+    <small v-if="lastExportAt">上次在此设备生成备份：{{ lastExportAt.slice(0,10) }}</small>
+    <small v-if="backupOld">建议定期备份，避免换手机后丢失本机照片。</small>
     <button :disabled="pending" @click="exportArchive">下载完整本机备份 ZIP</button>
     <label class="import-label">恢复历史备份（ZIP 或 JSON）
       <input type="file" accept=".zip,.json,application/zip,application/json"
