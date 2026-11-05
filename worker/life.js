@@ -342,12 +342,18 @@ export async function lifeRoute(request,db,path,session){
       try{oldConfig=JSON.parse(current.repeat_config||'{}')}catch{}
       try{nextConfig=JSON.parse(vals[2]||'{}')}catch{}
       const {_history,_effectiveFrom,...oldRuleConfig}=oldConfig
+      const comparable=(type,c)=>type==='weekly'?
+        {weekdays:c.weekdays,excludeJapaneseHolidays:c.excludeJapaneseHolidays===true}:
+        type==='monthly'?{day:c.day}:
+        type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
+      const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
+        JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
       const changed=vals[0]!==current.title||vals[1]!==current.repeat_type||
-        vals[3]!==current.anchor_date||JSON.stringify(nextConfig)!==JSON.stringify(oldRuleConfig)||
+        vals[3]!==current.anchor_date||configChanged||
         vals[5]!==current.subject_profile_id||vals[6]!==current.health_record_type||
         visibilityOf(b,session)!==current.visibility
       const scheduleChanged=vals[1]!==current.repeat_type||
-        vals[3]!==current.anchor_date||JSON.stringify(nextConfig)!==JSON.stringify(oldRuleConfig)
+        vals[3]!==current.anchor_date||configChanged
       if(changed){
         const day=jstToday(),start=oldConfig._effectiveFrom||current.anchor_date
         const previous=Array.isArray(oldConfig._history)?oldConfig._history.slice(-39):[]
