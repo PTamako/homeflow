@@ -89,7 +89,8 @@ export async function sessionFor(request, db) {
 // are cached. A different binding or environment always forces a new identity read.
 const dbIdentityCache=new WeakMap()
 const DB_IDENTITY_TTL_MS=15000
-const EXPECTED_MIGRATION='0025_daily_notification_inbox.sql'
+// During migration rollout, both the pre-migration and new verified D1 snapshots are safe.
+const EXPECTED_MIGRATIONS=new Set(['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql'])
 export async function verifiedDatabase(env) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false
@@ -99,7 +100,7 @@ export async function verifiedDatabase(env) {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest_migration
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
-    const valid=identity?.database_name===expected && identity?.latest_migration===EXPECTED_MIGRATION
+    const valid=identity?.database_name===expected && EXPECTED_MIGRATIONS.has(identity?.latest_migration)
     if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
     else dbIdentityCache.delete(env.DB)
     return valid
