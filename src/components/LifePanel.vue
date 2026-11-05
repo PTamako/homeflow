@@ -110,10 +110,12 @@ function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
 function toggleFinance(kind:'goal'|'trip',id:string){
   financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
 }
-async function planCreated(kind:PlanType,id:string){
-  planType.value=kind
-  await fetchMode()
-  notify('计划已创建'+(kind==='wish'?'，如已选择储值计划则自动关联':''))
+async function planCreated(kind:PlanType,id:string,unscheduled=false){
+  // An undated one-off task is an inbox item, not a recurring schedule.
+  planType.value=unscheduled?'unscheduled':kind
+  if(unscheduled&&planScope.value!=='active')planScope.value='active'
+  else await fetchMode()
+  notify(unscheduled?'已添加到待安排': '计划已创建'+(kind==='wish'?'，如已选择储值计划则自动关联':''))
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t

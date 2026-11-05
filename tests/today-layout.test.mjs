@@ -99,3 +99,12 @@ test('Today defaults new tasks to today while clearly offering the undated list'
  assert.ok(life.includes("['routine','unscheduled','shopping','wish','goal','trip']"))
  assert.ok(creator.includes("form.leaveUnscheduled?null:form.date"))
 })
+
+test('undated one-time plan stays in pending list and resets creation checkbox',()=>{
+ const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
+ assert.match(creator,/savedUnscheduled=kind\.value==='routine'&&form\.repeatType==='once'&&form\.leaveUnscheduled/)
+ assert.match(creator,/emit\('created',kind\.value,String\(result\.id\|\|''\),savedUnscheduled\)/)
+ assert.match(creator,/function dismiss\(\)\{[^}]*form\.leaveUnscheduled=false/)
+ assert.match(life,/planType\.value=unscheduled\?'unscheduled':kind/)
+ assert.match(life,/notify\(unscheduled\?'已添加到待安排'/)
+})

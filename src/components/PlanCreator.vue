@@ -5,7 +5,7 @@ import AppIcon from './AppIcon.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
 const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>}>()
-const emit=defineEmits<{created:[kind:PlanKind,id:string];taskCreated:[]}>()
+const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性、每天、工作日或自定义间隔'},
  {id:'shopping',label:'购物计划',icon:'shopping',description:'家庭商品、数量与购买日期'},
@@ -26,8 +26,8 @@ const form=reactive({
 })
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title=''}
-function dismiss(){opened.value=false;kind.value=null;error.value=''}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.leaveUnscheduled=false}
+function dismiss(){opened.value=false;kind.value=null;error.value='';form.leaveUnscheduled=false}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
  const response=await fetch('/api'+path,{method:'POST',credentials:'same-origin',
@@ -76,7 +76,8 @@ async function submit(){
       startDate:form.startDate||null,endDate:form.endDate||null,
       budgetAmount:form.budgetAmount})
   }
-  emit('created',kind.value,String(result.id||''))
+  const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&form.leaveUnscheduled
+  emit('created',kind.value,String(result.id||''),savedUnscheduled)
   dismiss()
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
