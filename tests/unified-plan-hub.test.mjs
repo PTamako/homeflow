@@ -108,7 +108,7 @@ test('invalid Today date never queries D1',async()=>{
 })
 test('notification scheduling only selects reminder-enabled items',()=>{
  const source=readFileSync(new URL('../worker/reminders.js',import.meta.url),'utf8')
- assert.match(source,/enabled=1 AND remind_enabled=1/)
+ assert.match(source,/enabled=1 AND deleted_at IS NULL AND remind_enabled=1/)
  assert.match(source,/completed_at IS NULL AND remind_enabled=1/)
  const push=readFileSync(new URL('../worker/webpush.js',import.meta.url),'utf8')
  assert.match(push,/redirect:'manual'/)
