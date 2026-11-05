@@ -2,6 +2,12 @@ import {json,readBody,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/.test(x)
 const goodDate=x=>typeof x==='string'&&x!==''&&validDate(x)
+const reminderLabels={deworm:'驱虫',vaccination:'疫苗',vet:'复诊',medication:'用药',grooming:'护理',weight:'称重',other:'健康回访'}
+const reminderTitle=(name,type)=>name+' · '+reminderLabels[type]
+const linkedTaskWasGenerated=(task,record,name)=>!!task&&task.deleted_at===null&&
+ task.completed_at===null&&task.assignee_user_id===null&&
+ task.title===reminderTitle(name,record.record_type)&&
+ (task.notes||'')===(record.note||'')&&task.due_on===record.next_due_on
 export async function petsRoute(request,db,path,session){
  const match=path.match(/^\/api\/pets\/([0-9a-f-]{36})\/health(?:\/([0-9a-f-]{36}))?$/)
  if(!match)return json({error:'not_found'},404)
@@ -71,18 +77,34 @@ export async function petsRoute(request,db,path,session){
      statements.unshift(db.prepare(`INSERT INTO tasks
        (id,household_id,creator_user_id,subject_profile_id,visibility,title,due_on,notes)
        VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`)
-       .bind(taskId,h,u,profileId,visibility,pet.display_name+' · '+({deworm:'驱虫',vaccination:'疫苗',vet:'复诊',medication:'用药',grooming:'护理',weight:'称重',other:'健康回访'}[type]),next,note)
+       .bind(taskId,h,u,profileId,visibility,reminderTitle(pet.display_name,type),next,note)
      )
    }
    await db.batch(statements)
    return json({ok:true,id,createdReminder:!!next},201)
  }
- if(recordId&&request.method==='PATCH'){
-   const rec=await db.prepare(`SELECT id,created_by,linked_task_id FROM pet_health_records
+ if(recordId&&['PATCH','DELETE'].includes(request.method)){
+   const rec=await db.prepare(`SELECT id,created_by,linked_task_id,record_type,note,next_due_on FROM pet_health_records
      WHERE id=?1 AND household_id=?2 AND profile_id=?3 AND deleted_at IS NULL`)
      .bind(recordId,h,profileId).first()
    if(!rec)return json({error:'not_found'},404)
    if(rec.created_by!==u)return json({error:'forbidden'},403)
+   // Never overwrite an independently edited or completed task.
+   const task=rec.linked_task_id?await db.prepare(`SELECT id,title,notes,due_on,assignee_user_id,completed_at,deleted_at
+     FROM tasks WHERE id=?1 AND household_id=?2 AND creator_user_id=?3`)
+     .bind(rec.linked_task_id,h,u).first():null
+   const ownedReminder=linkedTaskWasGenerated(task,rec,pet.display_name)
+   const oldId=rec.linked_task_id
+   const stamp=new Date().toISOString()
+   if(request.method==='DELETE'){
+     const statements=[db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP,linked_task_id=NULL
+       WHERE id=?1 AND household_id=?2 AND created_by=?3`).bind(recordId,h,u)]
+     if(ownedReminder)statements.push(db.prepare(`UPDATE tasks SET deleted_at=?1,updated_at=?1
+       WHERE id=?2 AND household_id=?3 AND creator_user_id=?4 AND completed_at IS NULL AND deleted_at IS NULL`)
+       .bind(stamp,oldId,h,u))
+     await db.batch(statements)
+     return json({ok:true,reminderRetained:!!oldId&&!ownedReminder})
+   }
    const b=await readBody(request)
    const type=b?.recordType,eventOn=b?.eventOn,next=b?.nextDueOn||null
    const weight=b?.weightGrams==null?null:Number(b.weightGrams)
@@ -92,29 +114,30 @@ export async function petsRoute(request,db,path,session){
       !goodDate(eventOn)||(next&&!goodDate(next))||(next&&next<eventOn)||
       (weight!==null&&(!Number.isInteger(weight)||weight<=0||weight>=100000))||
       (type==='weight'&&weight===null)||note.length>1000)return json({error:'invalid_input'},400)
+   const newId=next&&(!oldId||!ownedReminder)?crypto.randomUUID():null
+   const linkedId=newId||(next&&ownedReminder?oldId:null)
    const statements=[db.prepare(`UPDATE pet_health_records SET visibility=?1,record_type=?2,event_on=?3,
-     weight_grams=?4,note=?5,next_due_on=?6 WHERE id=?7 AND household_id=?8 AND created_by=?9`)
-     .bind(visibility,type,eventOn,weight,note,next,recordId,h,u)]
-   if(rec.linked_task_id){
-     // Do not delete a task with independent historical edits or completions.
-     statements.push(db.prepare(`UPDATE tasks SET due_on=?1,notes=?2,updated_at=?3
-       WHERE id=?4 AND household_id=?5 AND creator_user_id=?6
-       AND deleted_at IS NULL AND completed_at IS NULL`)
-       .bind(next,note,new Date().toISOString(),rec.linked_task_id,h,u))
+     weight_grams=?4,note=?5,next_due_on=?6,linked_task_id=?7
+     WHERE id=?8 AND household_id=?9 AND created_by=?10`)
+     .bind(visibility,type,eventOn,weight,note,next,linkedId,recordId,h,u)]
+   if(ownedReminder){
+     if(next){
+       statements.push(db.prepare(`UPDATE tasks SET title=?1,due_on=?2,notes=?3,visibility=?4,updated_at=?5
+         WHERE id=?6 AND household_id=?7 AND creator_user_id=?8 AND completed_at IS NULL AND deleted_at IS NULL`)
+         .bind(reminderTitle(pet.display_name,type),next,note,visibility,stamp,oldId,h,u))
+     }else{
+       statements.push(db.prepare(`UPDATE tasks SET deleted_at=?1,updated_at=?1
+         WHERE id=?2 AND household_id=?3 AND creator_user_id=?4 AND completed_at IS NULL AND deleted_at IS NULL`)
+         .bind(stamp,oldId,h,u))
+     }
    }
+   if(newId)statements.push(db.prepare(`INSERT INTO tasks
+     (id,household_id,creator_user_id,subject_profile_id,visibility,title,due_on,notes)
+     VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`)
+     .bind(newId,h,u,profileId,visibility,reminderTitle(pet.display_name,type),next,note))
    await db.batch(statements)
-   return json({ok:true,reminderUpdated:!!rec.linked_task_id})
- }
- if(recordId&&request.method==='DELETE'){
-   const rec=await db.prepare(`SELECT created_by,linked_task_id FROM pet_health_records
-     WHERE id=?1 AND household_id=?2 AND profile_id=?3 AND deleted_at IS NULL`)
-     .bind(recordId,h,profileId).first()
-   if(!rec)return json({error:'not_found'},404)
-   if(rec.created_by!==u)return json({error:'forbidden'},403)
-   // Archive health history; do not silently remove independently assigned tasks.
-   await db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
-     WHERE id=?1 AND household_id=?2 AND created_by=?3`).bind(recordId,h,u).run()
-   return json({ok:true,reminderRetained:!!rec.linked_task_id})
+   return json({ok:true,reminderUpdated:!!linkedId,
+     reminderDetached:!!oldId&&!ownedReminder,createdReminder:!!newId})
  }
  return json({error:'method_not_allowed'},405)
 }

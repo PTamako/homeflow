@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {portableRoute,RESTORE_ORDER} from '../worker/portable.js'
 import {tasksRoute} from '../worker/tasks.js'
 import {lifeRoute} from '../worker/life.js'
+import {petsRoute} from '../worker/pets.js'
 
 const person='11111111-1111-4111-8111-111111111111'
 const wish='22222222-2222-4222-8222-222222222222'
@@ -141,5 +142,54 @@ test('stale memory and shopping editor snapshots never overwrite newer changes',
   assert.equal((await patch('shopping',shop,{title:'第二台购物',quantity:1,visibility:'household',
     expectedSnapshot:beforeShopping})).status,409)
   assert.equal(sqlite.prepare('SELECT title FROM shopping_items WHERE id=?').get(shop).title,'第一台购物')
+ }finally{sqlite.close()}
+})
+
+test('pet health reminders are created, updated, cancelled and detached without touching independently edited tasks',async()=>{
+ const {sqlite,db}=database()
+ const pet='77777777-7777-4777-8777-777777777777'
+ const path='/api/pets/'+pet+'/health'
+ const req=(method,body,id='')=>new Request('https://homeflow.test'+path+(id?'/'+id:''),{
+   method,headers:body?{'content-type':'application/json'}:{},
+   ...(body?{body:JSON.stringify(body)}:{})})
+ const call=async(method,body,id='')=>{
+   const response=await petsRoute(req(method,body,id),db,path+(id?'/'+id:''),session)
+   return {status:response.status,body:await response.json()}
+ }
+ const form=(nextDueOn)=>({recordType:'deworm',eventOn:'2026-11-05',
+   weightGrams:null,note:'routine dose',nextDueOn,visibility:'household'})
+ try{
+   sqlite.prepare("INSERT INTO family_profiles(id,household_id,type,display_name) VALUES(?,?,'pet',?)")
+     .run(pet,'primary','豆沙')
+   const created=await call('POST',form(null))
+   assert.equal(created.status,201)
+   const id=created.body.id
+   const added=await call('PATCH',form('2026-12-05'),id)
+   assert.equal(added.status,200)
+   assert.equal(added.body.createdReminder,true)
+   const first=sqlite.prepare("SELECT linked_task_id,next_due_on FROM pet_health_records WHERE id=?").get(id)
+   assert.ok(first.linked_task_id)
+   assert.equal(first.next_due_on,'2026-12-05')
+   const shifted=await call('PATCH',form('2026-12-12'),id)
+   assert.equal(shifted.body.createdReminder,false)
+   assert.equal(sqlite.prepare('SELECT due_on FROM tasks WHERE id=?').get(first.linked_task_id).due_on,'2026-12-12')
+   const cleared=await call('PATCH',form(null),id)
+   assert.equal(cleared.body.reminderUpdated,false)
+   assert.equal(sqlite.prepare('SELECT linked_task_id FROM pet_health_records WHERE id=?').get(id).linked_task_id,null)
+   assert.ok(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(first.linked_task_id).deleted_at)
+   const recreated=await call('PATCH',form('2027-01-05'),id)
+   assert.equal(recreated.body.createdReminder,true)
+   const second=sqlite.prepare('SELECT linked_task_id FROM pet_health_records WHERE id=?').get(id).linked_task_id
+   sqlite.prepare('UPDATE tasks SET title=? WHERE id=?').run('独立修改后的提醒',second)
+   const safelyDetached=await call('PATCH',form('2027-02-05'),id)
+   assert.equal(safelyDetached.body.reminderDetached,true)
+   assert.equal(safelyDetached.body.createdReminder,true)
+   assert.equal(sqlite.prepare('SELECT title,deleted_at FROM tasks WHERE id=?').get(second).title,'独立修改后的提醒')
+   assert.equal(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(second).deleted_at,null)
+   const lastId=sqlite.prepare('SELECT linked_task_id FROM pet_health_records WHERE id=?').get(id).linked_task_id
+   const deleted=await call('DELETE',null,id)
+   assert.equal(deleted.status,200)
+   assert.ok(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(lastId).deleted_at)
+   assert.equal(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(second).deleted_at,null)
  }finally{sqlite.close()}
 })
