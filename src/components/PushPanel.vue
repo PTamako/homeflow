@@ -47,7 +47,7 @@ async function enable(){
       headers:{'content-type':'application/json'},body:JSON.stringify(data)})
     if(!r.ok)throw Error('服务器尚未接受推送订阅，请重试')
     enabled.value=true
-    notify('已开启每日提醒（日本时间上午 8 点）')
+    notify('已开启推送')
   }catch(e){message.value=(e as Error).message}
   finally{busy.value=false}
 }
