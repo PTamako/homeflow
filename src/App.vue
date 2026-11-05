@@ -14,6 +14,7 @@ import PageToast from './components/PageToast.vue'
 import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
+type Member={id:string;loginName:string;role:'owner'|'member'}
 type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
@@ -26,8 +27,12 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={hiddenTodayKeys?:string[];goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];tasks?:Task[];items?:Routine[];invitationCode?:string}
-const user=ref<User|null>(null),profiles=ref<Profile[]>([]),tasks=ref<Task[]>([])
+type Data={hiddenTodayKeys?:string[];goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([]),tasks=ref<Task[]>([])
+function memberName(id:string|null|undefined){
+ if(!id)return '未指派'
+ return profiles.value.find(p=>p.memberUserId===id)?.displayName||members.value.find(m=>m.id===id)?.loginName||(id===user.value?.id?'我':'家庭成员')
+}
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
 const authFailure=ref('')
@@ -209,6 +214,7 @@ async function profileSaved(){
   try{
     const next=await api('/family')
     profiles.value=next.profiles||[]
+    members.value=next.members||[]
     profileRevision.value++
     editProfileId.value=null
     error.value=''
@@ -258,6 +264,7 @@ async function refresh(){
       // Avoid duplicate D1 task and routine reads during the initial session check.
       const a=await api('/family')
       profiles.value=a.profiles||[]
+      members.value=a.members||[]
       try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
     }catch(e){error.value=(e as Error).message}
   }else{
@@ -319,7 +326,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];dismissedTodayKeys.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];dismissedTodayKeys.value=[];pendingTasks.value=[];await refresh()
 }
 function todayTasksUrl(){
  const date=tokyoToday()
@@ -571,11 +578,13 @@ onBeforeUnmount(()=>{
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
                       <template v-if="nameForProfile(row.task.subjectProfileId)"> · {{ nameForProfile(row.task.subjectProfileId) }}</template>
                       <template v-if="row.task.healthRecordType&&isPet(row.task.subjectProfileId)"> · 完成后记护理</template>
+                      <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ memberName(row.task.assigneeUserId) }}</span>
                     </template>
                     <template v-else-if="row.routine">
                       {{ row.routine.mark?.completed_at?'本期已完成':row.routine.carriedFrom?'逾期未完成':'今天到期' }} · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
+                      <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ memberName(row.routine.assigned_to) }}</span>
                     </template>
                     <template v-else-if="row.plan">
                       {{ row.done?'今天已完成':row.plan.kind==='trip'?(row.plan.tripEnded?'旅行未收尾 · 顺延':'旅行进行中'):
@@ -687,7 +696,7 @@ onBeforeUnmount(()=>{
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         </div></section>
       <LifePanel v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
-         :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
+         :tasks="tasks" :members="members" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"

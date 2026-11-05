@@ -42,6 +42,22 @@ async function enable(){
   }catch(e){message.value=(e as Error).message}
   finally{busy.value=false}
 }
+async function sendNow(){
+  if(!enabled.value||busy.value)return
+  busy.value=true;message.value=''
+  try{
+    const response=await fetch('/api/push/send-now',{
+      method:'POST',credentials:'same-origin',cache:'no-store',
+      headers:{'content-type':'application/json'},body:'{}'
+    })
+    const data=await response.json().catch(()=>({}))
+    if(!response.ok)throw Error(data.error==='push_rate_limited'?'每分钟最多立即推送一次':
+      data.error==='push_not_subscribed'?'当前账号尚未订阅推送':
+      '推送未能送达，请检查设备授权')
+    notify('已推送到当前账号的 '+data.sent+' 台设备')
+  }catch(e){message.value=(e as Error).message}
+  finally{busy.value=false}
+}
 async function disable(){
   busy.value=true;message.value=''
   try{
@@ -62,6 +78,8 @@ onMounted(discover)
   <section class="push-setting">
     <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
       @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
+    <button type="button" class="push-now" :disabled="busy||!available||!enabled"
+      @click="sendNow">立即推送</button>
     <small v-if="message" role="status">{{ message }}</small>
     <PageToast :toast="toast" />
   </section>
@@ -69,7 +87,8 @@ onMounted(discover)
 <style scoped>
 .push-setting{display:grid;gap:6px;justify-items:start;margin-top:10px}
 .push-toggle{background:#43866a;color:#fff;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
-.push-toggle:disabled{opacity:.55;cursor:not-allowed}
+.push-toggle:disabled,.push-now:disabled{opacity:.55;cursor:not-allowed}
+.push-now{border:1px solid #80a790;background:#fff;color:#397f5f;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
 .push-toggle:focus-visible{outline:2px solid #43866a;outline-offset:3px}
 .push-setting small{font-size:12px;line-height:1.55;color:#7b8c81;overflow-wrap:anywhere}
 </style>

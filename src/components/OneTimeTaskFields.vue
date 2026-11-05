@@ -5,12 +5,20 @@ import type {OneTimeTaskDraft} from '../one-time-task'
 
 const props=defineProps<{
   profiles:Array<{id:string;displayName:string;type:string}>
+  members?:Array<{id:string;loginName:string}>
+  userId?:string
 }>()
 const model=defineModel<OneTimeTaskDraft>({required:true})
 const titleInput=ref<HTMLInputElement|null>(null)
 const linkedPet=computed(()=>props.profiles.some(p=>p.id===model.value.subjectProfileId&&p.type==='pet'))
 function subjectChanged(){
   model.value.healthRecordType=linkedPet.value?'other':''
+}
+function assigneeChanged(){
+ if(model.value.assigneeUserId&&model.value.assigneeUserId!==props.userId)model.value.visibility='household'
+}
+function visibilityChanged(){
+ if(model.value.visibility==='private'&&model.value.assigneeUserId!==props.userId)model.value.assigneeUserId=props.userId||''
 }
 function focusTitle(){titleInput.value?.focus()}
 defineExpose({focusTitle})
@@ -52,8 +60,14 @@ defineExpose({focusTitle})
     <option value="vet">就诊</option>
    </select>
   </label>
+  <label>处理人
+   <select v-model="model.assigneeUserId" aria-label="选择任务处理人" @change="assigneeChanged">
+    <option value="">未指派</option>
+    <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
+   </select>
+  </label>
   <label>可见范围
-   <select v-model="model.visibility" aria-label="可见范围">
+   <select v-model="model.visibility" aria-label="可见范围" @change="visibilityChanged">
     <option value="private">仅自己</option>
     <option value="household">家庭共享</option>
    </select>

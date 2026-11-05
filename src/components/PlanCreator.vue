@@ -6,7 +6,7 @@ import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
-const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>;openOnMount?:boolean}>()
+const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean}>()
 const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性或循环'},
@@ -20,18 +20,18 @@ const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
- subjectProfileId:'',healthRecordType:'other',quantity:1,dueOn:'',
+ subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',createSavingsGoal:false,
  targetAmount:100000,reservedAmount:0,destination:'',
  startDate:'',endDate:'',budgetAmount:0
 })
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
-const onceDraft=ref(newOneTimeTaskDraft(today()))
+const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';onceDraft.value=newOneTimeTaskDraft(today())}
-function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today())}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
  const response=await fetch('/api'+path,{method:'POST',credentials:'same-origin',
@@ -48,7 +48,7 @@ async function submit(){
   const common={title:form.title.trim(),visibility:form.visibility}
   if(kind.value==='routine'){
     const details={
-      ...common,subjectProfileId:form.subjectProfileId||null,
+      ...common,assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
       healthRecordType:isPet.value?form.healthRecordType||null:null,
       remindEnabled:form.remindEnabled
     }
@@ -110,9 +110,13 @@ async function submit(){
        <option value="workday">工作日（日本祝日除外）</option>
        <option value="interval">自定义间隔</option>
      </select></label>
-     <OneTimeTaskFields v-if="form.repeatType==='once'" v-model="onceDraft" :profiles="profiles"/>
+     <OneTimeTaskFields v-if="form.repeatType==='once'" v-model="onceDraft" :profiles="profiles" :members="members" :user-id="userId"/>
      <template v-else>
       <label>起始日期<DateField v-model="form.date" required /></label>
+      <label>处理人<select v-model="form.assignedTo" @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
+       <option value="">未指派</option>
+       <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
+      </select></label>
       <label v-if="form.repeatType==='weekly'">每周执行日
        <select v-model.number="form.weekday" aria-label="每周执行星期">
         <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>

@@ -3,7 +3,7 @@ import DateField from './DateField.vue'
 import {reactive,ref,computed,watch} from 'vue'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
-const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string}>()
 const emit=defineEmits<{saved:[];cancel:[]}>()
 const busy=ref(false),error=ref('')
 const data=props.item
@@ -16,7 +16,7 @@ const form=reactive({
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
  repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),anchorDate:String(data.anchor_date||''),
- subjectProfileId:String(data.subject_profile_id||''),healthRecordType:String(data.health_record_type||''),
+ subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
  targetAmount:Number(data.target_amount||0),reservedAmount:Number(data.reserved_amount||0),
@@ -50,7 +50,7 @@ function values(){
        excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
      type==='monthly'?{day:prev.day||Number(form.anchorDate.slice(-2))||1}:{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
-     assignedTo:data.assigned_to||null,subjectProfileId:form.subjectProfileId||null,
+     assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
      remindEnabled:form.remindEnabled,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
   }
   case 'wishes':
@@ -70,6 +70,9 @@ function values(){
 }
 async function save(){
  busy.value=true;error.value=''
+ if(props.kind==='routines'&&form.visibility==='private'&&form.assignedTo&&form.assignedTo!==props.userId){
+  error.value='指派给其他家庭账号时，请选择家庭共享';busy.value=false;return
+ }
  try{
   const response=await fetch('/api/'+props.kind+'/'+encodeURIComponent(props.item.id),{
    method:'PATCH',headers:{'content-type':'application/json'},credentials:'same-origin',
@@ -107,6 +110,10 @@ async function save(){
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
+   <label>处理人<select v-model="form.assignedTo" aria-label="修改定期任务处理人">
+    <option value="">未指派</option>
+    <option v-for="member in (members||[])" :key="member.id" :value="member.id" :disabled="form.visibility==='private'&&member.id!==userId">{{ member.loginName }}</option>
+   </select></label>
    <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启提醒</label>
    <label>关联对象（可选）
     <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
