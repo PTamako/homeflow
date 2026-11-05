@@ -1,6 +1,6 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute} from './reminders.js'
-import {saveNotification} from './notifications.js'
+import {jstNotificationDay,saveNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -70,8 +70,10 @@ export async function pushRoute(request,env,path,session){
   }
   if(path==='/api/push/send-now'||path==='/api/push/send-task'||path==='/api/push/send-family'){
     if(request.method!=='POST')return json({error:'method_not_allowed'},405)
-    if(!vapidReady(env))return json({error:'push_not_configured'},503)
-    if(path==='/api/push/send-now')return sendNow(env,session)
+    if(path==='/api/push/send-now'){
+      if(!vapidReady(env))return json({error:'push_not_configured'},503)
+      return sendNow(env,session)
+    }
     const body=await readBody(request)
     if(path==='/api/push/send-task')return sendTaskPush(env,session,body)
     return sendFamilyPush(env,session,body)
@@ -165,7 +167,7 @@ async function sendTaskPush(env,session,body){
   return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
     title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id,
     priority:'important',recordInInbox:true
-  },'task-'+body.kind+'-'+item.id,Date.now(),{
+  },'task-'+body.kind+'-'+item.id+':'+notificationId,Date.now(),{
     id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
     title:String(item.title),message:content
   })
@@ -186,7 +188,7 @@ async function sendFamilyPush(env,session,body){
     title:'HomeFlow · 家人消息',body:body.message.trim(),
     url:'/?notificationId='+notificationId,tag:'homeflow-family-message',
     priority:'normal',recordInInbox:true
-  },'family-'+session.user_id,Date.now(),{
+  },'family-'+session.user_id+':'+notificationId,Date.now(),{
     id:notificationId,senderId:session.user_id,kind:'family',title:'家人消息',
     message:body.message.trim()
   })
@@ -197,7 +199,14 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
   const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
     FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
     .bind(householdId,userId).all()
-  if(!subscriptions.length)return json({error:'recipient_not_subscribed'},409)
+  // The household inbox is the source of truth; Push is only an optional delivery channel.
+  // Missing subscriptions must not silently drop a message.
+  if(!subscriptions.length){
+    if(!meta)return json({error:'recipient_not_subscribed'},409)
+    await saveNotification(db,{...meta,householdId,recipientId:userId,
+      localDay:jstNotificationDay(now),sentDevices:0,failedDevices:0})
+    return json({ok:true,inAppOnly:true,sent:0,failed:0,already:0,recorded:true})
+  }
   const jst=new Date(now+9*3600000).toISOString()
   const day=jst.slice(0,10),minute=jst.slice(11,16)
   let sent=0,failed=0,already=0
@@ -229,7 +238,8 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
       localDay:day,sentDevices:sent,failedDevices:failed})}
     catch{recorded=false}
   }
-  return json({ok:sent>0,sent,failed,already,recorded},sent>0?200:502)
+  return json({ok:recorded&&!!meta?true:sent>0,inAppOnly:sent===0,sent,failed,already,recorded},
+    (sent>0||(recorded&&!!meta))?200:502)
 }
 
 // Explicit manual push only reaches the authenticated user's subscribed devices.
@@ -273,24 +283,48 @@ async function sendNow(env,session,now=Date.now()){
   return json({ok:sent>0,sent,failed,reminderCount:events.length},sent>0?200:502)
 }
 export async function runPushSchedule(env,now=Date.now()){
-  if(!vapidReady(env))return {skipped:'push_not_configured'}
+  const pushConfigured=vapidReady(env)
   const db=env.DB
   const jst=new Date(now+9*3600000)
   const day=jst.toISOString().slice(0,10),hour=jst.getUTCHours()
-  const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
-    FROM push_subscriptions ORDER BY user_id LIMIT 20`).all()
-  if(!subscriptions.length)return {checked:0,sent:0}
-  let sent=0,failed=0,checked=0
-  // Reuse a reminder read for every member; avoid duplicate D1 reads per device.
+  const {results:subscriptions=[]}=pushConfigured
+    ?await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
+      FROM push_subscriptions ORDER BY user_id LIMIT 20`).all():{results:[]}
+  let sent=0,failed=0,checked=0,inbox=0
+  // Every authenticated member receives a daily in-app notice, regardless of Push permissions.
+  // Reuse each member's reminder batch for subscribed devices.
   const remindersCache=new Map()
   const notificationIds=new Map(),recordedKeys=new Set()
+  const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
+    FROM household_members m JOIN users u ON u.id=m.user_id
+    WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 20`).all()
+  for(const member of members){
+    const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),
+      db,{user_id:member.user_id,household_id:member.household_id})
+    if(!response.ok)continue
+    const data=await response.json()
+    remindersCache.set(member.user_id,data)
+    for(const event of (data.items||[]).slice(0,20)){
+      const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
+      const logicalKey=member.user_id+':'+key
+      const notificationId=crypto.randomUUID()
+      notificationIds.set(logicalKey,notificationId)
+      const message=event.kind==='anniversary'?'家庭重要日子提醒':
+        event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
+        event.kind==='routine'?'今天的定期事项':'待办事项到期'
+      await saveNotification(db,{
+        id:notificationId,householdId:member.household_id,recipientId:member.user_id,
+        kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
+        sourceId:event.id,title:event.title,message,localDay:day,
+        sentDevices:0,failedDevices:0,dedupeKey:'scheduled:'+key
+      })
+      inbox++
+    }
+  }
+  if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox}
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
-    if(!remindersCache.has(sub.user_id)){
-      const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),
-        db,{user_id:sub.user_id,household_id:sub.household_id})
-      remindersCache.set(sub.user_id,await response.json())
-    }
+    if(!remindersCache.has(sub.user_id))continue
     const data=remindersCache.get(sub.user_id)
     // No push during user quiet hours. In-app reminders remain visible.
     // The default is disabled so the requested 06:00 JST push is delivered.
@@ -358,7 +392,7 @@ export async function runPushSchedule(env,now=Date.now()){
       }
     }
   }
-  return {checked,sent,failed}
+  return {checked,sent,failed,inbox}
 }
 
 /**
@@ -374,7 +408,6 @@ export function completionRecipientIds(memberIds,event){
 }
 
 export async function sendCompletionFeedback(env,session,event){
-  if(!vapidReady(env))return {skipped:'push_not_configured'}
   if(!session?.household_id||!session?.user_id||!['task','routine','shopping'].includes(event?.kind)||
     !UUID.test(event?.id||'')||!UUID.test(event?.creatorId||'')||
     typeof event?.title!=='string'||typeof event?.completedAt!=='string')
