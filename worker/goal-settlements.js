@@ -150,12 +150,14 @@ export async function goalPeriodsRoute(request,env,path,session){
 // Bound cron: a single goals scan, up to 12 recent closed periods per goal,
 // at most 8 remote ledger summaries per execution; never runs in preview.
 export async function runGoalSettlementSchedule(env){
-  if(env.APP_ENV!=='production'||typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')return
+  if(env.APP_ENV!=='production'||typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')
+    return {skipped:'ledger_or_production_unavailable'}
   const today=tokyoDay()
   const {results}=await env.DB.prepare(`SELECT * FROM goals
     WHERE goal_mode IN ('monthly','yearly') AND start_on<?1
     ORDER BY created_at DESC LIMIT 60`).bind(today).all()
-  let processed=0
+  let processed=0,settled=0,failed=0
+  const failures={}
   for(const goal of results||[]){
     if(processed>=8)break
     const windows=closedGoalPeriods(goal,today,12).reverse()
@@ -175,8 +177,12 @@ export async function runGoalSettlementSchedule(env){
       if(processed>=8)break
       if(done.has(window.periodKey))continue
       processed++
-      try{await settleGoalPeriod(env,goal,window.periodKey,today)}
-      catch{/* Unreachable ledger / DB: keep this period pending for retry. */}
+      try{
+        const outcome=await settleGoalPeriod(env,goal,window.periodKey,today)
+        if(outcome?.ok)settled++
+        else{failed++;const reason=String(outcome?.error||'unknown');failures[reason]=(failures[reason]||0)+1}
+      }catch{failed++;failures.unexpected=(failures.unexpected||0)+1}
     }
   }
+  return {attempted:processed,settled,failed,failures}
 }

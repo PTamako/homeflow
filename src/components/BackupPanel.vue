@@ -16,7 +16,7 @@ function bodyOk(snapshot:any):snapshot is Snapshot{
   if(!snapshot||snapshot.format!=='homeflow.portable'||snapshot.schemaVersion!==1||
     !snapshot.records||typeof snapshot.records!=='object')return false
   return order.every(key=>!snapshot.records[key]||
-    (Array.isArray(snapshot.records[key])&&snapshot.records[key].length<=500))
+    (Array.isArray(snapshot.records[key])&&snapshot.records[key].length<=50000))
 }
 async function api(path:string,method='GET',payload?:unknown){
   const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
@@ -35,7 +35,22 @@ function save(bytes:Uint8Array,filename:string,type:string){
 async function exportArchive(){
   pending.value=true;error.value='';status.value=''
   try{
-    const snapshot=await api('/portable') as Snapshot
+    // Manual export: one bounded D1 dataset page per request. No background scans.
+    const snapshot:Snapshot={format:'homeflow.portable',schemaVersion:1,records:{},
+      exportedAt:new Date().toISOString()}
+    for(const key of order){
+      const records:Record<string,unknown>[]=[]
+      let cursor:string|null=null
+      do{
+        const page=await api('/portable?dataset='+encodeURIComponent(key)+
+          (cursor?'&cursor='+encodeURIComponent(cursor):''))
+        if(page.dataset!==key||!Array.isArray(page.items))throw Error('备份分页响应异常')
+        records.push(...page.items)
+        if(records.length>50000)throw Error('该类记录过多，请分批导出')
+        cursor=typeof page.nextCursor==='string'?page.nextCursor:null
+      }while(cursor)
+      snapshot.records[key]=records
+    }
     if(!bodyOk(snapshot))throw Error('备份内容校验失败')
     const files:Record<string,Uint8Array>={'homeflow.json':strToU8(JSON.stringify(snapshot))}
     let size=files['homeflow.json'].byteLength,count=0

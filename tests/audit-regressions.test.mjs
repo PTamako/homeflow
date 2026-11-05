@@ -193,3 +193,25 @@ test('pet health reminders are created, updated, cancelled and detached without 
    assert.equal(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(second).deleted_at,null)
  }finally{sqlite.close()}
 })
+
+test('portable backup pages more than 500 records without truncation or write queries',async()=>{
+ const {sqlite,db}=database()
+ try{
+   const insert=sqlite.prepare("INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type) VALUES(?,?,?,'private',?,'other')")
+   for(let i=0;i<507;i++)insert.run('9999'+String(i).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa','primary','u1','wish '+i)
+   let cursor='',all=[]
+   do{
+     const u='https://homeflow.test/api/portable?dataset=wishes'+(cursor?'&cursor='+cursor:'')
+     const response=await portableRoute(new Request(u),db,'/api/portable',session)
+     assert.equal(response.status,200)
+     const payload=await response.json()
+     assert.ok(payload.items.length<=100)
+     all.push(...payload.items)
+     cursor=payload.nextCursor||''
+   }while(cursor)
+   assert.equal(all.length,507)
+   assert.equal(new Set(all.map(x=>x.id)).size,507)
+   const invalid=await portableRoute(new Request('https://homeflow.test/api/portable?dataset=wishes&cursor=-3'),db,'/api/portable',session)
+   assert.equal(invalid.status,400)
+ }finally{sqlite.close()}
+})
