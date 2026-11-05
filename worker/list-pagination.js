@@ -51,10 +51,11 @@ export async function listPage(db,table,session,filters,options={}){
     clauses.push(clause.replace(/\{(\d+)\}/g,(_,i)=>'?'+(start+Number(i))))
   }
   const localDate=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-  const todayThreshold=new Date(localDate+'T00:00:00+09:00').toISOString()
   if(table==='shopping_items'){
-    if(filters.scope==='active')push('(completed_at IS NULL OR completed_at>={0})',todayThreshold)
-    if(filters.scope==='history')push('(completed_at IS NOT NULL AND completed_at<{0})',todayThreshold)
+    // Completion belongs to history immediately, even when the receipt was linked today.
+    // Never defer the status transition until the next JST calendar day.
+    if(filters.scope==='active')clauses.push('completed_at IS NULL')
+    if(filters.scope==='history')clauses.push('completed_at IS NOT NULL')
   }else if(table==='anniversaries'){
     // Recurring annual/monthly events always have a future occurrence.
     // Only one-off events in the past belong to this archive.
