@@ -884,12 +884,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="button" class="plan-task-action" @click="scheduleUnplanned(t)">安排到今天</button>
               </div>
             </div>
-            <div v-if="planScope==='active'&&planType!=='unscheduled'&&t.remindEnabled!==false" class="plan-task-footer">
-              <div class="plan-task-controls">
-                <button type="button" class="plan-task-subtle"
-                  :aria-label="'设置「'+t.title+'」的提醒'"
-                  @click="toggleReminderEditor('task',t.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
-              </div>
+            <div v-if="planScope==='active'&&planType!=='unscheduled'" class="plan-task-footer">
+              <span class="plan-task-next">{{ t.dueOn?'计划 '+t.dueOn:'尚未安排日期' }}</span>
+              <button v-if="!t.completedAt&&t.dueOn" type="button" class="routine-text-action"
+                :disabled="busy" @click="completeOnce(t)">{{ t.dueOn>today()?'提前完成':'完成' }}</button>
+              <details class="routine-menu">
+                <summary :aria-label="'更多操作：'+t.title">···</summary>
+                <div class="routine-menu-items">
+                  <button type="button" @click="toggleReminderEditor('task',t.id)">提醒设置</button>
+                  <button v-if="canEdit(t)" type="button" @click="editOnce(t)">编辑任务</button>
+                </div>
+              </details>
             </div>
             </SwipeActions>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
@@ -1267,6 +1272,31 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 /* Each task is one uninterrupted swipe surface (title, metadata and actions).
    Only the outside item owns a separator; no line is painted inside a task. */
 .plan-tasks-card .life-caption{margin:0 0 8px}
+
+/* Routine 2.0: one divider, compact rows, discreet actions. */
+.routine-compact{min-width:0;display:grid;gap:5px}
+.plan-task-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.plan-task-head .detail-name{font-size:14px;line-height:1.45;overflow-wrap:anywhere;min-width:0}
+.routine-meta{display:block;color:#85958a;font-size:11px;line-height:1.5}
+.plan-tasks-card .plan-task-item{border-bottom:1px solid #e5ece6;padding:11px 0;margin:0}
+.plan-tasks-card .plan-task-item:last-of-type{border-bottom:0}
+.plan-tasks-card .plan-task-footer{margin-top:3px;justify-content:space-between;flex-wrap:nowrap;gap:8px;min-height:30px}
+.plan-tasks-card .plan-task-next{white-space:normal;min-width:0;flex:1}
+.routine-text-action{border:0;background:transparent;color:#397f5f;font-size:12px;font-weight:650;flex:none;padding:6px 4px;min-height:32px}
+.routine-text-action:disabled{opacity:.5}
+.routine-menu{position:relative;flex:none;margin-left:auto}
+.routine-menu summary{list-style:none;cursor:pointer;font-size:20px;letter-spacing:1px;color:#8ba298;padding:0 6px;line-height:28px}
+.routine-menu summary::-webkit-details-marker{display:none}
+.routine-menu-items{position:absolute;right:0;top:100%;z-index:8;display:grid;gap:3px;min-width:132px;
+  padding:6px;background:#fff;border:1px solid #d9e5db;border-radius:12px;box-shadow:0 5px 18px #1a35241c}
+.routine-menu-items button{padding:10px;text-align:left;background:transparent;border:0;color:#415b4a;font-size:12px;border-radius:7px}
+.routine-menu-items button:active{background:#edf5ed}
+.routine-state{font-size:11px;color:#87988c;flex:none}
+.routine-state.state-completed{color:#43866a}
+.routine-state.state-missed{color:#aa7067}
+.routine-struck{text-decoration:line-through;color:#9ca99f}
+.routine-history-row{display:grid;gap:5px}
+@media(max-width:420px){.plan-task-head .detail-name{font-size:13px}.plan-tasks-card .plan-task-next{font-size:10px}}
 .plan-task-item{min-width:0;padding:12px 0;border-bottom:1px solid #e9eee9}
 .plan-task-item:last-of-type{border-bottom:0;padding-bottom:0}
 .plan-task-item .life-row{border:0;padding:0;min-height:0;align-items:flex-start}
