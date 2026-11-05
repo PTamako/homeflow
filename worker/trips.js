@@ -138,14 +138,15 @@ export async function tripsRoute(request,db,path,session){
     const issue=validatedTripPayload(payload)
     if(issue)return json({error:issue},400)
     const hash=await sha256(JSON.stringify(payload))
-    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
       WHERE household_id=?1 AND import_source_key=?2`).bind(h,payload.importSourceId).first()
     // A trip created from a wish can be populated by an imported plan without losing wish_id.
     const targetId=body.targetTripId||null
     if(targetId&&!/^[0-9a-f-]{36}$/.test(targetId))return json({error:'invalid_input'},400)
-    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
       WHERE household_id=?1 AND id=?2`).bind(h,targetId).first():null
     if(targetId&&!target)return json({error:'not_found'},404)
+    if(matching?.deleted_at||target?.deleted_at)return json({error:'restore_trashed_trip_first'},409)
     if(target&&matching&&matching.id!==target.id)return json({error:'import_source_already_linked'},409)
     const current=target||matching
     const summary={days:payload.trip.days.length,itineraryItems:payload.trip.days.reduce((n,d)=>n+d.items.length,0),
@@ -304,7 +305,7 @@ export async function tripsRoute(request,db,path,session){
         await db.prepare(`UPDATE wishes SET status='completed',updated_at=?1
           WHERE id=?2 AND household_id=?3 AND deleted_at IS NULL
             AND NOT EXISTS(SELECT 1 FROM goals
-              WHERE household_id=?3 AND wish_id=?2)`)
+              WHERE household_id=?3 AND wish_id=?2 AND deleted_at IS NULL)`)
           .bind(timestamp,trip.wish_id,h).run()
       }
       return json({ok:true})
