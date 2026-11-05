@@ -2,7 +2,7 @@ import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
 import {nextAnniversary,validateRule,addDays} from './recurrence.js'
-import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday} from './routine-periods.js'
+import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday,routineVersions} from './routine-periods.js'
 import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
 import {isJapaneseWorkday} from './jp-holidays.js'
 
@@ -187,7 +187,9 @@ export async function lifeRoute(request,db,path,session){
     if(recordOn!==periodOn){
       // This key is the actual completion date of a pre-v2 overdue mark.
       // Validate it belongs to the requested scheduled period.
-      const original=currentRoutinePeriod(rule,recordOn)
+      const older=routineVersions(rule).find(v=>periodOn>=v.validFrom&&
+        (!v.validUntil||periodOn<v.validUntil))||rule
+      const original=currentRoutinePeriod(older,recordOn)
       if(!existing||original!==periodOn)return json({error:'legacy_mark_mismatch'},409)
     }
     if(periodOn!==current&&!early&&!existing)return json({error:'period_not_current'},409)
