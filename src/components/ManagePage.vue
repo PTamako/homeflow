@@ -65,7 +65,7 @@ async function generateInvite(){
        <span aria-hidden="true">{{ reminderRulesOpen?'收起':'展开' }}</span>
      </button>
      <ImportantReminders v-if="active&&reminderRulesOpen" :today-date="todayDate"
-       :today-entry-keys="todayEntryKeys" compact/>
+       :today-entry-keys="todayEntryKeys" compact mode="settings"/>
    </section>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>
