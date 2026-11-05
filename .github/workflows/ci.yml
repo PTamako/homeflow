@@ -14,6 +14,11 @@ jobs:
           node-version: "22"
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Generate reproducible lockfile snapshot
+        run: |
+          echo 'HF_LOCK_BEGIN_20261106'
+          cat package-lock.json
+          echo 'HF_LOCK_END_20261106'
       - name: Run tests and typechecked build
         run: npm run check
       - name: Verify D1 migrations and schema
