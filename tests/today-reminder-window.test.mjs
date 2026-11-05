@@ -55,7 +55,7 @@ test('Important Reminders remains mounted in Management to keep the red dot read
 test('management collects invitation, password, push, trash, backup, and logout',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const manage=readFileSync(new URL('../src/components/ManagePage.vue',import.meta.url),'utf8')
- for(const word of ['账号与家庭权限','通知与提醒设置','数据与回收箱','邀请家庭成员','退出登录']){
+ for(const word of ['账号与家庭','通知设置','数据管理','邀请家庭成员','退出登录']){
    assert.ok(manage.includes(word),word)
  }
  for(const component of ['SecurityPanel','PushPanel','TrashPanel','BackupPanel','ImportantReminders']){
