@@ -56,7 +56,7 @@ export async function goalPeriodArchiveRoute(request,db,session){
   const opts=archiveFilter(request.url)
   if(!opts)return json({error:'invalid_filters'},400)
   const {results:goals}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
-    FROM goals WHERE household_id=?1 AND goal_mode IN ('monthly','yearly')
+    FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND goal_mode IN ('monthly','yearly')
     AND (visibility='household' OR created_by=?2)
     ORDER BY created_at DESC LIMIT 251`)
     .bind(session.household_id,session.user_id).all()

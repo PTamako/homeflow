@@ -92,7 +92,7 @@ export async function goalPeriodsRoute(request,env,path,session){
   const match=path.match(/^\/api\/goals\/([0-9a-f-]{36})\/periods(?:\/(settle))?$/i)
   if(!match||!uuid(match[1]))return json({error:'not_found'},404)
   const db=env.DB,h=session.household_id,u=session.user_id
-  const goal=await db.prepare(`SELECT * FROM goals WHERE id=?1 AND household_id=?2
+  const goal=await db.prepare(`SELECT * FROM goals WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL
     AND (visibility='household' OR created_by=?3)`).bind(match[1],h,u).first()
   if(!goal)return json({error:'not_found'},404)
   if(!['monthly','yearly'].includes(goal.goal_mode))
@@ -154,7 +154,7 @@ export async function runGoalSettlementSchedule(env){
     return {skipped:'ledger_or_production_unavailable'}
   const today=tokyoDay()
   const {results}=await env.DB.prepare(`SELECT * FROM goals
-    WHERE goal_mode IN ('monthly','yearly') AND start_on<?1
+    WHERE deleted_at IS NULL AND goal_mode IN ('monthly','yearly') AND start_on<?1
     ORDER BY created_at DESC LIMIT 60`).bind(today).all()
   let processed=0,settled=0,failed=0
   const failures={}

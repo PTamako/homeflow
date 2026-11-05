@@ -90,14 +90,14 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
 async function financeTarget(db,h,user,kind,id){
   if(!['goal','trip','shopping'].includes(kind)||!idOk(id))return null
   if(kind==='shopping')return db.prepare(
-    "SELECT id,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+    "SELECT id,ledger_entry_id FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
       .bind(id,h,user).first()
   return target(db,h,user,kind,id)
 }
@@ -208,7 +208,7 @@ export async function financeRoute(request,env,path,session){
      (shop&&(request.method==='POST'||request.method==='DELETE'))){
     // Owner may see shared items but never a different member's private item.
     const shoppingId=(shopList||shop)[1]
-    const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id,quantity,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2')
+    const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id,quantity,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
       .bind(shoppingId,h).first()
     if(!item)return json({error:'not_found'},404)
     if(item.created_by!==user&&item.visibility!=='household')return json({error:'forbidden'},403)

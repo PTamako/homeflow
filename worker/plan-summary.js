@@ -21,23 +21,23 @@ export async function planSummaryRoute(request,db,session){
       AND deleted_at IS NULL AND (visibility='household' OR creator_user_id=?2)
       AND completed_at>=?3 AND completed_at<?4`).bind(h,u,a,b),
     db.prepare(`SELECT COUNT(*) AS total FROM routine_marks m JOIN routines r
-      ON r.id=m.routine_id WHERE r.household_id=?1
+      ON r.id=m.routine_id WHERE r.household_id=?1 AND r.deleted_at IS NULL
       AND (r.visibility='household' OR r.created_by=?2)
       AND m.completed_at>=?3 AND m.completed_at<?4`).bind(h,u,a,b),
-    db.prepare(`SELECT COUNT(*) AS total FROM shopping_items WHERE household_id=?1
+    db.prepare(`SELECT COUNT(*) AS total FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
       AND (visibility='household' OR created_by=?2)
       AND completed_at>=?3 AND completed_at<?4`).bind(h,u,a,b),
     db.prepare(`SELECT COUNT(*) AS total FROM plan_completion_marks m JOIN wishes w
       ON w.id=m.plan_id AND w.household_id=m.household_id
-      WHERE m.household_id=?1 AND m.plan_type='wish'
+      WHERE m.household_id=?1 AND m.plan_type='wish' AND w.deleted_at IS NULL
       AND (w.visibility='household' OR w.created_by=?2)
       AND m.completed_at>=?3 AND m.completed_at<?4`).bind(h,u,a,b),
     db.prepare(`SELECT COUNT(*) AS total FROM plan_completion_marks m JOIN goals g
       ON g.id=m.plan_id AND g.household_id=m.household_id
-      WHERE m.household_id=?1 AND m.plan_type='goal'
+      WHERE m.household_id=?1 AND m.plan_type='goal' AND g.deleted_at IS NULL
       AND (g.visibility='household' OR g.created_by=?2)
       AND m.completed_at>=?3 AND m.completed_at<?4`).bind(h,u,a,b),
-    db.prepare(`SELECT COUNT(*) AS total FROM trips WHERE household_id=?1
+    db.prepare(`SELECT COUNT(*) AS total FROM trips WHERE household_id=?1 AND deleted_at IS NULL
       AND status='completed' AND (visibility='household' OR created_by=?2)
       AND updated_at>=?3 AND updated_at<?4`).bind(h,u,a,b)
   ]
