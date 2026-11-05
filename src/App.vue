@@ -488,7 +488,7 @@ onBeforeUnmount(()=>{
           <input v-model.trim="recoveryCode" required maxlength="32" autocomplete="off" placeholder="32位恢复码"/></label>
         <template v-if="authMode==='bootstrap'">
           <label>家庭名称<input v-model="householdName" maxlength="60" /></label>
-          <label>家庭启动密钥<input v-model="bootstrapSecret" type="password" autocomplete="off" required placeholder="Cloudflare Worker Secret"/></label>
+          <label>家庭启动密钥<input v-model="bootstrapSecret" type="password" autocomplete="off" required placeholder="请输入启动密钥"/></label>
         </template>
         <label v-if="authMode==='join'">家庭邀请码<input v-model="invite" required maxlength="64" placeholder="家人提供的一次性代码"/></label>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
