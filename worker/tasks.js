@@ -104,6 +104,12 @@ export async function tasksRoute(request,db,path,session) {
     const url=new URL(request.url)
     const mode=url.searchParams.get('status')||'open'
     if(!['open','done','all'].includes(mode))return json({error:'invalid_status'},400)
+    const today=url.searchParams.get('today')
+    const showHistory=url.searchParams.get('showHistory')==='1'
+    if(today!==null&&!validDate(today))return json({error:'invalid_date'},400)
+    if(today==='')return json({error:'invalid_date'},400)
+    const tomorrow=today?new Date(Date.parse(today+'T00:00:00+09:00')+86400000).toISOString():null
+    const todayStart=today?new Date(today+'T00:00:00+09:00').toISOString():null
     const {results}=await db.prepare(`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
       subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
@@ -113,9 +119,12 @@ export async function tasksRoute(request,db,path,session) {
         AND (visibility='household' OR creator_user_id=?2)
         AND (?3='all' OR (?3='open' AND completed_at IS NULL)
           OR (?3='done' AND completed_at IS NOT NULL))
+        AND (?4 IS NULL OR
+          (completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?4) OR
+          (completed_at IS NOT NULL AND (?7=1 OR (completed_at>=?5 AND completed_at<?6))))
       ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
         CASE WHEN due_on IS NULL THEN 1 ELSE 0 END,due_on,created_at DESC
-      LIMIT 250`).bind(household,who,mode).all()
+      LIMIT 250`).bind(household,who,mode,today,todayStart,tomorrow,showHistory?1:0).all()
     return json({tasks:results||[]})
   }
   if(path==='/api/tasks' && request.method==='POST'){

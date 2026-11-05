@@ -89,3 +89,13 @@ test('settings recycle bin is demand-loaded and recovery requires confirmation',
  assert.ok(trash.includes("new URLSearchParams({limit:'5'})"))
  assert.ok(app.includes('recoveryConfirm.value'))
 })
+
+test('Today defaults new tasks to today while clearly offering the undated list',()=>{
+ const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
+ assert.ok(app.includes("due=ref(tokyoToday())"))
+ assert.ok(app.includes("openPlans('unscheduled')"))
+ assert.ok(app.includes("todayTasksUrl()"))
+ assert.ok(app.includes("已存入「计划 → 待安排」"))
+ assert.ok(life.includes("['routine','unscheduled','shopping','wish','goal','trip']"))
+ assert.ok(creator.includes("form.leaveUnscheduled?null:form.date"))
+})
