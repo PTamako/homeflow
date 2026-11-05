@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
+import {savingsPeriodDisplay} from '../savings-period-display.mjs'
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
@@ -27,6 +28,8 @@ const goalMode=computed(()=>selected.value?.goal_mode||'once')
 const recurringGoal=computed(()=>kind.value==='goal'&&goalMode.value!=='once')
 const lockedPeriod=computed(()=>recurringGoal.value&&!!props.fixedPeriodKey)
 const goalStartOn=computed(()=>String(selected.value?.start_on||''))
+const periodDisplay=computed(()=>recurringGoal.value?
+  savingsPeriodDisplay(selected.value,String(periodKey.value),dateYmd()):null)
 const modeLabel=computed(()=>goalMode.value==='monthly'?'每月':goalMode.value==='yearly'?'每年':'累计')
 function defaultPeriodKey(){
  const today=dateYmd(),start=goalStartOn.value
@@ -318,7 +321,11 @@ onMounted(()=>{
           <label v-else>选择年份
             <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
               :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
-          <small>计算期间：{{ start||'—' }} ～ {{ end||'—' }}</small>
+          <div v-if="periodDisplay" class="period-info">
+            <small>本期：{{ periodDisplay.start }} ～ {{ periodDisplay.end }}</small>
+            <small>统计截至：{{ netLoaded?end:'尚未读取' }}</small>
+            <small>状态：{{ periodDisplay.status }}</small>
+          </div>
         </div>
         <div v-else class="fields">
           <label>起始日期<DateField v-model="start" :min="kind==='goal'?goalStartOn||undefined:undefined" /></label>
@@ -333,7 +340,7 @@ onMounted(()=>{
         </div>
         <div v-if="kind==='goal'" class="goal-completion-panel">
           <p v-if="!recurringGoal&&alreadyCompleted" class="hint">这一次储值已确认完成。</p>
-          <p v-else-if="!goalPeriodDue" class="hint">{{ recurringGoal?'本期尚未结束':'储值起始日期尚未到来' }}，暂不能确认。</p>
+          <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint">储值尚未开始。</p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"
             @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期（达标或未达标）' }}</button>
           <button v-else type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
@@ -378,6 +385,8 @@ button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;paddi
 .adjustment-label input{width:100%;max-width:100%;box-sizing:border-box;border:1px solid #dce6dc;border-radius:10px;padding:9px;min-height:41px;background:#fff;color:#253a31}
 .locked-period{display:grid;gap:5px;min-width:0;font-size:12px;color:#607469}
 .locked-period strong{background:#f3f7f3;border:1px solid #dce6dc;border-radius:10px;padding:10px 12px;min-height:41px;box-sizing:border-box;font-size:15px;font-weight:600;color:#263f33}
+.period-info{display:grid;gap:3px;grid-column:1/-1;font-size:12px;color:#607469}
+.period-info small{font-size:12px;line-height:1.45}
 .finance-actions{display:flex;flex-wrap:wrap;gap:8px}
 .goal-completion-panel{display:grid;gap:8px;margin-top:14px;padding:12px;
   background:#f4f9f5;border:1px solid #dbe9dd;border-radius:11px}
