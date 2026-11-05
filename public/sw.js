@@ -1,7 +1,7 @@
 // Cache only same-origin static assets; NEVER cache private /api endpoints.
-const CACHE='homeflow-shell-v2'
+const CACHE='homeflow-shell-v3'
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/icon.svg','/manifest.webmanifest'])))
+  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'])))
   self.skipWaiting()
 })
 self.addEventListener('activate',event=>{
@@ -19,7 +19,7 @@ self.addEventListener('fetch',event=>{
     return
   }
   event.respondWith(caches.match(req).then(found=>found||fetch(req).then(res=>{
-    if(res.ok && (url.pathname.startsWith('/assets/') || ['/icon.svg','/manifest.webmanifest'].includes(url.pathname))){
+    if(res.ok && (url.pathname.startsWith('/assets/') || ['/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'].includes(url.pathname))){
       const clone=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,clone)))
     }
     return res
@@ -36,7 +36,7 @@ self.addEventListener('push',event=>{
     await self.registration.showNotification(title,{
       body:String(msg.body||'').slice(0,150),
       tag:String(msg.tag||'homeflow-reminder').slice(0,180),
-      icon:'/icon.svg',badge:'/icon.svg',
+      icon:'/icon-192.png',badge:'/icon-192.png',
       data:{url:(()=>{try{
         const url=new URL(String(msg.url||'/'),self.location.origin)
         if(url.origin!==self.location.origin||url.pathname!=='/')return '/'
