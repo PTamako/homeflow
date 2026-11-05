@@ -60,13 +60,13 @@ self.addEventListener('notificationclick',event=>{
     if(target.origin!==self.location.origin)return
     for(const client of list){
       if(new URL(client.url).origin===self.location.origin){
-        if(target.searchParams.has('notificationId')){
-          client.postMessage({type:'homeflow-open-notification',
-            id:target.searchParams.get('notificationId')})
-        }
         if(target.searchParams.has('taskId')){
           client.postMessage({type:'homeflow-open-task',
-            kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId')})
+            kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId'),
+            notificationId:target.searchParams.get('notificationId')})
+        }else if(target.searchParams.has('notificationId')){
+          client.postMessage({type:'homeflow-open-notification',
+            id:target.searchParams.get('notificationId')})
         }
         await client.focus();return
       }

@@ -107,3 +107,39 @@ test('today UI, 06:00 push and installed PWA keep unread notification badges',()
  assert.match(web,/recordInInbox:true/)
  assert.match(worker,/purgeOldNotifications/)
 })
+
+
+test('opening a push deep-link loads a scoped, exact notification without affecting normal pagination',async()=>{
+ const queries=[]
+ const db={prepare(sql){return {bind(...args){queries.push({sql,args});return {sql,args}}}},
+  async batch(statements){
+   assert.equal(statements.length,3)
+   return [{results:[{id:A,createdAt:'2026-11-05 07:00:00'}]},
+     {results:[{count:0}]},{results:[{id:ID,readAt:'2026-11-05 07:01:00'}]}]
+  }}
+ const result=await notificationsRoute(request('/api/notifications/today?view=received&focus='+ID),
+   db,'/api/notifications/today',session)
+ assert.equal(result.status,200)
+ const data=await result.json()
+ assert.equal(data.focusItem.id,ID)
+ assert.equal(data.items.length,1)
+ assert.match(queries[2].sql,/n.recipient_user_id=\\?3/)
+ assert.match(queries[2].sql,/n.local_day=\\?4/)
+ assert.deepEqual(queries[2].args,[ID,'home',B,jstNotificationDay()])
+ const invalid=await notificationsRoute(request('/api/notifications/today?view=sent&focus='+ID),
+   db,'/api/notifications/today',session)
+ assert.equal(invalid.status,400)
+})
+
+test('push click opens the matching notification or plan and keeps badge state in sync',()=>{
+ const app=read('src/App.vue'),ui=read('src/components/TodayNotifications.vue')
+ const sw=read('public/sw.js')
+ assert.match(app,/openIncomingNotification\\(notificationId\\)/)
+ assert.match(app,/:focus-notification-id="notificationToOpen"/)
+ assert.match(ui,/showIncomingNotification\\(props.focusNotificationId\\)/)
+ assert.match(ui,/params.set\\('focus',focusId\\)/)
+ assert.match(ui,/emit\\('unreadChange',unread.value\\)/)
+ assert.match(ui,/notice-focused/)
+ assert.match(sw,/else if\\(target.searchParams.has\\('notificationId'\\)\\)/)
+ assert.match(sw,/notificationId:target.searchParams.get\\('notificationId'\\)/)
+})

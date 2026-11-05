@@ -39,9 +39,11 @@ export async function notificationsRoute(request,db,path,session){
     if(view!=='received'&&view!=='sent')return json({error:'invalid_input'},400)
     const before=params.get('before')
     if(before&&!CURSOR.test(before))return json({error:'invalid_input'},400)
+    const focus=params.get('focus')
+    if(focus&&(view!=='received'||!UUID.test(focus)))return json({error:'invalid_input'},400)
     const [beforeAt,beforeId]=before?before.split('|'):[null,null]
     const column=view==='sent'?'n.sender_user_id':'n.recipient_user_id'
-    const sql=`SELECT n.id,n.kind,n.source_id AS sourceId,n.title,n.message,
+    const select=`SELECT n.id,n.kind,n.source_id AS sourceId,n.title,n.message,
        n.delivery_status AS deliveryStatus,n.sent_devices AS sentDevices,
        n.failed_devices AS failedDevices,n.created_at AS createdAt,
        n.read_at AS readAt,n.sender_user_id AS senderUserId,
@@ -49,7 +51,8 @@ export async function notificationsRoute(request,db,path,session){
        COALESCE(s.login_name,'系统') AS senderName,r.login_name AS recipientName
        FROM notification_inbox n
        LEFT JOIN users s ON s.id=n.sender_user_id
-       JOIN users r ON r.id=n.recipient_user_id
+       JOIN users r ON r.id=n.recipient_user_id`
+    const sql=`${select}
        WHERE n.household_id=?1 AND n.local_day=?2 AND ${column}=?3
        ${view==='received'?'AND n.sent_devices>0':''}
        ${before?'AND (n.created_at<?4 OR (n.created_at=?4 AND n.id<?5))':''}
@@ -61,10 +64,16 @@ export async function notificationsRoute(request,db,path,session){
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
         AND read_at IS NULL AND sent_devices>0`)
       .bind(session.household_id,session.user_id,day)
-    const [result,summary]=await db.batch([query,unread])
+    // The extra lookup runs only for a clicked push deep-link, not regular page loads.
+    const focused=focus?db.prepare(`${select}
+      WHERE n.id=?1 AND n.household_id=?2 AND n.recipient_user_id=?3
+        AND n.local_day=?4 AND n.sent_devices>0 LIMIT 1`)
+      .bind(focus,session.household_id,session.user_id,day):null
+    const [result,summary,focusResult]=await db.batch(focused?[query,unread,focused]:[query,unread])
     const rows=result.results||[],items=rows.slice(0,PAGE_SIZE)
     const last=items[items.length-1]
     return json({day,view,items,unreadCount:Number(summary.results?.[0]?.count||0),
+      focusItem:focusResult?.results?.[0]||null,
       nextCursor:rows.length>PAGE_SIZE&&last?last.createdAt+'|'+last.id:null})
   }
   const match=path.match(/^\/api\/notifications\/([0-9a-f-]{36})\/read$/i)

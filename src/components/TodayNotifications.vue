@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref,watch} from 'vue'
+import {nextTick,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import ImportantReminders from './ImportantReminders.vue'
 
@@ -9,11 +9,13 @@ type Notice={
  sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
 }
-const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[]}>()
-const emit=defineEmits<{unreadChange:[number];openPlan:[string,string]}>()
+const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[];
+ focusNotificationId:string;focusRequest:number}>()
+const emit=defineEmits<{unreadChange:[number];openPlan:[string,string];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
 const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null)
+const highlightedId=ref('')
 let generation=0
 function timeOf(value:string|null){
  if(!value)return ''
@@ -28,7 +30,7 @@ function detail(item:Notice){
  if(item.readAt)return '已读 '+timeOf(item.readAt)
  return view.value==='sent'?'对方未读':'未读'
 }
-async function load(reset=true){
+async function load(reset=true,focusId=''){
  if(!props.active)return
  const request=++generation,day=props.todayDate
  if(reset){loading.value=true;error.value='';cursor.value=null}
@@ -36,14 +38,25 @@ async function load(reset=true){
  try{
   const params=new URLSearchParams({view:view.value==='pending'?'received':view.value})
   if(!reset&&cursor.value)params.set('before',cursor.value)
+  if(reset&&focusId&&view.value==='received')params.set('focus',focusId)
   const response=await fetch('/api/notifications/today?'+params,{
     credentials:'same-origin',cache:'no-store'
   })
   if(!response.ok)throw Error('通知读取失败')
   const data=await response.json()
   if(request!==generation||day!==props.todayDate)return
-  if(view.value!=='pending')notices.value=reset?data.items:[...notices.value,...data.items]
-  if(view.value!=='pending')cursor.value=data.nextCursor||null
+  if(view.value!=='pending'){
+   const items:Notice[]=data.items||[]
+   if(reset){
+    const focused=data.focusItem as Notice|null
+    notices.value=focused&&!items.some(item=>item.id===focused.id)?[focused,...items]:items
+    highlightedId.value=focusId
+   }else{
+    const existing=new Set(notices.value.map(item=>item.id))
+    notices.value=[...notices.value,...items.filter(item=>!existing.has(item.id))]
+   }
+   cursor.value=data.nextCursor||null
+  }
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   emit('unreadChange',unread.value)
  }catch(e){
@@ -73,7 +86,31 @@ async function open(item:Notice){
    emit('openPlan',item.kind,item.sourceId)
  }
 }
+async function showIncomingNotification(id:string){
+ if(!props.active||!/^[a-f0-9-]{36}$/i.test(id))return
+ expanded.value=true
+ view.value='received'
+ let readFailed=false
+ try{
+  const response=await fetch('/api/notifications/'+encodeURIComponent(id)+'/read',{
+   method:'POST',credentials:'same-origin',cache:'no-store'
+  })
+  if(!response.ok)throw Error('自动标记已读失败')
+  const result=await response.json()
+  unread.value=Math.max(0,Number(result.unreadCount)||0)
+  emit('unreadChange',unread.value)
+ }catch{readFailed=true}
+ await load(true,id)
+ if(readFailed)error.value='自动标记已读失败，请手动标记'
+ emit('focusHandled',id)
+ await nextTick()
+ document.getElementById('today-notification-'+id)?.scrollIntoView({block:'center',behavior:'smooth'})
+}
 watch(()=>[props.todayDate,props.userId,props.active],()=>{void load(true)},{immediate:true})
+watch(()=>[props.focusRequest,props.active],()=>{
+ if(props.active&&props.focusRequest>0&&props.focusNotificationId)
+  void showIncomingNotification(props.focusNotificationId)
+},{immediate:true})
 watch(view,()=>{if(view.value!=='pending')void load(true)})
 defineExpose({refresh:()=>load(true)})
 </script>
@@ -106,7 +143,8 @@ defineExpose({refresh:()=>load(true)})
    <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
    <p v-else-if="error" class="notice-error" role="alert">{{ error }} <button type="button" @click="load(true)">重试</button></p>
    <p v-else-if="!notices.length" class="notice-empty">今天暂无通知</p>
-   <div v-for="item in notices" :key="item.id" class="notice-item">
+   <div v-for="item in notices" :id="'today-notification-'+item.id" :key="item.id"
+     :class="['notice-item',{'notice-focused':highlightedId===item.id}]">
     <div class="notice-item-top">
      <b>{{ item.title }}</b>
      <span :class="['notice-state',{'notice-state-unread':!item.readAt&&item.deliveryStatus!=='failed'}]">
@@ -144,7 +182,8 @@ defineExpose({refresh:()=>load(true)})
 .notice-reminder-list{padding-top:5px}
 .notice-tabs button{background:#f5f8f5;border:1px solid #dfebe2;border-radius:9px;padding:6px 12px;font-size:12px;color:#60766a}
 .notice-tabs button.active{background:#e6f1e9;color:#35795e;border-color:#b7d7c3;font-weight:700}
-.notice-item{padding:12px 0;border-top:1px solid #edf1ec}
+.notice-item{padding:12px 0;border-top:1px solid #edf1ec;scroll-margin-top:24px}
+.notice-item.notice-focused{background:#f2f8f2;border-radius:9px;padding:12px 9px}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .notice-item-top b{font-size:13px;overflow-wrap:anywhere}
 .notice-state{white-space:nowrap;color:#7a8e80;font-size:11px}

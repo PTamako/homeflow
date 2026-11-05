@@ -50,6 +50,8 @@ const routineBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'|'manage'>('today')
 const unreadNotificationCount=ref(0)
 const todayNotificationsRef=ref<{refresh:()=>Promise<void>|void}|null>(null)
+const notificationToOpen=ref('')
+const notificationOpenRequest=ref(0)
 type BadgeNavigator=Navigator&{setAppBadge?:(count?:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>}
 async function setUnreadNotificationCount(value:number){
   unreadNotificationCount.value=Math.max(0,Number(value)||0)
@@ -111,22 +113,39 @@ function openIncomingTask(kind:string|null,id:string|null){
  openPlans(kind!,id!)
  return true
 }
+function openIncomingNotification(id:string|null){
+ if(!user.value||!/^[a-f0-9-]{36}$/i.test(id||''))return false
+ notificationToOpen.value=id!
+ notificationOpenRequest.value++
+ tab.value='today'
+ return true
+}
+function onNotificationFocused(id:string){
+ if(notificationToOpen.value===id)notificationToOpen.value=''
+}
 function consumeTaskLink(){
  const url=new URL(window.location.href)
  const notificationId=url.searchParams.get('notificationId')
- if(notificationId)void markNotificationRead(notificationId)
- const opened=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'))
- if(!notificationId&&!opened)return false
+ const openedTask=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'))
+ const openedNotice=!openedTask&&openIncomingNotification(notificationId)
+ if(openedTask&&notificationId)void markNotificationRead(notificationId)
+ if(!openedTask&&!openedNotice)return false
  url.searchParams.delete('notificationId')
  url.searchParams.delete('taskType');url.searchParams.delete('taskId')
  window.history.replaceState(null,'',url.pathname+url.search+url.hash)
- return opened
+ return true
 }
 function onPushMessage(event:MessageEvent){
  if(event.origin!==window.location.origin&&event.origin!=='')return
  const payload=event.data
- if(payload?.type==='homeflow-open-notification')void markNotificationRead(payload.id)
- if(payload?.type==='homeflow-open-task')openIncomingTask(payload.kind,payload.id)
+ if(payload?.type==='homeflow-open-notification')openIncomingNotification(payload.id)
+ if(payload?.type==='homeflow-open-task'){
+   const opened=openIncomingTask(payload.kind,payload.id)
+   if(payload.notificationId){
+     if(opened)void markNotificationRead(payload.notificationId)
+     else openIncomingNotification(payload.notificationId)
+   }
+ }
  if(payload?.type==='homeflow-notification-pushed'&&tab.value==='today'){
    // The sender records results after the push service accepts the delivery.
    window.setTimeout(()=>todayNotificationsRef.value?.refresh(),1200)
@@ -576,7 +595,8 @@ onBeforeUnmount(()=>{
           </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
           :user-id="user.id" :today-entry-keys="todayEntryKeys" @unread-change="setUnreadNotificationCount"
-          @open-plan="(kind,id)=>openPlans(kind,id)" />
+          :focus-notification-id="notificationToOpen" :focus-request="notificationOpenRequest"
+          @focus-handled="onNotificationFocused" @open-plan="(kind,id)=>openPlans(kind,id)" />
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
           <div class="row-between"><b>重要提醒 · 储值计划</b></div>
           <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
