@@ -118,7 +118,7 @@ function toggleFinance(kind:'goal'|'trip',id:string){
 }
 async function planCreated(kind:PlanType,id:string,unscheduled=false){
   // An undated one-off task is an inbox item, not a recurring schedule.
-  planType.value=unscheduled?'unscheduled':kind
+  planType.value=unscheduled?'unscheduled':kind==='routine'?'all':kind
   if(unscheduled&&planScope.value!=='active')planScope.value='active'
   else await fetchMode()
   notify(unscheduled?'已添加到待安排': '计划已创建'+(kind==='wish'?'，如已选择储值计划则自动关联':''))
@@ -151,8 +151,8 @@ async function deleteOnce(t:Row){
   await onceChange(t,{},'DELETE')
 }
 watch(()=>props.focusPlanType,type=>{
-  if(type==='task')planType.value='routine'
-  else if(['routine','unscheduled','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+  if(type==='task'||type==='routine')planType.value='all'
+  else if(['unscheduled','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
 },{immediate:true})
 watch(()=>props.focusPlanRequest,()=>{
   if(props.mode!=='plans'){
@@ -794,7 +794,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       </details>
       <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
-          {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
+          {id:'all',label:'全部'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
           {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
           :key="tab.id" type="button" :class="{selected:planType===tab.id}"
           :aria-pressed="planType===tab.id" @click="selectPlanType(tab.id as PlanType)">
