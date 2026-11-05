@@ -557,7 +557,13 @@ onBeforeUnmount(()=>{
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
             <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
-            <label>计划日期（可清空）<DateField v-model="due" aria-label="完成日期" /></label>
+            <div class="task-date-control">
+              <div class="task-date-heading">
+                <span id="new-task-date-label">计划日期（可清空）</span>
+                <button v-if="due" type="button" class="task-date-clear" aria-label="清空计划日期" @click="due=''">清空</button>
+              </div>
+              <DateField v-model="due" aria-labelledby="new-task-date-label" />
+            </div>
             <button type="button" class="text-button" @click="openPlans('unscheduled')">查看待安排</button>
             <p v-if="!due" class="task-object-hint">不填日期会存到「计划 → 待安排」，不会出现在今日待办。</p>
             <label class="task-object">关联对象（可选）
