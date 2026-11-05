@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -1677,5 +1677,61 @@ test('one-off today pet tasks sync exactly once, undo safely, and respect privac
  assert.equal((await ask('/api/tasks/'+noCare.body.id,'PATCH',{completed:true},owner)).status,200)
  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pet_health_records WHERE source_task_id=?').get(noCare.body.id).n,1,
   'editing an existing task can enable linked pet care')
+ sqlite.close()
+})
+
+
+test('hiding a Today detail is per-person and per-date, never deletes a plan or its completed period',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const boot=await ask('/api/auth/bootstrap','POST',{
+   loginName:'dismiss-owner',password:'a-strong-password-for-dismissal',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(boot.status,201,JSON.stringify(boot.body))
+ const owner=extractCookie(boot.cookie)
+ const date=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const routine=await ask('/api/routines','POST',{
+   title:'豆沙每日零食',repeatType:'daily',repeatConfig:{},anchorDate:date,visibility:'household'},owner)
+ const task=await ask('/api/tasks','POST',{
+   title:'今天一次性待办',visibility:'household',dueOn:date},owner)
+ assert.equal(routine.status,201,JSON.stringify(routine.body))
+ assert.equal(task.status,201,JSON.stringify(task.body))
+ const routineId=routine.body.id,taskId=task.body.id
+ const periodKey='routine:'+routineId+':'+date,taskKey='task:'+taskId
+ const marked=await ask('/api/routines/'+routineId+'/mark','POST',
+   {date,status:'completed'},owner)
+ assert.equal(marked.status,200,JSON.stringify(marked.body))
+ const dismiss=async(itemKey,as=owner,viewOn=date)=>ask('/api/tasks/today/dismiss','POST',
+   {date:viewOn,itemKey},as)
+ assert.equal((await dismiss(periodKey)).status,200)
+ assert.equal((await dismiss(taskKey)).status,200)
+ assert.equal((await dismiss(periodKey)).status,200,'repeat dismiss is idempotent')
+ const today=(await ask('/api/tasks?status=all&today='+date,'GET',undefined,owner))
+ assert.equal(today.status,200)
+ assert.deepEqual(new Set(today.body.hiddenTodayKeys),new Set([periodKey,taskKey]))
+ assert.equal(today.body.tasks.some(x=>x.id===taskId),true,'one-off task is still stored')
+ assert.equal((await ask('/api/routines/'+routineId,'GET',undefined,owner)).status,200)
+ assert.equal((await ask('/api/tasks/'+taskId,'GET',undefined,owner)).status,200)
+ const marks=sqlite.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?').all(routineId)
+ assert.equal(marks.length,1)
+ assert.ok(marks[0].completed_at,'the completion history stays intact')
+ assert.equal(marks[0].skipped_at,null)
+ assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM today_dismissals').get().n,2)
+ assert.equal((await dismiss(taskKey,owner,'1999-01-01')).status,400,'reject past day manipulation')
+ assert.equal((await dismiss('task:other')).status,400)
+ const invitation=await ask('/api/auth/invitations','POST',{},owner)
+ const partner=await ask('/api/auth/join','POST',{
+   loginName:'dismiss-partner',password:'a-different-strong-password',
+   displayName:'家人',invitationCode:invitation.body.invitationCode})
+ assert.equal(partner.status,201)
+ const member=extractCookie(partner.cookie)
+ const otherToday=await ask('/api/tasks?status=all&today='+date,'GET',undefined,member)
+ assert.deepEqual(otherToday.body.hiddenTodayKeys,[],'one member cannot dismiss another member view')
+ const privateTask=await ask('/api/tasks','POST',{
+   title:'私人待办',visibility:'private',dueOn:date},owner)
+ assert.equal(privateTask.status,201)
+ assert.equal((await dismiss('task:'+privateTask.body.id,member)).status,404,
+   'cannot hide a plan the member is not authorized to see')
  sqlite.close()
 })
