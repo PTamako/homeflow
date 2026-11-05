@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import DateField from './components/DateField.vue'
-import OneTimeTaskFields from './components/OneTimeTaskFields.vue'
-import {newOneTimeTaskDraft,oneTimeTaskPayload} from './one-time-task'
 import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
@@ -52,9 +50,11 @@ const focusPlanPeriodKey=ref('')
 const focusPlanScope=ref<'active'|'history'>('active')
 const focusPlanFromToday=ref(false)
 const focusPlanRequest=ref(0)
+const openPlanCreatorOnNavigate=ref(false)
 let savedTodayScrollY=0
 let returningToToday=false
 function openPlans(kind:string,id='',periodKey='',done=false){
+  openPlanCreatorOnNavigate.value=false
   focusPlanFromToday.value=tab.value==='today'&&!!id
   if(focusPlanFromToday.value)savedTodayScrollY=window.scrollY
   focusPlanType.value=kind
@@ -88,6 +88,7 @@ function openSearchResult(result:{id:string;kind:string}){
  }
 }
 function navigateTab(value:typeof tab.value){
+  openPlanCreatorOnNavigate.value=false
   if(value==='plans'){
     focusPlanId.value=''
     focusPlanPeriodKey.value=''
@@ -97,26 +98,14 @@ function navigateTab(value:typeof tab.value){
   }
   tab.value=value
 }
+function openNewTaskInPlans(){
+  navigateTab('plans')
+  focusPlanType.value='all'
+  openPlanCreatorOnNavigate.value=true
+}
 const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
-const newTask=ref(newOneTimeTaskDraft(tokyoToday()))
-const showAddTask=ref(false)
-const newTaskFields=ref<{focusTitle:()=>void}|null>(null),addTaskTrigger=ref<HTMLButtonElement|null>(null)
-function openAddTask(){
-  error.value=''
-  showAddTask.value=true
-  void nextTick(()=>newTaskFields.value?.focusTitle())
-}
-function closeAddTask(){
-  if(loading.value)return
-  dismissAddTask()
-}
-function dismissAddTask(){
-  showAddTask.value=false
-  error.value=''
-  if(tab.value==='today')void nextTick(()=>addTaskTrigger.value?.focus())
-}
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
@@ -397,20 +386,6 @@ async function toggleRoutine(r:Routine){
   }catch(e){error.value=(e as Error).message}
   finally{routineBusy.value=false}
 }
-async function addTask(){
-  if(!newTask.value.title.trim()||!user.value)return
-  error.value='';loading.value=true;syncMessage.value=''
-  try{
-    const payload=oneTimeTaskPayload(newTask.value,isPet(newTask.value.subjectProfileId))
-    const outcome=await sendOrQueueTask(user.value.id,'create',payload)
-    const unscheduled=!newTask.value.dueOn
-    newTask.value=newOneTimeTaskDraft(tokyoToday())
-    if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
-    else {await loadTasks();notify(unscheduled?'已存入「计划 → 待安排」':'任务已添加')}
-    pendingTasks.value=await listPending(user.value.id)
-    dismissAddTask()
-  }catch(e){error.value=(e as Error).message}finally{loading.value=false}
-}
 function editTask(t:Task){
   if(!user.value||t.creatorUserId!==user.value.id)return
   editingTask.value=editingTask.value?.id===t.id?null:{
@@ -455,7 +430,6 @@ function onForeground(){
   if(document.visibilityState!=='visible')return
   const d=tokyoToday()
   if(d!==currentJstDay.value){
-    if(newTask.value.dueOn===currentJstDay.value)newTask.value.dueOn=d
     currentJstDay.value=d
     if(user.value&&tab.value==='today')void reloadToday()
   }else if(user.value)importantRemindersRef.value?.refreshIfStale()
@@ -482,7 +456,6 @@ async function addProfile(){
 }
 watch(tab,value=>{
   clearToast()
-  showAddTask.value=false
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
@@ -587,25 +560,9 @@ onBeforeUnmount(()=>{
           <h2>今日待办</h2>
           <div class="today-task-actions">
             <span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span>
-            <button ref="addTaskTrigger" type="button" class="outline today-add-button" @click="openAddTask">＋ 新增待办</button>
+            <button type="button" class="outline today-add-button" @click="openNewTaskInPlans">＋ 新增待办</button>
           </div>
         </div>
-        <Teleport to="body">
-          <div v-if="showAddTask" class="task-create-overlay" @click.self="closeAddTask" @keydown.esc.stop="closeAddTask">
-            <section class="task-create-dialog" role="dialog" aria-modal="true" aria-labelledby="task-create-heading">
-              <div class="task-create-heading">
-                <h2 id="task-create-heading">新增待办</h2>
-                <button type="button" class="text-button" :disabled="loading" @click="closeAddTask">取消</button>
-              </div>
-              <p v-if="error" class="error" role="alert">{{ error }}</p>
-          <form class="task-form" @submit.prevent="addTask">
-            <OneTimeTaskFields ref="newTaskFields" v-model="newTask" :profiles="profiles"/>
-            <button type="button" class="text-button" @click="closeAddTask();openPlans('unscheduled')">查看待安排</button>
-            <button class="primary" :disabled="loading">＋ 添加任务</button>
-          </form>
-            </section>
-          </div>
-        </Teleport>
         <section class="panel today-checklist-panel">
           <div v-if="pendingTasks.length" class="pending">
             <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
@@ -796,7 +753,7 @@ onBeforeUnmount(()=>{
          :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
-        :focus-plan-request="focusPlanRequest" :profile-revision="profileRevision"
+        :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
         @open-plans="openPlans" @back-to-today="returnToToday" />
       <ManagePage v-show="tab==='manage'" ref="importantRemindersRef" :active="tab==='manage'"
