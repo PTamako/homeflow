@@ -33,6 +33,6 @@ test('selected DouSha tail icon replaces all PWA image variants',()=>{
    assert.equal(createHash('sha256').update(read(path)).digest('hex'),expected[size])
  }
  const svg=read('public/icon.svg').toString()
- assert.match(svg,/data:image\\/png;base64,/)
+ assert.match(svg,/data:image\/png;base64,/)
  assert.match(svg,/aria-label="HomeFlow"/)
 })
