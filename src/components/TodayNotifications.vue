@@ -82,10 +82,10 @@ defineExpose({refresh:()=>load(true)})
  <section class="panel today-notifications" aria-label="今日通知">
   <div class="notice-heading">
    <button type="button" class="notice-expand" :aria-expanded="expanded" @click="expanded=!expanded">
+    <span v-if="unread>0" class="notice-red-dot" aria-hidden="true"></span>
     <AppIcon name="bell" :size="19"/>
     <b>今日通知</b>
-    <span v-if="unread" class="notice-unread">未读 {{ unread }}</span>
-    <span v-if="!unread" class="notice-muted">无未读</span>
+    <span v-if="unread>0" class="notice-unread-count">{{ unread }} 条未读</span>
    </button>
    <button type="button" class="notice-text-button" @click="expanded=!expanded">{{ expanded?'收起':'查看' }}</button>
   </div>
@@ -136,7 +136,8 @@ defineExpose({refresh:()=>load(true)})
 .notice-expand{display:flex;align-items:center;gap:9px;min-width:0;padding:0;border:0;background:transparent;color:#304a3c;font-size:15px}
 .notice-expand b{white-space:nowrap}
 .notice-text-button,.notice-item-actions button,.notice-more{padding:5px 8px;border:0;background:transparent;color:#43866a;font-size:12px;font-weight:600}
-.notice-unread{border-radius:12px;background:#b33e44;color:white;padding:2px 7px;font-size:11px;white-space:nowrap}
+.notice-red-dot{width:8px;height:8px;min-width:8px;border-radius:50%;background:#c83e48;flex:none}
+.notice-unread-count{color:#9a6568;font-size:11px;white-space:nowrap}
 .notice-muted{font-size:12px;color:#8a998f}
 .notice-content{padding-top:13px}
 .notice-tabs{display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap}
