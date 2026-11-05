@@ -85,7 +85,7 @@ export async function routineHistory(db,request,session){
         candidates.push({rule,due})
     }
     // Only actually completed future occurrences enter the archive.
-    if(!cursor){
+    if(!cursor||cursor.date>=today){
       const upcoming=nextRoutineDue(rule,today)
       if(upcoming&&upcoming>today&&upcoming>=rule.validFrom&&
         (!rule.validUntil||upcoming<rule.validUntil)&&
