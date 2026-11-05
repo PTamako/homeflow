@@ -182,9 +182,14 @@ onBeforeUnmount(()=>{requestId++})
     </template>
     <p v-else-if="!visibleReminders.length" class="reminder-status">暂无待提醒事项</p>
     <div v-else v-for="item in shownReminders" :key="item.kind+':'+item.id" class="reminder-item">
-      <span>{{ item.title }} <small v-if="item.daysBefore">提前 {{ item.daysBefore }} 天</small>
-       <small v-if="item.priority==='important'"> · 重要</small></span>
-      <small>{{ item.dueOn }}</small>
+      <div class="reminder-details">
+       <div class="reminder-title">
+        <strong>{{ item.title }}</strong>
+        <span v-if="item.daysBefore" class="reminder-lead">提前 {{ item.daysBefore }} 天</span>
+        <span v-if="item.priority==='important'" class="reminder-priority">重要</span>
+       </div>
+       <time class="reminder-date" :datetime="item.dueOn">截止 {{ item.dueOn }}</time>
+      </div>
       <div class="snooze-actions">
        <button class="snooze-button" type="button" :disabled="snoozing"
         @click="snooze(item)">明天</button>
@@ -249,15 +254,21 @@ onBeforeUnmount(()=>{requestId++})
 .reminder-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .reminder-heading h2{display:flex;align-items:center;gap:8px;margin:0;font-size:16px}
 .compact .reminder-heading h2{font-size:14px}
-.reminder-item{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:11px 0;border-top:1px solid #e9eee9;min-width:0}
-.reminder-item span{overflow-wrap:anywhere;min-width:0}
-.reminder-item small{flex:none;color:#6c8073}
-.snooze-button{font-size:11px;white-space:nowrap;background:#edf4ee;color:#3d7b5d;
-  border:1px solid #d8e7da;border-radius:8px;padding:6px 8px}
+/* Each reminder gets a full-width details row and its own action row on phones. */
+.reminder-item{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;
+  padding:13px 0;border-top:1px solid #e9eee9;min-width:0}
+.reminder-details{display:grid;gap:5px;min-width:0}
+.reminder-title{display:flex;align-items:center;flex-wrap:wrap;gap:5px 8px;min-width:0}
+.reminder-title strong{font-size:14px;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.reminder-lead,.reminder-priority{flex:none;font-size:11px;color:#557b65;background:#edf5ee;
+  padding:3px 7px;border-radius:6px;white-space:nowrap}
+.reminder-priority{color:#a25944;background:#fff2e9}
+.reminder-date{font-size:12px;color:#708378;white-space:nowrap}
+.snooze-button{font-size:12px;white-space:nowrap;background:#edf4ee;color:#3d7b5d;
+  border:1px solid #d8e7da;border-radius:8px;padding:7px 11px;min-height:34px}
 .snooze-button:disabled{opacity:.5}
-.snooze-actions{display:flex;gap:5px;flex-wrap:wrap}
-.snooze-calendar{display:flex;gap:5px;flex-basis:100%;align-items:center}
+.snooze-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;min-width:0}
+.snooze-calendar{display:flex;gap:7px;flex:1 0 100%;align-items:center;min-width:0}
 .snooze-calendar input{min-width:0;max-width:180px;flex:1;border:1px solid #d5e3d8;border-radius:8px;padding:6px}
 .item-settings{align-items:flex-end;flex-wrap:wrap}
 .item-settings label{display:grid;gap:3px;font-size:11px}
@@ -278,5 +289,5 @@ onBeforeUnmount(()=>{requestId++})
 .snoozed-row button{flex:none;background:transparent;border:1px solid #dee8e1;border-radius:7px;padding:5px;color:#527964}
 .reminder-status{font-size:13px;color:#71867a;margin:8px 0 2px}
 .reminder-error{font-size:13px;color:#a45b4c}
-@media(max-width:400px){.reminder-item{align-items:flex-start;flex-wrap:wrap}.reminder-item small{margin-left:auto}.snooze-button{margin-left:auto}}
+@media(max-width:360px){.snooze-button{padding-inline:8px}}
 </style>
