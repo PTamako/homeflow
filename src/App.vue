@@ -366,7 +366,7 @@ async function toggleRoutine(r:Routine){
   routineBusy.value=true
   try{
     const status=r.mark?.completed_at?'open':'completed'
-    await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),periodOn:r.occurrenceOn||r.currentPeriodOn,status})
+    await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),periodOn:r.occurrenceOn||r.currentPeriodOn,recordOn:r.recordOn||undefined,status})
     await loadTodayRoutines()
     notify(status==='completed'?'定期事项已完成':'已撤销完成')
   }catch(e){error.value=(e as Error).message}
