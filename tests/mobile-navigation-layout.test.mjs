@@ -55,7 +55,7 @@ test('native date controls fit inside narrow cards across every form',()=>{
   assert.match(shopping,/@media\(max-width:600px\)\s*\{\.ledger-dates\s*\{grid-template-columns:minmax\(0,1fr\)/)
 })
 
-test('all 31 date fields render inside the shared iOS-safe date control',()=>{
+test('all mobile date fields, including the shared one-time form, use the iOS-safe picker',()=>{
   const component=readFileSync(new URL('../src/components/DateField.vue',import.meta.url),'utf8')
   assert.match(component,/type="date"/)
   assert.match(component,/:value="modelValue \?\? ''"/)
@@ -74,6 +74,7 @@ test('all 31 date fields render inside the shared iOS-safe date control',()=>{
     '../src/components/LifePanel.vue',
     '../src/components/LifeItemEditor.vue',
     '../src/components/PlanCreator.vue',
+    '../src/components/OneTimeTaskFields.vue',
     '../src/components/FinancePanel.vue',
     '../src/components/ProfileEditor.vue',
     '../src/components/PetHealthPanel.vue',
