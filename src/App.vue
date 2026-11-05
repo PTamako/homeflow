@@ -92,9 +92,9 @@ function navigateTab(value:typeof tab.value){
   }
   tab.value=value
 }
-const authMode=ref<'login'|'bootstrap'|'join'>('login'),initialized=ref(true),loading=ref(false)
+const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
-const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref('')
+const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref('')
 const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref(''),taskCareType=ref('')
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
@@ -259,6 +259,15 @@ async function submitAuth(){
     } else if(authMode.value==='join'){
       const proof=await registerPassword(password.value)
       await api('/auth/join','POST',{...details,...proof,invitationCode:invite.value})
+    } else if(authMode.value==='recover'){
+      if(!/^[a-f0-9]{32}$/i.test(recoveryCode.value.trim()))throw Error('恢复码应为32位字符')
+      const fresh=await registerPassword(password.value)
+      await api('/auth/recover','POST',{loginName:login.value,recoveryCode:recoveryCode.value.trim().toLowerCase(),
+        newPasswordProof:fresh.passwordProof,newPasswordSalt:fresh.passwordSalt,
+        newPasswordRounds:fresh.passwordRounds})
+      authMode.value='login';password.value='';recoveryCode.value=''
+      notify('密码重置成功，请使用新密码登录')
+      return
     } else {
       const proof=await loginPassword(login.value,password.value)
       await api('/auth/login','POST',{loginName:login.value,...proof})
@@ -509,25 +518,29 @@ onBeforeUnmount(()=>{
     <main v-else-if="!user" class="auth-content">
       <div class="eyebrow">OUR LITTLE HOME</div><h1>欢迎回家 ♡</h1><p class="lead">家人的共享生活，以及自己的小秘密。</p>
       <form class="panel auth-form" @submit.prevent="submitAuth">
-        <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':'登录 HomeFlow' }}</h2>
+        <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':authMode==='recover'?'恢复账号':'登录 HomeFlow' }}</h2>
         <p v-if="authMode==='bootstrap'&&bootstrapIssue==='missing'" role="alert" class="error">生产 Worker 中尚未找到 HOMEFLOW_BOOTSTRAP_SECRET，请在 Cloudflare 设置至少 32 位的加密 Secret。</p>
         <p v-if="authMode==='bootstrap'&&bootstrapIssue==='too_short'" role="alert" class="error">Cloudflare Secret 已存在，但长度不足 32 字符。请在生产 Worker 的 Variables and Secrets 中更新密钥值。</p>
         <label>登录账号（邮箱或用户名）
           <input v-model.trim="login" required maxlength="254" autocomplete="username" autocapitalize="none"
             spellcheck="false" placeholder="例如 name@example.com"/></label>
         <p class="hint">也可使用 3～36 位英文用户名。邮箱目前仅作为登录账号，不会发送验证邮件。</p>
-        <label v-if="authMode!=='login'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
-        <label>密码<input v-model="password" required type="password" minlength="12" maxlength="128" autocomplete="current-password" placeholder="12～128 位"/></label>
+        <label v-if="authMode==='bootstrap'||authMode==='join'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
+        <label>{{ authMode==='recover'?'设置新密码':'密码' }}<input v-model="password" required type="password" minlength="12" maxlength="128"
+          :autocomplete="authMode==='recover'?'new-password':'current-password'" placeholder="12～128 位"/></label>
+        <label v-if="authMode==='recover'">一次性恢复码
+          <input v-model.trim="recoveryCode" required maxlength="32" autocomplete="off" placeholder="32位恢复码"/></label>
         <template v-if="authMode==='bootstrap'">
           <label>家庭名称<input v-model="householdName" maxlength="60" /></label>
           <label>家庭启动密钥<input v-model="bootstrapSecret" type="password" autocomplete="off" required placeholder="Cloudflare Worker Secret"/></label>
         </template>
         <label v-if="authMode==='join'">家庭邀请码<input v-model="invite" required maxlength="64" placeholder="家人提供的一次性代码"/></label>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
-        <button class="primary" :disabled="loading">{{ loading?'正在处理…':authMode==='login'?'登录':authMode==='join'?'加入家庭':'创建家庭' }}</button>
+        <button class="primary" :disabled="loading">{{ loading?'正在处理…':authMode==='login'?'登录':authMode==='join'?'加入家庭':authMode==='recover'?'重置密码':'创建家庭' }}</button>
         <div class="auth-links">
           <button type="button" class="text-button" @click="authMode='login';error=''">已有账号？登录</button>
           <button v-if="initialized" type="button" class="text-button" @click="authMode='join';error=''">用邀请码加入</button>
+          <button v-if="initialized" type="button" class="text-button" @click="authMode='recover';error=''">忘记密码？使用恢复码</button>
           <button v-else type="button" class="text-button" @click="authMode='bootstrap';error=''">首次初始化</button>
         </div>
       </form>

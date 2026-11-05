@@ -29,7 +29,7 @@ export default {
       // Always check the physical database identity before accessing any private records.
       if(!await verifiedDatabase(env))return json({error:'environment_or_database_not_ready'},503)
       try{
-        const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join']
+        const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
         const requiresLogin=!path.startsWith('/api/auth/')
         if(requiresLogin&&!session)return json({error:'not_authenticated'},401)
