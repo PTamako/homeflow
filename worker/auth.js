@@ -127,6 +127,45 @@ export async function authRoute(request,env,path,session) {
     return json({salt:supported?user.password_salt.slice(3):randomToken().slice(0,32),
       rounds:100000,protocol:'pbkdf2-sha256-client-v1'})
   }
+  if(path==='/api/auth/recover' && request.method==='POST'){
+    const body=await readBody(request)
+    const login=String(body?.loginName||'').trim().toLowerCase()
+    const code=String(body?.recoveryCode||'').trim().toLowerCase()
+    if(!isValidLogin(login)||!/^[a-f0-9]{32}$/.test(code)||
+       !/^[a-f0-9]{32}$/.test(body?.newPasswordSalt||'')||
+       !/^[a-f0-9]{64}$/.test(body?.newPasswordProof||'')||
+       body?.newPasswordRounds!==100000)return malformed()
+    const {key,blocked}=await limiter(db,login,request)
+    if(blocked)return json({error:'too_many_attempts'},429)
+    const user=await db.prepare(`SELECT id,password_verifier FROM users
+      WHERE login_name=?1 AND disabled_at IS NULL`).bind(login).first()
+    const hashed=await sha256((user?.id||'unknown')+'|'+code)
+    const found=user?await db.prepare(`SELECT code_hash FROM account_recovery_codes
+      WHERE user_id=?1 AND code_hash=?2 AND used_at IS NULL`).bind(user.id,hashed).first():null
+    if(!found){
+      await recordFailure(db,key)
+      return json({error:'invalid_credentials'},401)
+    }
+    const newVerifier=await sha256(body.newPasswordProof),stamp=iso()
+    const changes=await db.batch([
+      db.prepare(`UPDATE users SET password_salt=?1,password_verifier=?2,password_rounds=100000
+        WHERE id=?3 AND password_verifier=?4 AND disabled_at IS NULL
+        AND EXISTS(SELECT 1 FROM account_recovery_codes WHERE user_id=?3
+           AND code_hash=?5 AND used_at IS NULL)`)
+        .bind('c1:'+body.newPasswordSalt,newVerifier,user.id,user.password_verifier,hashed),
+      db.prepare(`UPDATE account_recovery_codes SET used_at=?1
+        WHERE user_id=?2 AND code_hash=?3 AND used_at IS NULL
+        AND EXISTS(SELECT 1 FROM users WHERE id=?2 AND password_verifier=?4)`)
+        .bind(stamp,user.id,hashed,newVerifier),
+      db.prepare(`DELETE FROM sessions WHERE user_id=?1
+        AND EXISTS(SELECT 1 FROM users WHERE id=?1 AND password_verifier=?2)`)
+        .bind(user.id,newVerifier)
+    ])
+    if(changes[0]?.meta?.changes!==1||changes[1]?.meta?.changes!==1)
+      return json({error:'recovery_conflict'},409)
+    await db.prepare('DELETE FROM login_limits WHERE key=?1').bind(key).run()
+    return json({ok:true,reloginRequired:true})
+  }
   if(path==='/api/auth/login' && request.method==='POST') {
     const body=await readBody(request)
     const login=String(body?.loginName||'').trim().toLowerCase()
@@ -146,6 +185,29 @@ export async function authRoute(request,env,path,session) {
     }
     await db.prepare('DELETE FROM login_limits WHERE key=?1').bind(key).run()
     return json({ok:true},200,{'set-cookie':await createSession(db,user.id)})
+  }
+  if(path==='/api/auth/recovery-codes' && request.method==='POST'){
+    if(!session)return json({error:'not_authenticated'},401)
+    const body=await readBody(request)
+    if(!/^[a-f0-9]{64}$/.test(body?.currentPasswordProof||''))return malformed()
+    const {key,blocked}=await limiter(db,session.login_name,request)
+    if(blocked)return json({error:'too_many_attempts'},429)
+    const user=await db.prepare('SELECT password_verifier,password_rounds FROM users WHERE id=?1 AND disabled_at IS NULL')
+      .bind(session.user_id).first()
+    if(!user||Number(user.password_rounds)!==100000||
+       !constantEqualHex(await sha256(body.currentPasswordProof),user.password_verifier)){
+      await recordFailure(db,key)
+      return json({error:'invalid_credentials'},401)
+    }
+    const codes=Array.from({length:5},()=>randomToken().slice(0,32))
+    const hashes=await Promise.all(codes.map(code=>sha256(session.user_id+'|'+code)))
+    await db.batch([
+      db.prepare('DELETE FROM account_recovery_codes WHERE user_id=?1').bind(session.user_id),
+      ...hashes.map(hash=>db.prepare('INSERT INTO account_recovery_codes(user_id,code_hash) VALUES(?1,?2)')
+        .bind(session.user_id,hash))
+    ])
+    await db.prepare('DELETE FROM login_limits WHERE key=?1').bind(key).run()
+    return json({codes,onlyShownOnce:true})
   }
   if(path==='/api/auth/change-password' && request.method==='POST'){
     if(!session)return json({error:'not_authenticated'},401)

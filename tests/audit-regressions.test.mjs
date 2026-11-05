@@ -21,7 +21,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql',
   '0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_finance_target_settings.sql',
   '0009_routine_pet_care.sql','0010_task_pet_care.sql','0011_unified_plan_hub.sql',
-  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql']
+  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -303,5 +303,39 @@ test('unscheduled tasks are paged on server and excluded from Today',async()=>{
   const body=await r.json()
   assert.equal(body.items[0].id,task)
   assert.match(readFileSync(new URL('../src/App.vue',import.meta.url),'utf8'),/!!t\.dueOn&&t\.dueOn<=now/)
+ }finally{sqlite.close()}
+})
+
+test('one-time account recovery codes are hashed, consumed and revoke sessions',async()=>{
+ const {sqlite,db}=database()
+ const oldProof='a'.repeat(64),freshProof='b'.repeat(64)
+ const signed={...session,login_name:'owner'}
+ try{
+  sqlite.prepare("UPDATE users SET password_salt=?,password_verifier=?,password_rounds=100000 WHERE id='u1'")
+    .run('c1:'+'1'.repeat(32),await sha256(oldProof))
+  const post=async(path,body,who=null)=>{
+   const r=await authRoute(new Request('https://homeflow.test'+path,{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify(body)}),{DB:db},path,who)
+   return {status:r.status,data:await r.json()}
+  }
+  const bad=await post('/api/auth/recovery-codes',{currentPasswordProof:'f'.repeat(64)},signed)
+  assert.equal(bad.status,401)
+  const issued=await post('/api/auth/recovery-codes',{currentPasswordProof:oldProof},signed)
+  assert.equal(issued.status,200)
+  assert.equal(issued.data.codes.length,5)
+  const code=issued.data.codes[0]
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM account_recovery_codes').get().n,5)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM account_recovery_codes WHERE code_hash=?').get(code).n,0)
+  sqlite.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)')
+    .run('d'.repeat(64),'u1',Date.now()+86400000)
+  const payload={loginName:'owner',recoveryCode:code,newPasswordSalt:'2'.repeat(32),
+    newPasswordProof:freshProof,newPasswordRounds:100000}
+  assert.equal((await post('/api/auth/recover',{...payload,recoveryCode:'f'.repeat(32)})).status,401)
+  assert.equal((await post('/api/auth/recover',payload)).status,200)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sessions').get().n,0)
+  assert.equal(sqlite.prepare("SELECT password_verifier FROM users WHERE id='u1'").get().password_verifier,await sha256(freshProof))
+  assert.equal((await post('/api/auth/recover',payload)).status,401)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM account_recovery_codes WHERE used_at IS NOT NULL").get().n,1)
  }finally{sqlite.close()}
 })
