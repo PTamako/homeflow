@@ -37,6 +37,37 @@ async function validateRefs(db,session,data) {
 }
 export async function tasksRoute(request,db,path,session) {
   const household=session.household_id,who=session.user_id
+  if(path==='/api/tasks/trash' && request.method==='GET'){
+    const params=new URL(request.url).searchParams
+    const limit=params.has('limit')?Number(params.get('limit')):5
+    const raw=params.get('cursor')||''
+    if(!Number.isInteger(limit)||limit<1||limit>30||raw.length>120)
+      return json({error:'invalid_input'},400)
+    const args=[household,who],clauses=['household_id=?1','creator_user_id=?2','deleted_at IS NOT NULL']
+    if(raw){
+      const split=raw.lastIndexOf('|'),time=raw.slice(0,split),id=raw.slice(split+1)
+      if(split<10||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(time)||
+        !/^[a-f0-9-]{36}$/i.test(id))return json({error:'invalid_cursor'},400)
+      clauses.push('(deleted_at<?3 OR (deleted_at=?4 AND id<?5))')
+      args.push(time,time,id)
+    }
+    const sql='SELECT id,title,deleted_at AS deletedAt,due_on AS dueOn '+
+      'FROM tasks WHERE '+clauses.join(' AND ')+
+      ' ORDER BY deleted_at DESC,id DESC LIMIT ?'+(args.length+1)
+    const {results}=await db.prepare(sql).bind(...args,limit+1).all()
+    const all=results||[],items=all.slice(0,limit),last=items.at(-1)
+    return json({items,nextCursor:all.length>limit&&last?last.deletedAt+'|'+last.id:null})
+  }
+  const restore=path.match(/^\/api\/tasks\/([a-f0-9-]{36})\/restore$/i)
+  if(restore){
+    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    const stamp=iso()
+    const result=await db.prepare('UPDATE tasks SET deleted_at=NULL,updated_at=?1 '+
+      'WHERE id=?2 AND household_id=?3 AND creator_user_id=?4 AND deleted_at IS NOT NULL')
+      .bind(stamp,restore[1],household,who).run()
+    if(!result.meta?.changes)return json({error:'not_found'},404)
+    return json({ok:true,restored:true})
+  }
   if(path==='/api/tasks' && request.method==='GET'){
     // Plans and history use bounded keyset pages; no COUNT(*) or deep OFFSET scans.
     const filters=listFilters(request.url)

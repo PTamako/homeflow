@@ -355,3 +355,26 @@ test('exact task detail returns owner data but no private data to other accounts
   assert.equal(other.status,404)
  }finally{sqlite.close()}
 })
+
+test('soft-deleted task recycling is five-row keyed and creator-only',async()=>{
+ const {db,sqlite}=database()
+ try{
+  const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,deleted_at) VALUES(?, 'primary','u1','household',?,?)")
+  for(let i=0;i<7;i++)insert.run('ffff'+String(i).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Deleted '+i,'2026-11-05T10:00:'+String(i).padStart(2,'0')+'.000Z')
+  const request=async(path,method='GET',who=session)=>{
+   const r=await tasksRoute(new Request('https://homeflow.test'+path,{method}),db,path,who)
+   return {status:r.status,body:await r.json()}
+  }
+  const first=await request('/api/tasks/trash?limit=5')
+  assert.equal(first.status,200)
+  assert.equal(first.body.items.length,5)
+  assert.ok(first.body.nextCursor)
+  const second=await request('/api/tasks/trash?limit=5&cursor='+encodeURIComponent(first.body.nextCursor))
+  assert.equal(second.body.items.length,2)
+  const target=first.body.items[0].id
+  assert.equal((await request('/api/tasks/'+target+'/restore','POST',{...session,user_id:'someone-else'})).status,404)
+  assert.equal((await request('/api/tasks/'+target+'/restore','POST')).status,200)
+  assert.equal(sqlite.prepare('SELECT deleted_at FROM tasks WHERE id=?').get(target).deleted_at,null)
+  assert.equal((await request('/api/tasks/'+target+'/restore','POST')).status,404)
+ }finally{sqlite.close()}
+})
