@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,ref} from 'vue'
-import AppIcon from './AppIcon.vue'
 import {activeSwipeId} from '../swipe-state'
 
 // One open row across the app, including different sections and pages.
@@ -87,9 +86,14 @@ onBeforeUnmount(close)
     }" @click.capture="tapContent">
       <slot/>
     </div>
-    <button v-if="showTrigger&&!opened" type="button" class="swipe-trigger" :aria-label="'显示'+editLabel+'和'+(allowDelete?deleteLabel:'')"
-      :aria-expanded="opened" @click.stop="toggle">
-      <AppIcon name="ellipsis" :size="19"/>
+    <button v-if="showTrigger&&!opened" type="button" class="swipe-trigger"
+      :aria-label="'左滑或点击展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'和':'')+(allowDelete?deleteLabel:'')"
+      :aria-expanded="opened" :title="'左滑'+(allowEdit?editLabel:'')+(allowDelete?'/'+deleteLabel:'')"
+      @click.stop="toggle">
+      <span class="swipe-stripes" aria-hidden="true">
+        <span v-if="allowEdit" class="stripe-edit"></span>
+        <span v-if="allowDelete" class="stripe-delete"></span>
+      </span>
     </button>
   </div>
   <slot v-else/>
@@ -109,8 +113,13 @@ onBeforeUnmount(close)
 .swipe-actions .edit{background:#43866a}
 .swipe-actions .delete{background:#d76178}
 .swipe-trigger{position:absolute;z-index:2;right:0;top:50%;transform:translateY(-50%);
-  height:34px;width:30px;display:grid;place-items:center;background:transparent;
-  border:0;color:#829c8c;border-radius:8px}
+  height:54px;width:30px;display:grid;place-items:center;background:transparent;
+  border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
+.swipe-stripes{display:flex;align-items:center;justify-content:center;gap:3px;width:100%;height:100%}
+.swipe-stripes span{display:block;width:5px;height:37px;border-radius:4px}
+.stripe-edit{background:#558bc9}
+.stripe-delete{background:#d76178}
+.swipe-trigger:active .swipe-stripes{opacity:.75}
 .swipe-trigger:focus-visible,.swipe-actions button:focus-visible{
   outline:2px solid #244f3a;outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){.swipe-content{transition:none}}
