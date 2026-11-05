@@ -282,6 +282,16 @@ async function sendNow(env,session,now=Date.now()){
   if(!sent&&!failed)return json({error:'push_rate_limited'},429)
   return json({ok:sent>0,sent,failed,reminderCount:events.length},sent>0?200:502)
 }
+// A scheduled notice must keep the same deep-link ID across Cron retries.
+export async function scheduledNotificationId(recipientId,day,logicalKey){
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(recipientId+'|'+day+'|'+logicalKey)))
+  const b=digest.slice(0,16)
+  b[6]=(b[6]&15)|80
+  b[8]=(b[8]&63)|128
+  const hex=[...b].map(x=>x.toString(16).padStart(2,'0')).join('')
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20)
+}
 export async function runPushSchedule(env,now=Date.now()){
   const pushConfigured=vapidReady(env)
   const db=env.DB
@@ -294,7 +304,7 @@ export async function runPushSchedule(env,now=Date.now()){
   // Every authenticated member receives a daily in-app notice, regardless of Push permissions.
   // Reuse each member's reminder batch for subscribed devices.
   const remindersCache=new Map()
-  const notificationIds=new Map(),recordedKeys=new Set()
+  const notificationIds=new Map(),scheduledNotices=new Map(),deliveryTotals=new Map()
   const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
     FROM household_members m JOIN users u ON u.id=m.user_id
     WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 20`).all()
@@ -304,24 +314,21 @@ export async function runPushSchedule(env,now=Date.now()){
     if(!response.ok)continue
     const data=await response.json()
     remindersCache.set(member.user_id,data)
-    for(const event of (data.items||[]).slice(0,20)){
+    for(const event of (data.items||[]).slice(0,100)){
       const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
       const logicalKey=member.user_id+':'+key
-      const notificationId=crypto.randomUUID()
+      const notificationId=await scheduledNotificationId(member.user_id,day,logicalKey)
       notificationIds.set(logicalKey,notificationId)
       const message=event.kind==='anniversary'?'家庭重要日子提醒':
         event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
         event.kind==='routine'?'今天的定期事项':'待办事项到期'
-      await saveNotification(db,{
+      scheduledNotices.set(logicalKey,{
         id:notificationId,householdId:member.household_id,recipientId:member.user_id,
         kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
-        sourceId:event.id,title:event.title,message,localDay:day,
-        sentDevices:0,failedDevices:0,dedupeKey:'scheduled:'+key
+        sourceId:event.id,title:event.title,message,localDay:day,dedupeKey:'scheduled:'+key
       })
-      inbox++
     }
   }
-  if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox}
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     if(!remindersCache.has(sub.user_id))continue
@@ -333,7 +340,7 @@ export async function runPushSchedule(env,now=Date.now()){
     for(const event of events){
       const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
       const logicalKey=sub.user_id+':'+key
-      if(!notificationIds.has(logicalKey))notificationIds.set(logicalKey,crypto.randomUUID())
+      if(!notificationIds.has(logicalKey))continue
       const notificationId=notificationIds.get(logicalKey)
       // Single atomic claim: sent/gone deliveries never replay, while stale
       // failed/claimed attempts may be reclaimed without extra SELECTs.
@@ -369,18 +376,10 @@ export async function runPushSchedule(env,now=Date.now()){
         await new Promise(resolve=>setTimeout(resolve,500))
       }
       if(result==='sent')sent++;else failed++
-      if(result==='sent'&&!recordedKeys.has(logicalKey)){
-        recordedKeys.add(logicalKey)
-        const message=event.kind==='anniversary'?'家庭重要日子提醒':
-          event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
-          event.kind==='routine'?'今天的定期事项':'待办事项到期'
-        try{await saveNotification(db,{
-          id:notificationId,householdId:sub.household_id,recipientId:sub.user_id,
-          kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
-          sourceId:event.id,title:event.title,message,localDay:day,
-          sentDevices:1,failedDevices:0,dedupeKey:'scheduled:'+key
-        })}catch{console.warn('homeflow_scheduled_notification_record_failed')}
-      }
+      const totals=deliveryTotals.get(logicalKey)||{sent:0,failed:0}
+      if(result==='sent')totals.sent++
+      else totals.failed++
+      deliveryTotals.set(logicalKey,totals)
       await db.prepare(`UPDATE notification_deliveries
         SET status=?1,status_code=?2,attempts=MIN(3,attempts+?6),
           updated_at=CURRENT_TIMESTAMP
@@ -391,6 +390,12 @@ export async function runPushSchedule(env,now=Date.now()){
         break
       }
     }
+  }
+  // Exactly one inbox write per logical reminder, independent of Push success.
+  for(const [logicalKey,notice] of scheduledNotices){
+    const totals=deliveryTotals.get(logicalKey)||{sent:0,failed:0}
+    await saveNotification(db,{...notice,sentDevices:totals.sent,failedDevices:totals.failed})
+    inbox++
   }
   return {checked,sent,failed,inbox}
 }
