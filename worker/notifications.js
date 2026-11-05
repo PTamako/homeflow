@@ -17,7 +17,8 @@ export async function saveNotification(db,item){
       delivery_status,sent_devices,failed_devices,local_day,dedupe_key)
     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
     ON CONFLICT(recipient_user_id,local_day,dedupe_key) DO UPDATE SET
-      delivery_status=excluded.delivery_status,
+      delivery_status=CASE WHEN notification_inbox.sent_devices>0 AND excluded.sent_devices=0
+        THEN notification_inbox.delivery_status ELSE excluded.delivery_status END,
       sent_devices=MAX(notification_inbox.sent_devices,excluded.sent_devices),
       failed_devices=excluded.failed_devices`)
     .bind(item.id,item.householdId,item.senderId||null,item.recipientId,
@@ -54,7 +55,6 @@ export async function notificationsRoute(request,db,path,session){
        JOIN users r ON r.id=n.recipient_user_id`
     const sql=`${select}
        WHERE n.household_id=?1 AND n.local_day=?2 AND ${column}=?3
-       ${view==='received'?'AND n.sent_devices>0':''}
        ${before?'AND (n.created_at<?4 OR (n.created_at=?4 AND n.id<?5))':''}
        ORDER BY n.created_at DESC,n.id DESC LIMIT 6`
     const query=db.prepare(sql).bind(...(before?
@@ -62,12 +62,12 @@ export async function notificationsRoute(request,db,path,session){
       [session.household_id,day,session.user_id]))
     const unread=db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
-        AND read_at IS NULL AND sent_devices>0`)
+        AND read_at IS NULL`)
       .bind(session.household_id,session.user_id,day)
     // The extra lookup runs only for a clicked push deep-link, not regular page loads.
     const focused=focus?db.prepare(`${select}
       WHERE n.id=?1 AND n.household_id=?2 AND n.recipient_user_id=?3
-        AND n.local_day=?4 AND n.sent_devices>0 LIMIT 1`)
+        AND n.local_day=?4 LIMIT 1`)
       .bind(focus,session.household_id,session.user_id,day):null
     const [result,summary,focusResult]=await db.batch(focused?[query,unread,focused]:[query,unread])
     const rows=result.results||[],items=rows.slice(0,PAGE_SIZE)
@@ -82,12 +82,12 @@ export async function notificationsRoute(request,db,path,session){
     const result=await db.prepare(`UPDATE notification_inbox
       SET read_at=COALESCE(read_at,CURRENT_TIMESTAMP)
       WHERE id=?1 AND household_id=?2 AND recipient_user_id=?3
-      AND local_day=?4 AND sent_devices>0`)
+      AND local_day=?4`)
       .bind(match[1],session.household_id,session.user_id,day).run()
     if(!result.meta?.changes)return json({error:'not_found'},404)
     const count=await db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
-        AND read_at IS NULL AND sent_devices>0`)
+        AND read_at IS NULL`)
       .bind(session.household_id,session.user_id,day).first()
     return json({ok:true,unreadCount:Number(count?.count||0)})
   }

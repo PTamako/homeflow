@@ -56,7 +56,7 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
    throw Error(hints[data.error]||'任务推送失败，请稍后重试')
   }
   pushTarget.value='';pushMessage.value=''
-  notify('已通知处理人（'+data.sent+' 台设备）')
+  notify(data.inAppOnly?'已发送到处理人的今日通知':'已通知处理人（'+data.sent+' 台设备）')
  }catch(e){error.value=(e as Error).message}
  finally{pushBusyId.value=''}
 }
@@ -585,7 +585,7 @@ async function fetchMode(){
       const selected=planType.value
       const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
-      const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
+      const goalArchivePath=props.isOwner&&planScope.value==='history'&&['all','goal'].includes(selected)?
         historicalGoalPath():null
       const pages=await Promise.all([...paths.map(path=>api(path)),
         ...(goalArchivePath?[api(goalArchivePath)]:[])])

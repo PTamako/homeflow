@@ -95,6 +95,8 @@ export async function goalPeriodsRoute(request,env,path,session){
   const goal=await db.prepare(`SELECT * FROM goals WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL
     AND (visibility='household' OR created_by=?3)`).bind(match[1],h,u).first()
   if(!goal)return json({error:'not_found'},404)
+  // History exposes net-cashflow estimates; do not bypass the owner-only ledger boundary.
+  if(session.role!=='owner')return json({error:'forbidden'},403)
   if(!['monthly','yearly'].includes(goal.goal_mode))
     return json({error:'not_recurring'},409)
   const today=tokyoDay()

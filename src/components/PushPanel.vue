@@ -79,7 +79,7 @@ async function sendFamily(){
     throw Error(reasons[data.error]||'发送失败，请稍后重试')
   }
   familyMessage.value='';familyFormOpen.value=false
-  notify('已发送给 '+recipientName+'（'+data.sent+' 台设备）')
+  notify(data.inAppOnly?'已发送到 '+recipientName+' 的今日通知':'已通知 '+recipientName+'（'+data.sent+' 台设备）')
  }catch(e){familyError.value=(e as Error).message}
  finally{familyBusy.value=false}
 }
@@ -120,7 +120,7 @@ onMounted(discover)
       <label>消息
         <textarea v-model="familyMessage" maxlength="140" required rows="2" placeholder="输入消息内容"/>
       </label>
-      <button class="push-toggle" type="submit" :disabled="familyBusy||!configured||!recipientId||!familyMessage.trim()">
+      <button class="push-toggle" type="submit" :disabled="familyBusy||!recipientId||!familyMessage.trim()">
         {{ familyBusy?'发送中…':'立即发送' }}
       </button>
       <small v-if="familyError" role="alert">{{ familyError }}</small>

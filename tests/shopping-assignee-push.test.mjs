@@ -32,12 +32,12 @@ test('shopping push targets only the validated assigned family account',async()=
  const log=[]
  const db={prepare(sql){return {bind(...args){log.push({sql,args});return {
   first:async()=>({id:shoppingId,title:'牛奶',dueOn:null,recipientId:recipient}),
-  all:async()=>({results:[]})
+  all:async()=>({results:[]}),run:async()=>({meta:{changes:1}})
  }}}}}
  const response=await pushRoute(req({message:'下班路上买牛奶'}),env(db),'/api/push/send-task',session)
- assert.equal(response.status,409)
- assert.equal((await response.json()).error,'recipient_not_subscribed')
- assert.equal(log.length,2)
+ assert.equal(response.status,200)
+ assert.equal((await response.json()).inAppOnly,true)
+ assert.equal(log.length,3)
  assert.match(log[1].sql,/FROM push_subscriptions WHERE household_id=\?1 AND user_id=\?2 LIMIT 10/)
  assert.deepEqual(log[1].args,['my-house',recipient])
 })

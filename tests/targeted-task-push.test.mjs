@@ -32,12 +32,12 @@ test('send-task sends only to the assigned recipient account, not the sender',as
  const db={prepare(sql){return {bind(...args){
     queries.push({sql,args})
     return {first:async()=>({id:TASK,title:'给豆沙喂药',dueOn:'2026-11-06',recipientId:B}),
-      all:async()=>({results:[]})}
+      all:async()=>({results:[]}),run:async()=>({meta:{changes:1}})}
  }}}}
  const r=await pushRoute(req('send-task',{kind:'task',id:TASK}),env(db),'/api/push/send-task',session)
- assert.equal(r.status,409)
- assert.equal((await r.json()).error,'recipient_not_subscribed')
- assert.equal(queries.length,2)
+ assert.equal(r.status,200)
+ assert.equal((await r.json()).inAppOnly,true)
+ assert.equal(queries.length,3)
  assert.match(queries[1].sql,/FROM push_subscriptions WHERE household_id=\?1 AND user_id=\?2 LIMIT 10/)
  assert.deepEqual(queries[1].args,['house-1',B])
 })

@@ -53,6 +53,8 @@ export function candidateGoalPeriods(goals,options,today=tokyoDay()){
 }
 export async function goalPeriodArchiveRoute(request,db,session){
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
+  // Period snapshots contain estimated household cash flow, which is owner-only.
+  if(session.role!=='owner')return json({error:'forbidden'},403)
   const opts=archiveFilter(request.url)
   if(!opts)return json({error:'invalid_filters'},400)
   const {results:goals}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount

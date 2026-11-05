@@ -27,8 +27,8 @@ function timeOf(value:string|null){
  }).format(new Date(n)):''
 }
 function detail(item:Notice){
- if(item.deliveryStatus==='failed')return '发送失败'
  if(item.readAt)return '已读 '+timeOf(item.readAt)
+ if(view.value==='sent'&&item.sentDevices===0)return '仅应用内'
  return view.value==='sent'?'对方未读':'未读'
 }
 // Resolve notification participants from the household's existing linked profiles.
@@ -74,7 +74,7 @@ async function load(reset=true,focusId=''){
  }
 }
 async function markRead(item:Notice){
- if(item.readAt||item.deliveryStatus==='failed'||item.recipientUserId!==props.userId||reading.value)return
+ if(item.readAt||item.recipientUserId!==props.userId||reading.value)return
  reading.value=item.id
  try{
   const r=await fetch('/api/notifications/'+encodeURIComponent(item.id)+'/read',{
@@ -166,7 +166,7 @@ defineExpose({refresh:()=>load(true)})
     <div class="notice-bottom">
      <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}</small>
      <div class="notice-item-actions">
-      <button v-if="view==='received'&&!item.readAt&&item.deliveryStatus!=='failed'"
+      <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
       <button v-if="item.sourceId&&['task','routine','shopping'].includes(item.kind)"
         type="button" @click="open(item)">查看计划</button>
