@@ -21,3 +21,12 @@ test('search filters fit narrow phone screens without clipping', () => {
 test('long result titles wrap rather than overflow', () => {
   assert.match(style, /\.search-results button\{[^}]*overflow-wrap:anywhere;/)
 })
+
+test('closing search cancels and unlocks any in-flight query', () => {
+ assert.match(component, /function cancelPending\(\)/)
+ assert.match(component, /activeRequest\?\.abort\(\)/)
+ assert.match(component, /busy\.value=false/)
+ assert.match(component, /signal:controller\.signal/)
+ assert.match(component, /function toggle\(\)\{open\.value=!open\.value;if\(!open\.value\)cancelPending\(\)/)
+ assert.match(component, /if\(token===revision&&!controller\.signal\.aborted\)/)
+})

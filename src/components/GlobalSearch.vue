@@ -7,26 +7,37 @@ const rows=ref<Result[]>([]),cursor=ref<string|null>(null),busy=ref(false),error
 const labels:Record<string,string>={task:'任务',routine:'定期',anniversary:'纪念日',
  shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行',memory:'时光轴'}
 let revision=0
+let activeRequest:AbortController|null=null
+function cancelPending(){
+ revision++
+ activeRequest?.abort()
+ activeRequest=null
+ busy.value=false
+ error.value=''
+}
+function resetFilters(){cancelPending();rows.value=[];cursor.value=null}
 async function load(more=false){
  if(busy.value||!keyword.value.trim())return
  const token=++revision
+ const controller=new AbortController()
+ activeRequest=controller
  busy.value=true;error.value=''
  try{
   const query=new URLSearchParams({q:keyword.value.trim(),kind:kind.value})
   if(year.value){query.set('year',year.value);if(month.value)query.set('month',month.value)}
   if(more&&cursor.value)query.set('cursor',cursor.value)
-  const response=await fetch('/api/search?'+query,{credentials:'same-origin',cache:'no-store'})
+  const response=await fetch('/api/search?'+query,{credentials:'same-origin',cache:'no-store',signal:controller.signal})
   const data=await response.json()
   if(!response.ok)throw Error(data.error||'搜索失败')
   if(token!==revision)return
   rows.value=more?[...rows.value,...data.items]:data.items
   cursor.value=data.nextCursor||null
- }catch(e){error.value=(e as Error).message}
- finally{if(token===revision)busy.value=false}
+ }catch(e){if(token===revision&&!controller.signal.aborted)error.value=(e as Error).message}
+ finally{if(activeRequest===controller)activeRequest=null;if(token===revision)busy.value=false}
 }
-function yearChanged(){if(!year.value)month.value=''}
-function toggle(){open.value=!open.value;if(!open.value){revision++;error.value=''}}
-function selected(row:Result){emit('select',row);open.value=false;revision++}
+function yearChanged(){if(!year.value)month.value='';resetFilters()}
+function toggle(){open.value=!open.value;if(!open.value)cancelPending()}
+function selected(row:Result){emit('select',row);open.value=false;cancelPending()}
 const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 </script>
 <template>
@@ -36,10 +47,10 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
  <section v-if="open" class="search-panel" role="dialog" aria-label="全站搜索">
   <form @submit.prevent="load(false)">
    <label>查找计划、任务、纪念日与回忆
-    <input v-model="keyword" maxlength="60" placeholder="输入关键词" required autocomplete="off"/>
+    <input v-model="keyword" @input="resetFilters" maxlength="60" placeholder="输入关键词" required autocomplete="off"/>
    </label>
    <div class="search-filters">
-    <select v-model="kind" aria-label="搜索类型">
+    <select v-model="kind" @change="resetFilters" aria-label="搜索类型">
      <option value="all">全部类型</option>
      <option v-for="(label,key) in labels" :key="key" :value="key">{{ label }}</option>
     </select>
@@ -47,7 +58,7 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
      <option value="">全部年份</option>
      <option v-for="y in years" :key="y" :value="y">{{ y }}年</option>
     </select>
-    <select v-model="month" aria-label="搜索月份" :disabled="!year">
+    <select v-model="month" @change="resetFilters" aria-label="搜索月份" :disabled="!year">
      <option value="">全年</option>
      <option v-for="m in 12" :key="m" :value="String(m).padStart(2,'0')">{{ m }}月</option>
     </select>
