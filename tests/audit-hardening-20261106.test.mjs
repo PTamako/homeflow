@@ -3,7 +3,7 @@ import test from 'node:test'
 import {todayPlansRoute} from '../worker/plan-today.js'
 import {goalPeriodsRoute} from '../worker/goal-settlements.js'
 import {goalPeriodArchiveRoute} from '../worker/goal-period-archive.js'
-import {pushRoute} from '../worker/webpush.js'
+import {pushRoute,runPushSchedule,scheduledNotificationId} from '../worker/webpush.js'
 import {readFileSync} from 'node:fs'
 
 const actor='11111111-1111-4111-8111-111111111111'
@@ -90,4 +90,40 @@ test('Today sorts merged sources by due date before applying five-row slice',()=
  assert.match(app,/a\.key\.localeCompare\(b\.key\)/)
  assert.match(app,/Number\(a\.done\)-Number\(b\.done\)/)
  assert.match(app,/unifiedToday\.value\.slice\(0,todayVisibleCount\.value\)/)
+})
+
+test('scheduled notice IDs are stable per account, day and reminder key',async()=>{
+ const a=await scheduledNotificationId(actor,'2026-11-06','task:abc:2026-11-06:0')
+ const b=await scheduledNotificationId(actor,'2026-11-06','task:abc:2026-11-06:0')
+ assert.equal(a,b)
+ assert.match(a,/^[0-9a-f-]{36}$/)
+ assert.notEqual(a,await scheduledNotificationId(actor,'2026-11-07','task:abc:2026-11-06:0'))
+ assert.notEqual(a,await scheduledNotificationId(recipient,'2026-11-06','task:abc:2026-11-06:0'))
+})
+
+test('06:00 in-app reminder exists without VAPID or any device subscription',async()=>{
+ const now=Date.parse('2026-11-05T21:00:00.000Z'),day='2026-11-06'
+ const records=[]
+ const db={
+   prepare(sql){return {bind(...args){return {
+     all:async()=>({results:sql.includes('FROM household_members m JOIN users u')
+       ?[{user_id:actor,household_id:'family'}]:[]}),
+     run:async()=>{records.push({sql,args});return {meta:{changes:1}}}
+   }}}},
+   async batch(statements){
+     const rows=Array.from({length:11},()=>({results:[]}))
+     rows[3]={results:[{id:goalId,title:'喂豆沙',due_on:day}]}
+     return rows
+   }
+ }
+ const env={DB:db,APP_ENV:'production'}
+ const first=await runPushSchedule(env,now),second=await runPushSchedule(env,now)
+ assert.equal(first.sent,0)
+ assert.equal(first.inbox,1)
+ assert.equal(second.inbox,1)
+ const notices=records.filter(x=>x.sql.includes('INSERT INTO notification_inbox'))
+ assert.equal(notices.length,2)
+ assert.equal(notices[0].args[0],notices[1].args[0])
+ assert.equal(notices[0].args[3],actor)
+ assert.equal(notices[0].args[11],day)
 })
