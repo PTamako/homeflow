@@ -195,23 +195,11 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .management-page .backup{margin:8px 0}
 @media(max-width:520px){.management-page .panel{padding:15px}}
 
-/* New-todo editor is opened on demand, outside the Today checklist. */
+/* Today add links to the unified Plans creator; no Today modal. */
 .today-task-heading{gap:12px;align-items:center}
 .today-task-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
 .today-add-button{padding:8px 11px;font-size:12px;white-space:nowrap}
-.task-create-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:center;
-  justify-content:center;padding:calc(12px + env(safe-area-inset-top)) 16px
-  calc(12px + env(safe-area-inset-bottom));background:rgba(28,41,33,.48)}
-.task-create-dialog{width:min(100%,460px);max-height:100%;min-width:0;overflow-y:auto;
-  overscroll-behavior:contain;padding:20px;border-radius:20px;background:#fff;
-  box-shadow:0 20px 60px #172d2040}
-.task-create-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.task-create-heading h2{margin:0;font-size:19px}
-.task-create-dialog .task-form{margin-top:16px}
-@media(max-width:520px){
-  .today-task-heading{flex-wrap:wrap}
-  .task-create-dialog{padding:18px}
-}
+@media(max-width:520px){.today-task-heading{flex-wrap:wrap}}
 
 /* Today checklist: filters sit at the top with no redundant section heading
    or global .row-between top margin. Keep existing row dividers. */

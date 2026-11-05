@@ -103,14 +103,15 @@ test('settings recycle bin is demand-loaded and recovery requires confirmation',
  assert.ok(app.includes('recoveryConfirm.value'))
 })
 
-test('Today defaults new tasks to today while clearly offering the undated list',()=>{
+test('Today add opens the unified Plans creation choices, while existing tasks remain in the Today list',()=>{
  const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
- assert.ok(app.includes('newOneTimeTaskDraft(tokyoToday())'))
- assert.ok(app.includes("openPlans('unscheduled')"))
- assert.ok(app.includes('todayTasksUrl()'))
- assert.ok(app.includes('已存入「计划 → 待安排」'))
- assert.ok(life.includes("['unscheduled','shopping','wish','goal','trip']"))
- assert.ok(creator.includes('oneTimeTaskPayload(onceDraft.value,oncePet.value)'))
+ assert.match(app,/@click="openNewTaskInPlans">＋ 新增待办/)
+ assert.match(app,/function openNewTaskInPlans\(\)\{\s+navigateTab\('plans'\)\s+focusPlanType\.value='all'\s+openPlanCreatorOnNavigate\.value=true/)
+ assert.match(app,/:open-plan-creator="openPlanCreatorOnNavigate"/)
+ assert.match(app,/return '\/tasks\?status=all&today='\+date/)
+ assert.match(creator,/oneTimeTaskPayload\(onceDraft\.value,oncePet\.value\)/)
+ assert.match(creator,/<OneTimeTaskFields v-if="form\.repeatType==='once'"/)
+ assert.doesNotMatch(app,/<form class="task-form" @submit\.prevent="addTask"/)
 })
 
 test('undated one-time plan uses shared optional date and returns to pending list',()=>{
@@ -122,38 +123,32 @@ test('undated one-time plan uses shared optional date and returns to pending lis
  assert.match(life,/notify\(unscheduled\?'已添加到待安排'/)
 })
 
-test('both one-off entry points share accessible optional dates and reminder defaults',()=>{
+test('the only one-off creation form is in Plans and shares optional dates and reminders',()=>{
  const fields=readFileSync(new URL('../src/components/OneTimeTaskFields.vue',import.meta.url),'utf8')
  const payload=readFileSync(new URL('../src/one-time-task.ts',import.meta.url),'utf8')
- assert.ok(app.includes('<OneTimeTaskFields ref="newTaskFields" v-model="newTask" :profiles="profiles"/>'))
+ const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
+ assert.match(creator,/<OneTimeTaskFields v-if="form\.repeatType==='once'" v-model="onceDraft"/)
+ assert.doesNotMatch(app,/<OneTimeTaskFields/)
  assert.ok(fields.includes('id="one-time-task-date-label"'))
  assert.ok(fields.includes('<DateField v-model="model.dueOn" aria-labelledby="one-time-task-date-label"/>'))
  assert.ok(fields.includes('aria-label="清空计划日期" @click="model.dueOn=\'\'"'))
  assert.ok(fields.includes('v-if="!model.dueOn"'))
  assert.ok(payload.includes('dueOn:draft.dueOn||null'))
  assert.ok(payload.includes('remindEnabled:!!draft.dueOn&&draft.remindEnabled'))
- assert.ok(app.includes('const unscheduled=!newTask.value.dueOn'))
 })
 
-test('Today new-task dialog reuses the same input component but keeps offline save',()=>{
- const today=app.indexOf('<div class="section-title today-task-heading">')
- const overlay=app.indexOf('<Teleport to="body">',today)
- const form=app.indexOf('<form class="task-form" @submit.prevent="addTask">',overlay)
- const list=app.indexOf('<section class="panel today-checklist-panel">',overlay)
- assert.ok(today>=0&&overlay>today&&form>overlay&&list>form)
- assert.match(app,/const showAddTask=ref\(false\)/)
- assert.match(app,/@click="openAddTask">＋ 新增待办/)
- assert.match(app,/v-if="showAddTask" class="task-create-overlay"/)
- assert.match(app,/role="dialog" aria-modal="true" aria-labelledby="task-create-heading"/)
- assert.match(app,/<OneTimeTaskFields ref="newTaskFields" v-model="newTask" :profiles="profiles"\/>/)
- assert.match(app,/void nextTick\(\(\)=>newTaskFields\.value\?\.focusTitle\(\)\)/)
- assert.match(app,/async function addTask\(\)\{[\s\S]*?pendingTasks.value=await listPending\(user.value.id\)\s+dismissAddTask\(\)/)
- assert.match(app,/watch\(tab,value=>\{\s+clearToast\(\)\s+showAddTask.value=false/)
- assert.match(app,/@click="closeAddTask\(\);openPlans\('unscheduled'\)"/)
- const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
- assert.match(css,/\.task-create-overlay\{position:fixed;inset:0;z-index:100/)
- assert.match(css,/\.task-create-dialog\{width:min\(100%,460px\);max-height:100%/)
- assert.match(app,/function closeAddTask\(\)\{\s+if\(loading.value\)return\s+dismissAddTask\(\)/)
+test('Today add navigates to Plans instead of showing its former modal',()=>{
+ const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
+ const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
+ assert.match(app,/@click="openNewTaskInPlans">＋ 新增待办/)
+ assert.match(app,/function navigateTab\(value:typeof tab\.value\)\{\s+openPlanCreatorOnNavigate\.value=false/)
+ assert.match(app,/function openPlans\(kind:string,id='',periodKey='',done=false\)\{\s+openPlanCreatorOnNavigate\.value=false/)
+ assert.match(life,/:open-on-mount="props.openPlanCreator"/)
+ assert.match(creator,/const opened=ref\(!!props.openOnMount\)/)
+ assert.match(creator,/opened\?'收起新增计划':'＋ 新增计划'/)
+ assert.match(creator,/v-if="opened"/)
+ assert.doesNotMatch(app,/showAddTask|openAddTask|task-create-overlay|task-create-dialog|addTaskTrigger/)
+ assert.doesNotMatch(app,/<Teleport to="body">/)
 })
 
 test('Today checklist starts with compact category tabs and preserves item dividers',()=>{

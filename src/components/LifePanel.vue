@@ -14,7 +14,7 @@ import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean}>()
 const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
@@ -779,7 +779,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
-      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
+      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles" :open-on-mount="props.openPlanCreator"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-view-toolbar" aria-label="计划筛选与状态">
         <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">

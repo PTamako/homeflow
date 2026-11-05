@@ -6,7 +6,7 @@ import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
-const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>}>()
+const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>;openOnMount?:boolean}>()
 const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性、每天、工作日或自定义间隔'},
@@ -15,7 +15,7 @@ const choices=[
  {id:'goal',label:'储值计划',icon:'wallet',description:'目标、期初金额和家計簿收支'},
  {id:'trip',label:'旅行计划',icon:'plane',description:'出行日期、预算和行程'}
 ] as const
-const opened=ref(false),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
+const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
