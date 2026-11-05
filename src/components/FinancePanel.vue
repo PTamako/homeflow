@@ -273,7 +273,6 @@ onMounted(()=>{
 <template>
   <section v-if="owner" class="finance-card">
     <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值计划 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
-    <p class="hint">旅行计划关联实际消费；储值计划可按累计、每月或每年目标计算期间收支差额。调整额按所选期间保存，不修改原账目。</p>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
       家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
@@ -304,7 +303,7 @@ onMounted(()=>{
           <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
           <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
           <small v-if="periodFuture">所选期间还未开始，暂不查询家計簿。</small>
-          <small v-else>此处仅是家計簿「家庭净收支」估算（含期初额和调整额），不代表银行余额，也不能证明这笔钱已专门存入该目标；资产移动不计入。</small>
+          <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
         <label class="adjustment-label">手动调整额（円，可输入正数或负数）
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
@@ -319,7 +318,7 @@ onMounted(()=>{
           <label v-else>选择年份
             <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
               :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
-          <small>本期计算范围：{{ start||'—' }} ～ {{ end||'—' }}；首期从计划开始日期算起。</small>
+          <small>计算期间：{{ start||'—' }} ～ {{ end||'—' }}</small>
         </div>
         <div v-else class="fields">
           <label>起始日期<DateField v-model="start" :min="kind==='goal'?goalStartOn||undefined:undefined" /></label>
@@ -334,16 +333,13 @@ onMounted(()=>{
         </div>
         <div v-if="kind==='goal'" class="goal-completion-panel">
           <p v-if="!recurringGoal&&alreadyCompleted" class="hint">这一次储值已确认完成。</p>
-          <p v-else-if="goalPeriodDue" class="hint">
-            服务器将按「家庭净结余目标」核对真实收支、调整额和期初金额。通过只代表结余估算达标，不代表专用储蓄账户已有这笔钱。
-          </p>
-          <p v-else class="hint">{{ recurringGoal?'本期尚未结束':'储值起始日期尚未到来' }}，暂不能确认。</p>
+          <p v-else-if="!goalPeriodDue" class="hint">{{ recurringGoal?'本期尚未结束':'储值起始日期尚未到来' }}，暂不能确认。</p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"
             @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期（达标或未达标）' }}</button>
           <button v-else type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
             {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销达标确认':'核验达标并完成' }}
           </button>
-          <small class="hint">调整期间或金额后请先保存，再进行核验；不会修改家計簿原始账目。</small>
+          <small class="hint">请先保存调整，再核验。</small>
         </div>
         <template v-if="kind==='trip'">
           <div v-for="row in visibleLinks" :key="row.linkId" class="line">
