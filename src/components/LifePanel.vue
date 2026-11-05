@@ -420,16 +420,17 @@ const routineSubjectIsPet=computed(()=>props.profiles.some(p=>p.id===routineSubj
 watch(routineSubject,id=>{
   routineHealthType.value=props.profiles.some(p=>p.id===id&&p.type==='pet')?'other':''
 })
-const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10))
+const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10)),memoryVisibility=ref<'private'|'household'>('household')
 const planMemoryDraft=ref<null|{
- kind:'wish'|'trip';id:string;title:string;happenedOn:string;story:string
+ kind:'wish'|'trip';id:string;title:string;happenedOn:string;story:string;visibility:'private'|'household';sourceVisibility:'private'|'household'
 }>(null)
 function startPlanMemory(kind:'wish'|'trip',item:Row){
  if(!canEdit(item)||item.status!=='completed')return
  const preferred=kind==='trip'?String(item.end_on||item.endOn||''):''
+ const sourceVisibility=item.visibility==='private'?'private':'household'
  planMemoryDraft.value={
   kind,id:item.id,title:item.title+' · 回忆',
-  happenedOn:preferred&&preferred<=today()?preferred:today(),story:''
+  happenedOn:preferred&&preferred<=today()?preferred:today(),story:'',visibility:sourceVisibility,sourceVisibility
  }
 }
 async function savePlanMemory(){
@@ -439,10 +440,10 @@ async function savePlanMemory(){
  try{
   await api('/memories','POST',{
    title:draft.title,story:draft.story,happenedOn:draft.happenedOn,
-   linkedType:draft.kind,linkedId:draft.id,visibility:'private'
+   linkedType:draft.kind,linkedId:draft.id,visibility:draft.visibility
   })
   planMemoryDraft.value=null
-  notify('回忆已保存到时光轴（仅自己可见）')
+  notify(draft.visibility==='household'?'家庭共享回忆已保存':'私人回忆已保存')
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
@@ -722,7 +723,7 @@ async function addMemory(){
   error.value='';busy.value=true
   try{
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
-      happenedOn:memoryDate.value,visibility:'private'})
+      happenedOn:memoryDate.value,visibility:memoryVisibility.value})
     if(result.id)for(const f of photoFiles.value.slice(0,10)){
       await saveLocalPhoto(props.userId,result.id,f)
       if(cloudEnabled.value){
@@ -735,7 +736,7 @@ async function addMemory(){
         }catch{notify('本机照片已保存，但云端暂不可用','warning')}
       }
     }
-    memoryTitle.value='';memoryStory.value='';photoFiles.value=[]
+    memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
     await fetchMode()
     if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
@@ -1113,9 +1114,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
               <textarea v-model="planMemoryDraft.story" maxlength="8000" rows="2" placeholder="记下心愿实现的故事（选填）"></textarea>
+              <label>可见范围
+                <select v-model="planMemoryDraft.visibility" aria-label="计划回忆可见范围">
+                  <option value="household" :disabled="planMemoryDraft.sourceVisibility==='private'">家庭共享</option>
+                  <option value="private">仅自己</option>
+                </select>
+              </label>
               <div class="plan-memory-actions">
                 <button type="button" :disabled="busy" @click="planMemoryDraft=null">取消</button>
-                <button :disabled="busy||!planMemoryDraft.title.trim()">保存私人回忆</button>
+                <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
@@ -1277,9 +1284,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
               <textarea v-model="planMemoryDraft.story" maxlength="8000" rows="2" placeholder="旅行故事和感想（选填）"></textarea>
+              <label>可见范围
+                <select v-model="planMemoryDraft.visibility" aria-label="计划回忆可见范围">
+                  <option value="household" :disabled="planMemoryDraft.sourceVisibility==='private'">家庭共享</option>
+                  <option value="private">仅自己</option>
+                </select>
+              </label>
               <div class="plan-memory-actions">
                 <button type="button" :disabled="busy" @click="planMemoryDraft=null">取消</button>
-                <button :disabled="busy||!planMemoryDraft.title.trim()">保存私人回忆</button>
+                <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
@@ -1398,6 +1411,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<DateField v-model="memoryDate" required /></label>
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
+          <label>可见范围
+            <select v-model="memoryVisibility" aria-label="新回忆可见范围">
+              <option value="household">家庭共享</option>
+              <option value="private">仅自己</option>
+            </select>
+          </label>
           <label>可选照片（仅存本机）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <p class="life-caption">{{ cloudEnabled?'本机与云端保存':'照片仅存本机，请备份' }}</p>
