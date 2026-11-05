@@ -97,7 +97,8 @@ test('settings recycle bin is demand-loaded and recovery requires confirmation',
  assert.ok(app.includes('<ManagePage v-show="tab===\'manage\'"'))
  assert.ok(management.includes('<TrashPanel v-if="active"/>'))
  assert.ok(trash.includes("if(expanded.value)void fetchTrash()"))
- assert.ok(trash.includes("new URLSearchParams({limit:'5'})"))
+ assert.ok(trash.includes("const url='/api/recycle?limit=5'"))
+ assert.ok(trash.includes("encodeURIComponent(cursor.value)"))
  assert.ok(app.includes('recoveryConfirm.value'))
 })
 
