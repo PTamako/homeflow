@@ -32,8 +32,9 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
     const activePending=period&&statusOf(mark)==='pending'
     const earlyMark=earlyOn?marks.get(markerKey(r.id,earlyOn)):null
     const canEarly=!!earlyOn&&!activePending&&!lastToday&&!earlyMark
+    const following=earlyOn&&earlyMark?.completed_at?nextRoutineDue(r,addDays(earlyOn,1)):null
     return {...r,currentPeriodOn:period,currentMark:mark,currentStatus:statusOf(mark),
-      nextDueOn:activePending?period:(earlyOn||next),
+      nextDueOn:activePending?period:(following||earlyOn||next),
       earlyPeriodOn:canEarly?earlyOn:null,
       completedToday:!!lastToday,
       completedTodayMark:lastToday||null}
