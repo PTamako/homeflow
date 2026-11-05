@@ -226,5 +226,7 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
   result.sort((a,b)=>Number(a.done)-Number(b.done)||a.dueOn.localeCompare(b.dueOn))
   goalReviews.sort((a,b)=>a.reviewType==='pending'&&b.reviewType!=='pending'?-1:
     b.reviewType==='pending'&&a.reviewType!=='pending'?1:a.dueOn.localeCompare(b.dueOn))
-  return json({date,items:result.slice(0,100),goalReviews:goalReviews.slice(0,100)})
+  // Source reads are already bounded; do not silently truncate a second time.
+  // The UI still displays five at a time.
+  return json({date,items:result,goalReviews:goalReviews.slice(0,100)})
 }
