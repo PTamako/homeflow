@@ -120,15 +120,31 @@ function editAnniversary(item:Row){
 function edit(kind:EditableKind,item:Row){editing.value=editing.value?.item.id===item.id?null:{kind,item};ledgerPickerId.value=null}
 async function changed(){editing.value=null;ledgerPickerId.value=null;await fetchMode();if(!error.value)notify('修改已保存')}
 async function shoppingLinksChanged(){
- // Refresh only the edited shopping row, not all six plan categories,
- // and keep the same Kakebo candidate page and scroll position.
+ // Receipt changes can move the item between active and history immediately.
+ // Refresh only the shopping category, preserving other plans and ledger picker state.
  const id=ledgerPickerId.value
  if(!id)return
+ const scope=planScope.value,requestId=activeFetch
  try{
   const data=await api('/shopping/'+encodeURIComponent(id))
-  const idx=other.value.findIndex(x=>x.id===id)
-  if(idx>=0&&data.item)other.value.splice(idx,1,data.item)
-  else await fetchMode()
+  if(!data.item)throw Error('购物计划不存在')
+  if(props.mode!=='plans'||planScope.value!==scope||requestId!==activeFetch)return
+  const completed=!!data.item.completed_at
+  const belongsHere=scope==='history'?completed:!completed
+  if(belongsHere){
+   const idx=other.value.findIndex(x=>x.id===id)
+   if(idx>=0)other.value.splice(idx,1,data.item)
+   else await fetchMode()
+  }else{
+   // Refill the first five server-paginated entries after moving this record.
+   other.value=other.value.filter(x=>x.id!==id)
+   const path=listPath('shopping')
+   const page=await api(path)
+   if(props.mode!=='plans'||planScope.value!==scope||
+      requestId!==activeFetch||path!==listPath('shopping'))return
+   assignRows('shopping',page.items||[])
+   listCursors.value.shopping=page.nextCursor||null
+  }
   notify('购物账单关联已更新')
  }catch(e){error.value=(e as Error).message}
 }
