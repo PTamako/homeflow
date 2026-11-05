@@ -17,6 +17,7 @@ import {goalPeriodArchiveRoute} from './goal-period-archive.js'
 import {portableRoute} from './portable.js'
 import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
+import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 
 export default {
   async fetch(request,env){
@@ -40,6 +41,7 @@ export default {
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
+        if(path.startsWith('/api/notifications/'))return notificationsRoute(request,env.DB,path,session)
         if(path==='/api/push/config'||path==='/api/push/subscriptions'||path==='/api/push/send-now'||path==='/api/push/send-task'||path==='/api/push/send-family')return pushRoute(request,env,path,session)
         if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
@@ -77,6 +79,8 @@ export default {
     if(!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
       const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env)])
+      // Purge expired inbox rows on the existing 06:00 JST cron; tasks/plans are never deleted.
+      try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
       // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
         {job:index===0?'push':'savings',...job.value}:
