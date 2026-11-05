@@ -179,7 +179,7 @@ onBeforeUnmount(()=>{requestId++})
       <p role="alert" class="reminder-error">{{ error }}</p>
       <button type="button" class="text-button" @click="load">重试</button>
     </template>
-    <p v-else-if="!visibleReminders.length" class="reminder-status">今天没有额外的重要提醒。</p>
+    <p v-else-if="!visibleReminders.length" class="reminder-status">暂无重要提醒</p>
     <div v-else v-for="item in shownReminders" :key="item.kind+':'+item.id" class="reminder-item">
       <span>{{ item.title }} <small v-if="item.daysBefore">提前 {{ item.daysBefore }} 天</small>
        <small v-if="item.priority==='important'"> · 重要</small></span>
@@ -210,13 +210,12 @@ onBeforeUnmount(()=>{requestId++})
       </div>
     </div>
     <div class="reminder-settings">
-      <label>任务／定期护理／旅行提前提醒
+      <label>默认提前提醒
        <select :value="String(advanceDays)" :disabled="savingAdvance" @change="saveLead(($event.target as HTMLSelectElement).value)">
         <option value="0">到期当天</option><option value="1">提前 1 天</option>
         <option value="3">提前 3 天</option><option value="7">提前 7 天</option>
        </select>
       </label>
-      <small>仅当前账号生效；单项设置优先。</small>
       <div class="quiet-controls">
        <label class="quiet-toggle"><input v-model="quietEnabled" type="checkbox"/> 启用推送安静时段</label>
        <div v-if="quietEnabled" class="quiet-hours">
@@ -224,21 +223,21 @@ onBeforeUnmount(()=>{requestId++})
         <label>结束<select v-model="quietEnd"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
        </div>
        <button class="snooze-button" type="button" :disabled="savingAdvance" @click="saveQuiet">保存安静时段</button>
-       <small>每日 06:00 推送；安静时段内跳过当天锁屏通知。</small>
+       <small>每日 06:00 推送，安静时段不通知。</small>
       </div>
     </div>
     <div v-if="snoozed.length" class="snoozed-items">
-      <b>已延后的提醒（最近 5 条）</b>
+      <b>已延后的提醒</b>
       <div v-for="item in visibleSnoozes" :key="item.kind+':'+item.id" class="snoozed-row">
        <span>{{ item.kind==='task'?'任务':item.kind==='routine'?'定期事项':item.kind==='trip'?'旅行':'纪念日' }}
-        · {{ item.id.slice(-8) }} · {{ shiftDay(item.untilOn,1) }} 再提醒</span>
+        · {{ shiftDay(item.untilOn,1) }} 再提醒</span>
        <button type="button" :disabled="snoozing" @click="cancelSnooze(item)">取消延后</button>
       </div>
     </div>
     <p v-if="snoozeError" class="reminder-error" role="alert">{{ snoozeError }}</p>
     <PageToast :toast="toast" />
     <button v-if="!loading&&!error&&visibleReminders.length>shownReminders.length" type="button"
-      class="text-button" @click="visibleCount+=pageSize">加载更多重要提醒（每次 5 条）</button>
+      class="text-button" @click="visibleCount+=pageSize">加载更多</button>
   </section>
 </template>
 
