@@ -113,7 +113,10 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
   if(!validDate(date)||!date)return json({error:'invalid_input'},400)
   const h=session.household_id,u=session.user_id
   const startOfDayUtc=new Date(date+'T00:00:00+09:00').toISOString()
-  const batch=await db.batch([
+  // Load only the plan sources visible to this user and this date first.
+  // Completion marks and settlements are then scoped to those returned IDs:
+  // an old household archive must not be scanned on every Today visit.
+  const sourceBatch=await db.batch([
     db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt,
       ledger_entry_id AS ledgerEntryId FROM shopping_items
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
@@ -132,13 +135,33 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
     db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND status IN ('planning','active') AND start_on IS NOT NULL AND start_on<=?3
-      ORDER BY start_on,id LIMIT 25`).bind(h,u,date),
-    db.prepare(`SELECT plan_type,plan_id,period_key,completed_at FROM plan_completion_marks
-      WHERE household_id=?1 AND (plan_type='goal' OR completed_at>=?2)
-      ORDER BY completed_at DESC LIMIT 5000`).bind(h,startOfDayUtc),
-    db.prepare(`SELECT goal_id,period_key,status FROM goal_period_settlements
-      WHERE household_id=?1 AND status IN ('met','shortfall') LIMIT 5000`).bind(h)
+      ORDER BY start_on,id LIMIT 25`).bind(h,u,date)
   ])
+  const goalIds=(sourceBatch[2].results||[]).map(row=>row.id)
+  const wishIds=(sourceBatch[1].results||[]).map(row=>row.id)
+  const where=[],markArgs=[h]
+  if(goalIds.length){
+    where.push("(plan_type='goal' AND plan_id IN ("+goalIds.map(()=>'?').join(',')+"))")
+    markArgs.push(...goalIds)
+  }
+  if(wishIds.length){
+    const start=markArgs.length+1
+    where.push("(plan_type='wish' AND plan_id IN ("+wishIds.map(()=>'?').join(',')+
+      ") AND completed_at>=?"+(start+wishIds.length)+")")
+    markArgs.push(...wishIds,startOfDayUtc)
+  }
+  const historical=[]
+  if(where.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
+    FROM plan_completion_marks WHERE household_id=?1 AND (${where.join(' OR ')})
+    ORDER BY completed_at DESC`).bind(...markArgs))
+  if(goalIds.length)historical.push(db.prepare(`SELECT goal_id,period_key,status
+    FROM goal_period_settlements WHERE household_id=?1
+      AND goal_id IN (${goalIds.map(()=>'?').join(',')})
+      AND status IN ('met','shortfall')`).bind(h,...goalIds))
+  const pages=historical.length?await db.batch(historical):[]
+  const batch=[...sourceBatch,
+    where.length?pages[0]:{results:[]},
+    goalIds.length?pages[pages.length-1]:{results:[]}]
   const result=[]
   const goalReviews=[]
   const settledByGoal=new Map()
