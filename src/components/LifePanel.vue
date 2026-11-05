@@ -53,7 +53,7 @@ function selectPlanType(type:PlanType){
 const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
 const goalCompletionMarks=ref<string[]>([])
 const focusError=ref('')
-const focusedItemId=computed(()=>props.focusPlanId||'')
+const focusedItemId=computed(()=>props.focusPlanScope===planScope.value?(props.focusPlanId||''):'')
 const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
   (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
@@ -386,6 +386,8 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
   return data
 }
 async function focusExactPlan(requestId:number){
+  // A Today deep link must not be re-injected into the opposite tab after a scope switch.
+  if(props.focusPlanScope!==planScope.value)return
   const id=props.focusPlanId,kind=props.focusPlanType||''
   const endpoints:Record<string,string>={
     shopping:'shopping',wish:'wishes',goal:'goals',trip:'trips',
@@ -405,7 +407,10 @@ async function focusExactPlan(requestId:number){
         ['monthly','yearly'].includes(item.goal_mode))return
     const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
       kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
-    if(!target.value.some(row=>row.id===item.id&&row.periodOn===item.periodOn))target.value=[item,...target.value]
+    // Active plans have one row per plan ID; historical routine occurrences are distinct by period.
+    const listed=target.value.some(row=>row.id===item.id&&
+      (kind!=='routine'||planScope.value!=='history'||row.periodOn===item.periodOn))
+    if(!listed)target.value=[item,...target.value]
     if(kind==='wish'){
       for(const related of response.linkedGoals||[]){
         if(!goals.value.some(row=>row.id===related.id))goals.value.push(related)
@@ -421,10 +426,10 @@ async function focusExactPlan(requestId:number){
     }
     if(kind==='memory')await loadPhotos(requestId)
     await nextTick()
-    if(requestId===activeFetch&&props.focusPlanId===id){
+    if(requestId===activeFetch&&focusedItemId.value===id){
       // Wait until rendering settles; keep the selected row below the iOS safe area.
       window.requestAnimationFrame(()=>{
-        if(requestId!==activeFetch||props.focusPlanId!==id)return
+        if(requestId!==activeFetch||focusedItemId.value!==id)return
         const row=document.getElementById('plan-item-'+id+
           (kind==='routine'&&item.periodOn?'-'+item.periodOn:''))
         if(!row)return
