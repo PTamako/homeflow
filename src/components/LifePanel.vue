@@ -22,7 +22,7 @@ watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),busy=ref(false)
+const error=ref(''),busy=ref(false),pushBusyId=ref('')
 const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
@@ -30,6 +30,28 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
+async function notifyHandler(kind:'task'|'routine',item:Row){
+ if(pushBusyId.value)return
+ pushBusyId.value=item.id;error.value=''
+ try{
+  const response=await fetch('/api/push/send-task',{method:'POST',
+    credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
+    body:JSON.stringify({kind,id:item.id})})
+  const data=await response.json().catch(()=>({}))
+  if(!response.ok){
+   const hints:Record<string,string>={
+    recipient_not_subscribed:'处理人尚未开启推送，请让对方在自己的手机开启通知',
+    task_not_shareable:'只有发起人能发送已指派的家庭共享任务',
+    recipient_is_self:'处理人是自己，无需发给其他账号',
+    push_rate_limited:'这项任务刚刚发送过，请稍后再试',
+    push_not_configured:'推送尚未配置'
+   }
+   throw Error(hints[data.error]||'任务推送失败，请稍后重试')
+  }
+  notify('已通知处理人（'+data.sent+' 台设备）')
+ }catch(e){error.value=(e as Error).message}
+ finally{pushBusyId.value=''}
+}
 function toggleTaskMenu(key:string){expandedTaskMenu.value=expandedTaskMenu.value===key?null:key}
 function toggleReminderEditor(kind:ReminderKind,id:string){
  const old=reminderTarget.value
@@ -881,6 +903,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
                 class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title">
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
+                <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
+                  :disabled="!!pushBusyId" @click="notifyHandler('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
@@ -902,7 +926,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <template v-if="t.completedAt"> · 已完成</template> · 发起人：{{ memberName(t.creatorUserId) }} · 处理人：{{ memberName(t.assigneeUserId) }}
                   </small>
                 </div>
-                <button v-if="planScope==='active'&&!!t.dueOn" type="button" class="routine-more-trigger"
+                <button v-if="planScope==='active'" type="button" class="routine-more-trigger"
                   :aria-label="'更多操作：'+t.title"
                   :aria-expanded="expandedTaskMenu==='task:'+t.id"
                   :aria-controls="'task-actions-'+t.id"
@@ -926,6 +950,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title">
               <button v-if="planScope==='active'&&t.dueOn" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
+              <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
+                :disabled="!!pushBusyId" @click="notifyHandler('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
