@@ -474,8 +474,8 @@ async function addProfile(){
   }catch(e){error.value=(e as Error).message}
 }
 watch(tab,value=>{
-  showAddTask.value=false
   clearToast()
+  showAddTask.value=false
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
