@@ -3,7 +3,7 @@ import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
 import {nextAnniversary,validateRule,addDays} from './recurrence.js'
 import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday} from './routine-periods.js'
-import {enrichRoutineList,routineHistory} from './routine-history.js'
+import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
 import {isJapaneseWorkday} from './jp-holidays.js'
 
 const catalog={
@@ -297,6 +297,11 @@ export async function lifeRoute(request,db,path,session){
     return json({ok:true,id},201)
   }
   if(id&&!hexId(id))return bad()
+  if(table==='routines'&&id&&parts[3]==='period'&&request.method==='GET'){
+    const rule=await getObject(db,table,id,session)
+    if(!rule)return json({error:'not_found'},404)
+    return routinePeriodDetail(db,rule,new URL(request.url).searchParams.get('on')||'',session)
+  }
   // Exact one-record lookup is used only when a Today item opens its plan
   // beyond the first five list rows. Keep visibility/household checks in SQL.
   if(id&&request.method==='GET'){
