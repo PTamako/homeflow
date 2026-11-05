@@ -24,6 +24,7 @@ async function load(more=false){
  }catch(e){error.value=(e as Error).message}
  finally{if(token===revision)busy.value=false}
 }
+function yearChanged(){if(!year.value)month.value=''}
 function toggle(){open.value=!open.value;if(!open.value){revision++;error.value=''}}
 function selected(row:Result){emit('select',row);open.value=false;revision++}
 const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
@@ -42,7 +43,7 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
      <option value="all">全部类型</option>
      <option v-for="(label,key) in labels" :key="key" :value="key">{{ label }}</option>
     </select>
-    <select v-model="year" aria-label="搜索年份" @change="if(!year)month=''">
+    <select v-model="year" aria-label="搜索年份" @change="yearChanged">
      <option value="">全部年份</option>
      <option v-for="y in years" :key="y" :value="y">{{ y }}年</option>
     </select>
