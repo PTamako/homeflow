@@ -18,19 +18,32 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
   const early=new Map(routines.map(r=>[r.id,nextEarlyPeriod(r,day)]))
   const dates=[...new Set([...current.values(),...early.values()].filter(Boolean))]
   const conditions=dates.length?('m.occurrence_on IN ('+dates.map(()=>'?').join(',')+') OR '):''
+  // Legacy overdue completions used their real action day as occurrence_on.
+  // Include their short active window, then alias them to the scheduled period.
+  const oldest=[...current.values()].filter(Boolean).sort()[0]||day
   const start=new Date(day+'T00:00:00+09:00').toISOString()
   const end=new Date(weekDayMs(day)+86400000-9*3600000).toISOString()
   const sql='SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at FROM routine_marks m WHERE '+
     'm.routine_id IN ('+ids.map(()=>'?').join(',')+') AND ('+conditions+
-    '(m.completed_at>=? AND m.completed_at<?)) ORDER BY m.occurrence_on DESC LIMIT 750'
-  const {results}=await db.prepare(sql).bind(...ids,...dates,start,end).all()
+    '(m.completed_at>=? AND m.completed_at<?) OR '+
+    '(m.occurrence_on>=? AND m.occurrence_on<=?)) ORDER BY m.occurrence_on DESC LIMIT 750'
+  const {results}=await db.prepare(sql).bind(...ids,...dates,start,end,oldest,day).all()
   const marks=new Map((results||[]).map(m=>[markerKey(m.routine_id,m.occurrence_on),m]))
+  const ruleById=new Map(routines.map(r=>[r.id,r]))
+  const legacy=new Map()
+  for(const m of results||[]){
+    const rule=ruleById.get(m.routine_id)
+    if(!rule||isCompletionInterval(rule)||!periodStatus(m)||periodStatus(m)==='pending')continue
+    const expected=currentRoutinePeriod(rule,m.occurrence_on)
+    if(expected&&expected!==m.occurrence_on&&!marks.has(markerKey(rule.id,expected)))
+      legacy.set(markerKey(rule.id,expected),m)
+  }
   return routines.map(r=>{
     const period=current.get(r.id)||null,next=nextRoutineDue(r,day),earlyOn=early.get(r.id)||null
-    const mark=period?marks.get(markerKey(r.id,period))||null:null
+    const mark=period?(marks.get(markerKey(r.id,period))||legacy.get(markerKey(r.id,period))||null):null
     const lastToday=(results||[]).find(m=>m.routine_id===r.id&&markDate(m)===day&&m.completed_at)
     const activePending=period&&statusOf(mark)==='pending'
-    const earlyMark=earlyOn?marks.get(markerKey(r.id,earlyOn)):null
+    const earlyMark=earlyOn?(marks.get(markerKey(r.id,earlyOn))||legacy.get(markerKey(r.id,earlyOn))):null
     const canEarly=!!earlyOn&&!activePending&&!lastToday&&!earlyMark
     const following=earlyOn&&earlyMark?.completed_at?nextRoutineDue(r,addDays(earlyOn,1)):null
     const afterResolved=period&&mark&&statusOf(mark)!=='pending'?
