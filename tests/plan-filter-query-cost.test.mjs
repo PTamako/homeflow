@@ -26,3 +26,13 @@ test('All replaces the duplicate task tab without hiding task and routine entrie
  assert.match(source,/planType==='all'\|\|planType==='routine'\|\|planType==='unscheduled'/)
  assert.match(source,/return \['wishes','goals','shopping','trips','routines','tasks'\]/)
 })
+
+test('Today loads only history for visible current goal and wish IDs, never the whole household archive',()=>{
+ const source=readFileSync(new URL('../worker/plan-today.js',import.meta.url),'utf8')
+ assert.match(source,/const goalIds=\(sourceBatch\[2\]\.results\|\|\[\]\)\.map/)
+ assert.match(source,/const wishIds=\(sourceBatch\[1\]\.results\|\|\[\]\)\.map/)
+ assert.match(source,/plan_id IN/)
+ assert.match(source,/goal_id IN/)
+ assert.doesNotMatch(source,/ORDER BY completed_at DESC LIMIT 5000/)
+ assert.doesNotMatch(source,/AND status IN \('met','shortfall'\) LIMIT 5000/)
+})
