@@ -159,7 +159,8 @@ export async function lifeRoute(request,db,path,session){
       if(!pending&&!doneCurrent&&!recent)continue
       const selected=pending||doneCurrent?mark:recent
       items.push({...r,mark:selected||null,
-        occurrenceOn:selected?.occurrence_on||current,
+        occurrenceOn:pending||doneCurrent?current:(recent?.occurrence_on||current),
+        recordOn:selected?.occurrence_on||null,
         carriedFrom:pending&&current<date?current:null})
     }
     return json({date,items})
