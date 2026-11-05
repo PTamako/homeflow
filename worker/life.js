@@ -35,7 +35,12 @@ function normalized(table,b,s){
       return [title,b.eventDate,b.repeatMode,JSON.stringify([...new Set(lead)]),trim(b.note,1000),b.subjectProfileId||null]
     case 'routines': {
       const repeatType=b.repeatType==='workday'?'weekly':b.repeatType
-      const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:(b.repeatConfig||{})
+      const input=b.repeatConfig||{}
+      // Keep version metadata exclusively server-owned.
+      const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
+        repeatType==='weekly'?{weekdays:input.weekdays,excludeJapaneseHolidays:input.excludeJapaneseHolidays===true}:
+        repeatType==='monthly'?{day:input.day}:
+        repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
@@ -331,8 +336,44 @@ export async function lifeRoute(request,db,path,session){
     if(snapshotColumns.length&&b.expectedSnapshot!==undefined&&
        b.expectedSnapshot!==JSON.stringify(snapshotColumns.map(c=>current[c]??null)))
       return json({error:'plan_edit_conflict'},409)
-    const fields=['visibility',...catalog[table].columns,...(revisioned?['updated_at']:[])]
-    const args=[visibilityOf(b,session),...vals,...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
+    let resetDue=false,nextDueValue=null
+    if(table==='routines'){
+      let oldConfig={},nextConfig={}
+      try{oldConfig=JSON.parse(current.repeat_config||'{}')}catch{}
+      try{nextConfig=JSON.parse(vals[2]||'{}')}catch{}
+      const {_history,_effectiveFrom,...oldRuleConfig}=oldConfig
+      const changed=vals[0]!==current.title||vals[1]!==current.repeat_type||
+        vals[3]!==current.anchor_date||JSON.stringify(nextConfig)!==JSON.stringify(oldRuleConfig)||
+        vals[5]!==current.subject_profile_id||vals[6]!==current.health_record_type||
+        visibilityOf(b,session)!==current.visibility
+      const scheduleChanged=vals[1]!==current.repeat_type||
+        vals[3]!==current.anchor_date||JSON.stringify(nextConfig)!==JSON.stringify(oldRuleConfig)
+      if(changed){
+        const day=jstToday(),start=oldConfig._effectiveFrom||current.anchor_date
+        const previous=Array.isArray(oldConfig._history)?oldConfig._history.slice(-39):[]
+        if(start<day)previous.push({
+          from:start,until:day,title:current.title,repeatType:current.repeat_type,
+          repeatConfig:oldRuleConfig,anchorDate:current.anchor_date,nextDueOn:current.next_due_on,
+          subjectProfileId:current.subject_profile_id,healthRecordType:current.health_record_type,
+          visibility:current.visibility
+        })
+        nextConfig._history=previous
+        nextConfig._effectiveFrom=day
+      }else{
+        if(Array.isArray(oldConfig._history))nextConfig._history=oldConfig._history
+        if(oldConfig._effectiveFrom)nextConfig._effectiveFrom=oldConfig._effectiveFrom
+      }
+      vals[2]=JSON.stringify(nextConfig)
+      if(scheduleChanged){
+        resetDue=true
+        nextDueValue=vals[1]==='interval'&&nextConfig.anchor==='completion'?
+          addDays(vals[3],Number(nextConfig.days)):null
+      }
+    }
+    const fields=['visibility',...catalog[table].columns,...(resetDue?['next_due_on']:[]),
+      ...(revisioned?['updated_at']:[])]
+    const args=[visibilityOf(b,session),...vals,...(resetDue?[nextDueValue]:[]),
+      ...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
     let condition=''
     if(revisioned){
       condition=' AND updated_at=?'+(args.length+1)
