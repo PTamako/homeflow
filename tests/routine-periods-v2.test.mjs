@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {nextRoutineDue,previousRoutineDue,currentRoutinePeriod,nextEarlyPeriod,
-  historyCandidates,isClosedRoutinePeriod} from '../worker/routine-periods.js'
+  historyCandidates,isClosedRoutinePeriod,routineVersions} from '../worker/routine-periods.js'
 
 function rule(type,anchor,config,more={}){
  return {id:'rule',enabled:1,repeat_type:type,anchor_date:anchor,repeat_config:JSON.stringify(config),...more}
@@ -46,4 +46,17 @@ test('fixed intervals preserve their original grid and archived missed periods',
  assert.equal(nextEarlyPeriod(r,'2026-11-05'),'2026-11-24')
  assert.equal(nextRoutineDue(r,'2026-11-25'),'2027-02-22')
  assert.equal(isClosedRoutinePeriod(r,'2026-11-24','2027-02-22'),true)
+})
+
+test('editing a weekly weekday retains the old archived schedule',()=>{
+ const old={from:'2026-11-01',until:'2026-11-05',title:'豆沙零食日',
+  repeatType:'weekly',repeatConfig:{weekdays:[0]},anchorDate:'2026-11-01'}
+ const changed=rule('weekly','2026-11-01',{
+  weekdays:[1],_effectiveFrom:'2026-11-05',_history:[old]
+ })
+ const versions=routineVersions(changed)
+ assert.equal(versions.length,2)
+ assert.deepEqual(historyCandidates(versions[0],'2026-11-05',2),['2026-11-01'])
+ assert.equal(nextRoutineDue(versions[1],'2026-11-05'),'2026-11-09')
+ assert.equal(currentRoutinePeriod(versions[1],'2026-11-05'),null)
 })
