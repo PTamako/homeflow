@@ -40,7 +40,7 @@ export default {
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
-        if(path==='/api/push/config'||path==='/api/push/subscriptions'||path==='/api/push/send-now')return pushRoute(request,env,path,session)
+        if(path==='/api/push/config'||path==='/api/push/subscriptions'||path==='/api/push/send-now'||path==='/api/push/send-task'||path==='/api/push/send-family')return pushRoute(request,env,path,session)
         if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
         if(path==='/api/recycle'||path==='/api/recycle/restore'||path==='/api/recycle/empty')return recycleRoute(request,env.DB,path,session)

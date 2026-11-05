@@ -36,17 +36,28 @@ self.addEventListener('push',event=>{
     body:String(msg.body||'').slice(0,150),
     tag:String(msg.tag||'homeflow-reminder').slice(0,180),
     icon:'/icon.svg',badge:'/icon.svg',
-    data:{url:'/'}
+    data:{url:(()=>{try{
+      const url=new URL(String(msg.url||'/'),self.location.origin)
+      if(url.origin!==self.location.origin||url.pathname!=='/')return '/'
+      return url.pathname+url.search
+    }catch{return '/'}})()}
   }))
 })
 self.addEventListener('notificationclick',event=>{
   event.notification.close()
   event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async list=>{
+    const path=event.notification.data?.url||'/'
+    const target=new URL(path,self.location.origin)
+    if(target.origin!==self.location.origin)return
     for(const client of list){
       if(new URL(client.url).origin===self.location.origin){
+        if(target.searchParams.has('taskId')){
+          client.postMessage({type:'homeflow-open-task',
+            kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId')})
+        }
         await client.focus();return
       }
     }
-    await self.clients.openWindow('/')
+    await self.clients.openWindow(target.href)
   }))
 })
