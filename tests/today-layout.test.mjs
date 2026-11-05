@@ -87,7 +87,8 @@ test('search click targets the exact record, even beyond first five',()=>{
  const worker=readFileSync(new URL('../worker/tasks.js',import.meta.url),'utf8')
  assert.ok(app.includes('openPlans(result.kind,result.id)'))
  assert.ok(life.includes("task:'tasks',routine:'routines',memory:'memories',anniversary:'anniversaries'"))
- assert.ok(life.includes("document.getElementById('plan-item-'+id+(kind==='routine'&&item.periodOn?'-'+item.periodOn:''))?.scrollIntoView"))
+  assert.ok(life.includes("document.getElementById('plan-item-'+id+"))
+  assert.ok(life.includes('getBoundingClientRect().top+window.scrollY-176'))
  assert.ok(worker.includes("if(request.method==='GET'){"))
 })
 
