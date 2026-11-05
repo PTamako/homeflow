@@ -75,7 +75,7 @@ export async function tripsRoute(request,db,path,session){
     if(filters?.invalid)return json({error:'invalid_input'},400)
     if(filters){
       const sort='COALESCE(start_on,created_at)'
-      const clauses=["household_id=?1","(visibility='household' OR created_by=?2)"]
+      const clauses=["household_id=?1","deleted_at IS NULL","(visibility='household' OR created_by=?2)"]
       const args=[h,u]
       // A past end date does not mean the trip was actually completed:
       // unfinished travel follow-ups must remain findable under active plans.
@@ -104,7 +104,7 @@ export async function tripsRoute(request,db,path,session){
     }
     const {results}=await db.prepare(`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
         end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey,updated_at AS updatedAt
-        FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+        FROM trips WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         ORDER BY COALESCE(start_on,created_at) DESC LIMIT 150`).bind(h,u).all()
     return json({items:results||[]})
   }
@@ -138,14 +138,15 @@ export async function tripsRoute(request,db,path,session){
     const issue=validatedTripPayload(payload)
     if(issue)return json({error:issue},400)
     const hash=await sha256(JSON.stringify(payload))
-    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
       WHERE household_id=?1 AND import_source_key=?2`).bind(h,payload.importSourceId).first()
     // A trip created from a wish can be populated by an imported plan without losing wish_id.
     const targetId=body.targetTripId||null
     if(targetId&&!/^[0-9a-f-]{36}$/.test(targetId))return json({error:'invalid_input'},400)
-    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash FROM trips
+    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
       WHERE household_id=?1 AND id=?2`).bind(h,targetId).first():null
     if(targetId&&!target)return json({error:'not_found'},404)
+    if(matching?.deleted_at||target?.deleted_at)return json({error:'restore_trashed_trip_first'},409)
     if(target&&matching&&matching.id!==target.id)return json({error:'import_source_already_linked'},409)
     const current=target||matching
     const summary={days:payload.trip.days.length,itineraryItems:payload.trip.days.reduce((n,d)=>n+d.items.length,0),
@@ -175,7 +176,7 @@ export async function tripsRoute(request,db,path,session){
   const convert=path.match(/^\/api\/wishes\/([0-9a-f-]{36})\/start-trip$/)
   if(convert&&request.method==='POST'){
     const wish=await db.prepare(`SELECT id,title,visibility,estimated_amount,currency,created_by
-      FROM wishes WHERE id=?1 AND household_id=?2 AND created_by=?3 AND wish_type='trip'`)
+      FROM wishes WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND created_by=?3 AND wish_type='trip'`)
       .bind(convert[1],h,u).first()
     if(!wish)return json({error:'not_found'},404)
     const existing=await db.prepare('SELECT id FROM trips WHERE wish_id=?1 AND household_id=?2').bind(wish.id,h).first()
@@ -199,7 +200,7 @@ export async function tripsRoute(request,db,path,session){
   }
   if(id&&!/^[0-9a-f-]{36}$/.test(id))return json({error:'invalid_input'},400)
   if(id){
-    const trip=await db.prepare(`SELECT * FROM trips WHERE id=?1 AND household_id=?2 AND
+    const trip=await db.prepare(`SELECT * FROM trips WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND
       (visibility='household' OR created_by=?3)`).bind(id,h,u).first()
     if(!trip)return json({error:'not_found'},404)
     if(bpath[3]==='progress'&&request.method==='POST'){
@@ -302,20 +303,18 @@ export async function tripsRoute(request,db,path,session){
         // A wish with an associated goal must be fulfilled separately
         // through /plans/complete after the ledger balance is verified.
         await db.prepare(`UPDATE wishes SET status='completed',updated_at=?1
-          WHERE id=?2 AND household_id=?3
+          WHERE id=?2 AND household_id=?3 AND deleted_at IS NULL
             AND NOT EXISTS(SELECT 1 FROM goals
-              WHERE household_id=?3 AND wish_id=?2)`)
+              WHERE household_id=?3 AND wish_id=?2 AND deleted_at IS NULL)`)
           .bind(timestamp,trip.wish_id,h).run()
       }
       return json({ok:true})
     }
     if(request.method==='DELETE'){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
-      await db.batch([
-        db.prepare('DELETE FROM finance_links WHERE household_id=?1 AND target_type=?2 AND target_id=?3').bind(h,'trip',id),
-        db.prepare('DELETE FROM trips WHERE id=?1 AND household_id=?2 AND created_by=?3').bind(id,h,u)
-      ])
-      return json({ok:true})
+      const result=await db.prepare('UPDATE trips SET deleted_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4 AND deleted_at IS NULL')
+        .bind(iso(),id,h,u).run()
+      return result.meta?.changes?json({ok:true,trashed:true}):json({error:'not_found'},404)
     }
   }
   return json({error:'not_found'},404)

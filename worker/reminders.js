@@ -47,12 +47,12 @@ export async function remindersRoute(request,db,session) {
       allowed=!!await db.prepare("SELECT id FROM tasks WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR creator_user_id=?3)")
         .bind(id,hid,u).first()
     }else if(kind==='routine'){
-      allowed=!!await db.prepare("SELECT id FROM routines WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+      allowed=!!await db.prepare("SELECT id FROM routines WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
         .bind(id,hid,u).first()
     }else{
       const cut=id.indexOf(':'),tripId=id.slice(0,cut),externalId=id.slice(cut+1)
       if(cut>0&&idOk(tripId)&&externalId){
-        const trip=await db.prepare("SELECT created_by,plan_json FROM trips WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+        const trip=await db.prepare("SELECT created_by,plan_json FROM trips WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
           .bind(tripId,hid,u).first()
         if(trip){
           try{
@@ -120,20 +120,20 @@ export async function remindersRoute(request,db,session) {
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
   const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
-    db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
-    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
+    db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
+    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.completed_at,m.skipped_at FROM routine_marks m
-      JOIN routines r ON r.id=m.routine_id WHERE r.household_id=?1 AND m.occurrence_on=?2
+      JOIN routines r ON r.id=m.routine_id WHERE r.household_id=?1 AND r.deleted_at IS NULL AND m.occurrence_on=?2
       AND (r.visibility='household' OR r.created_by=?3)`).bind(hid,date,u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3)
       ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
-      WHERE household_id=?1 AND status IN ('planning','active')
+      WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')
       AND (visibility='household' OR created_by=?2)
       ORDER BY start_on LIMIT 30`).bind(hid,u),
     db.prepare(`SELECT p.trip_id,p.item_id,p.completed_at FROM trip_progress p
-      JOIN trips t ON t.id=p.trip_id WHERE t.household_id=?1
+      JOIN trips t ON t.id=p.trip_id WHERE t.household_id=?1 AND t.deleted_at IS NULL
       AND t.status IN ('planning','active') AND (t.visibility='household' OR t.created_by=?2)
       AND p.completed_at IS NOT NULL LIMIT 3000`).bind(hid,u),
     db.prepare(BIRTHDAY_PROFILES_SQL).bind(hid),

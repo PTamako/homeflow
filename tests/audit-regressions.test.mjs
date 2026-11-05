@@ -9,6 +9,8 @@ import {petsRoute} from '../worker/pets.js'
 import {authRoute} from '../worker/auth.js'
 import {sha256} from '../worker/security.js'
 import {searchRoute} from '../worker/search.js'
+import {recycleRoute} from '../worker/recycle.js'
+import {tripsRoute} from '../worker/trips.js'
 
 const person='11111111-1111-4111-8111-111111111111'
 const wish='22222222-2222-4222-8222-222222222222'
@@ -21,7 +23,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql',
   '0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_finance_target_settings.sql',
   '0009_routine_pet_care.sql','0010_task_pet_care.sql','0011_unified_plan_hub.sql',
-  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql']
+  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -405,5 +407,62 @@ test('Today task read excludes undated and future tasks, but plans can still fet
   assert.equal(unscheduled.items[0].title,'unscheduled')
   const invalid=await tasksRoute(new Request('https://homeflow.test/api/tasks?status=all&today=2026-02-30'),db,'/api/tasks',session)
   assert.equal(invalid.status,400)
+ }finally{sqlite.close()}
+})
+
+test('recycle restores all plan types without losing finance links or task completion history',async()=>{
+ const {db,sqlite}=database()
+ const kinds=[
+  ['routine','routines',"title,repeat_type,anchor_date","'照顾豆沙','daily','2026-11-01'"],
+  ['anniversary','anniversaries',"title,event_date,repeat_mode","'纪念日','2026-12-01','yearly'"],
+  ['shopping','shopping_items',"title","'猫粮'"],
+  ['wish','wishes',"title,wish_type","'心愿','purchase'"],
+  ['goal','goals',"title,target_amount","'储值',60000"],
+  ['trip','trips',"title","'上海旅行'"],
+  ['memory','memories',"title,happened_on","'快乐一天','2026-11-01'"]
+ ]
+ const keys=new Map()
+ try{
+  for(let i=0;i<kinds.length;i++){
+   const [kind,table,cols,values]=kinds[i],id='cccc'+String(i).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+   sqlite.prepare(`INSERT INTO ${table}(id,household_id,created_by,visibility,${cols}) VALUES(?1,'primary','u1','household',${values})`).run(id)
+   keys.set(kind,id)
+  }
+  const goalId=keys.get('goal'),tripId=keys.get('trip'),shoppingId=keys.get('shopping')
+  sqlite.prepare("INSERT INTO finance_links(id,household_id,created_by,target_type,target_id,external_entry_id) VALUES('12345678-1234-4234-8234-123456789012','primary','u1','trip',?,'1234')").run(tripId)
+  sqlite.prepare("INSERT INTO shopping_expense_links(household_id,shopping_id,external_entry_id,linked_by,purchase_quantity) VALUES('primary',?,'1234','u1',1)").run(shoppingId)
+  sqlite.prepare("INSERT INTO plan_completion_marks(household_id,plan_type,plan_id,period_key,completed_at,completed_by) VALUES('primary','goal',?,'once','2026-11-03T00:00:00Z','u1')").run(goalId)
+  const request=(path,method='GET',body)=>new Request('https://homeflow.test'+path,{
+   method,headers:body?{'content-type':'application/json'}:{},
+   ...(body?{body:JSON.stringify(body)}:{})})
+  for(const [kind,table] of kinds){
+   const path='/api/'+(kind==='shopping'?'shopping':kind==='trip'?'trips':
+     kind==='routine'?'routines':kind==='anniversary'?'anniversaries':
+     kind==='wish'?'wishes':kind==='goal'?'goals':'memories')+'/'+keys.get(kind)
+   const response=kind==='trip'?await tripsRoute(request(path,'DELETE'),db,path,session):
+     await lifeRoute(request(path,'DELETE'),db,path,session)
+   assert.equal(response.status,200,kind)
+   assert.ok(sqlite.prepare(`SELECT deleted_at FROM ${table} WHERE id=?`).get(keys.get(kind)).deleted_at)
+  }
+  const firstResponse=await recycleRoute(request('/api/recycle'),db,'/api/recycle',session)
+  assert.equal(firstResponse.status,200)
+  const first=await firstResponse.json()
+  assert.equal(first.items.length,5)
+  assert.ok(first.nextCursor)
+  const secondResponse=await recycleRoute(request('/api/recycle?cursor='+encodeURIComponent(first.nextCursor)),db,'/api/recycle',session)
+  const second=await secondResponse.json()
+  assert.equal(second.items.length,2)
+  const visible=new Set([...first.items,...second.items].map(x=>x.kind))
+  assert.deepEqual(visible,new Set(kinds.map(k=>k[0])))
+  const foreign=await recycleRoute(request('/api/recycle/restore','POST',{kind:'goal',id:goalId}),db,'/api/recycle/restore',{...session,user_id:'u2'})
+  assert.equal(foreign.status,404)
+  for(const [kind,table] of kinds){
+   const answer=await recycleRoute(request('/api/recycle/restore','POST',{kind,id:keys.get(kind)}),db,'/api/recycle/restore',session)
+   assert.equal(answer.status,200,kind)
+   assert.equal(sqlite.prepare(`SELECT deleted_at FROM ${table} WHERE id=?`).get(keys.get(kind)).deleted_at,null)
+  }
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM finance_links WHERE target_id=?").get(tripId).n,1)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM shopping_expense_links WHERE shopping_id=?").get(shoppingId).n,1)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks WHERE plan_id=?").get(goalId).n,1)
  }finally{sqlite.close()}
 })

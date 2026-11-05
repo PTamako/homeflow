@@ -15,7 +15,7 @@ async function completePlan(request,db,session,env){
   if(!['wish','goal'].includes(kind)||!idOk(id)||typeof body?.completed!=='boolean')
     return json({error:'invalid_input'},400)
   const table=kind==='wish'?'wishes':'goals'
-  const row=await db.prepare(`SELECT * FROM ${table} WHERE id=?1 AND household_id=?2
+  const row=await db.prepare(`SELECT * FROM ${table} WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL
     AND (visibility='household' OR created_by=?3)`)
     .bind(id,session.household_id,session.user_id).first()
   if(!row)return json({error:'not_found'},404)
@@ -50,7 +50,7 @@ async function completePlan(request,db,session,env){
     if(kind==='goal'||kind==='wish'){
       let linked=[]
       if(kind==='wish'){
-        const response=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND wish_id=?2`)
+        const response=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND wish_id=?2`)
           .bind(session.household_id,id).all()
         linked=response.results||[]
       }
@@ -116,21 +116,21 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
   const batch=await db.batch([
     db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt,
       ledger_entry_id AS ledgerEntryId FROM shopping_items
-      WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND (completed_at IS NULL OR completed_at>=?4)
         AND due_on IS NOT NULL AND due_on<=?3
       ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 25`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,target_on AS dueOn,status FROM wishes
-      WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND status!='cancelled' AND target_on IS NOT NULL AND target_on<=?3
       ORDER BY target_on,id LIMIT 100`).bind(h,u,date),
     db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount
-      FROM goals WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+      FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND ((goal_mode='once' AND target_on IS NOT NULL AND target_on<=?3)
           OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))
       ORDER BY created_at,id LIMIT 100`).bind(h,u,date),
     db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
-      WHERE household_id=?1 AND (visibility='household' OR created_by=?2)
+      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND status IN ('planning','active') AND start_on IS NOT NULL AND start_on<=?3
       ORDER BY start_on,id LIMIT 25`).bind(h,u,date),
     db.prepare(`SELECT plan_type,plan_id,period_key,completed_at FROM plan_completion_marks

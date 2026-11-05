@@ -10,6 +10,8 @@ const str=(x,max)=>typeof x==='string'&&x.length<=max?x:null
 const amount=x=>Number.isSafeInteger(x)&&x>=0&&x<=100000000000
 const signed=x=>Number.isSafeInteger(x)&&Math.abs(x)<=100000000000
 const optionalDate=x=>x===undefined||x===null||x===''||date(x)
+const optionalDeletion=x=>x==null||x===''||(typeof x==='string'&&
+ /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(x))
 const profilesSQL="SELECT id,type,display_name,birthday,relation,adopted_on,weight_grams,notes FROM family_profiles "+
   "WHERE household_id=?1 AND member_user_id IS NULL AND archived_at IS NULL ORDER BY created_at LIMIT 501"
 const queries=[
@@ -17,7 +19,7 @@ const queries=[
   ['wishes',"SELECT * FROM wishes WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['trips',"SELECT * FROM trips WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['goals',"SELECT * FROM goals WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
-  ['tasks',"SELECT * FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND deleted_at IS NULL ORDER BY created_at LIMIT 501"],
+  ['tasks',"SELECT * FROM tasks WHERE household_id=?1 AND creator_user_id=?2 ORDER BY created_at LIMIT 501"],
   ['anniversaries',"SELECT * FROM anniversaries WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['routines',"SELECT * FROM routines WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['shopping',"SELECT * FROM shopping_items WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
@@ -65,6 +67,7 @@ function normalized(key,r,h,u) {
   const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
+  if(!optionalDeletion(r.deleted_at))return null
   switch(key){
     case 'familyProfiles':
       if(!['pet','person'].includes(r.type)||str(r.display_name,60)===null||!r.display_name.trim()||
@@ -78,72 +81,72 @@ function normalized(key,r,h,u) {
       if(str(r.title,150)===null||!r.title||!['trip','purchase','activity','other'].includes(r.wish_type)||
          !['wished','planning','active','completed','cancelled'].includes(r.status)||
          !amount(r.estimated_amount)||str(r.note||'',2000)===null||!optionalDate(r.target_on))return null
-      return ["INSERT OR IGNORE INTO wishes(id,household_id,created_by,visibility,title,wish_type,status,estimated_amount,currency,note,target_on) "+
-        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'JPY',?9,?10)",
-        [r.id,h,u,v,r.title,r.wish_type,r.status,r.estimated_amount,r.note||'',r.target_on||null]]
+      return ["INSERT OR IGNORE INTO wishes(id,household_id,created_by,visibility,title,wish_type,status,estimated_amount,currency,note,target_on,deleted_at) "+
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'JPY',?9,?10,?11)",
+        [r.id,h,u,v,r.title,r.wish_type,r.status,r.estimated_amount,r.note||'',r.target_on||null,r.deleted_at||null]]
     case 'trips':
       if(!str(r.title,150)||str(r.destination||'',300)===null||(r.start_on&&!date(r.start_on))||
          (r.end_on&&!date(r.end_on))||!amount(r.budget_amount)||
          !['planning','active','completed','cancelled'].includes(r.status)||
          (r.plan_json!=null&&str(r.plan_json,160000)===null))return null
       return ["INSERT OR IGNORE INTO trips(id,household_id,created_by,visibility,wish_id,title,destination,start_on,end_on,"+
-        "timezone,budget_amount,currency,status,import_source_key,import_hash,plan_json) "+
+        "timezone,budget_amount,currency,status,import_source_key,import_hash,plan_json,deleted_at) "+
         "VALUES(?1,?2,?3,?4,(SELECT id FROM wishes WHERE id=?5 AND household_id=?2 AND created_by=?3),"+
-        "?6,?7,?8,?9,?10,?11,'JPY',?12,?13,?14,?15)",
+        "?6,?7,?8,?9,?10,?11,'JPY',?12,?13,?14,?15,?16)",
         [r.id,h,u,v,id(r.wish_id)?r.wish_id:null,r.title,r.destination||'',r.start_on||null,r.end_on||null,
          str(r.timezone,70)||'Asia/Tokyo',r.budget_amount,r.status||'planning',r.import_source_key||null,
-         r.import_hash||null,r.plan_json||null]]
+         r.import_hash||null,r.plan_json||null,r.deleted_at||null]]
     case 'goals':
       if(!str(r.title,150)||!Number.isSafeInteger(r.target_amount)||r.target_amount<1||
          !amount(r.reserved_amount)||!optionalDate(r.target_on)||!optionalDate(r.start_on)||
          !['once','monthly','yearly'].includes(r.goal_mode||'once')||
          ((r.goal_mode==='monthly'||r.goal_mode==='yearly')&&!date(r.start_on))||
          (r.start_on&&r.target_on&&r.start_on>r.target_on))return null
-      return ["INSERT OR IGNORE INTO goals(id,household_id,created_by,visibility,wish_id,title,target_amount,reserved_amount,currency,target_on,goal_mode,start_on) "+
-        "VALUES(?1,?2,?3,?4,(SELECT id FROM wishes WHERE id=?5 AND household_id=?2 AND created_by=?3),?6,?7,?8,'JPY',?9,?10,?11)",
+      return ["INSERT OR IGNORE INTO goals(id,household_id,created_by,visibility,wish_id,title,target_amount,reserved_amount,currency,target_on,goal_mode,start_on,deleted_at) "+
+        "VALUES(?1,?2,?3,?4,(SELECT id FROM wishes WHERE id=?5 AND household_id=?2 AND created_by=?3),?6,?7,?8,'JPY',?9,?10,?11,?12)",
         [r.id,h,u,v,id(r.wish_id)?r.wish_id:null,r.title,r.target_amount,r.reserved_amount,r.target_on||null,
-         r.goal_mode||'once',r.start_on||null]]
+         r.goal_mode||'once',r.start_on||null,r.deleted_at||null]]
     case 'tasks':
       if(!str(r.title,150)||str(r.notes||'',1000)===null||!optionalDate(r.due_on))return null
       return ["INSERT OR IGNORE INTO tasks(id,household_id,creator_user_id,visibility,title,notes,due_on,completed_at,"+
-         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,"+
+         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id,deleted_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,"+
          "(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11,?12,?13,"+
-         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2))",
+         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15)",
         [r.id,h,u,v,r.title,r.notes||'',r.due_on||null,r.completed_at||null,r.completed_at?u:null,
          id(r.subject_profile_id)?r.subject_profile_id:null,id(r.client_request_id)?r.client_request_id:null,
          ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
-         r.remind_enabled===0?0:1,id(r.assignee_user_id)?r.assignee_user_id:null]]
+         r.remind_enabled===0?0:1,id(r.assignee_user_id)?r.assignee_user_id:null,r.deleted_at||null]]
     case 'anniversaries':
       if(!str(r.title,150)||!date(r.event_date)||!['once','yearly','monthly'].includes(r.repeat_mode))return null
-      return ["INSERT OR IGNORE INTO anniversaries(id,household_id,created_by,visibility,title,event_date,repeat_mode,advance_days_json,note,subject_profile_id) "+
-         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2))",
+      return ["INSERT OR IGNORE INTO anniversaries(id,household_id,created_by,visibility,title,event_date,repeat_mode,advance_days_json,note,subject_profile_id,deleted_at) "+
+         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11)",
          [r.id,h,u,v,r.title,r.event_date,r.repeat_mode,str(r.advance_days_json,100)||'[7,1,0]',
-          str(r.note,1000)||'',id(r.subject_profile_id)?r.subject_profile_id:null]]
+          str(r.note,1000)||'',id(r.subject_profile_id)?r.subject_profile_id:null,r.deleted_at||null]]
     case 'routines':
       if(!str(r.title,150)||!date(r.anchor_date)||
          !['daily','weekly','monthly','interval'].includes(r.repeat_type)||
          str(r.repeat_config,1200)===null||(r.next_due_on&&!date(r.next_due_on)))return null
-      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id,health_record_type,remind_enabled,assigned_to) "+
+      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id,health_record_type,remind_enabled,assigned_to,deleted_at) "+
          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,(SELECT id FROM family_profiles WHERE id=?11 AND household_id=?2),?12,?13,"+
-         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2))",
+         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15)",
          [r.id,h,u,v,r.title,r.repeat_type,r.repeat_config,r.anchor_date,r.enabled===0?0:1,
           r.next_due_on||null,id(r.subject_profile_id)?r.subject_profile_id:null,
           ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
-          r.remind_enabled===0?0:1,id(r.assigned_to)?r.assigned_to:null]]
+          r.remind_enabled===0?0:1,id(r.assigned_to)?r.assigned_to:null,r.deleted_at||null]]
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999||!optionalDate(r.due_on)||
          (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
-      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id) "+
-          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at) "+
+          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
           [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,r.completed_at?u:null,
-           r.due_on||null,r.ledger_entry_id||null]]
+           r.due_on||null,r.ledger_entry_id||null,r.deleted_at||null]]
     case 'memories':
       if(!str(r.title,150)||str(r.story||'',8000)===null||!date(r.happened_on))return null
-      return ["INSERT OR IGNORE INTO memories(id,household_id,created_by,visibility,title,story,happened_on,linked_type,linked_id) "+
-         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+      return ["INSERT OR IGNORE INTO memories(id,household_id,created_by,visibility,title,story,happened_on,linked_type,linked_id,deleted_at) "+
+         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
          [r.id,h,u,v,r.title,r.story||'',r.happened_on,
           ['trip','wish','profile','anniversary'].includes(r.linked_type)?r.linked_type:null,
-          id(r.linked_id)?r.linked_id:null]]
+          id(r.linked_id)?r.linked_id:null,r.deleted_at||null]]
     case 'petHealth':
       if(!id(r.profile_id)||!['weight','deworm','vaccination','vet','medication','grooming','other'].includes(r.record_type)||
          !date(r.event_on)||(r.next_due_on&&!date(r.next_due_on))||

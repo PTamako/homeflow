@@ -12,7 +12,7 @@ export async function mediaRoute(request,env,path,session){
     if(memoryId&&!/^[0-9a-f-]{36}$/.test(memoryId))return json({error:'invalid_input'},400)
     const query=`SELECT a.id,a.memory_id AS memoryId,a.uploaded_by AS uploadedBy,
       a.mime_type AS mimeType,a.byte_size AS byteSize,a.created_at AS createdAt
-      FROM media_assets a JOIN memories m ON m.id=a.memory_id WHERE a.household_id=?1
+      FROM media_assets a JOIN memories m ON m.id=a.memory_id WHERE a.household_id=?1 AND m.deleted_at IS NULL
       AND (m.visibility='household' OR m.created_by=?2)`+
       (memoryId?' AND a.memory_id=?3':'')+' ORDER BY a.created_at DESC LIMIT 250'
     const {results}=await db.prepare(query).bind(...(memoryId?[h,u,memoryId]:[h,u])).all()
@@ -23,7 +23,7 @@ export async function mediaRoute(request,env,path,session){
     const url=new URL(request.url),memoryId=url.searchParams.get('memoryId')
     if(!memoryId||!/^[0-9a-f-]{36}$/.test(memoryId))return json({error:'invalid_input'},400)
     const memory=await db.prepare(`SELECT id,created_by,visibility FROM memories WHERE id=?1
-      AND household_id=?2 AND (visibility='household' OR created_by=?3)`).bind(memoryId,h,u).first()
+      AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)`).bind(memoryId,h,u).first()
     if(!memory)return json({error:'not_found'},404)
     const mime=(request.headers.get('content-type')||'').split(';')[0].toLowerCase()
     const max=4*1024*1024
@@ -50,7 +50,7 @@ export async function mediaRoute(request,env,path,session){
   if(m && request.method==='GET'){
     if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
     const photo=await db.prepare(`SELECT a.storage_key,a.mime_type FROM media_assets a JOIN memories m ON m.id=a.memory_id
-      WHERE a.id=?1 AND a.household_id=?2 AND (m.visibility='household' OR m.created_by=?3)`)
+      WHERE a.id=?1 AND a.household_id=?2 AND m.deleted_at IS NULL AND (m.visibility='household' OR m.created_by=?3)`)
       .bind(m[1],h,u).first()
     if(!photo)return json({error:'not_found'},404)
     const object=await env.MEDIA.get(photo.storage_key)

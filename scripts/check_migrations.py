@@ -26,6 +26,7 @@ MIGRATIONS=[
     "0019_reminder_item_quiet_retry.sql",
     "0020_goal_period_settlements.sql",
     "0021_account_recovery.sql",
+    "0022_recycle_plans.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -75,6 +76,8 @@ added_columns={
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
   "notification_deliveries":{"attempts"},
 }
+for table in ("routines","anniversaries","wishes","goals","shopping_items","trips","memories"):
+  added_columns.setdefault(table,set()).add("deleted_at")
 for table,needed in added_columns.items():
     found={x[1] for x in db.execute(f"PRAGMA table_info({table})")}
     assert needed.issubset(found),f"{table} missing migration columns: {needed-found}"

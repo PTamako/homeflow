@@ -62,7 +62,7 @@ defineExpose({refreshIfStale})
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据与回收箱</h2></div>
      <TrashPanel v-if="active"/>
-     <p class="hint">已删除待办可恢复；其他计划删除仍以现有备份与关联规则为准。</p>
+     <p class="hint">计划、任务和回忆删除后可以恢复，原有历史及消费关联保留。</p>
    </section>
    <BackupPanel v-if="active" :user-id="userId"/>
    <section class="panel">
