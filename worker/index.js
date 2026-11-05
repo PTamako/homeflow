@@ -43,7 +43,7 @@ export default {
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
         if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
-        if(path==='/api/recycle'||path==='/api/recycle/restore')return recycleRoute(request,env.DB,path,session)
+        if(path==='/api/recycle'||path==='/api/recycle/restore'||path==='/api/recycle/empty')return recycleRoute(request,env.DB,path,session)
         if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
         if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
