@@ -9,7 +9,7 @@ type Reminder={id:string;kind:string;title:string;dueOn:string;daysBefore?:numbe
 type ItemPreference={kind:string;id:string;advanceDays:number;priority:'normal'|'important'}
 type Snooze={id:string;kind:string;untilOn:string}
 const shiftDay=(day:string,n:number)=>new Date(Date.parse(day+'T00:00:00Z')+86400000*n).toISOString().slice(0,10)
-const props=withDefaults(defineProps<{todayDate:string;todayEntryKeys:string[];compact?:boolean}>(),{compact:false})
+const props=withDefaults(defineProps<{todayDate:string;todayEntryKeys:string[];compact?:boolean;mode?:'full'|'list'|'settings'}>(),{compact:false,mode:'full'})
 const emit=defineEmits<{presenceChange:[hasReminders:boolean]}>()
 const items=ref<Reminder[]>([])
 const lastLoadedAt=ref(0),loadedDate=ref('')
@@ -169,17 +169,18 @@ onBeforeUnmount(()=>{requestId++})
 </script>
 
 <template>
-  <section :class="['important-reminders',{panel:!compact,compact}]" aria-label="重要提醒">
-    <div class="reminder-heading">
+  <section :class="['important-reminders',{panel:!compact,compact}]" :aria-label="mode==='settings'?'提醒规则':'待提醒'">
+    <div v-if="mode==='full'" class="reminder-heading">
       <h2><AppIcon name="bell" :size="20" /> 重要提醒</h2>
       <button v-if="!compact" class="text-button" type="button" :disabled="loading" @click="load">刷新</button>
     </div>
-    <p v-if="loading" class="reminder-status" role="status">正在读取今天的提醒…</p>
+    <template v-if="mode!=='settings'">
+    <p v-if="loading" class="reminder-status" role="status">正在读取待提醒事项…</p>
     <template v-else-if="error">
       <p role="alert" class="reminder-error">{{ error }}</p>
       <button type="button" class="text-button" @click="load">重试</button>
     </template>
-    <p v-else-if="!visibleReminders.length" class="reminder-status">暂无重要提醒</p>
+    <p v-else-if="!visibleReminders.length" class="reminder-status">暂无待提醒事项</p>
     <div v-else v-for="item in shownReminders" :key="item.kind+':'+item.id" class="reminder-item">
       <span>{{ item.title }} <small v-if="item.daysBefore">提前 {{ item.daysBefore }} 天</small>
        <small v-if="item.priority==='important'"> · 重要</small></span>
@@ -209,7 +210,8 @@ onBeforeUnmount(()=>{requestId++})
        </div>
       </div>
     </div>
-    <div class="reminder-settings">
+    </template>
+    <div v-if="mode!=='list'" class="reminder-settings">
       <label>默认提前提醒
        <select :value="String(advanceDays)" :disabled="savingAdvance" @change="saveLead(($event.target as HTMLSelectElement).value)">
         <option value="0">到期当天</option><option value="1">提前 1 天</option>
@@ -226,7 +228,7 @@ onBeforeUnmount(()=>{requestId++})
        <small>每日 06:00 推送，安静时段不通知。</small>
       </div>
     </div>
-    <div v-if="snoozed.length" class="snoozed-items">
+    <div v-if="mode!=='list'&&snoozed.length" class="snoozed-items">
       <b>已延后的提醒</b>
       <div v-for="item in visibleSnoozes" :key="item.kind+':'+item.id" class="snoozed-row">
        <span>{{ item.kind==='task'?'任务':item.kind==='routine'?'定期事项':item.kind==='trip'?'旅行':'纪念日' }}
@@ -236,7 +238,7 @@ onBeforeUnmount(()=>{requestId++})
     </div>
     <p v-if="snoozeError" class="reminder-error" role="alert">{{ snoozeError }}</p>
     <PageToast :toast="toast" />
-    <button v-if="!loading&&!error&&visibleReminders.length>shownReminders.length" type="button"
+    <button v-if="mode!=='settings'&&!loading&&!error&&visibleReminders.length>shownReminders.length" type="button"
       class="text-button" @click="visibleCount+=pageSize">加载更多</button>
   </section>
 </template>

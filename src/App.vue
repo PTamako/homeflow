@@ -76,8 +76,6 @@ async function refreshNotificationCount(){
       void setUnreadNotificationCount((result as any).unreadCount)
   }catch{}
 }
-const hasImportantReminders=ref(false)
-const importantRemindersRef=ref<{refreshIfStale:()=>void}|null>(null)
 const focusPlanType=ref('all')
 const focusPlanId=ref('')
 const focusPlanPeriodKey=ref('')
@@ -369,7 +367,6 @@ async function submitAuth(){
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
-  hasImportantReminders.value=false
   void setUnreadNotificationCount(0)
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
@@ -473,7 +470,6 @@ function onForeground(){
     if(user.value&&tab.value==='today')void reloadToday()
     else if(user.value)void refreshNotificationCount()
   }else if(user.value){
-    importantRemindersRef.value?.refreshIfStale()
     if(tab.value==='today')todayNotificationsRef.value?.refresh()
   }
 }
@@ -579,7 +575,7 @@ onBeforeUnmount(()=>{
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
-          :user-id="user.id" @unread-change="setUnreadNotificationCount"
+          :user-id="user.id" :today-entry-keys="todayEntryKeys" @unread-change="setUnreadNotificationCount"
           @open-plan="(kind,id)=>openPlans(kind,id)" />
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
           <div class="row-between"><b>重要提醒 · 储值计划</b></div>
@@ -767,17 +763,16 @@ onBeforeUnmount(()=>{
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
         @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
-      <ManagePage v-show="tab==='manage'" ref="importantRemindersRef" :active="tab==='manage'"
+      <ManagePage v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
-        @presence-change="hasImportantReminders=$event" @logout="logout" />
+        @logout="logout" />
     </main>
     <PageToast :toast="toast" />
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="navigateTab(n.id)">
         <AppIcon :name="n.icon" :size="23" />
-        <span v-if="(n.id==='manage'&&(hasImportantReminders||goalReviews.length))||(n.id==='today'&&unreadNotificationCount>0)"
-          class="nav-alert-dot" aria-hidden="true"></span>
+
         <span>{{ n.label }}</span></button>
     </nav>
   </div>

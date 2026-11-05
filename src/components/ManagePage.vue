@@ -10,14 +10,15 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
 const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
-const emit=defineEmits<{logout:[];presenceChange:[has:boolean]}>()
+const emit=defineEmits<{logout:[]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
-const reminders=ref<{refreshIfStale:()=>void}|null>(null)
+const reminderRulesOpen=ref(false)
 const {toast,notify}=usePageToast()
 // An invitation is a bearer credential. Clear its visible value when leaving
 // Management; fetching or creating a new one always requires an explicit tap.
 watch(()=>props.active,active=>{
  if(!active){invitation.value='';inviteError.value=''}
+ if(!active)reminderRulesOpen.value=false
 })
 async function generateInvite(){
  if(!props.isOwner||inviting.value)return
@@ -35,8 +36,6 @@ async function generateInvite(){
  }catch(e){inviteError.value=(e as Error).message}
  finally{inviting.value=false}
 }
-function refreshIfStale(){reminders.value?.refreshIfStale()}
-defineExpose({refreshIfStale})
 </script>
 
 <template>
@@ -60,8 +59,13 @@ defineExpose({refreshIfStale})
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2></div>
      <PushPanel v-if="active" :user-id="userId" :members="members"/>
-      <ImportantReminders ref="reminders" :today-date="todayDate" :today-entry-keys="todayEntryKeys"
-       compact @presence-change="emit('presenceChange',$event)"/>
+<button type="button" class="reminder-rules-trigger"
+       :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
+       <span>提醒规则</span>
+       <span aria-hidden="true">{{ reminderRulesOpen?'收起':'展开' }}</span>
+     </button>
+     <ImportantReminders v-if="active&&reminderRulesOpen" :today-date="todayDate"
+       :today-entry-keys="todayEntryKeys" compact mode="settings"/>
    </section>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>
@@ -80,4 +84,9 @@ defineExpose({refreshIfStale})
 .management-family-invites h3{font-size:13px;margin:0 0 6px}
 .management-invite-code{display:grid;gap:6px;margin-top:8px}
 .management-invite-code small{font-size:11px;color:#789184}
+.reminder-rules-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:14px;padding:11px 12px;background:#f7faf7;border:1px solid #e1eae2;
+  border-radius:11px;font-size:13px;font-weight:600;color:#466c56;text-align:left}
+.reminder-rules-trigger span:last-child{font-size:12px;color:#729480;font-weight:500}
+.reminder-rules-trigger:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 </style>
