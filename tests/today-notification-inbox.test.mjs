@@ -29,7 +29,7 @@ test('notifications list uses recipient-only or sender-only scope, current day a
  assert.equal(result.status,200)
  assert.equal((await result.json()).unreadCount,2)
  assert.match(queries[0].sql,/n.recipient_user_id=\?3/)
- assert.match(queries[0].sql,/n.sent_devices>0/)
+ assert.doesNotMatch(queries[0].sql,/n.sent_devices>0/)
  assert.match(queries[0].sql,/n.local_day=\?2/)
  assert.match(queries[0].sql,/LIMIT 6/)
  assert.deepEqual(queries[0].args.slice(0,1),['home'])
