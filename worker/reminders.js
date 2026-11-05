@@ -121,13 +121,13 @@ export async function remindersRoute(request,db,session) {
   const hid=session.household_id,u=session.user_id
   const [events,rules,marks,tasks,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
-    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (assigned_to=?2 OR (assigned_to IS NULL AND (visibility='household' OR created_by=?2))) LIMIT 200").bind(hid,u),
+    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) AND (assigned_to=?2 OR assigned_to IS NULL) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at FROM routine_marks m
       JOIN routines r ON r.id=m.routine_id WHERE r.household_id=?1 AND r.deleted_at IS NULL
       AND m.occurrence_on>=?2 AND m.occurrence_on<=?3
       AND (r.visibility='household' OR r.created_by=?4)`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
-      AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (assignee_user_id=?3 OR (assignee_user_id IS NULL AND (visibility='household' OR creator_user_id=?3)))
+      AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3) AND (assignee_user_id=?3 OR assignee_user_id IS NULL)
       ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')

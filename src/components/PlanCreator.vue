@@ -178,7 +178,7 @@ async function submit(){
      <label>旅行预算（日元）<input v-model.number="form.budgetAmount" type="number" min="0" max="100000000000"/></label>
 
     </template>
-    <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility">
+    <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility" @change="form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
      <option value="household">家庭共享</option><option value="private">仅自己</option>
     </select></label>
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
