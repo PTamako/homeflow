@@ -79,6 +79,23 @@ async function returnToToday(){
   window.requestAnimationFrame(()=>window.scrollTo({top:savedTodayScrollY,behavior:'instant'}))
   returningToToday=false
 }
+function openIncomingTask(kind:string|null,id:string|null){
+ if(!user.value||!['task','routine'].includes(kind||'')||!/^[a-f0-9-]{36}$/i.test(id||''))return false
+ openPlans(kind!,id!)
+ return true
+}
+function consumeTaskLink(){
+ const url=new URL(window.location.href)
+ if(!openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId')))return false
+ url.searchParams.delete('taskType');url.searchParams.delete('taskId')
+ window.history.replaceState(null,'',url.pathname+url.search+url.hash)
+ return true
+}
+function onPushMessage(event:MessageEvent){
+ if(event.origin!==window.location.origin&&event.origin!=='')return
+ const payload=event.data
+ if(payload?.type==='homeflow-open-task')openIncomingTask(payload.kind,payload.id)
+}
 function openSearchResult(result:{id:string;kind:string}){
  if(['shopping','wish','goal','trip','task','routine'].includes(result.kind))
    openPlans(result.kind,result.id)
@@ -280,7 +297,7 @@ async function retryAuth(){
   authReady.value=false
   try{
     await refresh()
-    if(user.value&&tab.value==='today')await reloadToday()
+    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
 }
 async function submitAuth(){
@@ -310,7 +327,7 @@ async function submitAuth(){
     }
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
-    if(user.value&&tab.value==='today')await reloadToday()
+    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
@@ -449,13 +466,15 @@ watch(tab,value=>{
 onMounted(async()=>{
   try{
     await refresh()
-    if(user.value&&tab.value==='today')await reloadToday()
+    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
+  navigator.serviceWorker?.addEventListener('message',onPushMessage)
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
 })
 onBeforeUnmount(()=>{
+  navigator.serviceWorker?.removeEventListener('message',onPushMessage)
   window.removeEventListener('online',onOnline)
   document.removeEventListener('visibilitychange',onForeground)
 })
@@ -703,7 +722,7 @@ onBeforeUnmount(()=>{
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
         @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
       <ManagePage v-show="tab==='manage'" ref="importantRemindersRef" :active="tab==='manage'"
-        :user-id="user.id" :login-name="user.loginName" :is-owner="user.role==='owner'"
+        :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
         @presence-change="hasImportantReminders=$event" @logout="logout" />
     </main>
