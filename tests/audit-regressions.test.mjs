@@ -6,6 +6,8 @@ import {portableRoute,RESTORE_ORDER} from '../worker/portable.js'
 import {tasksRoute} from '../worker/tasks.js'
 import {lifeRoute} from '../worker/life.js'
 import {petsRoute} from '../worker/pets.js'
+import {authRoute} from '../worker/auth.js'
+import {sha256} from '../worker/security.js'
 
 const person='11111111-1111-4111-8111-111111111111'
 const wish='22222222-2222-4222-8222-222222222222'
@@ -213,5 +215,56 @@ test('portable backup pages more than 500 records without truncation or write qu
    assert.equal(new Set(all.map(x=>x.id)).size,507)
    const invalid=await portableRoute(new Request('https://homeflow.test/api/portable?dataset=wishes&cursor=-3'),db,'/api/portable',session)
    assert.equal(invalid.status,400)
+ }finally{sqlite.close()}
+})
+
+test('password change validates old proof and revokes only other sessions',async()=>{
+ const {db,sqlite}=database()
+ const a='a'.repeat(64),b='b'.repeat(64),currentToken='c'.repeat(64),otherToken='d'.repeat(64)
+ const sessionWithLogin={...session,login_name:'owner'}
+ const route=async(oldProof,newProof)=>{
+  const request=new Request('https://homeflow.test/api/auth/change-password',{
+    method:'POST',headers:{'content-type':'application/json',cookie:'__Host-hf_session='+currentToken},
+    body:JSON.stringify({currentPasswordProof:oldProof,newPasswordProof:newProof,
+      newPasswordSalt:'e'.repeat(32),newPasswordRounds:100000})})
+  const response=await authRoute(request,{DB:db},'/api/auth/change-password',sessionWithLogin)
+  return {status:response.status,body:await response.json()}
+ }
+ try{
+  sqlite.prepare('UPDATE users SET password_salt=?,password_verifier=?,password_rounds=100000 WHERE id=?')
+    .run('c1:'+'1'.repeat(32),await sha256(a),'u1')
+  for(const token of [currentToken,otherToken]){
+   sqlite.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)')
+     .run(await sha256(token),'u1',Date.now()+86400000)
+  }
+  assert.equal((await route('0'.repeat(64),b)).status,401)
+  assert.equal((await route(a,b)).status,200)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM sessions').get().n,1)
+  assert.equal(sqlite.prepare('SELECT token_hash FROM sessions').get().token_hash,await sha256(currentToken))
+  assert.equal(sqlite.prepare("SELECT password_verifier FROM users WHERE id='u1'").get().password_verifier,await sha256(b))
+  assert.equal((await route(a,'f'.repeat(64))).status,401)
+ }finally{sqlite.close()}
+})
+test('pet weight trend returns 24 latest records and respects private visibility',async()=>{
+ const {db,sqlite}=database()
+ const pet='88888888-8888-4888-8888-888888888888'
+ try{
+  sqlite.prepare("INSERT INTO family_profiles(id,household_id,type,display_name) VALUES(?,?,'pet',?)").run(pet,'primary','豆沙')
+  sqlite.prepare("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u2','partner','x','y')").run()
+  sqlite.prepare("INSERT INTO household_members(household_id,user_id,role) VALUES('primary','u2','member')").run()
+  const insert=sqlite.prepare("INSERT INTO pet_health_records(id,household_id,profile_id,created_by,visibility,record_type,event_on,weight_grams) VALUES(?, 'primary', ?, 'u1', ?, 'weight', ?, ?)")
+  for(let i=0;i<26;i++)insert.run('8888'+String(i).padStart(4,'0')+'-bbbb-4bbb-8bbb-bbbbbbbbbbbb',pet,i===25?'private':'household','2026-11-'+String(i+1).padStart(2,'0'),5000+i*10)
+  const path='/api/pets/'+pet+'/health/trend'
+  const check=async(who)=>{
+   const response=await petsRoute(new Request('https://homeflow.test'+path),db,path,who)
+   assert.equal(response.status,200)
+   return (await response.json()).points
+  }
+  const owner=await check(session)
+  assert.equal(owner.length,24)
+  assert.equal(owner.at(-1).weightGrams,5250)
+  const member=await check({...session,user_id:'u2',role:'member'})
+  assert.equal(member.length,24)
+  assert.equal(member.at(-1).weightGrams,5240)
  }finally{sqlite.close()}
 })

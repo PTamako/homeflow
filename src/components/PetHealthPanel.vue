@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {onMounted,ref,watch} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
@@ -13,6 +13,28 @@ const editingId=ref<string|null>(null)
 const {toast,notify}=usePageToast()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
+type WeightPoint={eventOn:string;weightGrams:number}
+const weightPoints=ref<WeightPoint[]>([])
+const latestWeight=computed(()=>weightPoints.value.at(-1))
+const previousWeight=computed(()=>weightPoints.value.length>1?weightPoints.value.at(-2):null)
+const weightDifference=computed(()=>latestWeight.value&&previousWeight.value?
+  latestWeight.value.weightGrams-previousWeight.value.weightGrams:null)
+const weightPolyline=computed(()=>{
+ const points=weightPoints.value
+ if(points.length<2)return ''
+ const values=points.map(p=>p.weightGrams)
+ const min=Math.min(...values),span=Math.max(1,Math.max(...values)-min)
+ return points.map((p,i)=>[12+276*i/(points.length-1),
+   68-48*(p.weightGrams-min)/span].map(n=>n.toFixed(1)).join(',')).join(' ')
+})
+async function loadWeightTrend(){
+ try{
+  const response=await fetch('/api/pets/'+props.petId+'/health/trend',{credentials:'same-origin',cache:'no-store'})
+  if(!response.ok)return
+  const data=await response.json()
+  weightPoints.value=Array.isArray(data.points)?data.points:[]
+ }catch{/* Keep health entry usable when optional trend is unavailable. */}
+}
 let readRevision=0
 const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
@@ -52,7 +74,7 @@ async function removeRecord(r:Health){
   try{
     const res=await fetch('/api/pets/'+props.petId+'/health/'+r.id,{method:'DELETE',credentials:'same-origin'})
     if(!res.ok)throw Error('删除护理记录失败')
-    await read();if(editingId.value===r.id)cancelEditing()
+    await read();void loadWeightTrend();if(editingId.value===r.id)cancelEditing()
     notify('护理记录已删除')
   }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
@@ -68,6 +90,7 @@ async function create(){
   const data=await r.json()
   if(!r.ok)throw Error(data.error||'保存失败')
   await read()
+  void loadWeightTrend()
   note.value='';nextDate.value='';weight.value=null
   const edited=!!editingId.value
   editingId.value=null
@@ -75,13 +98,25 @@ async function create(){
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
-onMounted(()=>read())
+onMounted(()=>{void read();void loadWeightTrend()})
+watch(()=>props.petId,()=>{weightPoints.value=[];void read();void loadWeightTrend()})
 watch([year,month],()=>void read())
 watch(year,value=>{if(!value)month.value=''})
 </script>
 <template>
   <section class="pet-card">
     <h2 class="pet-title"><AppIcon name="paw" :size="20" /> {{ name }}的健康与护理记录</h2>
+    <div v-if="latestWeight" class="weight-trend">
+      <b>最近体重 {{ (latestWeight.weightGrams/1000).toFixed(2) }} kg</b>
+      <small>{{ latestWeight.eventOn }}
+        <template v-if="weightDifference!==null"> · 较上次 {{ weightDifference>0?'+':'' }}{{ (weightDifference/1000).toFixed(2) }} kg</template>
+      </small>
+      <svg v-if="weightPoints.length>1" viewBox="0 0 300 88" role="img"
+        aria-label="最近24次体重变化趋势" preserveAspectRatio="none">
+        <polyline :points="weightPolyline" fill="none" stroke="#43866a"
+          stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
 
     <form class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
@@ -123,7 +158,11 @@ watch(year,value=>{if(!value)month.value=''})
 </template>
 <style scoped>
 .pet-card{background:#fff;border:1px solid #eeeae4;border-radius:18px;padding:20px;margin:15px 0}
-.pet-card h2{font-size:17px;margin:0}.pet-title{display:flex;align-items:center;gap:9px}.sub{color:#819187;font-size:12px;line-height:1.7}
+.pet-card h2{font-size:17px;margin:0}
+.weight-trend{display:grid;gap:5px;padding:12px;background:#f3f8f3;border-radius:12px;margin:12px 0}
+.weight-trend b{font-size:13px;color:#3b7655}
+.weight-trend small{color:#819187;font-size:11px}
+.weight-trend svg{display:block;width:100%;height:86px}.pet-title{display:flex;align-items:center;gap:9px}.sub{color:#819187;font-size:12px;line-height:1.7}
 .pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:14px 0;min-width:0}
 .pet-form label{display:grid;gap:5px;font-size:12px;color:#64796b;min-width:0;max-width:100%}
 .pet-form input,.pet-form select{width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:42px;border:1px solid #dce6dc;border-radius:10px;padding:9px;font-size:13px;background:white}

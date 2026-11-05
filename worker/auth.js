@@ -147,6 +147,40 @@ export async function authRoute(request,env,path,session) {
     await db.prepare('DELETE FROM login_limits WHERE key=?1').bind(key).run()
     return json({ok:true},200,{'set-cookie':await createSession(db,user.id)})
   }
+  if(path==='/api/auth/change-password' && request.method==='POST'){
+    if(!session)return json({error:'not_authenticated'},401)
+    const body=await readBody(request)
+    if(!/^[a-f0-9]{64}$/.test(body?.currentPasswordProof||'')||
+       !/^[a-f0-9]{32}$/.test(body?.newPasswordSalt||'')||
+       !/^[a-f0-9]{64}$/.test(body?.newPasswordProof||'')||
+       body?.newPasswordRounds!==100000)return malformed()
+    const token=cookieFrom(request)
+    if(!token)return json({error:'not_authenticated'},401)
+    const {key,blocked}=await limiter(db,session.login_name,request)
+    if(blocked)return json({error:'too_many_attempts'},429)
+    const row=await db.prepare('SELECT password_verifier,password_rounds FROM users WHERE id=?1 AND disabled_at IS NULL')
+      .bind(session.user_id).first()
+    const oldVerifier=await sha256(body.currentPasswordProof)
+    if(!row||Number(row.password_rounds)!==100000||
+       !constantEqualHex(oldVerifier,row.password_verifier)){
+      await recordFailure(db,key)
+      return json({error:'invalid_credentials'},401)
+    }
+    const newVerifier=await sha256(body.newPasswordProof)
+    if(newVerifier===oldVerifier)return json({error:'password_unchanged'},409)
+    const currentSessionHash=await sha256(token)
+    const results=await db.batch([
+      db.prepare(`UPDATE users SET password_salt=?1,password_verifier=?2,password_rounds=100000
+        WHERE id=?3 AND password_verifier=?4 AND disabled_at IS NULL`)
+        .bind('c1:'+body.newPasswordSalt,newVerifier,session.user_id,oldVerifier),
+      db.prepare(`DELETE FROM sessions WHERE user_id=?1 AND token_hash<>?2
+        AND EXISTS(SELECT 1 FROM users WHERE id=?1 AND password_verifier=?3)`)
+        .bind(session.user_id,currentSessionHash,newVerifier)
+    ])
+    if(results[0]?.meta?.changes!==1)return json({error:'password_change_conflict'},409)
+    await db.prepare('DELETE FROM login_limits WHERE key=?1').bind(key).run()
+    return json({ok:true,otherSessionsRevoked:true})
+  }
   if(path==='/api/auth/logout' && request.method==='POST') {
     const token=cookieFrom(request)
     if(token)await db.prepare('DELETE FROM sessions WHERE token_hash=?1').bind(await sha256(token)).run()
