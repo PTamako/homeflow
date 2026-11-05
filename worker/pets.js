@@ -131,7 +131,7 @@ export async function petsRoute(request,db,path,session){
          .bind(stamp,oldId,h,u))
      }
    }
-   if(newId)statements.push(db.prepare(`INSERT INTO tasks
+   if(newId)statements.unshift(db.prepare(`INSERT INTO tasks
      (id,household_id,creator_user_id,subject_profile_id,visibility,title,due_on,notes)
      VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`)
      .bind(newId,h,u,profileId,visibility,reminderTitle(pet.display_name,type),next,note))
