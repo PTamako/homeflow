@@ -106,8 +106,11 @@ function openAddTask(){
   showAddTask.value=true
   void nextTick(()=>newTaskTitleInput.value?.focus())
 }
-function closeAddTask(force=false){
-  if(loading.value&&!force)return
+function closeAddTask(){
+  if(loading.value)return
+  dismissAddTask()
+}
+function dismissAddTask(){
   showAddTask.value=false
   error.value=''
   if(tab.value==='today')void nextTick(()=>addTaskTrigger.value?.focus())
@@ -401,7 +404,7 @@ async function addTask(){
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
     else {await loadTasks();notify(unscheduled?'已存入「计划 → 待安排」':'任务已添加')}
     pendingTasks.value=await listPending(user.value.id)
-    closeAddTask(true)
+    dismissAddTask()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 function editTask(t:Task){
