@@ -76,7 +76,11 @@ export async function notificationsRoute(request,db,path,session){
       AND local_day=?4 AND sent_devices>0`)
       .bind(match[1],session.household_id,session.user_id,day).run()
     if(!result.meta?.changes)return json({error:'not_found'},404)
-    return json({ok:true})
+    const count=await db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
+      WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+        AND read_at IS NULL AND sent_devices>0`)
+      .bind(session.household_id,session.user_id,day).first()
+    return json({ok:true,unreadCount:Number(count?.count||0)})
   }
   return json({error:'not_found'},404)
 }
