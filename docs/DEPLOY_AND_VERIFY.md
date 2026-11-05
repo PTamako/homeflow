@@ -1,4 +1,4 @@
-# HomeFlow · 实际上线配置与验收（2026-11-04）
+# HomeFlow · 实际上线配置与验收（2026-11-05）
 
 ## 已核实的资源
 
@@ -93,3 +93,11 @@
 - 手工执行迁移后不得推断 Wrangler 的迁移追踪已经同步。后续新迁移应先核实实际 schema 和历史迁移元数据，**禁止在生产 D1 重放旧 SQL**。见 [Issue #56](https://github.com/PTamako/homeflow/issues/56)。
 - 真实银行专项储值不可使用家庭净收支模拟证明（[Issue #53](https://github.com/PTamako/homeflow/issues/53)）；退款原消费关系没有数据契约时必须人工核实（[Issue #54](https://github.com/PTamako/homeflow/issues/54)）。
 - iPhone/iPad、第二位家庭账号、06:00 Web Push 实际送达、完整 ZIP 恢复与照片跨端同步仍保留原本的未勾选事项，详见 [Issue #4](https://github.com/PTamako/homeflow/issues/4)。
+
+## 2026-11-05 增量迁移与发布
+
+1. 0021_account_recovery.sql 是独立新增的恢复码哈希表，已先验证 Preview 的结构和迁移登记，再应用到 Production；两个环境的 d1_migrations 均为 22 条。
+2. 没有重放 0001–0020 历史迁移，没有修改现有用户凭据或业务账目。
+3. 恢复码须由用户本人登录、校验当前密码后主动生成和离线保存。恢复码无法从服务器再次取回，单码仅能使用一次。
+4. 未绑定身份验证的邮箱地址不构成账户恢复凭证。
+5. CI、Preview 部署、Preview 环境健康检查、Production 部署和 Production 环境健康检查已通过。真机、锁屏通知和第二位家庭成员仍需实际操作确认。

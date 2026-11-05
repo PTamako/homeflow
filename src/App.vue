@@ -9,6 +9,7 @@ import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import SecurityPanel from './components/SecurityPanel.vue'
+import TrashPanel from './components/TrashPanel.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
@@ -102,7 +103,7 @@ function navigateTab(value:typeof tab.value){
 }
 const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
-const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref('')
+const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
 const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref(''),taskCareType=ref('')
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
@@ -268,12 +269,13 @@ async function submitAuth(){
       const proof=await registerPassword(password.value)
       await api('/auth/join','POST',{...details,...proof,invitationCode:invite.value})
     } else if(authMode.value==='recover'){
+      if(password.value!==recoveryConfirm.value)throw Error('两次输入的新密码不一致')
       if(!/^[a-f0-9]{32}$/i.test(recoveryCode.value.trim()))throw Error('恢复码应为32位字符')
       const fresh=await registerPassword(password.value)
       await api('/auth/recover','POST',{loginName:login.value,recoveryCode:recoveryCode.value.trim().toLowerCase(),
         newPasswordProof:fresh.passwordProof,newPasswordSalt:fresh.passwordSalt,
         newPasswordRounds:fresh.passwordRounds})
-      authMode.value='login';password.value='';recoveryCode.value=''
+      authMode.value='login';password.value='';recoveryConfirm.value='';recoveryCode.value=''
       notify('密码重置成功，请使用新密码登录')
       return
     } else {
@@ -503,6 +505,7 @@ onBeforeUnmount(()=>{
             <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
           <div class="settings-section settings-account"><span>当前账号</span><b>{{ user.loginName }}</b></div>
           <div class="settings-section"><SecurityPanel v-if="settingsOpen" :login-name="user.loginName"/></div>
+          <div class="settings-section"><TrashPanel v-if="settingsOpen" /></div>
           <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel v-if="settingsOpen" /></div>
           <div class="settings-section settings-reminders">
             <ImportantReminders ref="importantRemindersRef" :today-date="currentJstDay"
@@ -536,6 +539,9 @@ onBeforeUnmount(()=>{
         <label v-if="authMode==='bootstrap'||authMode==='join'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
         <label>{{ authMode==='recover'?'设置新密码':'密码' }}<input v-model="password" required type="password" minlength="12" maxlength="128"
           :autocomplete="authMode==='recover'?'new-password':'current-password'" placeholder="12～128 位"/></label>
+        <label v-if="authMode==='recover'">再次确认新密码
+          <input v-model="recoveryConfirm" required type="password" minlength="12" maxlength="128"
+            autocomplete="new-password"/></label>
         <label v-if="authMode==='recover'">一次性恢复码
           <input v-model.trim="recoveryCode" required maxlength="32" autocomplete="off" placeholder="32位恢复码"/></label>
         <template v-if="authMode==='bootstrap'">

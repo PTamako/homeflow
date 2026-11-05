@@ -81,3 +81,11 @@ test('search click targets the exact record, even beyond first five',()=>{
  assert.ok(life.includes("document.getElementById('plan-item-'+id)?.scrollIntoView"))
  assert.ok(worker.includes("if(request.method==='GET'){"))
 })
+
+test('settings recycle bin is demand-loaded and recovery requires confirmation',()=>{
+ const trash=readFileSync(new URL('../src/components/TrashPanel.vue',import.meta.url),'utf8')
+ assert.ok(app.includes('<TrashPanel v-if="settingsOpen" />'))
+ assert.ok(trash.includes("if(expanded.value)void fetchTrash()"))
+ assert.ok(trash.includes("new URLSearchParams({limit:'5'})"))
+ assert.ok(app.includes('recoveryConfirm.value'))
+})
