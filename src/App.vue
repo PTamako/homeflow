@@ -11,6 +11,7 @@ import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
 import SwipeActions from './components/SwipeActions.vue'
 import PageToast from './components/PageToast.vue'
+import TodayNotifications from './components/TodayNotifications.vue'
 import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
@@ -47,6 +48,34 @@ const peopleVisibleCount=ref(listPageSize)
 const petsVisibleCount=ref(listPageSize)
 const routineBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'|'manage'>('today')
+const unreadNotificationCount=ref(0)
+const todayNotificationsRef=ref<{refresh:()=>Promise<void>|void}|null>(null)
+type BadgeNavigator=Navigator&{setAppBadge?:(count?:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>}
+async function setUnreadNotificationCount(value:number){
+  unreadNotificationCount.value=Math.max(0,Number(value)||0)
+  try{
+    const badge=navigator as BadgeNavigator
+    if(unreadNotificationCount.value>0)await badge.setAppBadge?.(unreadNotificationCount.value)
+    else await badge.clearAppBadge?.()
+  }catch{/* Some browsers and installed PWAs do not support app icon badges. */}
+}
+async function markNotificationRead(id:string){
+  if(!/^[a-f0-9-]{36}$/i.test(id)||!user.value)return
+  try{
+    const result=await api('/notifications/'+id+'/read','POST')
+    if(typeof (result as any).unreadCount==='number')
+      void setUnreadNotificationCount((result as any).unreadCount)
+    todayNotificationsRef.value?.refresh()
+  }catch{/* Expired or already removed notifications do not affect tasks. */}
+}
+async function refreshNotificationCount(){
+  if(!user.value)return
+  try{
+    const result=await api('/notifications/today?view=received')
+    if(typeof (result as any).unreadCount==='number')
+      void setUnreadNotificationCount((result as any).unreadCount)
+  }catch{}
+}
 const hasImportantReminders=ref(false)
 const importantRemindersRef=ref<{refreshIfStale:()=>void}|null>(null)
 const focusPlanType=ref('all')
@@ -86,15 +115,24 @@ function openIncomingTask(kind:string|null,id:string|null){
 }
 function consumeTaskLink(){
  const url=new URL(window.location.href)
- if(!openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId')))return false
+ const notificationId=url.searchParams.get('notificationId')
+ if(notificationId)void markNotificationRead(notificationId)
+ const opened=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'))
+ if(!notificationId&&!opened)return false
+ url.searchParams.delete('notificationId')
  url.searchParams.delete('taskType');url.searchParams.delete('taskId')
  window.history.replaceState(null,'',url.pathname+url.search+url.hash)
- return true
+ return opened
 }
 function onPushMessage(event:MessageEvent){
  if(event.origin!==window.location.origin&&event.origin!=='')return
  const payload=event.data
+ if(payload?.type==='homeflow-open-notification')void markNotificationRead(payload.id)
  if(payload?.type==='homeflow-open-task')openIncomingTask(payload.kind,payload.id)
+ if(payload?.type==='homeflow-notification-pushed'&&tab.value==='today'){
+   // The sender records results after the push service accepts the delivery.
+   window.setTimeout(()=>todayNotificationsRef.value?.refresh(),1200)
+ }
 }
 function openSearchResult(result:{id:string;kind:string}){
  if(['shopping','wish','goal','trip','task','routine'].includes(result.kind))
@@ -332,6 +370,7 @@ async function submitAuth(){
 }
 async function logout(){
   hasImportantReminders.value=false
+  void setUnreadNotificationCount(0)
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
     const registration=await navigator.serviceWorker?.getRegistration()
@@ -432,8 +471,12 @@ function onForeground(){
   if(d!==currentJstDay.value){
     currentJstDay.value=d
     if(user.value&&tab.value==='today')void reloadToday()
-  }else if(user.value)importantRemindersRef.value?.refreshIfStale()
-}
+    else if(user.value)void refreshNotificationCount()
+  }else if(user.value){
+    importantRemindersRef.value?.refreshIfStale()
+    if(tab.value==='today')todayNotificationsRef.value?.refresh()
+  }
+
 async function toggleTask(t:Task){
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
@@ -535,6 +578,9 @@ onBeforeUnmount(()=>{
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
+        <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
+          :user-id="user.id" @unread-change="setUnreadNotificationCount"
+          @open-plan="(kind,id)=>openPlans(kind,id)" />
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
           <div class="row-between"><b>重要提醒 · 储值计划</b></div>
           <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
@@ -730,7 +776,7 @@ onBeforeUnmount(()=>{
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="navigateTab(n.id)">
         <AppIcon :name="n.icon" :size="23" />
-        <span v-if="n.id==='manage'&&(hasImportantReminders||goalReviews.length)"
+        <span v-if="(n.id==='manage'&&(hasImportantReminders||goalReviews.length))||(n.id==='today'&&unreadNotificationCount>0)"
           class="nav-alert-dot" aria-hidden="true"></span>
         <span>{{ n.label }}</span></button>
     </nav>
