@@ -36,3 +36,11 @@ test('Today loads only history for visible current goal and wish IDs, never the 
  assert.doesNotMatch(source,/ORDER BY completed_at DESC LIMIT 5000/)
  assert.doesNotMatch(source,/AND status IN \('met','shortfall'\) LIMIT 5000/)
 })
+
+test('Today completion marks are split by plan type to use compound D1 indexes',()=>{
+ const source=readFileSync(new URL('../worker/plan-today.js',import.meta.url),'utf8')
+ assert.match(source,/plan_type='goal'/)
+ assert.match(source,/plan_type='wish'/)
+ assert.match(source,/const markCount=Number\(!!goalIds.length\)\+Number\(!!wishIds.length\)/)
+ assert.doesNotMatch(source,/FROM plan_completion_marks WHERE household_id=\?1 AND \(\$\{where\.join/)
+})

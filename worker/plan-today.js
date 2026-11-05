@@ -139,29 +139,26 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
   ])
   const goalIds=(sourceBatch[2].results||[]).map(row=>row.id)
   const wishIds=(sourceBatch[1].results||[]).map(row=>row.id)
-  const where=[],markArgs=[h]
-  if(goalIds.length){
-    where.push("(plan_type='goal' AND plan_id IN ("+goalIds.map(()=>'?').join(',')+"))")
-    markArgs.push(...goalIds)
-  }
-  if(wishIds.length){
-    const start=markArgs.length+1
-    where.push("(plan_type='wish' AND plan_id IN ("+wishIds.map(()=>'?').join(',')+
-      ") AND completed_at>=?"+(start+wishIds.length)+")")
-    markArgs.push(...wishIds,startOfDayUtc)
-  }
+  // Separate goal and wish lookups let D1 use the covering primary-key
+  // indexes (household_id,plan_type,plan_id) instead of scanning the entire
+  // household date index for an OR expression.
   const historical=[]
-  if(where.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
-    FROM plan_completion_marks WHERE household_id=?1 AND (${where.join(' OR ')})
-    ORDER BY completed_at DESC`).bind(...markArgs))
+  if(goalIds.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
+    FROM plan_completion_marks WHERE household_id=?1 AND plan_type='goal'
+      AND plan_id IN (${goalIds.map(()=>'?').join(',')})`).bind(h,...goalIds))
+  if(wishIds.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
+    FROM plan_completion_marks WHERE household_id=?1 AND plan_type='wish'
+      AND plan_id IN (${wishIds.map(()=>'?').join(',')})
+      AND completed_at>=?${wishIds.length+2}`).bind(h,...wishIds,startOfDayUtc))
   if(goalIds.length)historical.push(db.prepare(`SELECT goal_id,period_key,status
     FROM goal_period_settlements WHERE household_id=?1
       AND goal_id IN (${goalIds.map(()=>'?').join(',')})
       AND status IN ('met','shortfall')`).bind(h,...goalIds))
   const pages=historical.length?await db.batch(historical):[]
+  const markCount=Number(!!goalIds.length)+Number(!!wishIds.length)
   const batch=[...sourceBatch,
-    where.length?pages[0]:{results:[]},
-    goalIds.length?pages[pages.length-1]:{results:[]}]
+    {results:pages.slice(0,markCount).flatMap(page=>page.results||[])},
+    goalIds.length?pages[markCount]:{results:[]}]
   const result=[]
   const goalReviews=[]
   const settledByGoal=new Map()
