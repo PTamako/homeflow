@@ -201,3 +201,9 @@ test('Today only offers deletion and plan navigation; editing stays in the Plans
  assert.match(app, /focusPlanScope\.value=done&&\(kind==='task'\|\|kind==='routine'/,
    'completed one-off task must navigate to the correct history tab')
 })
+
+test('Today plan digest does not silently drop items after the first 100 already-fetched entries',()=>{
+ const source=readFileSync(new URL('../worker/plan-today.js',import.meta.url),'utf8')
+ assert.match(source,/return json\(\{date,items:result,goalReviews:/)
+ assert.doesNotMatch(source,/items:result\.slice\(0,100\)/)
+})
