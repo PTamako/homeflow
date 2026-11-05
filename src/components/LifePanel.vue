@@ -80,7 +80,7 @@ const focusedItemId=computed(()=>props.focusPlanScope===planScope.value?(props.f
 const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
   (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
-const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref('')
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 function closeAnniversaryForm(){
@@ -160,7 +160,7 @@ async function planCreated(kind:PlanType,id:string,unscheduled=false){
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
-  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||''
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceVisibility.value=t.visibility
 }
 async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
   await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
@@ -169,7 +169,7 @@ async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
 async function saveOnce(){
   const t=onceEditing.value
   if(!t)return
-  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:t.visibility,
+  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:onceVisibility.value,
     dueOn:onceDate.value||null,assigneeUserId:onceAssignee.value||null,
     subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
     remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
@@ -926,7 +926,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <template v-if="t.completedAt"> · 已完成</template> · 发起人：{{ memberName(t.creatorUserId) }} · 处理人：{{ memberName(t.assigneeUserId) }}
                   </small>
                 </div>
-                <button v-if="planScope==='active'" type="button" class="routine-more-trigger"
+                <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
                   :aria-label="'更多操作：'+t.title"
                   :aria-expanded="expandedTaskMenu==='task:'+t.id"
                   :aria-controls="'task-actions-'+t.id"
@@ -960,9 +960,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
               <label>截止日期<DateField v-model="onceDate" /></label>
               <label><input v-model="onceRemind" type="checkbox" /> 开启提醒</label>
-              <label>处理人<select v-model="onceAssignee" aria-label="修改任务处理人">
+              <label>处理人<select v-model="onceAssignee" aria-label="修改任务处理人"
+                @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null">
                 <option value="">未指派</option>
-                <option v-for="member in (props.members||[])" :key="member.id" :value="member.id" :disabled="t.visibility==='private'&&member.id!==props.userId">{{ member.loginName }}</option>
+                <option v-for="member in (props.members||[])" :key="member.id" :value="member.id" :disabled="onceVisibility==='private'&&member.id!==props.userId">{{ member.loginName }}</option>
+              </select></label>
+              <label>可见范围<select v-model="onceVisibility"
+                @change="onceVisibility==='private'&&onceAssignee!==props.userId?onceAssignee=props.userId:''">
+                <option value="household">家庭共享</option><option value="private">仅自己</option>
               </select></label>
               <div class="detail-actions">
                 <button type="button" @click="onceEditing=null">取消</button>
