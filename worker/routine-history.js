@@ -129,3 +129,23 @@ export async function routineHistory(db,request,session){
   const items=unique.slice(0,filters.limit),last=items.at(-1)
   return json({items,nextCursor:unique.length>filters.limit&&last?last.periodOn+'|'+last.id:null})
 }
+
+export async function routinePeriodDetail(db,rule,on,session){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(on))return json({error:'invalid_input'},400)
+  const variants=routineVersions(rule)
+  const version=variants.find(v=>on>=v.validFrom&&(!v.validUntil||on<v.validUntil))||
+    variants.at(-1)
+  if(!version||(version.visibility==='private'&&rule.created_by!==session.user_id))
+    return json({error:'not_found'},404)
+  const mark=await db.prepare(`SELECT occurrence_on,completed_at,skipped_at FROM routine_marks
+    WHERE routine_id=?1 AND occurrence_on=?2`).bind(rule.id,on).first()
+  const state=statusOf(mark)
+  const closed=!!version.validUntil&&version.validUntil<=jstToday()&&on<version.validUntil
+  if(state==='pending'&&!closed&&!isClosedRoutinePeriod(version,on,jstToday()))
+    return json({error:'period_not_archived'},409)
+  return json({item:{id:rule.id,periodOn:on,title:version.title,
+    repeat_type:version.repeat_type,repeat_config:version.repeat_config,
+    subject_profile_id:version.subject_profile_id,health_record_type:version.health_record_type,
+    status:state==='pending'?'missed':state,completedAt:mark?.completed_at||null,
+    completedOn:markDate(mark),skippedAt:mark?.skipped_at||null,created_by:rule.created_by}})
+}
