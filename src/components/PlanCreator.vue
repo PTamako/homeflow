@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
+import OneTimeTaskFields from './OneTimeTaskFields.vue'
+import {newOneTimeTaskDraft,oneTimeTaskPayload} from '../one-time-task'
 import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 
@@ -25,9 +27,11 @@ const form=reactive({
  startDate:'',endDate:'',budgetAmount:0
 })
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
+const onceDraft=ref(newOneTimeTaskDraft(today()))
+const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.leaveUnscheduled=false}
-function dismiss(){opened.value=false;kind.value=null;error.value='';form.leaveUnscheduled=false}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';onceDraft.value=newOneTimeTaskDraft(today())}
+function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today())}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
  const response=await fetch('/api'+path,{method:'POST',credentials:'same-origin',
@@ -37,7 +41,7 @@ async function send(path:string,payload:Record<string,unknown>){
  return data
 }
 async function submit(){
- if(!kind.value||busy.value||!form.title.trim())return
+ if(!kind.value||busy.value||!(kind.value==='routine'&&form.repeatType==='once'?onceDraft.value.title:form.title).trim())return
  busy.value=true;error.value=''
  try{
   let result:any
@@ -49,8 +53,7 @@ async function submit(){
       remindEnabled:form.remindEnabled
     }
     if(form.repeatType==='once'){
-      result=await send('/tasks',{...details,notes:'',dueOn:form.leaveUnscheduled?null:form.date,
-        remindEnabled:form.leaveUnscheduled?false:form.remindEnabled})
+      result=await send('/tasks',oneTimeTaskPayload(onceDraft.value,oncePet.value))
       emit('taskCreated')
     }else{
       const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
@@ -76,7 +79,7 @@ async function submit(){
       startDate:form.startDate||null,endDate:form.endDate||null,
       budgetAmount:form.budgetAmount})
   }
-  const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&form.leaveUnscheduled
+  const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&!onceDraft.value.dueOn
   emit('created',kind.value,String(result.id||''),savedUnscheduled)
   dismiss()
  }catch(e){error.value=(e as Error).message}
@@ -99,7 +102,7 @@ async function submit(){
    </div>
    <form v-if="kind" class="plan-fields" @submit.prevent="submit">
     <h3>{{ selected?.label }}</h3>
-    <label>计划名称<input v-model.trim="form.title" required maxlength="150" placeholder="计划名称"/></label>
+    <label v-if="kind!=='routine'||form.repeatType!=='once'">计划名称<input v-model.trim="form.title" required maxlength="150" placeholder="计划名称"/></label>
     <template v-if="kind==='routine'">
      <label>执行频率<select v-model="form.repeatType">
        <option value="once">一次性</option><option value="daily">每天</option>
@@ -107,36 +110,33 @@ async function submit(){
        <option value="workday">工作日（排除日本祝日）</option>
        <option value="interval">自定义间隔</option>
      </select></label>
-     <label v-if="form.repeatType==='once'" class="plan-checkbox">
-       <input v-model="form.leaveUnscheduled" type="checkbox"/>
-       <span>暂不安排日期 <small>保存到「待安排」，以后再决定哪天执行</small></span>
-     </label>
-     <label v-if="form.repeatType!=='once'||!form.leaveUnscheduled">{{ form.repeatType==='once'?'计划日期':'起始日期' }}
-       <DateField v-model="form.date" required /></label>
-     <label v-if="form.repeatType==='weekly'">每周执行日
-      <select v-model.number="form.weekday" aria-label="每周执行星期">
-       <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
-      </select>
-     </label>
-     <template v-if="form.repeatType==='interval'">
-      <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
-      <label>计算方式<select v-model="form.intervalAnchor">
-       <option value="fixed">按原定日期</option><option value="completion">按上次完成日期</option>
+     <OneTimeTaskFields v-if="form.repeatType==='once'" v-model="onceDraft" :profiles="profiles"/>
+     <template v-else>
+      <label>起始日期<DateField v-model="form.date" required /></label>
+      <label v-if="form.repeatType==='weekly'">每周执行日
+       <select v-model.number="form.weekday" aria-label="每周执行星期">
+        <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
+       </select>
+      </label>
+      <template v-if="form.repeatType==='interval'">
+       <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
+       <label>计算方式<select v-model="form.intervalAnchor">
+        <option value="fixed">按原定日期</option><option value="completion">按上次完成日期</option>
+       </select></label>
+      </template>
+      <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/>
+       <span>开启提醒<small>关闭后仍会显示在到期事项中</small></span></label>
+      <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
+       <option value="">不关联</option>
+       <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>
       </select></label>
-     </template>
-     <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"
-       :disabled="form.repeatType==='once'&&form.leaveUnscheduled"/>
-      <span>开启提醒 <small>{{ form.repeatType==='once'&&form.leaveUnscheduled?'安排日期后才能提醒':'关闭后仍会显示在到期事项中' }}</small></span></label>
-     <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
-      <option value="">不关联</option>
-      <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>
-     </select></label>
-     <label v-if="isPet">完成后写入护理记录<select v-model="form.healthRecordType">
+      <label v-if="isPet">完成后写入护理记录<select v-model="form.healthRecordType">
        <option value="">不自动记录</option><option value="other">日常护理</option>
        <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
        <option value="deworm">驱虫</option><option value="vaccination">疫苗</option>
        <option value="vet">就诊</option>
-     </select></label>
+      </select></label>
+     </template>
     </template>
     <template v-else-if="kind==='shopping'">
      <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
@@ -175,13 +175,13 @@ async function submit(){
      <label>旅行预算（日元）<input v-model.number="form.budgetAmount" type="number" min="0" max="100000000000"/></label>
 
     </template>
-    <label>可见范围<select v-model="form.visibility">
+    <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility">
      <option value="household">家庭共享</option><option value="private">仅自己</option>
     </select></label>
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
      <button type="button" class="creator-cancel" @click="dismiss">取消</button>
-     <button class="creator-save" :disabled="busy">{{ busy?'保存中…':'保存计划' }}</button>
+     <button class="creator-save" :disabled="busy">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
   </template>
