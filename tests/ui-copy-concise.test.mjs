@@ -35,3 +35,10 @@ test('copy simplification keeps material financial and destructive-action warnin
 test('reminder rows show dates instead of raw identifier fragments',()=>{
  assert.doesNotMatch(template('src/components/ImportantReminders.vue'),/item\.id\.slice\(-8\)/)
 })
+
+
+test('HomeFlow header uses the new brand tagline',()=>{
+ const app=template('src/App.vue')
+ assert.match(app,/<p class="lead">让爱与生活，自然流转。<\/p>/)
+ assert.doesNotMatch(app,/每件重要的小事/)
+})

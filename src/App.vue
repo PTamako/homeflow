@@ -592,7 +592,7 @@ onBeforeUnmount(()=>{
     <main v-else class="content">
       <div class="eyebrow">OUR LITTLE HOME</div>
       <h1>{{ {today:'我们家的今天',plans:'我的计划',memories:'我们的时光轴',family:'家庭档案',manage:'管理中心'}[tab] }} ♡</h1>
-      <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
+      <p class="lead">让爱与生活，自然流转。</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
