@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string;members?:Array<{id:string;loginName:string}>}>()
@@ -7,6 +7,10 @@ const otherMembers=computed(()=>(props.members||[]).filter(m=>m.id!==props.userI
 const available=ref(false),configured=ref(false),enabled=ref(false),busy=ref(false),message=ref('')
 const familyFormOpen=ref(false),recipientId=ref(''),familyMessage=ref('')
 const familyBusy=ref(false),familyError=ref('')
+watch(otherMembers,members=>{
+  if(members.length===1){recipientId.value=members[0].id;return}
+  if(!members.some(m=>m.id===recipientId.value))recipientId.value=''
+},{immediate:true})
 const {toast,notify}=usePageToast()
 let publicKey=''
 function decodeKey(value:string){
@@ -43,29 +47,14 @@ async function enable(){
       headers:{'content-type':'application/json'},body:JSON.stringify(data)})
     if(!r.ok)throw Error('服务器尚未接受推送订阅，请重试')
     enabled.value=true
-    notify('已开启每日提醒（日本时间上午 8 点）')
-  }catch(e){message.value=(e as Error).message}
-  finally{busy.value=false}
-}
-async function sendNow(){
-  if(!enabled.value||busy.value)return
-  busy.value=true;message.value=''
-  try{
-    const response=await fetch('/api/push/send-now',{
-      method:'POST',credentials:'same-origin',cache:'no-store',
-      headers:{'content-type':'application/json'},body:'{}'
-    })
-    const data=await response.json().catch(()=>({}))
-    if(!response.ok)throw Error(data.error==='push_rate_limited'?'每分钟最多立即推送一次':
-      data.error==='push_not_subscribed'?'当前账号尚未订阅推送':
-      '推送未能送达，请检查设备授权')
-    notify('已推送到当前账号的 '+data.sent+' 台设备')
+    notify('已开启推送')
   }catch(e){message.value=(e as Error).message}
   finally{busy.value=false}
 }
 async function sendFamily(){
  if(!recipientId.value||!familyMessage.value.trim()||familyBusy.value)return
  familyBusy.value=true;familyError.value=''
+ const recipientName=otherMembers.value.find(m=>m.id===recipientId.value)?.loginName||'家人'
  try{
   const response=await fetch('/api/push/send-family',{method:'POST',
     credentials:'same-origin',cache:'no-store',
@@ -82,7 +71,7 @@ async function sendFamily(){
     throw Error(reasons[data.error]||'发送失败，请稍后重试')
   }
   familyMessage.value='';familyFormOpen.value=false
-  notify('已发送给家人（'+data.sent+' 台设备）')
+  notify('已发送给 '+recipientName+'（'+data.sent+' 台设备）')
  }catch(e){familyError.value=(e as Error).message}
  finally{familyBusy.value=false}
 }
@@ -104,26 +93,27 @@ onMounted(discover)
 </script>
 <template>
   <section class="push-setting">
-    <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
-      @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
-    <button type="button" class="push-now" :disabled="busy||!available||!enabled"
-      @click="sendNow">立即推送</button>
-    <button v-if="otherMembers.length" type="button" class="push-now"
-      :aria-expanded="familyFormOpen" @click="familyFormOpen=!familyFormOpen">
-      {{ familyFormOpen?'收起家人消息':'发送给家人' }}
-    </button>
+    <div class="push-actions">
+      <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
+        @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
+      <button v-if="otherMembers.length" type="button" class="push-now"
+        :aria-expanded="familyFormOpen" @click="familyFormOpen=!familyFormOpen">
+        {{ familyFormOpen?'收起':'通知家人' }}
+      </button>
+    </div>
     <form v-if="familyFormOpen" class="family-message-form" @submit.prevent="sendFamily">
-      <label>接收人
+      <p v-if="otherMembers.length===1" class="push-recipient">发送给 {{ otherMembers[0].loginName }}</p>
+      <label v-else>接收人
         <select v-model="recipientId" required>
           <option value="" disabled>选择家人账号</option>
           <option v-for="member in otherMembers" :key="member.id" :value="member.id">{{ member.loginName }}</option>
         </select>
       </label>
       <label>消息
-        <textarea v-model="familyMessage" maxlength="140" required rows="2" placeholder="输入要发送给家人的消息"/>
+        <textarea v-model="familyMessage" maxlength="140" required rows="2" placeholder="输入消息内容"/>
       </label>
       <button class="push-toggle" type="submit" :disabled="familyBusy||!configured||!recipientId||!familyMessage.trim()">
-        {{ familyBusy?'发送中…':'发送消息' }}
+        {{ familyBusy?'发送中…':'立即发送' }}
       </button>
       <small v-if="familyError" role="alert">{{ familyError }}</small>
     </form>
@@ -132,13 +122,15 @@ onMounted(discover)
   </section>
 </template>
 <style scoped>
-.push-setting{display:grid;gap:6px;justify-items:start;margin-top:10px}
+.push-setting{display:grid;gap:10px;margin-top:10px;min-width:0}
+.push-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
 .push-toggle{background:#43866a;color:#fff;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
 .push-toggle:disabled,.push-now:disabled{opacity:.55;cursor:not-allowed}
 .push-now{border:1px solid #80a790;background:#fff;color:#397f5f;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
 .push-toggle:focus-visible{outline:2px solid #43866a;outline-offset:3px}
 .push-setting small{font-size:12px;line-height:1.55;color:#7b8c81;overflow-wrap:anywhere}
-.family-message-form{display:grid;gap:8px;width:100%;max-width:420px;padding:10px 0}
+.family-message-form{display:grid;gap:10px;width:100%;min-width:0;max-width:420px;padding:12px;border:1px solid #e3e9e2;border-radius:12px;background:#fafcf9;box-sizing:border-box}
+.push-recipient{margin:0;font-size:13px;font-weight:700;color:#395d48}
 .family-message-form label{display:grid;gap:5px;font-size:12px;color:#586b60}
 .family-message-form select,.family-message-form textarea{
  box-sizing:border-box;width:100%;min-width:0;max-width:100%;
