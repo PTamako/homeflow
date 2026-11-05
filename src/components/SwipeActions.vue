@@ -99,7 +99,10 @@ onBeforeUnmount(close)
 .swipe-content{position:relative;z-index:1;background:#fff;min-width:0;max-width:100%;
   transition:transform .18s ease-out;will-change:transform}
 .is-dragging .swipe-content{transition:none}
-.swipe-actions{position:absolute;right:0;inset-block:0;display:flex;align-items:stretch;z-index:0}
+.swipe-actions{position:absolute;right:0;inset-block:0;display:flex;align-items:stretch;z-index:0;
+  /* Hidden action backgrounds can bleed through at iOS compositing edges. */
+  visibility:hidden}
+.swipe-row.is-open .swipe-actions,.swipe-row.is-dragging .swipe-actions{visibility:visible}
 .swipe-actions button{border:0;border-radius:0;color:#fff;font-size:12px;font-weight:700;
   min-width:68px;max-width:68px;padding:0 4px}
 .swipe-actions .edit{background:#43866a}
