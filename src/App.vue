@@ -99,6 +99,22 @@ const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=re
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
 const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tokyoToday()),subjectId=ref(''),taskCareType=ref('')
+const showAddTask=ref(false)
+const newTaskTitleInput=ref<HTMLInputElement|null>(null),addTaskTrigger=ref<HTMLButtonElement|null>(null)
+function openAddTask(){
+  error.value=''
+  showAddTask.value=true
+  void nextTick(()=>newTaskTitleInput.value?.focus())
+}
+function closeAddTask(){
+  if(loading.value)return
+  dismissAddTask()
+}
+function dismissAddTask(){
+  showAddTask.value=false
+  error.value=''
+  if(tab.value==='today')void nextTick(()=>addTaskTrigger.value?.focus())
+}
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
@@ -388,6 +404,7 @@ async function addTask(){
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
     else {await loadTasks();notify(unscheduled?'已存入「计划 → 待安排」':'任务已添加')}
     pendingTasks.value=await listPending(user.value.id)
+    dismissAddTask()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 function editTask(t:Task){
@@ -461,6 +478,7 @@ async function addProfile(){
 }
 watch(tab,value=>{
   clearToast()
+  showAddTask.value=false
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
@@ -561,10 +579,23 @@ onBeforeUnmount(()=>{
           </div>
           <p v-if="goalReviews.length>5" class="hint">还有 {{ goalReviews.length-5 }} 项储值提醒，可在计划中查看。</p>
         </section>
-        <div class="section-title"><h2>今日待办</h2><span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span></div>
-        <section class="panel">
+        <div class="section-title today-task-heading">
+          <h2>今日待办</h2>
+          <div class="today-task-actions">
+            <span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span>
+            <button ref="addTaskTrigger" type="button" class="outline today-add-button" @click="openAddTask">＋ 新增待办</button>
+          </div>
+        </div>
+        <Teleport to="body">
+          <div v-if="showAddTask" class="task-create-overlay" @click.self="closeAddTask" @keydown.esc.stop="closeAddTask">
+            <section class="task-create-dialog" role="dialog" aria-modal="true" aria-labelledby="task-create-heading">
+              <div class="task-create-heading">
+                <h2 id="task-create-heading">新增待办</h2>
+                <button type="button" class="text-button" :disabled="loading" @click="closeAddTask">取消</button>
+              </div>
+              <p v-if="error" class="error" role="alert">{{ error }}</p>
           <form class="task-form" @submit.prevent="addTask">
-            <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
+            <input ref="newTaskTitleInput" v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
             <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
             <div class="task-date-control">
               <div class="task-date-heading">
@@ -573,7 +604,7 @@ onBeforeUnmount(()=>{
               </div>
               <DateField v-model="due" aria-labelledby="new-task-date-label" />
             </div>
-            <button type="button" class="text-button" @click="openPlans('unscheduled')">查看待安排</button>
+            <button type="button" class="text-button" @click="closeAddTask();openPlans('unscheduled')">查看待安排</button>
             <p v-if="!due" class="task-object-hint">不填日期会存到「计划 → 待安排」，不会出现在今日待办。</p>
             <label class="task-object">关联对象（可选）
               <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
@@ -589,6 +620,10 @@ onBeforeUnmount(()=>{
 
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
+            </section>
+          </div>
+        </Teleport>
+        <section class="panel">
           <div v-if="pendingTasks.length" class="pending">
             <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
               <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
