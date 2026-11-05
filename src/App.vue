@@ -623,7 +623,7 @@ onBeforeUnmount(()=>{
             </section>
           </div>
         </Teleport>
-        <section class="panel">
+        <section class="panel today-checklist-panel">
           <div v-if="pendingTasks.length" class="pending">
             <div class="row-between"><b>待同步的本机任务（{{ pendingTasks.length }}）</b>
               <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
@@ -635,9 +635,6 @@ onBeforeUnmount(()=>{
             <button v-if="pendingTasks.length>visiblePendingTasks.length" class="outline" type="button"
               @click="pendingVisibleCount+=listPageSize">加载更多待同步任务（每次 5 条）</button>
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
-          </div>
-          <div class="row-between">
-            <b>事项分类</b>
           </div>
           <div class="today-category-tabs" role="group" aria-label="今日待办分类">
             <button v-for="category in visibleTodayCategories" :key="category.id" type="button"
