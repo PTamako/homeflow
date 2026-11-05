@@ -77,3 +77,13 @@ test('Management red dot respects Today reminder presence without additional pol
  assert.deepEqual(additionalReminders([{kind:'routine',id:'r'}],['routine:r']),[])
  assert.equal(additionalReminders([{kind:'anniversary',id:'a'}],[]).length,1)
 })
+
+test('Today and Family keep their anniversary panels mounted',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+ const panel=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
+ assert.match(app, /<LifePanel v-if="tab==='today'\|\|tab==='family'\|\|tab==='plans'\|\|tab==='memories'"/)
+ assert.match(app, /:mode="tab"/)
+ assert.match(panel, /<template v-if="mode==='today'">[\s\S]*?未来 30 天的纪念日/)
+ assert.match(panel, /<template v-else-if="mode==='family'">[\s\S]*?家人的重要日子/)
+ assert.match(panel, /api\('\/anniversaries\/upcoming'\)/)
+})
