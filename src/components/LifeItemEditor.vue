@@ -3,7 +3,7 @@ import DateField from './DateField.vue'
 import {reactive,ref,computed,watch} from 'vue'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
-const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string}>()
+const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string}>()
 const emit=defineEmits<{saved:[];cancel:[]}>()
 const busy=ref(false),error=ref('')
 const data=props.item
@@ -36,7 +36,7 @@ function values(){
  if(!common.title||common.title.length>150)throw Error('名称须为 1～150 个字符')
  switch(props.kind){
   case 'shopping':
-   return {...common,quantity:form.quantity,dueOn:form.dueOn||null}
+   return {...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null}
   case 'anniversaries':
    return {...common,eventDate:form.eventDate,repeatMode:form.repeatMode,
      advanceDays:JSON.parse(data.advance_days_json||'[30,7,1,0]'),
@@ -70,7 +70,7 @@ function values(){
 }
 async function save(){
  busy.value=true;error.value=''
- if(props.kind==='routines'&&form.visibility==='private'&&form.assignedTo&&form.assignedTo!==props.userId){
+ if(['routines','shopping'].includes(props.kind)&&form.visibility==='private'&&form.assignedTo&&form.assignedTo!==props.userId){
   error.value='指派给其他家庭账号时，请选择家庭共享';busy.value=false;return
  }
  try{
@@ -79,7 +79,7 @@ async function save(){
    body:JSON.stringify({...values(),expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null,
     ...(['shopping','memories'].includes(props.kind)?{
       expectedSnapshot:JSON.stringify((props.kind==='shopping'?
-        ['title','quantity','due_on','completed_at','ledger_entry_id']:
+        ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to']:
         ['title','story','happened_on','visibility','linked_type','linked_id'])
         .map(key=>data[key]??null))
     }:{})})})
@@ -96,6 +96,22 @@ async function save(){
   <template v-if="kind==='shopping'">
    <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
    <label>计划购买日<DateField v-model="form.dueOn" /></label>
+   <label>处理人
+     <select v-model="form.assignedTo" aria-label="修改购物计划处理人"
+       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
+       <option value="">未指派</option>
+       <option v-for="member in (members||[])" :key="member.id" :value="member.id">
+         {{ (profiles||[]).find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}
+       </option>
+     </select>
+   </label>
+   <label>可见范围
+     <select v-model="form.visibility" aria-label="购物计划可见范围"
+       @change="form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
+       <option value="household">家庭共享</option>
+       <option value="private">仅自己</option>
+     </select>
+   </label>
   </template>
   <template v-else-if="kind==='anniversaries'">
    <label>日期<DateField v-model="form.eventDate" required /></label>

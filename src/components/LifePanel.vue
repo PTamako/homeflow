@@ -27,16 +27,16 @@ const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
-type ReminderKind='task'|'routine'|'trip'
+type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
-function openTaskPush(kind:'task'|'routine',item:Row){
+function openTaskPush(kind:'task'|'routine'|'shopping',item:Row){
  const key=kind+':'+item.id
  if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
  else {pushTarget.value=key;pushMessage.value=''}
  expandedTaskMenu.value=null
 }
-async function notifyHandler(kind:'task'|'routine',item:Row){
+async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
  if(pushBusyId.value)return
  pushBusyId.value=item.id;error.value=''
  try{
@@ -1146,15 +1146,50 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
-                <div class="shopping-check"><span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small v-if="s.ledger_entry_id">已关联消费</small>
-                    <small v-else>待关联消费</small></span></div>
-                <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                  class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'账目与调整额':'关联购物支出' }}</button>
+                <div class="shopping-check">
+                  <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
+                    <small>{{ s.ledger_entry_id?'已关联消费':'待关联消费' }}</small>
+                    <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ memberName(s.assigned_to) }}</small>
+                  </span>
+                </div>
+                <div class="shopping-row-actions">
+                  <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
+                    class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'账目与调整额':'关联购物支出' }}</button>
+                  <button v-if="planScope==='active'&&!s.completed_at&&(!!s.due_on||
+                    (canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId))"
+                    type="button" class="routine-more-trigger"
+                    :aria-label="'更多操作：'+s.title"
+                    :aria-expanded="expandedTaskMenu==='shopping:'+s.id"
+                    :aria-controls="'shopping-actions-'+s.id"
+                    @click.stop="toggleTaskMenu('shopping:'+s.id)">
+                    <AppIcon name="ellipsis" :size="19"/>
+                  </button>
+                </div>
               </div>
             </SwipeActions>
+            <div v-if="expandedTaskMenu==='shopping:'+s.id" :id="'shopping-actions-'+s.id"
+              class="routine-inline-actions" role="group" :aria-label="'操作：'+s.title">
+              <button v-if="planScope==='active'&&s.due_on" type="button"
+                @click="expandedTaskMenu=null;toggleReminderEditor('shopping',s.id)">提醒设置</button>
+              <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
+                type="button" :disabled="!!pushBusyId" @click="openTaskPush('shopping',s)">通知处理人</button>
+            </div>
+            <form v-if="pushTarget==='shopping:'+s.id" class="task-push-form"
+              @submit.prevent="notifyHandler('shopping',s)">
+              <label>给 {{ memberName(s.assigned_to) }} 留言（可选）
+                <textarea v-model.trim="pushMessage" maxlength="120" rows="2"
+                  placeholder="例如：下班顺路买一下哦"/>
+              </label>
+              <div class="task-push-actions">
+                <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
+                <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===s.id?'发送中…':'发送购物通知' }}</button>
+              </div>
+            </form>
+            <ReminderItemEditor v-if="reminderTarget?.kind==='shopping'&&reminderTarget.id===s.id"
+              kind="shopping" :item-id="s.id" @close="reminderTarget=null"/>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
-              kind="shopping" :item="s" @saved="changed" @cancel="editing=null"/>
+              kind="shopping" :item="s" :members="props.members" :profiles="props.profiles"
+              :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
             <ShoppingLedgerPicker v-if="ledgerPickerId===s.id" :shopping-id="s.id" :linked-id="s.ledger_entry_id"
               @saved="shoppingLinksChanged" @close="ledgerPickerId=null"/>
             <button v-if="isFocused(s)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
@@ -1479,6 +1514,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .detail-completed .detail-name{text-decoration:line-through;color:#9ba99f}
 .detail-completed small{color:#a1aea5}
 .shopping-check{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.shopping-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;flex:none;max-width:53%}
+.shopping-row-actions .routine-more-trigger{flex:none}
+@media(max-width:440px){.shopping-row-actions{max-width:49%}.shopping-row-actions .life-link{font-size:11px;padding:7px 8px}}
 .shopping-check input{width:18px;height:18px;flex:none;accent-color:#43866a}
 .shopping-check span{overflow-wrap:anywhere;min-width:0}
 .shopping-history{border-top:1px solid #e5ece5;margin-top:13px}

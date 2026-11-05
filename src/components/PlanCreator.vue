@@ -6,7 +6,7 @@ import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
-const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean}>()
+const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean}>()
 const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性或循环'},
@@ -30,7 +30,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -63,7 +63,7 @@ async function submit(){
         repeatConfig:config,anchorDate:form.date})
     }
   }else if(kind.value==='shopping'){
-    result=await send('/shopping',{...common,quantity:form.quantity,dueOn:form.dueOn||null})
+    result=await send('/shopping',{...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null})
   }else if(kind.value==='wish'){
     if(form.createSavingsGoal&&form.estimatedAmount<=0)throw Error('添加关联储值计划时，请填写大于零的预估金额')
     result=await send('/wishes',{...common,wishType:form.wishType,
@@ -145,6 +145,13 @@ async function submit(){
     <template v-else-if="kind==='shopping'">
      <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
      <label>计划购买日期（可选）<DateField v-model="form.dueOn" /></label>
+     <label>处理人<select v-model="form.assignedTo" aria-label="选择购物处理人"
+       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
+       <option value="">未指派</option>
+       <option v-for="member in (members||[])" :key="member.id" :value="member.id">
+         {{ profiles.find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}{{ member.id===userId?'（我）':'' }}
+       </option>
+     </select></label>
 
     </template>
     <template v-else-if="kind==='wish'">
