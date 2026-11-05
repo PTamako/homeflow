@@ -9,11 +9,11 @@ type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
 const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string}>;openOnMount?:boolean}>()
 const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
- {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性、每天、工作日或自定义间隔'},
- {id:'shopping',label:'购物计划',icon:'shopping',description:'家庭商品、数量与购买日期'},
- {id:'wish',label:'心愿计划',icon:'heart',description:'可同时创建关联的储值计划'},
- {id:'goal',label:'储值计划',icon:'wallet',description:'目标、期初金额和家計簿收支'},
- {id:'trip',label:'旅行计划',icon:'plane',description:'出行日期、预算和行程'}
+ {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性或循环'},
+ {id:'shopping',label:'购物计划',icon:'shopping',description:'购物与数量'},
+ {id:'wish',label:'心愿计划',icon:'heart',description:'可关联储值'},
+ {id:'goal',label:'储值计划',icon:'wallet',description:'按月、按年或累计'},
+ {id:'trip',label:'旅行计划',icon:'plane',description:'日期与预算'}
 ] as const
 const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -107,7 +107,7 @@ async function submit(){
      <label>执行频率<select v-model="form.repeatType">
        <option value="once">一次性</option><option value="daily">每天</option>
        <option value="weekly">每周</option><option value="monthly">每月</option>
-       <option value="workday">工作日（排除日本祝日）</option>
+       <option value="workday">工作日（日本祝日除外）</option>
        <option value="interval">自定义间隔</option>
      </select></label>
      <OneTimeTaskFields v-if="form.repeatType==='once'" v-model="onceDraft" :profiles="profiles"/>
@@ -125,7 +125,7 @@ async function submit(){
        </select></label>
       </template>
       <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/>
-       <span>开启提醒<small>关闭后仍会显示在到期事项中</small></span></label>
+       <span>开启提醒</span></label>
       <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
        <option value="">不关联</option>
        <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>
@@ -166,7 +166,6 @@ async function submit(){
      <label v-if="form.goalMode==='once'">期初储值额（日元）
        <input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
      <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.startOn||undefined" /></label>
-     <p class="creator-tip">家計簿估算不代表实际存款。</p>
     </template>
     <template v-else-if="kind==='trip'">
      <label>目的地<input v-model.trim="form.destination" maxlength="300" placeholder="例如：上海"/></label>
