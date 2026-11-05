@@ -59,3 +59,36 @@ test('push reminders are scoped to the designated handler and preserve private v
  assert.match(worker,/path==='\/api\/push\/send-now'/)
  assert.match(panel,/>立即推送<\/button>/)
 })
+
+test('task push optionally accepts personalized note, rejects oversize, and never trusts a chosen recipient',async()=>{
+ const id='123e4567-e89b-12d3-a456-426614174000',recipient='123e4567-e89b-12d3-a456-426614174001'
+ const queries=[]
+ const db={prepare(sql){return {bind(...args){
+   queries.push({sql,args})
+   return {
+     first:async()=>({id,title:'给豆沙买猫粮',dueOn:'2026-11-06',recipientId:recipient}),
+     all:async()=>({results:[]})
+   }
+ }}}}
+ const env={DB:db,VAPID_PUBLIC_KEY:Buffer.alloc(65).toString('base64url'),
+   VAPID_PRIVATE_JWK:JSON.stringify({kty:'EC',crv:'P-256',x:'x',y:'y',d:'z'})}
+ const session={household_id:'family-a',user_id:'123e4567-e89b-12d3-a456-426614174002'}
+ const endpoint='/api/push/send-task',url='https://homeflow.invalid'+endpoint
+ const post=message=>new Request(url,{method:'POST',body:JSON.stringify({kind:'task',id,message,recipientUserId:'attacker'})})
+ const invalid=await pushRoute(post('x'.repeat(121)),env,endpoint,session)
+ assert.equal(invalid.status,400)
+ assert.equal(queries.length,0)
+ const accepted=await pushRoute(post('下班顺路买一下 🐱'),env,endpoint,session)
+ assert.equal(accepted.status,409) // Recipient is authorized, but has no subscription in test DB
+ assert.equal((await accepted.json()).error,'recipient_not_subscribed')
+ assert.match(queries[0].sql,/t.visibility='household'/)
+ assert.match(queries[0].sql,/JOIN household_members m ON m.user_id=/)
+ assert.deepEqual(queries[0].args,[id,'family-a',session.user_id])
+ assert.deepEqual(queries[1].args,['family-a',recipient])
+ const server=read('worker/webpush.js')
+ const form=read('src/components/LifePanel.vue')
+ assert.match(server,/\(note\|\|'请查看并处理这项任务'\)/)
+ assert.match(form,/message:pushMessage.value.trim\(\)/)
+ assert.match(form,/maxlength="120"/)
+ assert.match(form,/给 \{\{ memberName\(t.assigneeUserId\) \}\} 留言（可选）/)
+})

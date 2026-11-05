@@ -22,7 +22,7 @@ watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),busy=ref(false),pushBusyId=ref('')
+const error=ref(''),busy=ref(false),pushBusyId=ref(''),pushTarget=ref(''),pushMessage=ref('')
 const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
@@ -30,13 +30,19 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
+function openTaskPush(kind:'task'|'routine',item:Row){
+ const key=kind+':'+item.id
+ if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
+ else {pushTarget.value=key;pushMessage.value=''}
+ expandedTaskMenu.value=null
+}
 async function notifyHandler(kind:'task'|'routine',item:Row){
  if(pushBusyId.value)return
  pushBusyId.value=item.id;error.value=''
  try{
   const response=await fetch('/api/push/send-task',{method:'POST',
     credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
-    body:JSON.stringify({kind,id:item.id})})
+    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim()})})
   const data=await response.json().catch(()=>({}))
   if(!response.ok){
    const hints:Record<string,string>={
@@ -48,6 +54,7 @@ async function notifyHandler(kind:'task'|'routine',item:Row){
    }
    throw Error(hints[data.error]||'任务推送失败，请稍后重试')
   }
+  pushTarget.value='';pushMessage.value=''
   notify('已通知处理人（'+data.sent+' 台设备）')
  }catch(e){error.value=(e as Error).message}
  finally{pushBusyId.value=''}
@@ -904,10 +911,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title">
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
                 <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
-                  :disabled="!!pushBusyId" @click="notifyHandler('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
+                  :disabled="!!pushBusyId" @click="openTaskPush('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
+              <form v-if="pushTarget==='routine:'+r.id" class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
+                <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
+                  <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
+                </label>
+                <div class="task-push-actions">
+                  <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
+                  <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
+                </div>
+              </form>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -951,8 +967,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="planScope==='active'&&t.dueOn" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
               <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
-                :disabled="!!pushBusyId" @click="notifyHandler('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
+                :disabled="!!pushBusyId" @click="openTaskPush('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
+            <form v-if="pushTarget==='task:'+t.id" class="task-push-form" @submit.prevent="notifyHandler('task',t)">
+              <label>给 {{ memberName(t.assigneeUserId) }} 留言（可选）
+                <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：下班顺路买一下，记得买原来的牌子"/>
+              </label>
+              <div class="task-push-actions">
+                <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
+                <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
+              </div>
+            </form>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
@@ -1483,4 +1508,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   .plan-tasks-card .plan-task-item{padding:10px 0}
   .plan-task-head .routine-more-trigger{width:30px;height:30px}
 }
+</style>
+
+<style scoped>
+.task-push-form{display:grid;gap:10px;padding:12px 10px;margin:6px 0 10px;border:1px solid #d9e9dc;border-radius:12px;background:#f8fbf8;min-width:0}
+.task-push-form label{display:grid;gap:6px;font-size:12px;color:#425b4b;font-weight:650;min-width:0}
+.task-push-form textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #ccdcd0;border-radius:9px;padding:10px;font:inherit;font-size:14px;resize:vertical;background:#fff;color:#263b2e}
+.task-push-actions{display:flex;justify-content:flex-end;gap:8px}
+.task-push-actions button{border:1px solid #ccdcd0;border-radius:8px;background:#fff;padding:8px 12px;color:#3b7054;font-weight:650;font-size:12px}
+.task-push-actions button[type=submit]{background:#43866a;color:#fff;border-color:#43866a}
+.task-push-actions button:disabled{opacity:.6}
 </style>

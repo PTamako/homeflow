@@ -141,6 +141,9 @@ async function deliver(sub,env,data){
 const UUID=/^[a-f0-9-]{36}$/i
 async function sendTaskPush(env,session,body){
   if(!['task','routine'].includes(body?.kind)||!UUID.test(body?.id||''))return json({error:'invalid_input'},400)
+  const note=body?.message===undefined?'':typeof body.message==='string'?
+    body.message.trim().replace(/\s+/g,' '):null
+  if(note===null||note.length>120)return json({error:'invalid_input'},400)
   const routine=body.kind==='routine'
   const table=routine?'routines':'tasks'
   const creator=routine?'t.created_by':'t.creator_user_id'
@@ -156,7 +159,7 @@ async function sendTaskPush(env,session,body){
   if(!item)return json({error:'task_not_shareable'},404)
   if(item.recipientId===session.user_id)return json({error:'recipient_is_self'},409)
   const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)
-  const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+'请查看并处理这项任务'
+  const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
   return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
     title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id,
     priority:'important'
