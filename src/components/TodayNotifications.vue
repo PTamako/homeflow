@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import ImportantReminders from './ImportantReminders.vue'
 
 type Notice={
  id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;
@@ -8,9 +9,9 @@ type Notice={
  sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
 }
-const props=defineProps<{active:boolean;todayDate:string;userId:string}>()
+const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[]}>()
 const emit=defineEmits<{unreadChange:[number];openPlan:[string,string]}>()
-const expanded=ref(false),view=ref<'received'|'sent'>('received')
+const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
 const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null)
 let generation=0
@@ -33,7 +34,7 @@ async function load(reset=true){
  if(reset){loading.value=true;error.value='';cursor.value=null}
  else moreBusy.value=true
  try{
-  const params=new URLSearchParams({view:view.value})
+  const params=new URLSearchParams({view:view.value==='pending'?'received':view.value})
   if(!reset&&cursor.value)params.set('before',cursor.value)
   const response=await fetch('/api/notifications/today?'+params,{
     credentials:'same-origin',cache:'no-store'
@@ -41,8 +42,8 @@ async function load(reset=true){
   if(!response.ok)throw Error('通知读取失败')
   const data=await response.json()
   if(request!==generation||day!==props.todayDate)return
-  notices.value=reset?data.items:[...notices.value,...data.items]
-  cursor.value=data.nextCursor||null
+  if(view.value!=='pending')notices.value=reset?data.items:[...notices.value,...data.items]
+  if(view.value!=='pending')cursor.value=data.nextCursor||null
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   emit('unreadChange',unread.value)
  }catch(e){
@@ -73,7 +74,7 @@ async function open(item:Notice){
  }
 }
 watch(()=>[props.todayDate,props.userId,props.active],()=>{void load(true)},{immediate:true})
-watch(view,()=>{void load(true)})
+watch(view,()=>{if(view.value!=='pending')void load(true)})
 defineExpose({refresh:()=>load(true)})
 </script>
 
@@ -90,11 +91,18 @@ defineExpose({refresh:()=>load(true)})
   </div>
   <div v-if="expanded" class="notice-content">
    <div class="notice-tabs" role="group" aria-label="通知分类">
+    <button type="button" :aria-pressed="view==='pending'" :class="{active:view==='pending'}"
+      @click="view='pending'">待提醒</button>
     <button type="button" :aria-pressed="view==='received'" :class="{active:view==='received'}"
       @click="view='received'">我收到的</button>
     <button type="button" :aria-pressed="view==='sent'" :class="{active:view==='sent'}"
       @click="view='sent'">我发送的</button>
    </div>
+   <div v-if="view==='pending'" class="notice-reminder-list">
+    <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys"
+      compact mode="list" />
+   </div>
+   <template v-else>
    <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
    <p v-else-if="error" class="notice-error" role="alert">{{ error }} <button type="button" @click="load(true)">重试</button></p>
    <p v-else-if="!notices.length" class="notice-empty">今天暂无通知</p>
@@ -118,6 +126,7 @@ defineExpose({refresh:()=>load(true)})
    </div>
    <button v-if="cursor&&!loading" type="button" class="notice-more"
     :disabled="moreBusy" @click="load(false)">{{ moreBusy?'读取中…':'加载更多' }}</button>
+   </template>
   </div>
  </section>
 </template>
@@ -130,7 +139,8 @@ defineExpose({refresh:()=>load(true)})
 .notice-unread{border-radius:12px;background:#b33e44;color:white;padding:2px 7px;font-size:11px;white-space:nowrap}
 .notice-muted{font-size:12px;color:#8a998f}
 .notice-content{padding-top:13px}
-.notice-tabs{display:flex;gap:8px;margin-bottom:4px}
+.notice-tabs{display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.notice-reminder-list{padding-top:5px}
 .notice-tabs button{background:#f5f8f5;border:1px solid #dfebe2;border-radius:9px;padding:6px 12px;font-size:12px;color:#60766a}
 .notice-tabs button.active{background:#e6f1e9;color:#35795e;border-color:#b7d7c3;font-weight:700}
 .notice-item{padding:12px 0;border-top:1px solid #edf1ec}
