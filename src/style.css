@@ -196,7 +196,8 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 @media(max-width:520px){.management-page .panel{padding:15px}}
 
 /* Today add links to the unified Plans creator; no Today modal. */
-.today-task-heading{gap:12px;align-items:center}
+.today-task-heading{margin:10px 0 8px;gap:12px;align-items:center}
+.today-task-heading h2{margin:0}
 .today-task-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
 .today-add-button{padding:8px 11px;font-size:12px;white-space:nowrap}
 @media(max-width:520px){.today-task-heading{flex-wrap:wrap}}
