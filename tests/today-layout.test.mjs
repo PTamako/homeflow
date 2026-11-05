@@ -108,7 +108,8 @@ test('Today defaults new tasks to today while clearly offering the undated list'
  assert.ok(app.includes("openPlans('unscheduled')"))
  assert.ok(app.includes("todayTasksUrl()"))
  assert.ok(app.includes("已存入「计划 → 待安排」"))
- assert.ok(life.includes("['routine','unscheduled','shopping','wish','goal','trip']"))
+ assert.ok(life.includes("['unscheduled','shopping','wish','goal','trip']"))
+ assert.ok(life.includes("if(type==='task'||type==='routine')planType.value='all'"))
  assert.ok(creator.includes("form.leaveUnscheduled?null:form.date"))
 })
 
