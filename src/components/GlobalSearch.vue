@@ -68,17 +68,17 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 <style scoped>
 .global-search{position:relative}
 .search-trigger{min-height:40px;padding:7px 10px;border:1px solid #d8e6db;background:#fff;border-radius:11px;color:#43866a;font-size:13px;font-weight:700}
-.search-panel{position:absolute;right:-96px;top:calc(100% + 11px);z-index:43;width:min(355px,calc(100vw - 24px));max-height:75dvh;overflow-y:auto;background:#fff;border:1px solid #dce9de;border-radius:16px;box-shadow:0 15px 36px #263f3126;padding:14px;display:grid;gap:10px}
+.search-panel{position:absolute;right:0;top:calc(100% + 11px);z-index:43;width:min(355px,calc(100vw - 32px));max-height:75dvh;overflow-y:auto;background:#fff;border:1px solid #dce9de;border-radius:16px;box-shadow:0 15px 36px #263f3126;padding:14px;display:grid;gap:10px}
 .search-panel form{display:grid;gap:8px}
 .search-panel label{display:grid;gap:5px;font-size:12px}
 .search-panel input,.search-panel select{width:100%;min-width:0;min-height:39px;border:1px solid #dce5de;border-radius:9px;padding:7px;background:white;color:#24382d}
-.search-filters{display:grid;grid-template-columns:1.2fr 1fr 0.75fr;gap:5px}
+.search-filters{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.75fr);gap:5px}
 .search-filters select{font-size:12px;padding:5px}
 .search-submit,.search-more{background:#43866a;color:white;border:0;border-radius:10px;padding:8px 12px;font-size:12px}
 .search-results{display:grid;gap:2px}
-.search-results button{border:0;border-bottom:1px solid #edf0eb;padding:8px 2px;text-align:left;background:white;display:grid;gap:3px}
+.search-results button{min-width:0;overflow-wrap:anywhere;border:0;border-bottom:1px solid #edf0eb;padding:8px 2px;text-align:left;background:white;display:grid;gap:3px}
 .search-results small{color:#839287;font-size:11px}
 .search-error{color:#a04f3b;font-size:12px}
 .search-close{border:0;background:transparent;font-size:12px;color:#739481}
-@media(max-width:400px){.search-panel{right:-82px}}
+@media(max-width:520px){.search-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.search-filters select:first-child{grid-column:1/-1}}
 </style>
