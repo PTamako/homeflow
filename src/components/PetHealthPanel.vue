@@ -152,7 +152,7 @@ watch(year,value=>{if(!value)month.value=''})
       </select></label>
     </div>
 
-    <div v-if="!items.length" class="empty">该时间范围内没有护理记录。</div>
+    <div v-if="!items.length" class="empty">暂无护理记录</div>
     <div v-for="r in items" :key="r.id" class="record">
       <SwipeActions :id="r.id" scope="pet-health"
         :allow-edit="r.createdBy===props.userId" :allow-delete="r.createdBy===props.userId"

@@ -17,7 +17,7 @@ async function discover(){
   try{
     const r=await fetch('/api/push/config',{credentials:'same-origin',cache:'no-store'})
     const data=await r.json()
-    if(!r.ok||!data.configured||!data.publicKey){message.value='推送还未设置 VAPID 密钥。可以直接用手机生成，无需电脑。';return}
+    if(!r.ok||!data.configured||!data.publicKey){message.value='推送尚未配置。';return}
     publicKey=data.publicKey
     available.value=true
     const registration=await navigator.serviceWorker.ready

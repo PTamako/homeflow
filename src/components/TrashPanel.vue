@@ -92,7 +92,7 @@ async function emptyTrash(){
      @click="fetchTrash(true)">加载更多（5条）</button>
    <template v-if="loaded&&!error&&rows.length">
     <div v-if="confirmEmpty" class="trash-confirm" role="group" aria-label="确认永久清空">
-      <p>永久清空后无法恢复，相关完成历史和关联记录也可能删除。建议先备份；含照片或仍有关联的事项会保留。</p>
+      <p>清空后无法恢复，部分历史也可能删除。含照片或关联的记录会保留。</p>
       <div class="trash-actions">
        <button type="button" class="trash-cancel" :disabled="busy" @click="confirmEmpty=false">取消</button>
        <button type="button" class="trash-danger" :disabled="busy" @click="emptyTrash">确认永久清空</button>

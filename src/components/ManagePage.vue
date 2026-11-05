@@ -42,32 +42,31 @@ defineExpose({refreshIfStale})
 <template>
  <div class="management-page" aria-label="HomeFlow 管理">
    <section class="panel">
-     <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>账号与家庭权限</h2></div>
+     <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>账号与家庭</h2></div>
      <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
      <SecurityPanel v-if="active" :login-name="loginName"/>
      <div v-if="isOwner" class="management-family-invites">
        <h3>邀请家庭成员</h3>
-       <p class="hint">邀请码 7 天内有效，仅供家人使用；每个家庭最多两位登录成员。</p>
+       <p class="hint">邀请码 7 天有效，家庭最多 2 位成员。</p>
        <button type="button" class="outline" :disabled="inviting" @click="generateInvite">
          {{ inviting?'生成中…':'生成邀请码' }}
        </button>
        <p v-if="inviteError" role="alert" class="error">{{ inviteError }}</p>
        <div v-if="invitation" class="management-invite-code">
-         <code>{{ invitation }}</code><small>请私下发送；不需要公开或放到时光轴。</small>
+         <code>{{ invitation }}</code><small>请私下发送给家人</small>
        </div>
      </div>
    </section>
    <section class="panel">
-     <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知与提醒设置</h2></div>
+     <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2></div>
      <PushPanel v-if="active"/>
-     <!-- Mount only once to preserve the Today red dot without extra requests. -->
-     <ImportantReminders ref="reminders" :today-date="todayDate" :today-entry-keys="todayEntryKeys"
+      <ImportantReminders ref="reminders" :today-date="todayDate" :today-entry-keys="todayEntryKeys"
        compact @presence-change="emit('presenceChange',$event)"/>
    </section>
    <section class="panel">
-     <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据与回收箱</h2></div>
+     <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>
      <TrashPanel v-if="active"/>
-     <p class="hint">计划、任务和回忆删除后可以恢复，原有历史及消费关联保留。</p>
+     <p class="hint">已删除的内容可从回收箱恢复。</p>
    </section>
    <BackupPanel v-if="active" :user-id="userId"/>
    <section class="panel">

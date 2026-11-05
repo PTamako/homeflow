@@ -27,7 +27,7 @@ defineExpose({focusTitle})
       aria-label="清空计划日期" @click="model.dueOn=''">清空</button>
    </div>
    <DateField v-model="model.dueOn" aria-labelledby="one-time-task-date-label"/>
-   <small v-if="!model.dueOn" class="once-hint">未指定日期的任务将保存到「计划 → 待安排」。</small>
+   <small v-if="!model.dueOn" class="once-hint">不选日期将存入「待安排」。</small>
   </div>
   <label class="once-check">
    <input v-model="model.remindEnabled" type="checkbox" :disabled="!model.dueOn"/>

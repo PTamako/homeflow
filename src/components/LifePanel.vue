@@ -730,7 +730,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
           </div>
           <button v-if="todayAnniversaries.length>todayAnniversaryVisibleCount" type="button" class="life-more"
-            @click="todayAnniversaryVisibleCount+=pageLimit">加载更多纪念日（每次 5 条）</button>
+            @click="todayAnniversaryVisibleCount+=pageLimit">加载更多纪念日</button>
         </section>
     </template>
 
@@ -768,7 +768,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
         </template>
         <button v-if="anniversaryView==='upcoming'&&items.length>anniversaryVisibleCount" type="button" class="life-more"
-          @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子（每次 5 条）</button>
+          @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子</button>
         <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <button type="button" class="life-more" :aria-expanded="showAnniversaryForm"
@@ -962,7 +962,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
               <button v-if="linkedGoal(w)" type="button" class="life-link"
                 @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
-              <small v-if="linkedGoal(w)">关联储值需达到目标后，才能确认心愿。</small>
+              <small v-if="linkedGoal(w)">储值达标后可完成心愿</small>
             </div>
             <button v-if="canEdit(w)&&w.status==='completed'" type="button"
               class="life-link" :disabled="busy" @click="startPlanMemory('wish',w)">记录心愿回忆</button>
@@ -988,9 +988,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </section>
         <section v-if="planType==='all'||planType==='goal'" class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> {{ planScope==='history'?'储值计划 · 结算历史':'储值计划' }}</h2>
-          <p class="life-caption">{{ planScope==='history'?
-            '按月、按年独立保存已截止的结算期间，达标和未达标都保留。整条循环计划仍在「进行中」。':
-            '储值方式支持累计目标、每月目标和每年目标。每期独立核算，周期结束后在历史中保留结果。' }}</p>
           <template v-if="planScope==='history'">
             <div v-for="period in historicalGoalPeriods" :key="period.goalId+':'+period.periodKey"
               class="historical-goal-entry">
@@ -1004,7 +1001,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
                        Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
                   </small>
-                  <small v-else>{{ period.status==='met'?'历史已达标（原金额未保存）':'待核验（未确认金额，不代表 ¥0）' }}</small>
+                  <small v-else>{{ period.status==='met'?'已达标 · 金额未记录':'待核验 · 金额未记录' }}</small>
                 </div>
                 <button v-if="isOwner" type="button" class="life-link"
                   :disabled="historicalGoalDetailLoading===period.goalId+'|'+period.periodKey"
@@ -1023,7 +1020,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 @completed="goalFinished"/>
             </div>
             <button v-if="historicalGoalCursor" type="button" class="life-more"
-              :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多结算记录（每次 5 条）</button>
+              :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多</button>
           </template>
           <template v-for="g in goals" :key="g.id">
             <div :id="'plan-item-'+g.id" :class="{'focused-plan-entry':isFocused(g)}">
@@ -1056,15 +1053,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </section>
         <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
-          <p class="life-caption">关联实际消费后完成</p>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
                 <div class="shopping-check"><span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small v-if="s.ledger_entry_id">已关联家計簿明细 #{{ s.ledger_entry_id }}</small>
-                    <small v-else>待关联真实购物支出</small></span></div>
+                    <small v-if="s.ledger_entry_id">已关联消费</small>
+                    <small v-else>待关联消费</small></span></div>
                 <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
                   class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'账目与调整额':'关联购物支出' }}</button>
               </div>
@@ -1181,8 +1177,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </template>
             <p v-else class="life-caption">暂无行程</p>
           </div>
-          <details class="trip-import"><summary>从 ChatGPT 导入旅行计划 JSON</summary>
-            <p class="life-caption">先预览再保存；更新保留完成记录。</p>
+          <details class="trip-import"><summary>导入行程</summary>
             <label>导入到哪个旅行项目？
               <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
             </label>
@@ -1197,7 +1192,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </section>
       </div>
       <details class="life-card plan-recap">
-        <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
+        <summary><AppIcon name="clipboard-check" :size="18" /> 月度回顾</summary>
 
         <div class="plan-recap-controls">
           <label>年份<select v-model="recapYear" aria-label="回顾年份">
@@ -1214,7 +1209,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <div v-for="(label,key) in recapLabels" :key="key" class="plan-recap-line">
             <span>{{ label }}</span><b>{{ recap.counts[key]||0 }} 次</b>
           </div>
-          <small>{{ recap.note }}</small>
+          
         </div>
       </details>
      </template>
@@ -1228,7 +1223,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
           <label>可选照片（仅存本机）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">{{ cloudEnabled?'照片保存在本机及私有云端。':'照片仅存本机，请定期备份。' }}</p>
+          <p class="life-caption">{{ cloudEnabled?'本机与云端保存':'照片仅存本机，请备份' }}</p>
           <button :disabled="busy">保存到时光轴</button>
         </form>
       </section>
@@ -1247,7 +1242,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
 
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
-        <p v-else-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
+        <p v-else-if="!items.length" class="life-empty">暂无回忆</p>
         <article v-for="m in listLoading?[]:items" :key="m.id" :id="'plan-item-'+m.id"
           class="memory" :class="{'focused-plan-entry':isFocused(m)}">
           <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"

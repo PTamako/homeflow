@@ -157,11 +157,11 @@ async function restore(){
 <template>
   <section class="backup">
     <h2 class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
-    <p>仅备份当前账号及此设备照片；其他账号需分别备份。</p>
-    <small v-if="lastExportAt">上次在此设备生成备份：{{ lastExportAt.slice(0,10) }}</small>
-    <small v-if="backupOld">建议定期备份，避免换手机后丢失本机照片。</small>
-    <button :disabled="pending" @click="exportArchive">下载完整本机备份 ZIP</button>
-    <label class="import-label">恢复历史备份（ZIP 或 JSON）
+    <p>仅备份当前账号及本机照片。</p>
+    <small v-if="lastExportAt">上次备份：{{ lastExportAt.slice(0,10) }}</small>
+    <small v-if="backupOld">本机照片请定期备份。</small>
+    <button :disabled="pending" @click="exportArchive">下载备份</button>
+    <label class="import-label">恢复备份（ZIP / JSON）
       <input type="file" accept=".zip,.json,application/zip,application/json"
         :disabled="pending" @change="chooseArchive(($event.target as HTMLInputElement).files?.[0]||null)"/>
     </label>
@@ -174,7 +174,7 @@ async function restore(){
     <p v-if="status" class="success" role="status">{{ status }}</p>
     <PageToast :toast="toast" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <small>包含计划、储值结算及调整额；恢复不覆盖原记录。不含密码、推送密钥、未同步任务或云端照片。</small>
+    <small>恢复不会覆盖原记录；不含密码、未同步任务及云端照片。</small>
   </section>
 </template>
 <style scoped>

@@ -107,7 +107,7 @@ async function save(){
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
-   <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启推送提醒（不影响今天的待办）</label>
+   <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启提醒</label>
    <label>关联对象（可选）
     <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
      <option value="">不关联任何人或宠物</option>
@@ -141,7 +141,7 @@ async function save(){
    <label>开始日期<DateField v-model="form.goalStartOn" required /></label>
    <label v-if="form.goalMode==='once'">期初储值额（¥）<input v-model.number="form.reservedAmount" type="number" min="0"/></label>
    <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.goalStartOn||undefined" /></label>
-   <small v-if="form.goalMode!=='once'">各期独立结算、保存调整额</small>
+   
   </template>
   <template v-else-if="kind==='memories'">
    <label>发生日期<DateField v-model="form.happenedOn" required /></label>
