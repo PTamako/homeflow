@@ -10,9 +10,10 @@ const props=withDefaults(defineProps<{
   scope:string
   allowEdit?:boolean
   allowDelete?:boolean
+  showTrigger?:boolean
   editLabel?:string
   deleteLabel?:string
-}>(),{allowEdit:true,allowDelete:true,editLabel:'编辑',deleteLabel:'删除'})
+}>(),{allowEdit:true,allowDelete:true,showTrigger:true,editLabel:'编辑',deleteLabel:'删除'})
 const emit=defineEmits<{edit:[];delete:[]}>()
 const key=computed(()=>props.scope+':'+props.id)
 const opened=computed(()=>activeSwipeId.value===key.value)
@@ -82,11 +83,11 @@ onBeforeUnmount(close)
     </div>
     <div class="swipe-content" :style="{
       transform:'translateX('+((opened?-actionWidth:0)+movement)+'px)',
-      paddingRight:'30px'
+      paddingRight:showTrigger?'30px':'0px'
     }" @click.capture="tapContent">
       <slot/>
     </div>
-    <button v-if="!opened" type="button" class="swipe-trigger" :aria-label="'显示'+editLabel+'和'+(allowDelete?deleteLabel:'')"
+    <button v-if="showTrigger&&!opened" type="button" class="swipe-trigger" :aria-label="'显示'+editLabel+'和'+(allowDelete?deleteLabel:'')"
       :aria-expanded="opened" @click.stop="toggle">
       <AppIcon name="ellipsis" :size="19"/>
     </button>
