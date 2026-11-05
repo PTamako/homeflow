@@ -115,7 +115,9 @@ export async function tasksRoute(request,db,path,session) {
     const filters=listFilters(request.url)
     if(filters?.invalid)return json({error:'invalid_input'},400)
     if(filters){
+      const dueSort=filters.scope==='active'&&new URL(request.url).searchParams.get('order')==='due'
       const column=filters.scope==='history'?'completed_at':'created_at'
+      const sortColumn=dueSort?"COALESCE(due_on,'9999-12-31')":column
       const where=["household_id=?1","deleted_at IS NULL",
         "(visibility='household' OR creator_user_id=?2)"]
       const args=[household,who]
@@ -128,8 +130,8 @@ export async function tasksRoute(request,db,path,session) {
         args.push(window.start,window.end)
       }
       if(filters.cursor){
-        where.push('('+column+'<?'+(args.length+1)+' OR ('+column+'=?'+(args.length+2)+
-          ' AND id<?'+(args.length+3)+'))')
+        where.push('('+sortColumn+(dueSort?'>':'<')+'?'+(args.length+1)+' OR ('+
+          sortColumn+'=?'+(args.length+2)+' AND id'+(dueSort?'>':'<')+'?'+(args.length+3)+'))')
         args.push(filters.cursor.date,filters.cursor.date,filters.cursor.id)
       }
       const sql=`SELECT id,title,notes,visibility,due_on AS dueOn,
@@ -137,11 +139,11 @@ export async function tasksRoute(request,db,path,session) {
         subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
         completed_at AS completedAt,remind_enabled AS remindEnabled,
         created_at AS createdAt,updated_at AS updatedAt FROM tasks
-        WHERE `+where.join(' AND ')+' ORDER BY '+column+' DESC,id DESC LIMIT ?'+(args.length+1)
+        WHERE `+where.join(' AND ')+' ORDER BY '+sortColumn+(dueSort?' ASC,id ASC':' DESC,id DESC')+' LIMIT ?'+(args.length+1)
       const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
       const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
       return json({items,nextCursor:rows.length>filters.limit&&last?
-        (filters.scope==='history'?last.completedAt:last.createdAt)+'|'+last.id:null})
+        (dueSort?last.dueOn||'9999-12-31':filters.scope==='history'?last.completedAt:last.createdAt)+'|'+last.id:null})
     }
     const url=new URL(request.url)
     const mode=url.searchParams.get('status')||'open'
