@@ -34,5 +34,5 @@ test('a historical Today deep link never duplicates a row when switching to acti
   assert.ok(scopeGuard>=0&&scopeGuard<apiCall,'scope must be checked before fetching focused record')
   assert.match(life,/const focusedItemId=computed\(\(\)=>props\.focusPlanScope===planScope\.value/)
   assert.match(focus,/kind!=='routine'\|\|planScope\.value!=='history'\|\|row\.periodOn===item\.periodOn/)
-  assert.match(focus,/if\(!listed\)target\.value=\[item,\.\.\.target\.value\]/)
+  assert.match(focus,/if\(!listed\)target\.value=uniquePlanRows\(\[item,\.\.\.target\.value\]/)
 })
