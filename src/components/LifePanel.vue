@@ -848,7 +848,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-else>
             <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id"
               :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
-              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)" :show-trigger="false"
+              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
                 @edit="edit('routines',r)" @delete="removeItem('routines',r)">
                 <div class="routine-compact">
                   <div class="plan-task-head">
@@ -879,9 +879,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
-                <button v-if="canEdit(r)" type="button" @click="expandedTaskMenu=null;edit('routines',r)">编辑</button>
-                <button v-if="canEdit(r)" type="button" class="routine-inline-delete"
-                  @click="expandedTaskMenu=null;removeItem('routines',r)">删除</button>
               </div>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
@@ -891,7 +888,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </template>
           <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
-            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)" :show-trigger="false"
+            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
                 <div class="life-details">
@@ -901,7 +898,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <template v-if="t.completedAt"> · 已完成</template>
                   </small>
                 </div>
-                <button type="button" class="routine-more-trigger"
+                <button v-if="planScope==='active'&&!!t.dueOn" type="button" class="routine-more-trigger"
                   :aria-label="'更多操作：'+t.title"
                   :aria-expanded="expandedTaskMenu==='task:'+t.id"
                   :aria-controls="'task-actions-'+t.id"
@@ -925,9 +922,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title">
               <button v-if="planScope==='active'&&t.dueOn" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
-              <button v-if="canEdit(t)" type="button" @click="expandedTaskMenu=null;editOnce(t)">编辑</button>
-              <button v-if="canEdit(t)" type="button" class="routine-inline-delete"
-                @click="expandedTaskMenu=null;deleteOnce(t)">删除</button>
             </div>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
@@ -1325,7 +1319,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .routine-inline-actions button{border:0;border-radius:9px;background:#eff5f0;
   color:#476d57;font-size:12px;min-height:36px;padding:8px 12px;font-weight:600}
 .routine-inline-actions button:disabled{opacity:.45}
-.routine-inline-actions .routine-inline-delete{background:#faefee;color:#ae5d57}
 .routine-state{font-size:11px;color:#87988c;flex:none}
 .routine-state.state-completed{color:#43866a}
 .routine-state.state-missed{color:#aa7067}

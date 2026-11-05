@@ -111,7 +111,7 @@ test('routine plans share compact rows and genuine per-period historical states'
   assert.match(routine,/r\.periodOn/)
   assert.match(life,/\.plan-tasks-card \.plan-task-item\{border-bottom:1px/)
   assert.match(life,/\.routine-inline-actions\{display:flex/)
-  assert.match(routine,/:show-trigger="false"/)
+  assert.doesNotMatch(routine,/:show-trigger="false"/)
   assert.match(routine,/expandedTaskMenu==='routine:'\+r\.id/)
   assert.doesNotMatch(routine,/<details class="routine-menu">/)
   assert.match(routine,/class="routine-inline-actions"/)
