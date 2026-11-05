@@ -99,3 +99,19 @@ test('Today and Family keep their anniversary panels mounted',()=>{
  assert.match(panel, /<template v-else-if="mode==='family'">[\s\S]*?家人的重要日子/)
  assert.match(panel, /api\('\/anniversaries\/upcoming'\)/)
 })
+
+
+test('pending reminders keep dates and actions on separate mobile-friendly rows',()=>{
+ const reminders=readFileSync(new URL('../src/components/ImportantReminders.vue',import.meta.url),'utf8')
+ const notification=readFileSync(new URL('../src/components/TodayNotifications.vue',import.meta.url),'utf8')
+ assert.match(notification,/<ImportantReminders :today-date="todayDate"/)
+ assert.match(notification,/compact mode="list"/)
+ assert.match(reminders,/class="reminder-details"/)
+ assert.match(reminders,/class="reminder-title"/)
+ assert.match(reminders,/<time class="reminder-date" :datetime="item.dueOn">截止/)
+ assert.match(reminders,/<div class="snooze-actions">/)
+ assert.match(reminders,/\.reminder-item\{display:grid;grid-template-columns:minmax\(0,1fr\)/)
+ assert.match(reminders,/\.snooze-actions\{display:flex;gap:7px;flex-wrap:wrap;align-items:center/)
+ assert.match(reminders,/\.snooze-calendar\{display:flex;gap:7px;flex:1 0 100%/)
+ assert.doesNotMatch(reminders,/\.reminder-item\{display:flex;align-items:center;justify-content:space-between/)
+})
