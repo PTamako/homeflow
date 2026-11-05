@@ -28,6 +28,8 @@ type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
+const expandedTaskMenu=ref<string|null>(null)
+function toggleTaskMenu(key:string){expandedTaskMenu.value=expandedTaskMenu.value===key?null:key}
 function toggleReminderEditor(kind:ReminderKind,id:string){
  const old=reminderTarget.value
  reminderTarget.value=old?.kind===kind&&old.id===id?null:{kind,id}
@@ -846,20 +848,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-else>
             <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id"
               :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
-              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
+              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)" :show-trigger="false"
                 @edit="edit('routines',r)" @delete="removeItem('routines',r)">
                 <div class="routine-compact">
                   <div class="plan-task-head">
                     <b class="detail-name">{{ r.title }}</b>
-                    <details class="routine-menu">
-                      <summary :aria-label="'更多操作：'+r.title">···</summary>
-                      <div class="routine-menu-items">
-                        <button type="button" @click="toggleReminderEditor('routine',r.id)">提醒设置</button>
-                        <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
-                          @click="completeCurrentRoutine(r,'skipped')">跳过本期</button>
-                        <button v-if="canEdit(r)" type="button" @click="edit('routines',r)">编辑计划</button>
-                      </div>
-                    </details>
+                    <button type="button" class="routine-more-trigger"
+                      :aria-label="'更多操作：'+r.title"
+                      :aria-expanded="expandedTaskMenu==='routine:'+r.id"
+                      :aria-controls="'routine-actions-'+r.id"
+                      @click.stop="toggleTaskMenu('routine:'+r.id)">
+                      <AppIcon name="ellipsis" :size="19"/>
+                    </button>
                   </div>
                   <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template></small>
                   <div class="plan-task-footer">
@@ -874,6 +874,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   </div>
                 </div>
               </SwipeActions>
+              <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
+                class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title">
+                <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
+                <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
+                  :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
+                <button v-if="canEdit(r)" type="button" @click="expandedTaskMenu=null;edit('routines',r)">编辑</button>
+                <button v-if="canEdit(r)" type="button" class="routine-inline-delete"
+                  @click="expandedTaskMenu=null;removeItem('routines',r)">删除</button>
+              </div>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -882,7 +891,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </template>
           <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
-            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
+            <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)" :show-trigger="false"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
                 <div class="life-details">
@@ -892,6 +901,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <template v-if="t.completedAt"> · 已完成</template>
                   </small>
                 </div>
+                <button type="button" class="routine-more-trigger"
+                  :aria-label="'更多操作：'+t.title"
+                  :aria-expanded="expandedTaskMenu==='task:'+t.id"
+                  :aria-controls="'task-actions-'+t.id"
+                  @click.stop="toggleTaskMenu('task:'+t.id)">
+                  <AppIcon name="ellipsis" :size="19"/>
+                </button>
               </div>
             <div v-if="planType==='unscheduled'" class="plan-task-footer">
               <div class="plan-task-controls">
@@ -902,15 +918,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <span class="plan-task-next">{{ t.dueOn?'计划 '+t.dueOn:'尚未安排日期' }}</span>
               <button v-if="!t.completedAt&&t.dueOn" type="button" class="routine-text-action"
                 :disabled="busy" @click="completeOnce(t)">{{ t.dueOn>today()?'提前完成':'完成' }}</button>
-              <details class="routine-menu">
-                <summary :aria-label="'更多操作：'+t.title">···</summary>
-                <div class="routine-menu-items">
-                  <button type="button" @click="toggleReminderEditor('task',t.id)">提醒设置</button>
-                  <button v-if="canEdit(t)" type="button" @click="editOnce(t)">编辑任务</button>
-                </div>
-              </details>
+              
             </div>
             </SwipeActions>
+            <div v-if="expandedTaskMenu==='task:'+t.id" :id="'task-actions-'+t.id"
+              class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title">
+              <button v-if="planScope==='active'&&t.dueOn" type="button"
+                @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
+              <button v-if="canEdit(t)" type="button" @click="expandedTaskMenu=null;editOnce(t)">编辑</button>
+              <button v-if="canEdit(t)" type="button" class="routine-inline-delete"
+                @click="expandedTaskMenu=null;deleteOnce(t)">删除</button>
+            </div>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
@@ -1298,13 +1316,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-tasks-card .plan-task-next{white-space:normal;min-width:0;flex:1}
 .routine-text-action{border:0;background:transparent;color:#397f5f;font-size:12px;font-weight:650;flex:none;padding:6px 4px;min-height:32px}
 .routine-text-action:disabled{opacity:.5}
-.routine-menu{position:relative;flex:none;margin-left:auto}
-.routine-menu summary{list-style:none;cursor:pointer;font-size:20px;letter-spacing:1px;color:#8ba298;padding:0 6px;line-height:28px}
-.routine-menu summary::-webkit-details-marker{display:none}
-.routine-menu-items{position:absolute;right:0;top:100%;z-index:8;display:grid;gap:3px;min-width:132px;
-  padding:6px;background:#fff;border:1px solid #d9e5db;border-radius:12px;box-shadow:0 5px 18px #1a35241c}
-.routine-menu-items button{padding:10px;text-align:left;background:transparent;border:0;color:#415b4a;font-size:12px;border-radius:7px}
-.routine-menu-items button:active{background:#edf5ed}
+.routine-more-trigger{display:grid;place-items:center;flex:none;width:36px;height:36px;
+  padding:0;border:0;border-radius:9px;background:transparent;color:#829c8c;cursor:pointer}
+.routine-more-trigger[aria-expanded="true"]{background:#edf5ee;color:#397e5f}
+.routine-more-trigger:focus-visible{outline:2px solid #43866a;outline-offset:1px}
+.routine-inline-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  margin:4px 0 7px;padding:10px 0 3px;border-top:1px dashed #e5ece6}
+.routine-inline-actions button{border:0;border-radius:9px;background:#eff5f0;
+  color:#476d57;font-size:12px;min-height:36px;padding:8px 12px;font-weight:600}
+.routine-inline-actions button:disabled{opacity:.45}
+.routine-inline-actions .routine-inline-delete{background:#faefee;color:#ae5d57}
 .routine-state{font-size:11px;color:#87988c;flex:none}
 .routine-state.state-completed{color:#43866a}
 .routine-state.state-missed{color:#aa7067}
