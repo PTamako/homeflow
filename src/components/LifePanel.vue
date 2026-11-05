@@ -210,7 +210,7 @@ function listPath(kind:string,cursor?:string|null){
     }
   }
   if(cursor)q.set('cursor',cursor)
-  return '/'+kind+'?'+q.toString()
+  return '/'+(kind==='routines'&&planScope.value==='history'?'routines/period-history':kind)+'?'+q.toString()
 }
 async function toggleHistoricalGoalPeriod(period:GoalPeriodArchive){
   if(!props.isOwner)return
@@ -258,7 +258,7 @@ async function loadMoreGoalPeriods(){
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
-  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id))]:rows
+  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id&&existing.periodOn===row.periodOn))]:rows
 }
 async function loadMore(kind:string){
   const cursor=listCursors.value[kind]
@@ -287,40 +287,42 @@ function countdown(date:string){
   if(!Number.isFinite(days))return ''
   return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
 }
-function routineNextDue(r:Row){
-  if(r.repeat_type!=='interval')return ''
-  let config:Record<string,any>={}
-  try{config=typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return ''}
-  if(config.anchor!=='completion'||!Number.isInteger(config.days)||config.days<1||config.days>3650)return ''
-  if(r.next_due_on)return String(r.next_due_on)
-  const timestamp=Date.parse(String(r.anchor_date||'')+'T00:00:00Z')
-  return Number.isFinite(timestamp)?new Date(timestamp+config.days*86400000).toISOString().slice(0,10):''
-}
-function canCompleteRoutineEarly(r:Row){
-  const next=routineNextDue(r),date=today()
-  if(!next||r.enabled===0||date<String(r.anchor_date||'')||date>=next)return false
-  // The stored next_due_on is completion-based. Once a completion is
-  // recorded today, don't offer a second early-complete button.
-  if(r.next_due_on){
-    let config:Record<string,any>={}
-    try{config=typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return false}
-    const dueMs=Date.parse(next+'T00:00:00Z')
-    if(new Date(dueMs-config.days*86400000).toISOString().slice(0,10)===date)return false
-  }
-  return true
-}
+function routineNextDue(r:Row){return String(r.nextDueOn||r.next_due_on||'')}
+function canCompleteRoutineEarly(r:Row){return !!r.earlyPeriodOn&&r.enabled!==0}
 async function completeRoutineEarly(r:Row){
   if(!canCompleteRoutineEarly(r)||busy.value)return
-  if(!confirm('确认今天已完成「'+r.title+'」？将记录实际完成日期并重新计算下次到期日。'))return
-  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:'completed',early:true}), '已提前完成，下一次按今天重新计算')
+  if(!confirm('确认提前完成「'+r.title+'」本期？仅本期归档，下期仍按计划生成。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.earlyPeriodOn,status:'completed',early:true}),'本期已提前完成')
+  if(!error.value)emit('tasksChanged')
+}
+async function completeCurrentRoutine(r:Row,status:'completed'|'skipped'){
+  if(!r.currentPeriodOn||r.currentStatus!=='pending'||busy.value)return
+  if(status==='skipped'&&!confirm('跳过本期？会保留一条历史记录。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.currentPeriodOn,status}),
+    status==='completed'?'本期已完成':'本期已跳过')
+  if(!error.value)emit('tasksChanged')
+}
+async function undoRoutineHistory(r:Row){
+  if(!r.periodOn||r.status==='missed'||busy.value)return
+  if(!confirm('撤销这一期的记录？对应的自动护理记录也会撤销。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.periodOn,status:'open'}),'已撤销本期记录')
+  if(!error.value)emit('tasksChanged')
+}
+async function completeOnce(t:Row){
+  if(busy.value||t.completedAt)return
+  await update(()=>api('/tasks/'+t.id,'PATCH',{completed:true}),'一次性任务已完成')
   if(!error.value)emit('tasksChanged')
 }
 function routineLabel(r:Row){
   const config=(()=>{try{return typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return {}}})()
   if(r.repeat_type==='weekly'&&config.excludeJapaneseHolidays)return '工作日'
-  return r.repeat_type==='once'?'一次性':r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
-    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
-    r.repeat_type==='workday'?'工作日':'定期'
+  if(r.repeat_type==='weekly')return '每周'+(config.weekdays||[]).map((d:number)=>'日一二三四五六'[d]).join('、')
+  if(r.repeat_type==='monthly')return '每月'+Number(config.day||1)+'日'
+  if(r.repeat_type==='interval')return '每'+Number(config.days||0)+'天'+(config.anchor==='completion'?' · 按完成日':'')
+  return r.repeat_type==='daily'?'每天':'定期'
 }
 function profileName(id:string|null|undefined){
   return props.profiles.find(p=>p.id===id)?.displayName||''
