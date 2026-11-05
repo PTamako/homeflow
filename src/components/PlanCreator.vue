@@ -17,7 +17,7 @@ const opened=ref(false),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref(
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
- intervalDays:7,intervalAnchor:'fixed',remindEnabled:true,
+ intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
  subjectProfileId:'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',createSavingsGoal:false,
@@ -53,7 +53,7 @@ async function submit(){
         remindEnabled:form.leaveUnscheduled?false:form.remindEnabled})
       emit('taskCreated')
     }else{
-      const config=form.repeatType==='weekly'?{weekdays:[utcWeekday(form.date)]}:
+      const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
         form.repeatType==='monthly'?{day:Number(form.date.slice(-2))}:
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
@@ -113,6 +113,11 @@ async function submit(){
      </label>
      <label v-if="form.repeatType!=='once'||!form.leaveUnscheduled">{{ form.repeatType==='once'?'计划日期':'起始日期' }}
        <DateField v-model="form.date" required /></label>
+     <label v-if="form.repeatType==='weekly'">每周执行日
+      <select v-model.number="form.weekday" aria-label="每周执行星期">
+       <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
+      </select>
+     </label>
      <template v-if="form.repeatType==='interval'">
       <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
       <label>计算方式<select v-model="form.intervalAnchor">
