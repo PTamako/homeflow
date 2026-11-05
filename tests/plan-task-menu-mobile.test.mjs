@@ -37,6 +37,6 @@ test('all actions remain reachable: reminders, skip, edit, delete and completion
  assert.match(taskMarkup,/editOnce\(t\)/)
  assert.match(taskMarkup,/deleteOnce\(t\)/)
  assert.match(taskMarkup,/completeOnce\(t\)/)
- assert.match(swipe,/scope\+':'+props\.id/)
+ assert.ok(swipe.includes("props.scope+':'+props.id"))
  assert.match(swipe,/@touchstart\.passive="start"/)
 })
