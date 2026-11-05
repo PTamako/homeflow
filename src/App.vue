@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import DateField from './components/DateField.vue'
+import OneTimeTaskFields from './components/OneTimeTaskFields.vue'
+import {newOneTimeTaskDraft,oneTimeTaskPayload} from './one-time-task'
 import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
@@ -98,13 +100,13 @@ function navigateTab(value:typeof tab.value){
 const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
-const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tokyoToday()),subjectId=ref(''),taskCareType=ref('')
+const newTask=ref(newOneTimeTaskDraft(tokyoToday()))
 const showAddTask=ref(false)
-const newTaskTitleInput=ref<HTMLInputElement|null>(null),addTaskTrigger=ref<HTMLButtonElement|null>(null)
+const newTaskFields=ref<{focusTitle:()=>void}|null>(null),addTaskTrigger=ref<HTMLButtonElement|null>(null)
 function openAddTask(){
   error.value=''
   showAddTask.value=true
-  void nextTick(()=>newTaskTitleInput.value?.focus())
+  void nextTick(()=>newTaskFields.value?.focusTitle())
 }
 function closeAddTask(){
   if(loading.value)return
@@ -184,9 +186,7 @@ function recurringLabel(r:Routine){
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
 const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
-const newTaskPet=computed(()=>isPet(subjectId.value))
 const editTaskPet=computed(()=>isPet(editingTask.value?.subjectProfileId))
-watch(subjectId,id=>{taskCareType.value=isPet(id)?'other':''})
 function changedEditingSubject(){
  if(editingTask.value)editingTask.value.healthRecordType=isPet(editingTask.value.subjectProfileId)?'other':''
 }
@@ -398,14 +398,13 @@ async function toggleRoutine(r:Routine){
   finally{routineBusy.value=false}
 }
 async function addTask(){
-  if(!title.value.trim()||!user.value)return
+  if(!newTask.value.title.trim()||!user.value)return
   error.value='';loading.value=true;syncMessage.value=''
   try{
-    const outcome=await sendOrQueueTask(user.value.id,'create',{title:title.value,notes:'',
-      visibility:visibility.value,dueOn:due.value||null,subjectProfileId:subjectId.value||null,
-      healthRecordType:newTaskPet.value?taskCareType.value||null:null})
-    const unscheduled=!due.value
-    title.value='';due.value=tokyoToday();subjectId.value='';taskCareType.value=''
+    const payload=oneTimeTaskPayload(newTask.value,isPet(newTask.value.subjectProfileId))
+    const outcome=await sendOrQueueTask(user.value.id,'create',payload)
+    const unscheduled=!newTask.value.dueOn
+    newTask.value=newOneTimeTaskDraft(tokyoToday())
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
     else {await loadTasks();notify(unscheduled?'已存入「计划 → 待安排」':'任务已添加')}
     pendingTasks.value=await listPending(user.value.id)
@@ -456,7 +455,7 @@ function onForeground(){
   if(document.visibilityState!=='visible')return
   const d=tokyoToday()
   if(d!==currentJstDay.value){
-    if(due.value===currentJstDay.value)due.value=d
+    if(newTask.value.dueOn===currentJstDay.value)newTask.value.dueOn=d
     currentJstDay.value=d
     if(user.value&&tab.value==='today')void reloadToday()
   }else if(user.value)importantRemindersRef.value?.refreshIfStale()
@@ -600,29 +599,8 @@ onBeforeUnmount(()=>{
               </div>
               <p v-if="error" class="error" role="alert">{{ error }}</p>
           <form class="task-form" @submit.prevent="addTask">
-            <input ref="newTaskTitleInput" v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
-            <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
-            <div class="task-date-control">
-              <div class="task-date-heading">
-                <span id="new-task-date-label">计划日期（可清空）</span>
-                <button v-if="due" type="button" class="task-date-clear" aria-label="清空计划日期" @click="due=''">清空</button>
-              </div>
-              <DateField v-model="due" aria-labelledby="new-task-date-label" />
-            </div>
+            <OneTimeTaskFields ref="newTaskFields" v-model="newTask" :profiles="profiles"/>
             <button type="button" class="text-button" @click="closeAddTask();openPlans('unscheduled')">查看待安排</button>
-            <p v-if="!due" class="task-object-hint">不填日期会存到「计划 → 待安排」，不会出现在今日待办。</p>
-            <label class="task-object">关联对象（可选）
-              <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
-                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>
-              </select></label>
-            <label v-if="newTaskPet" class="task-object">完成后同步到宠物护理记录
-              <select v-model="taskCareType" aria-label="普通任务完成时护理记录类型">
-                <option value="">不自动记录</option><option value="other">日常护理（默认）</option>
-                <option value="grooming">梳毛／洗澡</option><option value="medication">用药</option>
-                <option value="deworm">驱虫</option><option value="vaccination">疫苗</option><option value="vet">就诊</option>
-              </select>
-            </label>
-
             <button class="primary" :disabled="loading">＋ 添加任务</button>
           </form>
             </section>
