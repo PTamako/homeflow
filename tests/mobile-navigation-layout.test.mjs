@@ -127,3 +127,10 @@ test('plan tasks place reminders and early completion inside compact, divided it
   assert.match(life,/\.plan-task-item :deep\(\.swipe-content\)\{background:#fff\}/)
   assert.doesNotMatch(routine,/routine-early-complete|routine-list-item/)
 })
+
+test('Management does not retain one-time invitation codes after leaving the tab',()=>{
+ const management=readFileSync(new URL('../src/components/ManagePage.vue',import.meta.url),'utf8')
+ assert.match(management,/watch\(\(\)=>props\.active,active=>\{/)
+ assert.match(management,/if\(!active\)\{invitation\.value='';inviteError\.value=''\}/)
+ assert.ok(management.includes("v-if=\"isOwner\""),'only the owner may request an invitation')
+})

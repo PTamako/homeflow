@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref} from 'vue'
+import {ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
@@ -14,6 +14,11 @@ const emit=defineEmits<{logout:[];presenceChange:[has:boolean]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminders=ref<{refreshIfStale:()=>void}|null>(null)
 const {toast,notify}=usePageToast()
+// An invitation is a bearer credential. Clear its visible value when leaving
+// Management; fetching or creating a new one always requires an explicit tap.
+watch(()=>props.active,active=>{
+ if(!active){invitation.value='';inviteError.value=''}
+})
 async function generateInvite(){
  if(!props.isOwner||inviting.value)return
  inviting.value=true;inviteError.value='';invitation.value=''

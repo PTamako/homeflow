@@ -466,3 +466,35 @@ test('recycle restores all plan types without losing finance links or task compl
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks WHERE plan_id=?").get(goalId).n,1)
  }finally{sqlite.close()}
 })
+
+test('portable backup preserves deleted flags for a goal, wish and ordinary task',async()=>{
+ const source=database(),target=database()
+ const timestamp='2026-11-05T03:42:00.000Z'
+ const ids={wishes:'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1',
+   goals:'b2b2b2b2-b2b2-42b2-82b2-b2b2b2b2b2b2',
+   tasks:'c3c3c3c3-c3c3-43c3-83c3-c3c3c3c3c3c3'}
+ try{
+   source.sqlite.prepare("INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,deleted_at) VALUES(?,'primary','u1','private','archived wish','purchase',?)")
+     .run(ids.wishes,timestamp)
+   source.sqlite.prepare("INSERT INTO goals(id,household_id,created_by,visibility,title,target_amount,wish_id,deleted_at) VALUES(?,'primary','u1','private','archived saving',1000,?,?)")
+     .run(ids.goals,ids.wishes,timestamp)
+   source.sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,deleted_at) VALUES(?,'primary','u1','private','archived task',?)")
+     .run(ids.tasks,timestamp)
+   for(const dataset of ['wishes','goals','tasks']){
+     const response=await portableRoute(new Request('https://homeflow.test/api/portable?dataset='+dataset),
+       source.db,'/api/portable',session)
+     assert.equal(response.status,200)
+     const page=await response.json()
+     assert.equal(page.items.length,1,dataset)
+     assert.equal(page.items[0].deleted_at,timestamp)
+     const restoreRequest=new Request('https://homeflow.test/api/portable/restore',{method:'POST',
+       headers:{'content-type':'application/json'},
+       body:JSON.stringify({dataset,items:page.items,confirm:true})})
+     const restored=await portableRoute(restoreRequest,target.db,'/api/portable/restore',session)
+     assert.equal(restored.status,200,dataset+': '+await restored.text())
+     const copied=target.sqlite.prepare('SELECT deleted_at FROM '+dataset+' WHERE id=?').get(ids[dataset])
+     assert.equal(copied.deleted_at,timestamp,dataset)
+   }
+   assert.equal(target.sqlite.prepare('SELECT wish_id FROM goals WHERE id=?').get(ids.goals).wish_id,ids.wishes)
+ }finally{source.sqlite.close();target.sqlite.close()}
+})
