@@ -68,6 +68,15 @@ test('Today includes dated plans in the single default All checklist with catego
  assert.ok(!sections.today.includes("api('/plans/today')"),'avoid duplicate D1 read')
 })
 
+test('Today only shows completions from the current JST day, without archive toggle or extra D1 reads',()=>{
+ assert.doesNotMatch(app,/显示历史完成|showDone|showHistory=1/);
+ assert.match(app,/return t\.completedAt\?tokyoDate\(t\.completedAt\)===now:/);
+ assert.match(app,/return '\/tasks\?status=all&today='\+date/);
+ assert.match(app,/watch\(\[todayCategory,currentJstDay\]/);
+ assert.match(app,/<b>事项分类<\/b>/);
+ assert.match(app,/const visibleTasks=computed/);
+})
+
 test('undated tasks go to Plans pending scheduling instead of Today',()=>{
  assert.ok(app.includes('!!t.dueOn&&t.dueOn<=now'))
  assert.ok(life.includes("type==='unscheduled'"))
