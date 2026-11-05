@@ -136,10 +136,11 @@ function normalized(key,r,h,u) {
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999||!optionalDate(r.due_on)||
          (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
-      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at) "+
-          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at,assigned_to) "+
+          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,(SELECT user_id FROM household_members WHERE user_id=?12 AND household_id=?2))",
           [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,r.completed_at?u:null,
-           r.due_on||null,r.ledger_entry_id||null,r.deleted_at||null]]
+           r.due_on||null,r.ledger_entry_id||null,r.deleted_at||null,
+           id(r.assigned_to)&&(v==='household'||r.assigned_to===u)?r.assigned_to:null]]
     case 'memories':
       if(!str(r.title,150)||str(r.story||'',8000)===null||!date(r.happened_on))return null
       return ["INSERT OR IGNORE INTO memories(id,household_id,created_by,visibility,title,story,happened_on,linked_type,linked_id,deleted_at) "+
