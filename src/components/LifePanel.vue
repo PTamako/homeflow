@@ -309,7 +309,7 @@ async function undoRoutineHistory(r:Row){
   if(!r.periodOn||r.status==='missed'||busy.value)return
   if(!confirm('撤销这一期的记录？对应的自动护理记录也会撤销。'))return
   await update(()=>api('/routines/'+r.id+'/mark','POST',
-    {date:today(),periodOn:r.periodOn,status:'open'}),'已撤销本期记录')
+    {date:today(),periodOn:r.periodOn,recordOn:r.markOccurrenceOn||r.periodOn,status:'open'}),'已撤销本期记录')
   if(!error.value)emit('tasksChanged')
 }
 async function completeOnce(t:Row){
