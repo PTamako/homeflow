@@ -4,6 +4,7 @@ import {listFilters,listPage} from './list-pagination.js'
 import {nextAnniversary,validateRule,addDays} from './recurrence.js'
 import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday} from './routine-periods.js'
 import {enrichRoutineList,routineHistory} from './routine-history.js'
+import {isJapaneseWorkday} from './jp-holidays.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -143,6 +144,9 @@ export async function lifeRoute(request,db,path,session){
     const rules=await enrichRoutineList(db,results||[],date)
     const items=[]
     for(const r of rules){
+      let config={}
+      try{config=JSON.parse(r.repeat_config||'{}')}catch{}
+      if(config.excludeJapaneseHolidays&&!isJapaneseWorkday(date))continue
       const current=r.currentPeriodOn,mark=r.currentMark
       const doneCurrent=!!mark?.completed_at&&jstDate(mark.completed_at)===date
       const recent=r.completedTodayMark?.occurrence_on<=date?r.completedTodayMark:null
@@ -182,13 +186,16 @@ export async function lifeRoute(request,db,path,session){
     if(body.status==='skipped'&&existing?.skipped_at)return json({ok:true,unchanged:true})
     if(body.status==='open'&&!existing)return json({ok:true,unchanged:true})
     const stamp=iso()
+    // API date is the actual local completion date, including deterministic
+    // time-travel test requests. Normal app requests always use today.
+    const completedStamp=actual===jstToday()?stamp:new Date(actual+'T12:00:00+09:00').toISOString()
     const statements=[db.prepare(`INSERT INTO routine_marks
       (routine_id,occurrence_on,completed_at,completed_by,skipped_at)
       VALUES(?1,?2,?3,?4,?5)
       ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET
         completed_at=excluded.completed_at,completed_by=excluded.completed_by,
         skipped_at=excluded.skipped_at`)
-      .bind(id,periodOn,body.status==='completed'?stamp:null,
+      .bind(id,periodOn,body.status==='completed'?completedStamp:null,
         body.status==='completed'?session.user_id:null,
         body.status==='skipped'?stamp:null)]
     if(body.status==='completed'&&rule.subject_profile_id&&rule.health_record_type){
