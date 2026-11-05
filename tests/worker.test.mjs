@@ -18,6 +18,12 @@ test('health confirms D1 identity',async()=>{
   assert.equal(res.status,200)
   assert.equal((await res.json()).database,'ready')
 })
+test('health accepts either migration state during safe receipt backfill rollout',async()=>{
+  for(const migration of ['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql']){
+    const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview',migration))
+    assert.equal(res.status,200,migration)
+  }
+})
 test('preview fails closed when attached to production',async()=>{
   const res=await worker.fetch(request('/api/health'),environment('preview','homeflow'))
   assert.equal(res.status,503)
