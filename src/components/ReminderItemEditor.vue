@@ -50,7 +50,7 @@ onBeforeUnmount(()=>{serial++})
 <template>
  <section class="plan-reminder-editor" aria-label="单项提醒设置">
   <b>单项提醒</b>
-  <p v-if="loading" class="editor-hint">正在读取提醒设置…</p>
+  <p v-if="loading" class="editor-hint">加载中…</p>
   <template v-else>
    <div class="editor-fields">
     <label>提前天数
@@ -65,7 +65,7 @@ onBeforeUnmount(()=>{serial++})
      </select>
     </label>
    </div>
-   <small class="editor-hint">{{ customized?'单项设置':'账号默认（提前 '+defaultDays+' 天）' }} · 不改截止日期</small>
+   <small class="editor-hint">{{ customized?'单项提醒':'默认提前 '+defaultDays+' 天' }}</small>
    <div class="editor-actions">
     <button type="button" :disabled="busy" @click="save()">保存</button>
     <button v-if="customized" type="button" :disabled="busy" @click="save(true)">恢复默认</button>
