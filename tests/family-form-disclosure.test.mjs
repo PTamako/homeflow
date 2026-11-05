@@ -24,7 +24,7 @@ test('family anniversaries stay visible while entry form is collapsed',()=>{
   assert.match(life,/:aria-expanded="showAnniversaryForm"/)
   assert.match(life,/if\(!error\.value\)closeAnniversaryForm\(\)/)
   assert.match(life,/@click="closeAnniversaryForm">取消/)
-  assert.match(life,/LifeItemEditor v-if="editing\?\.kind==='anniversaries'"/)
+  assert.match(life,/LifeItemEditor v-if="editing\?\.kind==='anniversaries'&&editing\.item\.id===e\.id"/)
 })
 
 test('pet health entry opens on add or edit, closes on save or cancel',()=>{
