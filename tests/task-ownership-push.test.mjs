@@ -57,7 +57,11 @@ test('push reminders are scoped to the designated handler and preserve private v
  assert.match(server,/const key='manual-'\+slot/)
  assert.match(server,/INSERT OR IGNORE INTO notification_deliveries/)
  assert.match(worker,/path==='\/api\/push\/send-now'/)
- assert.match(panel,/>立即推送<\/button>/)
+ assert.doesNotMatch(panel,/>立即推送<\/button>/)
+ assert.match(panel,/familyFormOpen\?'收起':'通知家人'/)
+ assert.match(panel,/if\(members.length===1\)\{recipientId.value=members\[0\].id/)
+ assert.match(panel,/recipientUserId:recipientId.value/)
+ assert.doesNotMatch(panel,/async function sendNow\(/)
 })
 
 test('task push optionally accepts personalized note, rejects oversize, and never trusts a chosen recipient',async()=>{
