@@ -71,7 +71,7 @@ test('task push optionally accepts personalized note, rejects oversize, and neve
    queries.push({sql,args})
    return {
      first:async()=>({id,title:'给豆沙买猫粮',dueOn:'2026-11-06',recipientId:recipient}),
-     all:async()=>({results:[]})
+     all:async()=>({results:[]}),run:async()=>({meta:{changes:1}})
    }
  }}}}
  const env={DB:db,VAPID_PUBLIC_KEY:Buffer.alloc(65).toString('base64url'),
@@ -83,8 +83,8 @@ test('task push optionally accepts personalized note, rejects oversize, and neve
  assert.equal(invalid.status,400)
  assert.equal(queries.length,0)
  const accepted=await pushRoute(post('下班顺路买一下 🐱'),env,endpoint,session)
- assert.equal(accepted.status,409) // Recipient is authorized, but has no subscription in test DB
- assert.equal((await accepted.json()).error,'recipient_not_subscribed')
+ assert.equal(accepted.status,200) // Recipient is authorized; in-app inbox works without Push.
+ assert.equal((await accepted.json()).inAppOnly,true)
  assert.match(queries[0].sql,/t.visibility='household'/)
  assert.match(queries[0].sql,/JOIN household_members m ON m.user_id=/)
  assert.deepEqual(queries[0].args,[id,'family-a',session.user_id])
