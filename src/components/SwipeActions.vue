@@ -110,7 +110,7 @@ onBeforeUnmount(close)
 .swipe-row.is-open .swipe-actions,.swipe-row.is-dragging .swipe-actions{visibility:visible}
 .swipe-actions button{border:0;border-radius:0;color:#fff;font-size:12px;font-weight:700;
   min-width:68px;max-width:68px;padding:0 4px}
-.swipe-actions .edit{background:#43866a}
+.swipe-actions .edit{background:#558bc9}
 .swipe-actions .delete{background:#d76178}
 .swipe-trigger{position:absolute;z-index:2;right:0;top:50%;transform:translateY(-50%);
   height:54px;width:30px;display:grid;place-items:center;background:transparent;
