@@ -8,6 +8,7 @@ import {lifeRoute} from '../worker/life.js'
 import {petsRoute} from '../worker/pets.js'
 import {authRoute} from '../worker/auth.js'
 import {sha256} from '../worker/security.js'
+import {searchRoute} from '../worker/search.js'
 
 const person='11111111-1111-4111-8111-111111111111'
 const wish='22222222-2222-4222-8222-222222222222'
@@ -266,5 +267,41 @@ test('pet weight trend returns 24 latest records and respects private visibility
   const member=await check({...session,user_id:'u2',role:'member'})
   assert.equal(member.length,24)
   assert.equal(member.at(-1).weightGrams,5240)
+ }finally{sqlite.close()}
+})
+
+test('global search returns five rows and respects member private records',async()=>{
+ const {db,sqlite}=database()
+ try{
+  sqlite.prepare("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u2','member','x','y')").run()
+  sqlite.prepare("INSERT INTO household_members(household_id,user_id,role) VALUES('primary','u2','member')").run()
+  const statement=sqlite.prepare("INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,target_on) VALUES(?,'primary','u1',? ,?,'other',?)")
+  for(let n=1;n<=8;n++)statement.run('dddd'+String(n).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+     n===8?'private':'household','家庭目标','2026-11-'+String(n).padStart(2,'0'))
+  const ask=async(who,cursor='')=>{
+   const query='q='+encodeURIComponent('家庭目标')+'&kind=wish'+(cursor?'&cursor='+encodeURIComponent(cursor):'')
+   const r=await searchRoute(new Request('https://homeflow.test/api/search?'+query),db,{...session,user_id:who})
+   assert.equal(r.status,200)
+   return r.json()
+  }
+  const first=await ask('u2')
+  assert.equal(first.items.length,5)
+  assert.ok(first.nextCursor)
+  const second=await ask('u2',first.nextCursor)
+  assert.equal(second.items.length,2)
+  assert.equal(new Set([...first.items,...second.items].map(x=>x.id)).size,7)
+  assert.equal((await ask('u1')).items[0].event_date,'2026-11-08')
+ }finally{sqlite.close()}
+})
+test('unscheduled tasks are paged on server and excluded from Today',async()=>{
+ const {db,sqlite}=database()
+ try{
+  const task='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title) VALUES(?,'primary','u1','private','undated')").run(task)
+  const r=await tasksRoute(new Request('https://homeflow.test/api/tasks?scope=unscheduled&limit=5'),db,'/api/tasks',session)
+  assert.equal(r.status,200)
+  const body=await r.json()
+  assert.equal(body.items[0].id,task)
+  assert.match(readFileSync(new URL('../src/App.vue',import.meta.url),'utf8'),/!!t\.dueOn&&t\.dueOn<=now/)
  }finally{sqlite.close()}
 })

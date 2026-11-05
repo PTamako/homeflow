@@ -96,7 +96,7 @@ test('all 31 date fields render inside the shared iOS-safe date control',()=>{
 })
 
 test('plan tasks place reminders and early completion inside compact, divided items',()=>{
-  const firstRoutine=life.indexOf('<div v-for="r in routines" :key="r.id" class="plan-task-item">')
+  const firstRoutine=life.indexOf('<div v-for="r in (planType===\'unscheduled\'?[]:routines)" :key="r.id" class="plan-task-item">')
   const firstOneTime=life.indexOf('<div v-for="t in oneTimePlans" :key="t.id" class="plan-task-item">',firstRoutine)
   const end=life.indexOf('<p v-if="!routines.length&&!oneTimePlans.length"',firstOneTime)
   assert.ok(firstRoutine>=0&&firstOneTime>firstRoutine&&end>firstOneTime,

@@ -9,6 +9,7 @@ import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
 import PushPanel from './components/PushPanel.vue'
 import SecurityPanel from './components/SecurityPanel.vue'
+import GlobalSearch from './components/GlobalSearch.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
@@ -75,6 +76,12 @@ async function returnToToday(){
   window.requestAnimationFrame(()=>window.scrollTo({top:savedTodayScrollY,behavior:'instant'}))
   returningToToday=false
 }
+function openSearchResult(result:{id:string;kind:string}){
+ settingsOpen.value=false
+ if(['shopping','wish','goal','trip'].includes(result.kind))openPlans(result.kind,result.id)
+ else if(result.kind==='task'||result.kind==='routine')openPlans('routine')
+ else tab.value=result.kind==='memory'?'memories':'family'
+}
 function navigateTab(value:typeof tab.value){
   if(value==='plans'){
     focusPlanId.value=''
@@ -108,7 +115,7 @@ const currentJstDay=ref(tokyoToday())
 const visibleTasks=computed(()=>tasks.value.filter(t=>{
  const now=currentJstDay.value
  return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
-   !t.dueOn||t.dueOn<=now
+   !!t.dueOn&&t.dueOn<=now
 }))
 const allToday=computed<TodayEntry[]>(()=>{
   const standard:TodayEntry[]=visibleTasks.value.map(task=>({
@@ -469,6 +476,7 @@ onBeforeUnmount(()=>{
   <div class="shell">
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <div v-if="authReady&&user" class="settings-anchor">
+        <GlobalSearch @select="openSearchResult"/>
         <button class="settings-trigger" type="button" aria-controls="homeflow-settings" :aria-expanded="settingsOpen"
           :aria-label="hasImportantReminders||goalReviews.length?'设置：今天有重要提醒':'设置'"
           @click="toggleSettings"><AppIcon name="settings" :size="20" /> 设置

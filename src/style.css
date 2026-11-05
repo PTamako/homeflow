@@ -170,7 +170,7 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 
 /* Compact, right-aligned settings popover shared by all four tabs. */
 .topbar{position:relative;z-index:40}
-.settings-anchor{position:relative;flex:none}
+.settings-anchor{position:relative;flex:none;display:flex;align-items:center;gap:7px}
 .settings-trigger{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;
   padding:7px 12px;border:1px solid #d8e6db;border-radius:12px;background:#e9f3eb;color:#35795e;
   font-size:13px;font-weight:700;white-space:nowrap}
