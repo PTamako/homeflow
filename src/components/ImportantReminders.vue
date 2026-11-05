@@ -189,7 +189,7 @@ onBeforeUnmount(()=>{requestId++})
         @click="snooze(item)">明天</button>
        <button class="snooze-button" type="button" :disabled="snoozing"
         @click="selectedSnoozeId=selectedSnoozeId===item.kind+':'+item.id?'':item.kind+':'+item.id;againOn=tomorrow">选日期</button>
-       <button v-if="['task','routine','trip'].includes(item.kind)" class="snooze-button" type="button"
+       <button v-if="['task','routine','shopping','trip'].includes(item.kind)" class="snooze-button" type="button"
         @click="settingItemKey=settingItemKey===item.kind+':'+item.id?'':item.kind+':'+item.id">单项设置</button>
        <div v-if="settingItemKey===item.kind+':'+item.id" class="snooze-calendar item-settings">
         <label>提前<select :value="String(advanceOf(item))" :disabled="savingItem"

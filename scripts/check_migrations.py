@@ -28,6 +28,7 @@ MIGRATIONS=[
     "0021_account_recovery.sql",
     "0022_recycle_plans.sql",
     "0023_today_dismissals.sql",
+    "0024_shopping_assignee.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -70,7 +71,7 @@ added_columns={
   "tasks":{"client_request_id","health_record_type","remind_enabled"},
   "routines":{"next_due_on","health_record_type","remind_enabled"},
   "pet_health_records":{"source_routine_id","source_occurrence_on","source_task_id"},
-  "shopping_items":{"ledger_entry_id","due_on"},
+  "shopping_items":{"ledger_entry_id","due_on","assigned_to"},
   "wishes":{"target_on"},
   "goals":{"goal_mode","start_on"},
   "shopping_expense_links":{"purchase_quantity"},
