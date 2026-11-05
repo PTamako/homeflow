@@ -1,5 +1,6 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute} from './reminders.js'
+import {saveNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -158,12 +159,16 @@ async function sendTaskPush(env,session,body){
   const item=await env.DB.prepare(sql).bind(body.id,session.household_id,session.user_id).first()
   if(!item)return json({error:'task_not_shareable'},404)
   if(item.recipientId===session.user_id)return json({error:'recipient_is_self'},409)
-  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)
+  const notificationId=crypto.randomUUID()
+  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+'&notificationId='+notificationId
   const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
   return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
     title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id,
-    priority:'important'
-  },'task-'+body.kind+'-'+item.id)
+    priority:'important',recordInInbox:true
+  },'task-'+body.kind+'-'+item.id,Date.now(),{
+    id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
+    title:String(item.title),message:content
+  })
 }
 
 // Family messages and task notifications share the same verified recipient scope.
@@ -176,13 +181,18 @@ async function sendFamilyPush(env,session,body){
     WHERE household_id=?1 AND user_id=?2 LIMIT 1`)
     .bind(session.household_id,body.recipientUserId).first()
   if(!member)return json({error:'recipient_not_in_household'},404)
+  const notificationId=crypto.randomUUID()
   return deliverToHouseholdUser(env,session.household_id,member.user_id,{
-    title:'HomeFlow · 家人消息',body:body.message.trim(),url:'/',tag:'homeflow-family-message',
-    priority:'normal'
-  },'family-'+session.user_id)
+    title:'HomeFlow · 家人消息',body:body.message.trim(),
+    url:'/?notificationId='+notificationId,tag:'homeflow-family-message',
+    priority:'normal',recordInInbox:true
+  },'family-'+session.user_id,Date.now(),{
+    id:notificationId,senderId:session.user_id,kind:'family',title:'家人消息',
+    message:body.message.trim()
+  })
 }
 
-async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,now=Date.now()){
+async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,now=Date.now(),meta=null){
   const db=env.DB
   const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
     FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
@@ -212,7 +222,14 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
       .bind(sub.endpoint_hash,userId).run()
   }
   if(!sent&&!failed)return json({error:'push_rate_limited',already},429)
-  return json({ok:sent>0,sent,failed,already},sent>0?200:502)
+  // Save a single logical notification even if the recipient has multiple devices.
+  let recorded=true
+  if(meta){
+    try{await saveNotification(db,{...meta,householdId,recipientId:userId,
+      localDay:day,sentDevices:sent,failedDevices:failed})}
+    catch{recorded=false}
+  }
+  return json({ok:sent>0,sent,failed,already,recorded},sent>0?200:502)
 }
 
 // Explicit manual push only reaches the authenticated user's subscribed devices.
@@ -266,6 +283,7 @@ export async function runPushSchedule(env,now=Date.now()){
   let sent=0,failed=0,checked=0
   // Reuse a reminder read for every member; avoid duplicate D1 reads per device.
   const remindersCache=new Map()
+  const notificationIds=new Map(),recordedKeys=new Set()
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     if(!remindersCache.has(sub.user_id)){
@@ -280,6 +298,9 @@ export async function runPushSchedule(env,now=Date.now()){
     const events=(data.items||[]).slice(0,20)
     for(const event of events){
       const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
+      const logicalKey=sub.user_id+':'+key
+      if(!notificationIds.has(logicalKey))notificationIds.set(logicalKey,crypto.randomUUID())
+      const notificationId=notificationIds.get(logicalKey)
       // Single atomic claim: sent/gone deliveries never replay, while stale
       // failed/claimed attempts may be reclaimed without extra SELECTs.
       const claim=await db.prepare(`INSERT INTO notification_deliveries
@@ -301,7 +322,10 @@ export async function runPushSchedule(env,now=Date.now()){
             body:event.kind==='anniversary'?'家庭重要日子提醒':
               event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
               event.kind==='routine'?'今天的定期事项':'待办事项到期',
-            url:'/',tag:key})
+            url:['task','routine','shopping'].includes(event.kind)
+              ?'/?taskType='+event.kind+'&taskId='+encodeURIComponent(event.id)+'&notificationId='+notificationId
+              :'/?notificationId='+notificationId,
+            tag:key,recordInInbox:true})
           status=res.status
           result=res.ok?'sent':res.status===404||res.status===410?'gone':'failed'
         }catch{result='failed'}
@@ -311,6 +335,18 @@ export async function runPushSchedule(env,now=Date.now()){
         await new Promise(resolve=>setTimeout(resolve,500))
       }
       if(result==='sent')sent++;else failed++
+      if(result==='sent'&&!recordedKeys.has(logicalKey)){
+        recordedKeys.add(logicalKey)
+        const message=event.kind==='anniversary'?'家庭重要日子提醒':
+          event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
+          event.kind==='routine'?'今天的定期事项':'待办事项到期'
+        try{await saveNotification(db,{
+          id:notificationId,householdId:sub.household_id,recipientId:sub.user_id,
+          kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
+          sourceId:event.id,title:event.title,message,localDay:day,
+          sentDevices:1,failedDevices:0,dedupeKey:'scheduled:'+key
+        })}catch{console.warn('homeflow_scheduled_notification_record_failed')}
+      }
       await db.prepare(`UPDATE notification_deliveries
         SET status=?1,status_code=?2,attempts=MIN(3,attempts+?6),
           updated_at=CURRENT_TIMESTAMP

@@ -29,6 +29,7 @@ MIGRATIONS=[
     "0022_recycle_plans.sql",
     "0023_today_dismissals.sql",
     "0024_shopping_assignee.sql",
+    "0025_daily_notification_inbox.sql",
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -41,7 +42,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
@@ -51,7 +52,7 @@ secondary_indexes={
   "idx_anniversaries_household","idx_routines_household","idx_wishes_household",
   "idx_trips_household_start","idx_goals_household","idx_shopping_household",
   "idx_memories_household_time","idx_media_memory","idx_push_subs_user",
-  "idx_notification_deliveries_purge","idx_routines_next_due","idx_pet_health_profile",
+  "idx_notification_deliveries_purge","idx_notification_inbox_recipient_today","idx_notification_inbox_sender_today","idx_routines_next_due","idx_pet_health_profile",
   "idx_tasks_request_id","idx_pet_health_routine_occurrence","idx_pet_health_source_task",
   "idx_shopping_due_active","idx_wishes_target_active","idx_goals_target_on",
   "idx_plan_completion_household_date","idx_shop_links_household",
@@ -77,6 +78,7 @@ added_columns={
   "shopping_expense_links":{"purchase_quantity"},
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
   "notification_deliveries":{"attempts"},
+  "notification_inbox":{"local_day","read_at","sent_devices","failed_devices","dedupe_key"},
 }
 for table in ("routines","anniversaries","wishes","goals","shopping_items","trips","memories"):
   added_columns.setdefault(table,set()).add("deleted_at")

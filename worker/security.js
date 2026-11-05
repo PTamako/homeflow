@@ -89,7 +89,7 @@ export async function sessionFor(request, db) {
 // are cached. A different binding or environment always forces a new identity read.
 const dbIdentityCache=new WeakMap()
 const DB_IDENTITY_TTL_MS=15000
-const EXPECTED_MIGRATION='0024_shopping_assignee.sql'
+const EXPECTED_MIGRATION='0025_daily_notification_inbox.sql'
 export async function verifiedDatabase(env) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false

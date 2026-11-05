@@ -32,16 +32,25 @@ self.addEventListener('push',event=>{
     if(event.data){const data=event.data.json();if(data&&typeof data==='object')msg={...msg,...data}}
   }catch{}
   const title=String(msg.title||'HomeFlow · 今日提醒').slice(0,90)
-  event.waitUntil(self.registration.showNotification(title,{
-    body:String(msg.body||'').slice(0,150),
-    tag:String(msg.tag||'homeflow-reminder').slice(0,180),
-    icon:'/icon.svg',badge:'/icon.svg',
-    data:{url:(()=>{try{
-      const url=new URL(String(msg.url||'/'),self.location.origin)
-      if(url.origin!==self.location.origin||url.pathname!=='/')return '/'
-      return url.pathname+url.search
-    }catch{return '/'}})()}
-  }))
+  event.waitUntil((async()=>{
+    await self.registration.showNotification(title,{
+      body:String(msg.body||'').slice(0,150),
+      tag:String(msg.tag||'homeflow-reminder').slice(0,180),
+      icon:'/icon.svg',badge:'/icon.svg',
+      data:{url:(()=>{try{
+        const url=new URL(String(msg.url||'/'),self.location.origin)
+        if(url.origin!==self.location.origin||url.pathname!=='/')return '/'
+        return url.pathname+url.search
+      }catch{return '/'}})()}
+    })
+    if(msg.recordInInbox===true){
+      // iOS installed Home Screen PWAs support badges after push permission.
+      // A dot is enough here; the page will synchronize the exact unread count.
+      try{await self.navigator.setAppBadge?.()}catch{}
+      const pages=await self.clients.matchAll({type:'window',includeUncontrolled:true})
+      for(const page of pages)page.postMessage({type:'homeflow-notification-pushed'})
+    }
+  })())
 })
 self.addEventListener('notificationclick',event=>{
   event.notification.close()
@@ -51,6 +60,10 @@ self.addEventListener('notificationclick',event=>{
     if(target.origin!==self.location.origin)return
     for(const client of list){
       if(new URL(client.url).origin===self.location.origin){
+        if(target.searchParams.has('notificationId')){
+          client.postMessage({type:'homeflow-open-notification',
+            id:target.searchParams.get('notificationId')})
+        }
         if(target.searchParams.has('taskId')){
           client.postMessage({type:'homeflow-open-task',
             kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId')})
