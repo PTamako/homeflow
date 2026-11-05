@@ -1166,6 +1166,79 @@ test('workday routines do not roll into Japanese weekends and daily marks reset 
  sqlite.close()
 })
 
+test('routine archive preserves old overdue completion keys and undoes the correct record',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const boot=await ask('/api/auth/bootstrap','POST',{
+   loginName:'routine-legacy-owner',password:'a-long-test-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(boot.status,201)
+ const owner=extractCookie(boot.cookie)
+ const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=(value,n)=>new Date(Date.parse(value+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const base=plus(day,-9)
+ const weekday=new Date(base+'T00:00:00Z').getUTCDay()
+ const created=await ask('/api/routines','POST',{
+   title:'旧版晚完成',repeatType:'weekly',repeatConfig:{weekdays:[weekday]},
+   anchorDate:base,visibility:'household'
+ },owner)
+ assert.equal(created.status,201,JSON.stringify(created.body))
+ const actual=plus(base,1)
+ sqlite.prepare(`INSERT INTO routine_marks (routine_id,occurrence_on,completed_at)
+  VALUES(?1,?2,?3)`).run(created.body.id,actual,actual+'T12:00:00Z')
+ const history=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.equal(history.status,200,JSON.stringify(history.body))
+ const completed=history.body.items.find(r=>r.id===created.body.id&&r.periodOn===base)
+ assert.ok(completed,JSON.stringify(history.body))
+ assert.equal(completed.status,'completed')
+ assert.equal(completed.completedOn,actual)
+ assert.equal(completed.markOccurrenceOn,actual)
+ const detail=await ask('/api/routines/'+created.body.id+'/period?on='+base,'GET',undefined,owner)
+ assert.equal(detail.status,200,JSON.stringify(detail.body))
+ assert.equal(detail.body.item.status,'completed')
+ const undo=await ask('/api/routines/'+created.body.id+'/mark','POST',
+   {date:day,periodOn:base,recordOn:actual,status:'open'},owner)
+ assert.equal(undo.status,200,JSON.stringify(undo.body))
+ const after=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.equal(after.body.items.find(r=>r.id===created.body.id&&r.periodOn===base)?.status,'missed')
+ sqlite.close()
+})
+
+test('new weekly occurrences may be completed early only once and never enter future Today',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const boot=await ask('/api/auth/bootstrap','POST',{
+   loginName:'routine-new-owner',password:'a-long-test-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+ assert.equal(boot.status,201)
+ const owner=extractCookie(boot.cookie)
+ const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+ const plus=(value,n)=>new Date(Date.parse(value+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
+ const future=plus(day,3)
+ const weekday=new Date(future+'T00:00:00Z').getUTCDay()
+ const created=await ask('/api/routines','POST',{
+   title:'零食日',repeatType:'weekly',repeatConfig:{weekdays:[weekday]},
+   anchorDate:day,visibility:'household'
+ },owner)
+ assert.equal(created.status,201)
+ const marked=await ask('/api/routines/'+created.body.id+'/mark','POST',
+   {date:day,periodOn:future,early:true,status:'completed'},owner)
+ assert.equal(marked.status,200,JSON.stringify(marked.body))
+ assert.equal(marked.body.periodOn,future)
+ const again=await ask('/api/routines/'+created.body.id+'/mark','POST',
+   {date:day,periodOn:plus(future,7),early:true,status:'completed'},owner)
+ assert.equal(again.status,409)
+ const today=await ask('/api/routines/today?date='+future,'GET',undefined,owner)
+ assert.equal(today.body.items.some(x=>x.id===created.body.id),false)
+ const history=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ const completed=history.body.items.find(x=>x.id===created.body.id&&x.periodOn===future)
+ assert.equal(completed?.status,'completed',JSON.stringify(history.body))
+ assert.equal(completed.completedOn,day)
+ sqlite.close()
+})
+
 test('shopping links to a verified kakebo expense and edits / removes details safely',async()=>{
  const {db,sqlite}=makeDb()
  sqlite.exec("UPDATE environment_identity SET database_name='homeflow' WHERE key='current'")
