@@ -12,7 +12,7 @@ test('Today redirects to the single Plans one-time form',()=>{
  assert.match(today,/:open-plan-creator="openPlanCreatorOnNavigate"/)
  assert.match(life,/:open-on-mount="props.openPlanCreator"/)
  assert.match(plans,/const opened=ref\(!!props.openOnMount\)/)
- assert.match(plans,/<OneTimeTaskFields v-if="form\.repeatType==='once'" v-model="onceDraft" :profiles="profiles"\/>/)
+ assert.match(plans,/<OneTimeTaskFields v-if="form\.repeatType==='once'" v-model="onceDraft" :profiles="profiles" :members="members" :user-id="userId"\/>/)
  assert.doesNotMatch(today,/<OneTimeTaskFields|@submit\.prevent="addTask"|showAddTask/)
  assert.match(fields,/v-model\.trim="model\.title"/)
  assert.match(fields,/v-model="model\.dueOn"/)

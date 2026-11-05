@@ -127,7 +127,7 @@ test('undated one-time plan uses shared optional date and returns to pending lis
  const creator=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
  assert.match(creator,/savedUnscheduled=kind\.value==='routine'&&form\.repeatType==='once'&&!onceDraft\.value\.dueOn/)
  assert.match(creator,/emit\('created',kind\.value,String\(result\.id\|\|''\),savedUnscheduled\)/)
- assert.match(creator,/function dismiss\(\)\{[^}]*onceDraft\.value=newOneTimeTaskDraft\(today\(\)\)/)
+ assert.match(creator,/function dismiss\(\)\{[^}]*onceDraft\.value=newOneTimeTaskDraft\(today\(\),props\.userId\)/)
  assert.match(life,/planType\.value=unscheduled\?'unscheduled':kind/)
  assert.match(life,/notify\(unscheduled\?'已添加到待安排'/)
 })

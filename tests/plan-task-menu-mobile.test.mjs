@@ -26,7 +26,8 @@ test('all task detail rows use blue/red swipe rails and preserve More only for e
   assert.ok(!extras.includes('>编辑</button>'))
   assert.ok(!extras.includes('>删除</button>'))
  }
- assert.match(taskMarkup,/v-if="planScope==='active'&&!!t\.dueOn"/)
+ assert.match(taskMarkup,/v-if="planScope==='active'&&\(!!t\.dueOn\|\|/)
+ assert.match(taskExtras,/通知处理人/)
  assert.match(swipe,/showTrigger\?:boolean/)
  assert.match(swipe,/showTrigger:true/)
  assert.match(swipe,/class="swipe-stripes"/)

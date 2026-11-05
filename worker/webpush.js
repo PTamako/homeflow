@@ -67,6 +67,14 @@ export async function pushRoute(request,env,path,session){
       .bind(await sha256(body.endpoint),session.user_id,session.household_id).run()
     return json({ok:true})
   }
+  if(path==='/api/push/send-now'||path==='/api/push/send-task'||path==='/api/push/send-family'){
+    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    if(!vapidReady(env))return json({error:'push_not_configured'},503)
+    if(path==='/api/push/send-now')return sendNow(env,session)
+    const body=await readBody(request)
+    if(path==='/api/push/send-task')return sendTaskPush(env,session,body)
+    return sendFamilyPush(env,session,body)
+  }
   return json({error:'not_found'},404)
 }
 async function hkdf(input,salt,info,bits){
@@ -127,6 +135,125 @@ async function deliver(sub,env,data){
     body,
     redirect:'manual',
   })
+}
+// Only the current creator may push a household-visible task to its assigned handler.
+// The household membership join prevents delivery to removed or unrelated accounts.
+const UUID=/^[a-f0-9-]{36}$/i
+async function sendTaskPush(env,session,body){
+  if(!['task','routine'].includes(body?.kind)||!UUID.test(body?.id||''))return json({error:'invalid_input'},400)
+  const note=body?.message===undefined?'':typeof body.message==='string'?
+    body.message.trim().replace(/\s+/g,' '):null
+  if(note===null||note.length>120)return json({error:'invalid_input'},400)
+  const routine=body.kind==='routine'
+  const table=routine?'routines':'tasks'
+  const creator=routine?'t.created_by':'t.creator_user_id'
+  const assignee=routine?'t.assigned_to':'t.assignee_user_id'
+  const due=routine?'t.next_due_on':'t.due_on'
+  const status=routine?'t.enabled=1':'t.completed_at IS NULL'
+  // Trusted table/column identifiers are selected from the two constants above.
+  const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId
+    FROM ${table} t JOIN household_members m ON m.user_id=${assignee} AND m.household_id=t.household_id
+    WHERE t.id=?1 AND t.household_id=?2 AND ${creator}=?3
+    AND t.visibility='household' AND t.deleted_at IS NULL AND ${status} LIMIT 1`
+  const item=await env.DB.prepare(sql).bind(body.id,session.household_id,session.user_id).first()
+  if(!item)return json({error:'task_not_shareable'},404)
+  if(item.recipientId===session.user_id)return json({error:'recipient_is_self'},409)
+  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)
+  const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
+  return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
+    title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id,
+    priority:'important'
+  },'task-'+body.kind+'-'+item.id)
+}
+
+// Family messages and task notifications share the same verified recipient scope.
+async function sendFamilyPush(env,session,body){
+  if(typeof body?.recipientUserId!=='string'||!UUID.test(body.recipientUserId)||
+      typeof body.message!=='string'||body.message.trim().length<1||
+      body.message.trim().length>140)return json({error:'invalid_input'},400)
+  if(body.recipientUserId===session.user_id)return json({error:'recipient_is_self'},409)
+  const member=await env.DB.prepare(`SELECT user_id FROM household_members
+    WHERE household_id=?1 AND user_id=?2 LIMIT 1`)
+    .bind(session.household_id,body.recipientUserId).first()
+  if(!member)return json({error:'recipient_not_in_household'},404)
+  return deliverToHouseholdUser(env,session.household_id,member.user_id,{
+    title:'HomeFlow · 家人消息',body:body.message.trim(),url:'/',tag:'homeflow-family-message',
+    priority:'normal'
+  },'family-'+session.user_id)
+}
+
+async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,now=Date.now()){
+  const db=env.DB
+  const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
+    FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
+    .bind(householdId,userId).all()
+  if(!subscriptions.length)return json({error:'recipient_not_subscribed'},409)
+  const jst=new Date(now+9*3600000).toISOString()
+  const day=jst.slice(0,10),minute=jst.slice(11,16)
+  let sent=0,failed=0,already=0
+  for(const sub of subscriptions){
+    if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
+    const key=keyPrefix+':'+minute
+    const claimed=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
+      (endpoint_hash,notification_key,sent_on,status,attempts)
+      VALUES(?1,?2,?3,'claimed',1)`).bind(sub.endpoint_hash,key,day).run()
+    if(!claimed.meta?.changes){already++;continue}
+    let status=0,result='failed'
+    try{
+      const response=await deliver(sub,env,payload)
+      status=response.status
+      result=response.ok?'sent':status===404||status===410?'gone':'failed'
+    }catch{}
+    if(result==='sent')sent++;else failed++
+    await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,
+      updated_at=CURRENT_TIMESTAMP WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
+      .bind(result,status,sub.endpoint_hash,key,day).run()
+    if(result==='gone')await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1 AND user_id=?2')
+      .bind(sub.endpoint_hash,userId).run()
+  }
+  if(!sent&&!failed)return json({error:'push_rate_limited',already},429)
+  return json({ok:sent>0,sent,failed,already},sent>0?200:502)
+}
+
+// Explicit manual push only reaches the authenticated user's subscribed devices.
+// Claim once per device per JST minute to avoid duplicate sends and D1 bursts.
+async function sendNow(env,session,now=Date.now()){
+  const db=env.DB
+  const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
+    FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
+    .bind(session.household_id,session.user_id).all()
+  if(!subscriptions.length)return json({error:'push_not_subscribed'},409)
+  const jst=new Date(now+9*3600000).toISOString()
+  const day=jst.slice(0,10),slot=jst.slice(11,16)
+  const r=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),db,session)
+  if(!r.ok)return json({error:'reminders_unavailable'},503)
+  const events=(await r.json()).items||[]
+  const summary=events.length?events.slice(0,3).map(x=>x.title).join('、').slice(0,135):
+    '当前没有到期提醒，推送通道正常'
+  let sent=0,failed=0
+  for(const sub of subscriptions){
+    if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
+    const key='manual-'+slot
+    const claim=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
+      (endpoint_hash,notification_key,sent_on,status,attempts)
+      VALUES(?1,?2,?3,'claimed',1)`).bind(sub.endpoint_hash,key,day).run()
+    if(!claim.meta?.changes)continue
+    let status=0,result='failed'
+    try{
+      const response=await deliver(sub,env,{title:'HomeFlow · 立即提醒',
+        body:summary,priority:'normal',url:'/',tag:'homeflow-manual-'+slot})
+      status=response.status
+      result=response.ok?'sent':status===404||status===410?'gone':'failed'
+    }catch{}
+    if(result==='sent')sent++;else failed++
+    await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,
+      updated_at=CURRENT_TIMESTAMP WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
+      .bind(result,status,sub.endpoint_hash,key,day).run()
+    if(result==='gone')await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1 AND user_id=?2')
+      .bind(sub.endpoint_hash,session.user_id).run()
+  }
+  if(!sent&&!failed)return json({error:'push_rate_limited'},429)
+  return json({ok:sent>0,sent,failed,reminderCount:events.length},sent>0?200:502)
 }
 export async function runPushSchedule(env,now=Date.now()){
   if(!vapidReady(env))return {skipped:'push_not_configured'}

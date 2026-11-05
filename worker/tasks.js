@@ -219,6 +219,8 @@ export async function tasksRoute(request,db,path,session) {
       if(typeof b.completed!=='boolean')return json({error:'invalid_input'},400)
       // Only a state transition creates or archives a record. Replays and
       // multi-device taps are idempotent, and writes share one D1 transaction.
+      if(task.assignee_user_id&&task.assignee_user_id!==who&&task.creator_user_id!==who)
+        return json({error:'forbidden'},403)
       if(Boolean(task.completed_at)===b.completed)return json({ok:true,unchanged:true})
       const stamp=iso(),date=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
       const update=db.prepare(`UPDATE tasks SET completed_at=?1,completed_by=?2,updated_at=?3

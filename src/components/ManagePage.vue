@@ -9,7 +9,7 @@ import ImportantReminders from './ImportantReminders.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{active:boolean;userId:string;loginName:string;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
+const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
 const emit=defineEmits<{logout:[];presenceChange:[has:boolean]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminders=ref<{refreshIfStale:()=>void}|null>(null)
@@ -59,7 +59,7 @@ defineExpose({refreshIfStale})
    </section>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2></div>
-     <PushPanel v-if="active"/>
+     <PushPanel v-if="active" :user-id="userId" :members="members"/>
       <ImportantReminders ref="reminders" :today-date="todayDate" :today-entry-keys="todayEntryKeys"
        compact @presence-change="emit('presenceChange',$event)"/>
    </section>

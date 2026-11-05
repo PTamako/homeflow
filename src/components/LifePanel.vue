@@ -15,14 +15,14 @@ import {uniquePlanRows} from '../plan-list-identity.mjs'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean}>()
+const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean}>()
 const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),busy=ref(false)
+const error=ref(''),busy=ref(false),pushBusyId=ref(''),pushTarget=ref(''),pushMessage=ref('')
 const listLoading=ref(false)
 let activeFetch=0
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
@@ -30,6 +30,35 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
+function openTaskPush(kind:'task'|'routine',item:Row){
+ const key=kind+':'+item.id
+ if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
+ else {pushTarget.value=key;pushMessage.value=''}
+ expandedTaskMenu.value=null
+}
+async function notifyHandler(kind:'task'|'routine',item:Row){
+ if(pushBusyId.value)return
+ pushBusyId.value=item.id;error.value=''
+ try{
+  const response=await fetch('/api/push/send-task',{method:'POST',
+    credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
+    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim()})})
+  const data=await response.json().catch(()=>({}))
+  if(!response.ok){
+   const hints:Record<string,string>={
+    recipient_not_subscribed:'处理人尚未开启推送，请让对方在自己的手机开启通知',
+    task_not_shareable:'只有发起人能发送已指派的家庭共享任务',
+    recipient_is_self:'处理人是自己，无需发给其他账号',
+    push_rate_limited:'这项任务刚刚发送过，请稍后再试',
+    push_not_configured:'推送尚未配置'
+   }
+   throw Error(hints[data.error]||'任务推送失败，请稍后重试')
+  }
+  pushTarget.value='';pushMessage.value=''
+  notify('已通知处理人（'+data.sent+' 台设备）')
+ }catch(e){error.value=(e as Error).message}
+ finally{pushBusyId.value=''}
+}
 function toggleTaskMenu(key:string){expandedTaskMenu.value=expandedTaskMenu.value===key?null:key}
 function toggleReminderEditor(kind:ReminderKind,id:string){
  const old=reminderTarget.value
@@ -58,7 +87,7 @@ const focusedItemId=computed(()=>props.focusPlanScope===planScope.value?(props.f
 const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
   (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
-const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 function closeAnniversaryForm(){
@@ -73,6 +102,10 @@ const displayedDay=ref(new Date(Date.now()+9*3600000).toISOString().slice(0,10))
 const todayAnniversaries=computed<Row[]>(()=>upcomingWithinDays(items.value,displayedDay.value,30))
 type EditableKind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 const editing=ref<{kind:EditableKind;item:Row}|null>(null),ledgerPickerId=ref<string|null>(null)
+function memberName(id:string|null|undefined){
+ if(!id)return '未指派'
+ return props.profiles.find(p=>p.memberUserId===id)?.displayName||props.members?.find(m=>m.id===id)?.loginName||(id===props.userId?'我':'家庭成员')
+}
 const canEdit=(item:Row)=>item.created_by===props.userId||item.createdBy===props.userId||item.creatorUserId===props.userId
 const canEditBirthday=(item:Row)=>{
   if(item.source!=='profile_birthday')return false
@@ -134,7 +167,7 @@ async function planCreated(kind:PlanType,id:string,unscheduled=false){
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
-  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceVisibility.value=t.visibility
 }
 async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
   await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
@@ -143,8 +176,8 @@ async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
 async function saveOnce(){
   const t=onceEditing.value
   if(!t)return
-  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:t.visibility,
-    dueOn:onceDate.value||null,assigneeUserId:t.assigneeUserId||null,
+  await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:onceVisibility.value,
+    dueOn:onceDate.value||null,assigneeUserId:onceAssignee.value||null,
     subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
     remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
   if(!error.value)onceEditing.value=null
@@ -791,7 +824,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
-      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles" :open-on-mount="props.openPlanCreator"
+      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles" :members="props.members" :user-id="props.userId" :open-on-mount="props.openPlanCreator"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-view-toolbar" aria-label="计划筛选与状态">
         <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
@@ -837,7 +870,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   {{ r.status==='completed'?'已完成':r.status==='skipped'?'已跳过':'未完成' }}
                 </span>
               </div>
-              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
+              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
               <div class="plan-task-footer">
                 <span class="plan-task-next">{{ r.periodOn }} 期<template v-if="r.completedOn"> · 实际 {{ r.completedOn }}</template></span>
                 <button v-if="r.status!=='missed'" type="button" class="routine-text-action" :disabled="busy"
@@ -861,7 +894,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <AppIcon name="ellipsis" :size="19"/>
                     </button>
                   </div>
-                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template></small>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?'逾期 '+r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
@@ -877,13 +910,24 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
                 class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title">
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
+                <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
+                  :disabled="!!pushBusyId" @click="openTaskPush('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
+              <form v-if="pushTarget==='routine:'+r.id" class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
+                <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
+                  <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
+                </label>
+                <div class="task-push-actions">
+                  <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
+                  <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
+                </div>
+              </form>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-                kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
+                kind="routines" :item="r" :profiles="props.profiles" :members="props.members" :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
             </div>
           </template>
           <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
@@ -895,10 +939,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <b class="detail-name">{{ t.title }}</b>
                   <small>一次性任务 · {{ t.dueOn||'无截止日期' }}
                     <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
-                    <template v-if="t.completedAt"> · 已完成</template>
+                    <template v-if="t.completedAt"> · 已完成</template> · 发起人：{{ memberName(t.creatorUserId) }} · 处理人：{{ memberName(t.assigneeUserId) }}
                   </small>
                 </div>
-                <button v-if="planScope==='active'&&!!t.dueOn" type="button" class="routine-more-trigger"
+                <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
                   :aria-label="'更多操作：'+t.title"
                   :aria-expanded="expandedTaskMenu==='task:'+t.id"
                   :aria-controls="'task-actions-'+t.id"
@@ -922,7 +966,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title">
               <button v-if="planScope==='active'&&t.dueOn" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
+              <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
+                :disabled="!!pushBusyId" @click="openTaskPush('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
+            <form v-if="pushTarget==='task:'+t.id" class="task-push-form" @submit.prevent="notifyHandler('task',t)">
+              <label>给 {{ memberName(t.assigneeUserId) }} 留言（可选）
+                <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：下班顺路买一下，记得买原来的牌子"/>
+              </label>
+              <div class="task-push-actions">
+                <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
+                <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
+              </div>
+            </form>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <form v-if="onceEditing?.id===t.id" class="detail-editor" @submit.prevent="saveOnce">
@@ -930,6 +985,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <label>名称<input v-model="onceTitle" maxlength="150" required /></label>
               <label>截止日期<DateField v-model="onceDate" /></label>
               <label><input v-model="onceRemind" type="checkbox" /> 开启提醒</label>
+              <label>处理人<select v-model="onceAssignee" aria-label="修改任务处理人"
+                @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null">
+                <option value="">未指派</option>
+                <option v-for="member in (props.members||[])" :key="member.id" :value="member.id" :disabled="onceVisibility==='private'&&member.id!==props.userId">{{ member.loginName }}</option>
+              </select></label>
+              <label>可见范围<select v-model="onceVisibility"
+                @change="onceVisibility==='private'&&onceAssignee!==props.userId?onceAssignee=props.userId:''">
+                <option value="household">家庭共享</option><option value="private">仅自己</option>
+              </select></label>
               <div class="detail-actions">
                 <button type="button" @click="onceEditing=null">取消</button>
                 <button type="submit">保存修改</button>
@@ -1444,4 +1508,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   .plan-tasks-card .plan-task-item{padding:10px 0}
   .plan-task-head .routine-more-trigger{width:30px;height:30px}
 }
+</style>
+
+<style scoped>
+.task-push-form{display:grid;gap:10px;padding:12px 10px;margin:6px 0 10px;border:1px solid #d9e9dc;border-radius:12px;background:#f8fbf8;min-width:0}
+.task-push-form label{display:grid;gap:6px;font-size:12px;color:#425b4b;font-weight:650;min-width:0}
+.task-push-form textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #ccdcd0;border-radius:9px;padding:10px;font:inherit;font-size:14px;resize:vertical;background:#fff;color:#263b2e}
+.task-push-actions{display:flex;justify-content:flex-end;gap:8px}
+.task-push-actions button{border:1px solid #ccdcd0;border-radius:8px;background:#fff;padding:8px 12px;color:#3b7054;font-weight:650;font-size:12px}
+.task-push-actions button[type=submit]{background:#43866a;color:#fff;border-color:#43866a}
+.task-push-actions button:disabled{opacity:.6}
 </style>
