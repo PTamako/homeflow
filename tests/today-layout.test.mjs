@@ -67,3 +67,9 @@ test('Today includes dated plans in the single default All checklist with catego
  assert.ok(!sections.today.includes('todayPlans'),'plans fetched only in parent')
  assert.ok(!sections.today.includes("api('/plans/today')"),'avoid duplicate D1 read')
 })
+
+test('undated tasks go to Plans pending scheduling instead of Today',()=>{
+ assert.ok(app.includes('!!t.dueOn&&t.dueOn<=now'))
+ assert.ok(life.includes("type==='unscheduled'"))
+ assert.ok(life.includes('安排到今天'))
+})

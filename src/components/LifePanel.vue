@@ -24,7 +24,7 @@ const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<R
 const error=ref(''),busy=ref(false)
 const listLoading=ref(false)
 let activeFetch=0
-type PlanType='all'|'routine'|'shopping'|'wish'|'goal'|'trip'
+type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
@@ -34,6 +34,7 @@ function toggleReminderEditor(kind:ReminderKind,id:string){
 }
 function planRequestKinds(type:PlanType){
  if(type==='routine')return ['routines','tasks']
+ if(type==='unscheduled')return ['tasks']
  if(type==='wish')return ['wishes','goals']
  if(type==='goal')return ['goals']
  if(type==='shopping')return ['shopping']
@@ -43,6 +44,7 @@ function planRequestKinds(type:PlanType){
 function selectPlanType(type:PlanType){
  if(type===planType.value)return
  planType.value=type
+ if(type==='unscheduled')planScope.value='active'
  reminderTarget.value=null
  if(props.mode==='plans')void fetchMode()
 }
@@ -130,6 +132,12 @@ async function saveOnce(){
     remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
   if(!error.value)onceEditing.value=null
 }
+async function scheduleUnplanned(t:Row){
+ await onceChange(t,{title:t.title,notes:t.notes||'',visibility:t.visibility,dueOn:today(),
+   assigneeUserId:t.assigneeUserId||null,subjectProfileId:t.subjectProfileId||null,
+   healthRecordType:t.healthRecordType||null,remindEnabled:t.remindEnabled!==false,
+   expectedUpdatedAt:t.updatedAt})
+}
 async function deleteOnce(t:Row){
   if(!confirm('删除这项一次性计划吗？'))return
   await onceChange(t,{},'DELETE')
@@ -189,7 +197,7 @@ function listPath(kind:string,cursor?:string|null){
       if(anniversaryMonth.value)q.set('month',anniversaryMonth.value)
     }
   }else{
-    q.set('scope',planScope.value)
+    q.set('scope',kind==='tasks'&&planType.value==='unscheduled'?'unscheduled':planScope.value)
     if(planScope.value==='history'&&planYear.value){
       q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)
     }
@@ -756,13 +764,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       </details>
       <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
-          {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'shopping',label:'购物'},
+          {id:'all',label:'全部'},{id:'routine',label:'任务'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
           {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
           :key="tab.id" type="button" :class="{selected:planType===tab.id}"
           :aria-pressed="planType===tab.id" @click="selectPlanType(tab.id as PlanType)">
           {{ tab.label }}</button>
       </div>
-      <div class="archive-toolbar">
+      <div v-if="planType!=='unscheduled'" class="archive-toolbar">
         <div class="archive-tabs" role="group" aria-label="计划记录筛选">
           <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
             @click="planScope='active'">进行中</button>
@@ -784,10 +792,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
       </div>
       <div class="life-grid">
-        <section v-if="planType==='all'||planType==='routine'" class="life-card plan-tasks-card">
-          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> 任务／定期计划</h2>
+        <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
+          <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
-          <div v-for="r in routines" :key="r.id" class="plan-task-item">
+          <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id" class="plan-task-item">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
               <div class="life-row" :class="{'detail-completed':r.enabled===0}">
@@ -825,7 +833,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   </small>
                 </div>
               </div>
-            <div v-if="planScope==='active'&&t.remindEnabled!==false" class="plan-task-footer">
+            <div v-if="planType==='unscheduled'" class="plan-task-footer">
+              <div class="plan-task-controls">
+                <button type="button" class="plan-task-action" @click="scheduleUnplanned(t)">安排到今天</button>
+              </div>
+            </div>
+            <div v-if="planScope==='active'&&planType!=='unscheduled'&&t.remindEnabled!==false" class="plan-task-footer">
               <div class="plan-task-controls">
                 <button type="button" class="plan-task-subtle"
                   :aria-label="'设置「'+t.title+'」的提醒'"
@@ -846,7 +859,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </form>
           </div>
-          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
+          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planType==='unscheduled'?'没有待安排事项':planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
             @click="loadMore('routines')">加载更多定期任务</button>
           <button v-if="listCursors.tasks" class="life-more" type="button" :disabled="pageBusy.tasks"

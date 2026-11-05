@@ -11,7 +11,7 @@ export function listFilters(url) {
   const month=p.get('month')||''
   const raw=p.get('cursor')||''
   if(!Number.isInteger(limit)||limit<1||limit>30||
-    !['all','active','history'].includes(scope)||
+    !['all','active','history','unscheduled'].includes(scope)||
     (year&&!/^(19|20|21)\d{2}$/.test(year))||
     (month&&!/^(0?[1-9]|1[0-2])$/.test(month))||
     (month&&!year)||raw.length>120)return {invalid:true}

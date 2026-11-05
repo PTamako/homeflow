@@ -47,6 +47,7 @@ export async function tasksRoute(request,db,path,session) {
         "(visibility='household' OR creator_user_id=?2)"]
       const args=[household,who]
       if(filters.scope==='active')where.push("completed_at IS NULL")
+      if(filters.scope==='unscheduled')where.push('completed_at IS NULL AND due_on IS NULL')
       if(filters.scope==='history')where.push("completed_at IS NOT NULL")
       const window=monthWindow(filters.year,filters.month)
       if(window){
