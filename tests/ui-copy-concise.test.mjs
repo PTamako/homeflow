@@ -39,6 +39,6 @@ test('reminder rows show dates instead of raw identifier fragments',()=>{
 
 test('HomeFlow header uses the new brand tagline',()=>{
  const app=template('src/App.vue')
- assert.match(app,/<p class="lead">让爱与生活，自然流转。<\/p>/)
+ assert.match(app,/<p class="lead">让爱与生活·自然流转<\/p>/)
  assert.doesNotMatch(app,/每件重要的小事/)
 })
