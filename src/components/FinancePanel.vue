@@ -106,7 +106,7 @@ async function confirmGoalCompleted(){
     })
     if(wasCompleted)completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
     else completedPeriods.value=[...completedPeriods.value,key]
-    notify(wasCompleted?'已撤销本期达标确认':'家庭净结余目标核验通过，已记录完成')
+    notify(wasCompleted?'已撤销本期达标确认':'已核验完成')
     emit('completed',!wasCompleted,key)
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
@@ -275,10 +275,10 @@ onMounted(()=>{
 </script>
 <template>
   <section v-if="owner" class="finance-card">
-    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行费用 · 家計簿关联':'储值计划 · 家計簿收支'):'家計簿 · 旅行支出与储蓄进度' }}</h2>
+    <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行支出':'储值收支'):'记账本收支' }}</h2>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
-      家計簿只读联动尚未连接，请检查 Cloudflare 私有 Service Binding。
+      暂时无法连接记账本，请稍后重试。
     </p>
     <template v-else>
       <div v-if="!embeddedId" class="fields">
@@ -294,7 +294,7 @@ onMounted(()=>{
       <template v-if="target">
         <div v-if="kind==='trip'" class="summary">
           <span>已关联实际支出</span><strong>{{ fmt(total) }}</strong>
-          <small>{{ links.filter(x=>x.entry).length }} 笔已确认的真实支出</small>
+          <small>已关联 {{ links.filter(x=>x.entry).length }} 笔支出</small>
           <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
           <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
         </div>
@@ -305,10 +305,10 @@ onMounted(()=>{
           <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
           <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
           <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
-          <small v-if="periodFuture">所选期间还未开始，暂不查询家計簿。</small>
+          <small v-if="periodFuture">期间尚未开始</small>
           <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
-        <label class="adjustment-label">手动调整额（円，可输入正数或负数）
+        <label class="adjustment-label">调整额（日元，可为负数）
           <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
         </label>
         <div v-if="recurringGoal" class="fields">
@@ -339,10 +339,10 @@ onMounted(()=>{
           <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
         <div v-if="kind==='goal'" class="goal-completion-panel">
-          <p v-if="!recurringGoal&&alreadyCompleted" class="hint">这一次储值已确认完成。</p>
-          <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint">储值尚未开始。</p>
+          <p v-if="!recurringGoal&&alreadyCompleted" class="hint">已确认达标</p>
+          <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint">储值计划尚未开始</p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"
-            @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期（达标或未达标）' }}</button>
+            @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期' }}</button>
           <button v-else type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
             {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销达标确认':'核验达标并完成' }}
           </button>
@@ -355,7 +355,7 @@ onMounted(()=>{
             <button type="button" class="unlink" @click="unlink(row)" :disabled="busy">移除关联</button>
           </div>
           <button v-if="links.length>visibleLinks.length" type="button" class="more"
-            @click="linkedVisibleCount+=linkedPageSize">加载更多已关联支出（每次 5 条）</button>
+            @click="linkedVisibleCount+=linkedPageSize">加载更多</button>
           <div v-for="row in entries" :key="row.id" class="line">
             <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
             <button type="button" :disabled="busy || links.some(x=>String(x.entryId)===String(row.id))" @click="linkEntry(row)">
