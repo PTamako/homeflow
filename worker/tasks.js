@@ -1,5 +1,6 @@
 import {iso,json,readBody,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
+import {jstToday} from './routine-periods.js'
 function validated(body,session) {
   const title=shortText(body?.title,150),notes=shortText(body?.notes??'',1000)
   const visibility=body?.visibility
@@ -35,8 +36,49 @@ async function validateRefs(db,session,data) {
   if(data.care===undefined)data.care=null
   return true
 }
+// A Today row is a dated VIEW of a task/plan, not the source record.
+// Validate the key's shape before using its source type in an allowlisted SQL table.
+function parseTodayItemKey(key){
+  if(typeof key!=='string'||key.length>140)return null
+  const parts=key.split(':')
+  const isPlan=parts[0]==='plan'
+  const kind=isPlan?parts[1]:parts[0]
+  const uuid=isPlan?parts[2]:parts[1]
+  const extra=isPlan?parts[3]:parts[2]
+  const table={task:'tasks',routine:'routines',shopping:'shopping_items',
+    wish:'wishes',goal:'goals',trip:'trips'}[kind]
+  if(!table||!/[0-9a-f]{8}-[0-9a-f-]{27}/i.test(uuid||'')||
+    !/^[0-9a-f-]{36}$/i.test(uuid||''))return null
+  if(isPlan){
+    if(parts.length!==3&&parts.length!==4)return null
+    if(!['shopping','wish','goal','trip'].includes(kind))return null
+    if(extra!==undefined&&!/^(?:once|\d{4}(?:-\d{2})?)$/.test(extra))return null
+  }else if(kind==='task'){
+    if(parts.length!==2)return null
+  }else if(kind==='routine'){
+    if(parts.length!==3||(extra!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(extra)))return null
+  }else return null
+  return {table,id:uuid,ownerColumn:kind==='task'?'creator_user_id':'created_by'}
+}
 export async function tasksRoute(request,db,path,session) {
   const household=session.household_id,who=session.user_id
+  if(path==='/api/tasks/today/dismiss'){
+    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    const body=await readBody(request)
+    const parsed=parseTodayItemKey(body?.itemKey)
+    if(!parsed||body?.date!==jstToday())return json({error:'invalid_input'},400)
+    const {table,id,ownerColumn}=parsed
+    // Same visibility boundary as Today source lists; hiding is user-private.
+    const source=await db.prepare('SELECT 1 FROM '+table+
+      " WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR "+
+      ownerColumn+'=?3) LIMIT 1')
+      .bind(id,household,who).first()
+    if(!source)return json({error:'not_found'},404)
+    await db.prepare(`INSERT OR IGNORE INTO today_dismissals
+      (household_id,user_id,view_on,item_key) VALUES(?1,?2,?3,?4)`)
+      .bind(household,who,body.date,body.itemKey).run()
+    return json({ok:true})
+  }
   if(path==='/api/tasks/trash' && request.method==='GET'){
     const params=new URL(request.url).searchParams
     const limit=params.has('limit')?Number(params.get('limit')):5
@@ -125,7 +167,16 @@ export async function tasksRoute(request,db,path,session) {
       ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
         CASE WHEN due_on IS NULL THEN 1 ELSE 0 END,due_on,created_at DESC
       LIMIT 250`).bind(household,who,mode,today,todayStart,tomorrow,showHistory?1:0).all()
-    return json({tasks:results||[]})
+    // This existing Today request carries hidden keys for every category.
+    // No new client request, cron write, or scan of historical dates is needed.
+    let hiddenTodayKeys=[]
+    if(today){
+      const hidden=await db.prepare(`SELECT item_key FROM today_dismissals
+        WHERE household_id=?1 AND user_id=?2 AND view_on=?3 LIMIT 250`)
+        .bind(household,who,today).all()
+      hiddenTodayKeys=(hidden.results||[]).map(row=>row.item_key)
+    }
+    return json({tasks:results||[],hiddenTodayKeys})
   }
   if(path==='/api/tasks' && request.method==='POST'){
     const body=await readBody(request)
