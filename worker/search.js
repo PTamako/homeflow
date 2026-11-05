@@ -4,13 +4,13 @@ import {monthWindow} from './list-pagination.js'
 const uuid=/^[0-9a-f-]{36}$/i
 const sources=[
   ['task','tasks',"COALESCE(due_on,substr(created_at,1,10))",'creator_user_id',"AND deleted_at IS NULL"],
-  ['routine','routines',"COALESCE(next_due_on,anchor_date)",'created_by',''],
-  ['anniversary','anniversaries','event_date','created_by',''],
-  ['shopping','shopping_items',"COALESCE(due_on,substr(created_at,1,10))",'created_by',''],
-  ['wish','wishes',"COALESCE(target_on,substr(created_at,1,10))",'created_by',''],
-  ['goal','goals',"COALESCE(target_on,start_on,substr(created_at,1,10))",'created_by',''],
-  ['trip','trips',"COALESCE(start_on,substr(created_at,1,10))",'created_by',''],
-  ['memory','memories','happened_on','created_by','']
+  ['routine','routines',"COALESCE(next_due_on,anchor_date)",'created_by',"AND deleted_at IS NULL"],
+  ['anniversary','anniversaries','event_date','created_by',"AND deleted_at IS NULL"],
+  ['shopping','shopping_items',"COALESCE(due_on,substr(created_at,1,10))",'created_by',"AND deleted_at IS NULL"],
+  ['wish','wishes',"COALESCE(target_on,substr(created_at,1,10))",'created_by',"AND deleted_at IS NULL"],
+  ['goal','goals',"COALESCE(target_on,start_on,substr(created_at,1,10))",'created_by',"AND deleted_at IS NULL"],
+  ['trip','trips',"COALESCE(start_on,substr(created_at,1,10))",'created_by',"AND deleted_at IS NULL"],
+  ['memory','memories','happened_on','created_by',"AND deleted_at IS NULL"]
 ]
 export async function searchRoute(request,db,session){
  if(request.method!=='GET')return json({error:'method_not_allowed'},405)

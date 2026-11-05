@@ -80,7 +80,7 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
     }else if(data[6])return false
   }
   if(table==='goals'&&data[5]){
-    const wish=await db.prepare('SELECT created_by,visibility FROM wishes WHERE id=?1 AND household_id=?2').bind(data[5],hid).first()
+    const wish=await db.prepare('SELECT created_by,visibility FROM wishes WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL').bind(data[5],hid).first()
     if(!wish || (wish.visibility==='private'&&wish.created_by!==session.user_id))return false
   }
   if(table==='memories'&&data[4]){
@@ -89,7 +89,7 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
     const isProfile=tab==='family_profiles'
     const sql=isProfile
       ? 'SELECT 1 FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL'
-      : "SELECT visibility FROM "+tab+" WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)"
+      : "SELECT visibility FROM "+tab+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)"
     const item=await db.prepare(sql).bind(...(isProfile?[data[4],hid]:[data[4],hid,session.user_id])).first()
     if(!item)return false
     // A household-visible memory must never disclose a title or metadata from
@@ -101,7 +101,7 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
 }
 async function view(db,table,session,detailId=null){
   const name=table==='shopping_items'?'shopping_items':table
-  const {results}=await db.prepare('SELECT * FROM '+name+' WHERE household_id=?1 AND (visibility=?2 OR created_by=?3) '+
+  const {results}=await db.prepare('SELECT * FROM '+name+' WHERE household_id=?1 AND deleted_at IS NULL AND (visibility=?2 OR created_by=?3) '+
     (detailId?'AND id=?4 ':'')+
     (table==='shopping_items'?'ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,created_at DESC LIMIT 200':'ORDER BY created_at DESC LIMIT 200'))
     .bind(...(detailId?[session.household_id,'household',session.user_id,detailId]:[session.household_id,'household',session.user_id])).all()
@@ -109,7 +109,7 @@ async function view(db,table,session,detailId=null){
 }
 async function getObject(db,table,id,session){
   return db.prepare('SELECT * FROM '+table+
-    " WHERE id=?1 AND household_id=?2 AND (visibility='household' OR created_by=?3)")
+    " WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,session.household_id,session.user_id).first()
 }
 export async function lifeRoute(request,db,path,session){
@@ -121,7 +121,7 @@ export async function lifeRoute(request,db,path,session){
     // One D1 batch: existing custom anniversaries + live family profile birthdays.
     // No second saved birthday record, so editing a profile cannot leave stale reminders.
     const [events,profiles]=await db.batch([
-      db.prepare("SELECT * FROM anniversaries WHERE household_id=?1 AND (visibility='household' OR created_by=?2) ORDER BY created_at DESC LIMIT 200")
+      db.prepare("SELECT * FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) ORDER BY created_at DESC LIMIT 200")
         .bind(session.household_id,session.user_id),
       db.prepare(BIRTHDAY_PROFILES_SQL).bind(session.household_id)
     ])
@@ -138,12 +138,12 @@ export async function lifeRoute(request,db,path,session){
          WHERE m.routine_id=r.id AND m.occurrence_on<=?3
            AND (m.completed_at IS NOT NULL OR m.skipped_at IS NOT NULL)
          ORDER BY m.occurrence_on DESC LIMIT 1) AS last_resolved_on
-        FROM routines r WHERE r.household_id=?1 AND r.enabled=1
+        FROM routines r WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
           AND (r.visibility='household' OR r.created_by=?2) LIMIT 250`)
         .bind(session.household_id,session.user_id,date),
       db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at
         FROM routine_marks m JOIN routines r ON r.id=m.routine_id
-        WHERE r.household_id=?1 AND m.occurrence_on=?2
+        WHERE r.household_id=?1 AND r.deleted_at IS NULL AND m.occurrence_on=?2
           AND (r.visibility='household' OR r.created_by=?3)`)
         .bind(session.household_id,date,session.user_id)
     ])
@@ -288,7 +288,7 @@ export async function lifeRoute(request,db,path,session){
     const item=await getObject(db,table,id,session)
     if(!item)return json({error:'not_found'},404)
     if(table==='wishes'){
-      const {results}=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND wish_id=?2
+      const {results}=await db.prepare(`SELECT * FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND wish_id=?2
         AND (visibility='household' OR created_by=?3) LIMIT 20`)
         .bind(session.household_id,id,session.user_id).all()
       return json({item,linkedGoals:results||[]})
@@ -341,28 +341,11 @@ export async function lifeRoute(request,db,path,session){
     const current=await getObject(db,table,id,session)
     if(!current)return json({error:'not_found'},404)
     if(current.created_by!==session.user_id)return json({error:'forbidden'},403)
-    if(table==='routines'){
-      // Preserve historical completion marks even after removing the plan.
-      await db.prepare('UPDATE routines SET enabled=0,updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4')
-        .bind(iso(),id,session.household_id,session.user_id).run()
-      return json({ok:true,archived:true})
-    }
-    if(table==='wishes'){
-      // Keep existing savings and trip records. Removing a wish merely unlinks
-      // its optional goal/trip: never silently delete linked financial records.
-      await db.batch([
-        db.prepare('UPDATE goals SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
-        db.prepare('UPDATE trips SET wish_id=NULL WHERE wish_id=?1 AND household_id=?2').bind(id,session.household_id),
-        db.prepare('DELETE FROM wishes WHERE id=?1 AND household_id=?2 AND created_by=?3')
-          .bind(id,session.household_id,session.user_id)
-      ])
-      return json({ok:true,unlinked:true})
-    }
-    try{
-      await db.prepare('DELETE FROM '+table+' WHERE id=?1 AND household_id=?2 AND created_by=?3')
-        .bind(id,session.household_id,session.user_id).run()
-      return json({ok:true})
-    }catch{return json({error:'linked_records_require_unlink'},409)}
+    // Preserve all linked finances, media, milestones and histories.
+    const result=await db.prepare('UPDATE '+table+
+      ' SET deleted_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4 AND deleted_at IS NULL')
+      .bind(iso(),id,session.household_id,session.user_id).run()
+    return result.meta?.changes?json({ok:true,trashed:true}):json({error:'not_found'},404)
   }
   return json({error:'not_found'},404)
 }

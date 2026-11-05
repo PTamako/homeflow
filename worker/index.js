@@ -15,6 +15,7 @@ import {financeRoute} from './finance.js'
 import {goalPeriodsRoute,runGoalSettlementSchedule} from './goal-settlements.js'
 import {goalPeriodArchiveRoute} from './goal-period-archive.js'
 import {portableRoute} from './portable.js'
+import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 
 export default {
@@ -42,6 +43,7 @@ export default {
         if(path==='/api/push/config'||path==='/api/push/subscriptions')return pushRoute(request,env,path,session)
         if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
+        if(path==='/api/recycle'||path==='/api/recycle/restore')return recycleRoute(request,env.DB,path,session)
         if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
         if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))

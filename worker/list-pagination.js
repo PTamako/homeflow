@@ -43,7 +43,7 @@ export async function listPage(db,table,session,filters,options={}){
   // SQL identifiers come only from this whitelist, never from a query parameter.
   if(!['created_at','completed_at','happened_on','event_on','start_on','event_date','updated_at'].includes(sortColumn))
     throw Error('invalid_sort_column')
-  const clauses=["household_id=?1","(visibility='household' OR created_by=?2)"]
+  const clauses=["household_id=?1","deleted_at IS NULL","(visibility='household' OR created_by=?2)"]
   const args=[session.household_id,session.user_id]
   const push=(clause,...vals)=>{
     const start=args.length+1
