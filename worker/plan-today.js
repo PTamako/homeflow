@@ -19,6 +19,8 @@ async function completePlan(request,db,session,env){
     AND (visibility='household' OR created_by=?3)`)
     .bind(id,session.household_id,session.user_id).first()
   if(!row)return json({error:'not_found'},404)
+  // All savings completion and undo paths are finance operations, including the legacy endpoint.
+  if(kind==='goal'&&session.role!=='owner')return json({error:'forbidden'},403)
   const today=tokyoToday(),stamp=iso()
   let periodKey='once'
   if(kind==='wish'){
@@ -31,7 +33,7 @@ async function completePlan(request,db,session,env){
   }else{
     periodKey=body?.periodKey
     const window=goalPeriod(row,periodKey,today)
-    if(!window||window.periodEnd>today)return json({error:'not_due'},409)
+    if(!window||window.periodEnd>=today)return json({error:'not_due'},409)
   }
   if(kind==='goal'&&(row.goal_mode||'once')!=='once'){
     // Older clients may still call the former mark-complete endpoint.
