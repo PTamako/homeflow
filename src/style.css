@@ -27,6 +27,9 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
   background:#fff;color:#27352f;font-size:14px
 }
 .profile-form .field-wide{grid-column:1/-1}
+.profile-form{margin-top:12px}
+.profile-form-actions{display:flex;align-items:center;gap:10px}
+.profile-form-actions>button{flex:1;min-width:0}
 .profiles{grid-template-columns:repeat(2,minmax(0,1fr))}
 .profile{min-width:0}
 .profile-description{min-width:0;flex:1;text-align:left;overflow-wrap:anywhere}
