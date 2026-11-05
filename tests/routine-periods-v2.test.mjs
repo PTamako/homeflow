@@ -20,8 +20,9 @@ test('daily cannot pre-complete, but workday can complete the next workday',()=>
  const daily=rule('daily','2026-11-01',{})
  const workday=rule('weekly','2026-11-01',{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true})
  assert.equal(nextEarlyPeriod(daily,'2026-11-05'),null)
- assert.equal(nextEarlyPeriod(workday,'2026-11-05'),'2026-11-06')
+ assert.equal(nextEarlyPeriod(workday,'2026-11-05'),null, 'current workday must be handled first')
  assert.equal(nextRoutineDue(workday,'2026-11-07'),'2026-11-09')
+ assert.equal(nextEarlyPeriod(workday,'2026-11-07'),'2026-11-09')
 })
 test('monthly day 31 executes on February last day',()=>{
  const monthly=rule('monthly','2026-01-31',{day:31})
