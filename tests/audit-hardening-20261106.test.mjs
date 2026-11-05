@@ -105,11 +105,16 @@ test('06:00 in-app reminder exists without VAPID or any device subscription',asy
  const now=Date.parse('2026-11-05T21:00:00.000Z'),day='2026-11-06'
  const records=[]
  const db={
-   prepare(sql){return {bind(...args){return {
-     all:async()=>({results:sql.includes('FROM household_members m JOIN users u')
-       ?[{user_id:actor,household_id:'family'}]:[]}),
-     run:async()=>{records.push({sql,args});return {meta:{changes:1}}}
-   }}}},
+   prepare(sql){
+     const q={
+       args:[],
+       bind(...args){this.args=args;return this},
+       all:async()=>({results:sql.includes('FROM household_members m JOIN users u')
+         ?[{user_id:actor,household_id:'family'}]:[]}),
+       run:async()=>{records.push({sql,args:q.args});return {meta:{changes:1}}}
+     }
+     return q
+   },
    async batch(statements){
      const rows=Array.from({length:11},()=>({results:[]}))
      rows[3]={results:[{id:goalId,title:'喂豆沙',due_on:day}]}
