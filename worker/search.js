@@ -1,4 +1,4 @@
-// Explicit keyword search only: a single bounded read, never fetched on home load.
+// Explicit keyword search only: bounded, demand-loaded reads. Split source sets for D1's UNION limit.
 import {json} from './security.js'
 import {monthWindow} from './list-pagination.js'
 const uuid=/^[0-9a-f-]{36}$/i
@@ -31,10 +31,6 @@ export async function searchRoute(request,db,session){
   cursor={date:m[1],kind:m[2],id:m[3]}
  }
  const selected=kind==='all'?sources:sources.filter(row=>row[0]===kind)
- const union=selected.map(([label,table,dateExpr,creator,extra])=>
-   `SELECT id,title,'${label}' AS kind,${dateExpr} AS event_date FROM ${table}
-      WHERE household_id=?1 AND (visibility='household' OR ${creator}=?2)
-        AND title LIKE ?3 ESCAPE '^' ${extra}`).join(' UNION ALL ')
  const args=[session.household_id,session.user_id,
    '%'+q.replace(/[\^%_]/g,x=>'^'+x)+'%']
  const where=[]
@@ -49,10 +45,25 @@ export async function searchRoute(request,db,session){
    ' AND (kind<?'+(n+2)+' OR (kind=?'+(n+3)+' AND id<?'+(n+4)+'))))')
   args.push(cursor.date,cursor.date,cursor.kind,cursor.kind,cursor.id)
  }
- const sql='SELECT * FROM ('+union+')'+(where.length?' WHERE '+where.join(' AND '):'')+
-   ' ORDER BY event_date DESC,kind DESC,id DESC LIMIT ?'+(args.length+1)
- const {results}=await db.prepare(sql).bind(...args,6).all()
- const all=results||[],items=all.slice(0,5),last=items.at(-1)
+ // D1 has a low compound SELECT term ceiling. A single eight-source UNION
+ // fails in production, so query at most four allowlisted sources per group.
+ // Each group returns its top six rows: enough for the global five-row page
+ // and lookahead, including when the next page crosses a source boundary.
+ const statements=[]
+ for(let i=0;i<selected.length;i+=4){
+   const union=selected.slice(i,i+4).map(([label,table,dateExpr,creator,extra])=>
+     `SELECT id,title,'${label}' AS kind,${dateExpr} AS event_date FROM ${table}
+       WHERE household_id=?1 AND (visibility='household' OR ${creator}=?2)
+         AND title LIKE ?3 ESCAPE '^' ${extra}`).join(' UNION ALL ')
+   const sql='SELECT * FROM ('+union+')'+(where.length?' WHERE '+where.join(' AND '):'')+
+     ' ORDER BY event_date DESC,kind DESC,id DESC LIMIT ?'+(args.length+1)
+   statements.push(db.prepare(sql).bind(...args,6))
+ }
+ const batches=statements.length===1?[await statements[0].all()]:await db.batch(statements)
+ const all=batches.flatMap(part=>part.results||[])
+   .sort((a,b)=>String(b.event_date).localeCompare(String(a.event_date))||
+     String(b.kind).localeCompare(String(a.kind))||String(b.id).localeCompare(String(a.id)))
+ const items=all.slice(0,5),last=items.at(-1)
  return json({items,nextCursor:all.length>5&&last?
    last.event_date+'|'+last.kind+'|'+last.id:null})
 }

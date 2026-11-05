@@ -618,3 +618,35 @@ test('recycle UI preserves genuine empty state and requires a second explicit cl
  assert.match(ui,/确认永久清空/)
  assert.doesNotMatch(ui,/error\.value=\(e as Error\)\.message/)
 })
+
+test('global eight-category search uses D1-safe groups and preserves cross-kind keyset paging',async()=>{
+ const {db,sqlite}=database()
+ try{
+  const addWish=sqlite.prepare("INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,target_on) VALUES(?,'primary','u1','household','跨类审查','other',?)")
+  const addTask=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,due_on) VALUES(?,'primary','u1','household','跨类审查',?)")
+  for(let i=1;i<=7;i++){
+   const id='abcde'+String(i).padStart(3,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+   const date='2026-11-'+String(i).padStart(2,'0')
+   ;(i%2?addWish:addTask).run(id,date)
+  }
+  const ask=async(cursor='',kind='all')=>{
+   const url=new URL('https://homeflow.test/api/search')
+   url.searchParams.set('q','跨类审查')
+   url.searchParams.set('kind',kind)
+   if(cursor)url.searchParams.set('cursor',cursor)
+   const res=await searchRoute(new Request(url),db,session)
+   assert.equal(res.status,200)
+   return res.json()
+  }
+  const first=await ask()
+  assert.equal(first.items.length,5)
+  assert.ok(first.nextCursor)
+  const second=await ask(first.nextCursor)
+  assert.equal(second.items.length,2)
+  assert.equal(second.nextCursor,null)
+  const all=[...first.items,...second.items]
+  assert.equal(new Set(all.map(x=>x.id)).size,7)
+  assert.deepEqual(all.map(x=>x.event_date),[7,6,5,4,3,2,1].map(x=>'2026-11-'+String(x).padStart(2,'0')))
+  assert.equal((await ask('','task')).items.length,3)
+ }finally{sqlite.close()}
+})
