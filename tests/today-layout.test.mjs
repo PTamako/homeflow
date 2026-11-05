@@ -73,7 +73,7 @@ test('Today only shows completions from the current JST day, without archive tog
  assert.match(app,/return t\.completedAt\?tokyoDate\(t\.completedAt\)===now:/);
  assert.match(app,/return '\/tasks\?status=all&today='\+date/);
  assert.match(app,/watch\(\[todayCategory,currentJstDay\]/);
- assert.match(app,/<b>事项分类<\/b>/);
+ assert.doesNotMatch(app,/<b>事项分类<\\/b>/,'the filter tabs should not have a redundant title');
  assert.match(app,/const visibleTasks=computed/);
 })
 
@@ -152,4 +152,21 @@ test('Today new-task form opens only from its own button, outside the checklist'
  assert.match(css,/\.task-create-overlay\{position:fixed;inset:0;z-index:100/)
  assert.match(css,/\.task-create-dialog\{width:min\(100%,460px\);max-height:100%/)
  assert.match(app,/function closeAddTask\(\)\{\s+if\(loading.value\)return\s+dismissAddTask\(\)/)
+})
+
+test('Today checklist starts with compact category tabs and preserves item dividers',()=>{
+ const start=app.indexOf('<section class="panel today-checklist-panel">')
+ const tabs=app.indexOf('<div class="today-category-tabs" role="group"',start)
+ const firstRow=app.indexOf('<template v-for="row in visibleToday"',tabs)
+ assert.ok(start>=0 && tabs>start && firstRow>tabs,
+   'Today category filters and tasks belong to the same card')
+ const leading=app.slice(start,tabs)
+ assert.ok(!leading.includes('<b>事项分类</b>'), 'redundant category heading removed')
+ assert.ok(!leading.includes('class="row-between"') || leading.includes('v-if="pendingTasks.length"'),
+   'no default spaced section header before the category filter')
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
+ assert.match(css,/\.today-checklist-panel\{margin-top:10px;padding-top:14px;padding-bottom:12px\}/)
+ assert.match(css,/\.today-checklist-panel>\.today-category-tabs\{margin:0 0 6px/)
+ assert.match(css,/\.task-row\{[^}]*border-top:1px solid/)
+ assert.match(app,/v-for="category in visibleTodayCategories"/)
 })
