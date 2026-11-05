@@ -67,6 +67,11 @@ export async function pushRoute(request,env,path,session){
       .bind(await sha256(body.endpoint),session.user_id,session.household_id).run()
     return json({ok:true})
   }
+  if(path==='/api/push/send-now'){
+    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    if(!vapidReady(env))return json({error:'push_not_configured'},503)
+    return sendNow(env,session)
+  }
   return json({error:'not_found'},404)
 }
 async function hkdf(input,salt,info,bits){
@@ -127,6 +132,46 @@ async function deliver(sub,env,data){
     body,
     redirect:'manual',
   })
+}
+// Explicit manual push only reaches the authenticated user's subscribed devices.
+// Claim once per device per JST minute to avoid duplicate sends and D1 bursts.
+async function sendNow(env,session,now=Date.now()){
+  const db=env.DB
+  const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
+    FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
+    .bind(session.household_id,session.user_id).all()
+  if(!subscriptions.length)return json({error:'push_not_subscribed'},409)
+  const jst=new Date(now+9*3600000).toISOString()
+  const day=jst.slice(0,10),slot=jst.slice(11,16)
+  const r=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),db,session)
+  if(!r.ok)return json({error:'reminders_unavailable'},503)
+  const events=(await r.json()).items||[]
+  const summary=events.length?events.slice(0,3).map(x=>x.title).join('、').slice(0,135):
+    '当前没有到期提醒，推送通道正常'
+  let sent=0,failed=0
+  for(const sub of subscriptions){
+    if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
+    const key='manual-'+slot
+    const claim=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
+      (endpoint_hash,notification_key,sent_on,status,attempts)
+      VALUES(?1,?2,?3,'claimed',1)`).bind(sub.endpoint_hash,key,day).run()
+    if(!claim.meta?.changes)continue
+    let status=0,result='failed'
+    try{
+      const response=await deliver(sub,env,{title:'HomeFlow · 立即提醒',
+        body:summary,priority:'normal',url:'/',tag:'homeflow-manual-'+slot})
+      status=response.status
+      result=response.ok?'sent':status===404||status===410?'gone':'failed'
+    }catch{}
+    if(result==='sent')sent++;else failed++
+    await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,
+      updated_at=CURRENT_TIMESTAMP WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
+      .bind(result,status,sub.endpoint_hash,key,day).run()
+    if(result==='gone')await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1 AND user_id=?2')
+      .bind(sub.endpoint_hash,session.user_id).run()
+  }
+  if(!sent&&!failed)return json({error:'push_rate_limited'},429)
+  return json({ok:sent>0,sent,failed,reminderCount:events.length},sent>0?200:502)
 }
 export async function runPushSchedule(env,now=Date.now()){
   if(!vapidReady(env))return {skipped:'push_not_configured'}

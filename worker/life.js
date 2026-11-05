@@ -80,6 +80,7 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
     return !!await db.prepare('SELECT 1 FROM family_profiles WHERE household_id=?1 AND id=?2 AND archived_at IS NULL').bind(hid,data[5]).first()
   }
   if(table==='routines'){
+    if(requestedVisibility==='private'&&data[4]&&data[4]!==session.user_id)return false
     if(data[4] && !await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2').bind(hid,data[4]).first())return false
     if(data[5]){
       const profile=await db.prepare('SELECT type FROM family_profiles WHERE household_id=?1 AND id=?2 AND archived_at IS NULL')
@@ -170,7 +171,8 @@ export async function lifeRoute(request,db,path,session){
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
     if(!rule)return json({error:'not_found'},404)
-    if(rule.visibility==='private'&&rule.created_by!==session.user_id)
+    if((rule.visibility==='private'&&rule.created_by!==session.user_id)||
+      (rule.assigned_to&&rule.assigned_to!==session.user_id&&rule.created_by!==session.user_id))
       return json({error:'forbidden'},403)
     const actual=body.date,current=currentRoutinePeriod(rule,actual)
     const earlyOn=nextEarlyPeriod(rule,actual)
