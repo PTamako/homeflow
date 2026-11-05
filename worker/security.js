@@ -85,13 +85,25 @@ export async function sessionFor(request, db) {
      WHERE s.token_hash=?1 AND s.expires_at>?2 AND u.disabled_at IS NULL LIMIT 1`)
     .bind(hash,nowMs()).first()
 }
+// One short-lived cache per physical binding handle: neither secrets nor user data
+// are cached. A different binding or environment always forces a new identity read.
+const dbIdentityCache=new WeakMap()
+const DB_IDENTITY_TTL_MS=15000
+const EXPECTED_MIGRATION='0023_today_dismissals.sql'
 export async function verifiedDatabase(env) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false
+  const now=Date.now(),cached=dbIdentityCache.get(env.DB)
+  if(cached?.name===expected && cached.expiresAt>now)return true
   try {
-    const identity=await env.DB.prepare("SELECT database_name FROM environment_identity WHERE key='current' LIMIT 1").first()
-    return identity?.database_name===expected
-  }catch{return false}
+    const identity=await env.DB.prepare(`SELECT database_name,
+      (SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest_migration
+      FROM environment_identity WHERE key='current' LIMIT 1`).first()
+    const valid=identity?.database_name===expected && identity?.latest_migration===EXPECTED_MIGRATION
+    if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
+    else dbIdentityCache.delete(env.DB)
+    return valid
+  }catch{dbIdentityCache.delete(env.DB);return false}
 }
 export function isValidLogin(login) {
   if(typeof login!=='string')return false
