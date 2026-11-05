@@ -98,6 +98,12 @@ function navigateTab(value:typeof tab.value){
   }
   tab.value=value
 }
+function clearPlanFocus(){
+  focusPlanId.value=''
+  focusPlanPeriodKey.value=''
+  focusPlanFromToday.value=false
+  focusPlanScope.value='active'
+}
 function openNewTaskInPlans(){
   navigateTab('plans')
   focusPlanType.value='all'
@@ -688,7 +694,7 @@ onBeforeUnmount(()=>{
          :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
-        @open-plans="openPlans" @back-to-today="returnToToday" />
+        @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
       <ManagePage v-show="tab==='manage'" ref="importantRemindersRef" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
