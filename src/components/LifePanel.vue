@@ -129,7 +129,7 @@ async function shoppingLinksChanged(){
   const idx=other.value.findIndex(x=>x.id===id)
   if(idx>=0&&data.item)other.value.splice(idx,1,data.item)
   else await fetchMode()
-  notify('购物关联已更新，可继续选择其他消费')
+  notify('购物账单关联已更新')
  }catch(e){error.value=(e as Error).message}
 }
 async function removeItem(kind:EditableKind,item:Row){
@@ -1148,13 +1148,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
                 <div class="shopping-check">
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small>{{ s.ledger_entry_id?'已关联消费':'待关联消费' }}</small>
+                    <small>{{ s.completed_at?'已完成':'待购买' }}</small>
                     <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ memberName(s.assigned_to) }}</small>
                   </span>
                 </div>
                 <div class="shopping-row-actions">
                   <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                    class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'账目与调整额':'关联购物支出' }}</button>
+                    class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
                   <button v-if="planScope==='active'&&!s.completed_at&&(!!s.due_on||
                     (canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId))"
                     type="button" class="routine-more-trigger"
