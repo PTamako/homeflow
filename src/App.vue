@@ -2,15 +2,11 @@
 import DateField from './components/DateField.vue'
 import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,sendOrQueueTask,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
-import BackupPanel from './components/BackupPanel.vue'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
-import ImportantReminders from './components/ImportantReminders.vue'
 import LifeItemEditor from './components/LifeItemEditor.vue'
-import PushPanel from './components/PushPanel.vue'
-import SecurityPanel from './components/SecurityPanel.vue'
-import TrashPanel from './components/TrashPanel.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
+import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
@@ -45,8 +41,7 @@ const pendingVisibleCount=ref(listPageSize)
 const peopleVisibleCount=ref(listPageSize)
 const petsVisibleCount=ref(listPageSize)
 const editingRoutine=ref<Routine|null>(null),routineBusy=ref(false)
-const tab=ref<'today'|'family'|'plans'|'memories'>('today')
-const settingsOpen=ref(false)
+const tab=ref<'today'|'family'|'plans'|'memories'|'manage'>('today')
 const hasImportantReminders=ref(false)
 const importantRemindersRef=ref<{refreshIfStale:()=>void}|null>(null)
 const focusPlanType=ref('all')
@@ -78,7 +73,6 @@ async function returnToToday(){
   returningToToday=false
 }
 function openSearchResult(result:{id:string;kind:string}){
- settingsOpen.value=false
  if(['shopping','wish','goal','trip','task','routine'].includes(result.kind))
    openPlans(result.kind,result.id)
  else {
@@ -108,12 +102,12 @@ const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tok
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
-const error=ref(''),invitation=ref(''),showDone=ref(false)
+const error=ref(''),showDone=ref(false)
 const {toast,notify,clear:clearToast}=usePageToast()
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const openPetId=ref<string|null>(null)
 const editProfileId=ref<string|null>(null),profileRevision=ref(0)
-const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'}] as const
+const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'},{id:'manage',icon:'settings',label:'管理'}] as const
 function tokyoToday(){return new Date(Date.now()+9*3600000).toISOString().slice(0,10)}
 function tokyoDate(timestamp:string){
  const iso=timestamp.includes('T')?timestamp:timestamp.replace(' ','T')+'Z'
@@ -293,7 +287,6 @@ async function submitAuth(){
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
-  settingsOpen.value=false
   hasImportantReminders.value=false
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
@@ -429,11 +422,6 @@ async function discardPending(id:string){
   if(tab.value==='today')notify('已取消待同步任务')
 }
 function onOnline(){if(user.value)void flushTasks()}
-function toggleSettings(){
-  settingsOpen.value=!settingsOpen.value
-  if(settingsOpen.value)importantRemindersRef.value?.refreshIfStale()
-}
-function onSettingsKeydown(event:KeyboardEvent){if(event.key==='Escape')settingsOpen.value=false}
 function onForeground(){
   if(document.visibilityState!=='visible')return
   const d=tokyoToday()
@@ -463,14 +451,8 @@ async function addProfile(){
     name.value='';birth.value='';adopted.value=''
   }catch(e){error.value=(e as Error).message}
 }
-async function generateInvite(){
-  error.value=''
-  try{invitation.value=(await api('/auth/invitations','POST',{})).invitationCode||'';notify('邀请码已生成')}
-  catch(e){error.value=(e as Error).message}
-}
 watch(tab,value=>{
   clearToast()
-  settingsOpen.value=false
   editingTask.value=null
   editingRoutine.value=null
   if(value==='today'){
@@ -491,13 +473,11 @@ onMounted(async()=>{
     if(user.value&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
   window.addEventListener('online',onOnline)
-  window.addEventListener('keydown',onSettingsKeydown)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
 })
 onBeforeUnmount(()=>{
   window.removeEventListener('online',onOnline)
-  window.removeEventListener('keydown',onSettingsKeydown)
   document.removeEventListener('visibilitychange',onForeground)
 })
 </script>
@@ -505,28 +485,8 @@ onBeforeUnmount(()=>{
 <template>
   <div class="shell">
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
-      <div v-if="authReady&&user" class="settings-anchor">
-        <GlobalSearch @select="openSearchResult"/>
-        <button class="settings-trigger" type="button" aria-controls="homeflow-settings" :aria-expanded="settingsOpen"
-          :aria-label="hasImportantReminders||goalReviews.length?'设置：今天有重要提醒':'设置'"
-          @click="toggleSettings"><AppIcon name="settings" :size="20" /> 设置
-          <span v-if="hasImportantReminders||goalReviews.length" class="settings-alert-dot" aria-hidden="true"></span></button>
-        <div v-show="settingsOpen" id="homeflow-settings" class="settings-popover" role="dialog" aria-label="HomeFlow 设置">
-          <div class="settings-title"><strong>设置</strong>
-            <button type="button" aria-label="关闭设置" class="settings-close" @click="settingsOpen=false">×</button></div>
-          <div class="settings-section settings-account"><span>当前账号</span><b>{{ user.loginName }}</b></div>
-          <div class="settings-section"><SecurityPanel v-if="settingsOpen" :login-name="user.loginName"/></div>
-          <div class="settings-section"><TrashPanel v-if="settingsOpen" /></div>
-          <div class="settings-section settings-notifications"><b>推送通知</b><PushPanel v-if="settingsOpen" /></div>
-          <div class="settings-section settings-reminders">
-            <ImportantReminders ref="importantRemindersRef" :today-date="currentJstDay"
-              :today-entry-keys="todayEntryKeys" compact @presence-change="hasImportantReminders=$event" />
-          </div>
-          <button class="settings-logout" type="button" @click="logout">退出登录</button>
-        </div>
-      </div>
+      <GlobalSearch v-if="authReady&&user" @select="openSearchResult"/>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
-    <div v-if="settingsOpen" class="settings-overlay" aria-hidden="true" @click="settingsOpen=false"></div>
     <main v-if="!authReady" class="auth-content" aria-live="polite">
       <section class="panel" role="status"><h2>正在打开我们的小家…</h2><p class="hint">正在确认登录状态与家庭资料。</p></section>
     </main>
@@ -572,7 +532,7 @@ onBeforeUnmount(()=>{
     </main>
     <main v-else class="content">
       <div class="eyebrow">OUR LITTLE HOME</div>
-      <h1>{{ {today:'我们家的今天',plans:'我的计划',memories:'我们的时光轴',family:'家庭档案'}[tab] }} ♡</h1>
+      <h1>{{ {today:'我们家的今天',plans:'我的计划',memories:'我们的时光轴',family:'家庭档案',manage:'管理中心'}[tab] }} ♡</h1>
       <p class="lead">{{ user.householdName }} · 每件重要的小事</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
@@ -793,29 +753,29 @@ onBeforeUnmount(()=>{
             <button class="primary field-wide">添加档案</button>
           </form>
         </section>
-        <section v-if="user.role==='owner'" class="panel">
-          <h2>邀请家人独立登录</h2>
-          <p class="hint">邀请码 7 天内有效，每个家庭最多两位登录成员。</p>
-          <button class="outline" @click="generateInvite">生成邀请码</button>
-          <div v-if="invitation" class="invitation"><code>{{ invitation }}</code><p>仅发送给家人，请勿公开。</p></div>
-        </section>
       </template>
-      <section v-else class="hero"><div><span>HOMEFLOW LIFE</span>
+      <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
-      <LifePanel :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
+      <LifePanel v-if="tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
          :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
         @open-plans="openPlans" @back-to-today="returnToToday" />
-      <BackupPanel v-if="tab==='family'" :user-id="user.id" />
+      <ManagePage v-show="tab==='manage'" ref="importantRemindersRef" :active="tab==='manage'"
+        :user-id="user.id" :login-name="user.loginName" :is-owner="user.role==='owner'"
+        :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
+        @presence-change="hasImportantReminders=$event" @logout="logout" />
     </main>
     <PageToast :toast="toast" />
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="navigateTab(n.id)">
-        <AppIcon :name="n.icon" :size="23" /><span>{{ n.label }}</span></button>
+        <AppIcon :name="n.icon" :size="23" />
+        <span v-if="n.id==='manage'&&(hasImportantReminders||goalReviews.length)"
+          class="nav-alert-dot" aria-hidden="true"></span>
+        <span>{{ n.label }}</span></button>
     </nav>
   </div>
 </template>

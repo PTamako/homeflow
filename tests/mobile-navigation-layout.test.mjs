@@ -8,13 +8,13 @@ const finance=readFileSync(new URL('../src/components/FinancePanel.vue',import.m
 const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
 const icons=readFileSync(new URL('../src/components/AppIcon.vue',import.meta.url),'utf8')
 
-test('mobile bottom navigation has four consistent vector tabs',()=>{
+test('mobile bottom navigation has five consistent vector tabs',()=>{
   const nav=app.match(/const nav=\[([^\n]*)\] as const/)
   assert.ok(nav,'navigation config should exist')
   const ids=[...nav[1].matchAll(/id:'([^']+)'/g)].map(x=>x[1])
-  assert.deepEqual(ids,['today','plans','memories','family'])
+  assert.deepEqual(ids,['today','plans','memories','family','manage'])
   const iconNames=[...nav[1].matchAll(/icon:'([^']+)'/g)].map(x=>x[1])
-  assert.deepEqual(iconNames,['sun','clipboard-check','images','house'])
+  assert.deepEqual(iconNames,['sun','clipboard-check','images','house','settings'])
   assert.ok(!app.includes("tab==='cat'"))
   assert.ok(app.includes('<AppIcon :name="n.icon"'))
   assert.match(icons,/<svg /)

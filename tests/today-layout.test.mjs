@@ -84,7 +84,9 @@ test('search click targets the exact record, even beyond first five',()=>{
 
 test('settings recycle bin is demand-loaded and recovery requires confirmation',()=>{
  const trash=readFileSync(new URL('../src/components/TrashPanel.vue',import.meta.url),'utf8')
- assert.ok(app.includes('<TrashPanel v-if="settingsOpen" />'))
+ const management=readFileSync(new URL('../src/components/ManagePage.vue',import.meta.url),'utf8')
+ assert.ok(app.includes('<ManagePage v-show="tab===\'manage\'"'))
+ assert.ok(management.includes('<TrashPanel v-if="active"/>'))
  assert.ok(trash.includes("if(expanded.value)void fetchTrash()"))
  assert.ok(trash.includes("new URLSearchParams({limit:'5'})"))
  assert.ok(app.includes('recoveryConfirm.value'))
