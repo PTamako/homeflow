@@ -594,7 +594,7 @@ onBeforeUnmount(()=>{
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
           </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
-          :user-id="user.id" :today-entry-keys="todayEntryKeys" @unread-change="setUnreadNotificationCount"
+          :user-id="user.id" :today-entry-keys="todayEntryKeys" :member-profiles="profiles" @unread-change="setUnreadNotificationCount"
           :focus-notification-id="notificationToOpen" :focus-request="notificationOpenRequest"
           @focus-handled="onNotificationFocused" @open-plan="(kind,id)=>openPlans(kind,id)" />
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">

@@ -10,6 +10,7 @@ type Notice={
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
 }
 const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[];
+ memberProfiles:Array<{memberUserId:string|null;displayName:string}>;
  focusNotificationId:string;focusRequest:number}>()
 const emit=defineEmits<{unreadChange:[number];openPlan:[string,string];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
@@ -29,6 +30,13 @@ function detail(item:Notice){
  if(item.deliveryStatus==='failed')return '发送失败'
  if(item.readAt)return '已读 '+timeOf(item.readAt)
  return view.value==='sent'?'对方未读':'未读'
+}
+// Resolve notification participants from the household's existing linked profiles.
+// Keep login emails out of the UI and avoid extra D1 queries for each notice.
+function memberDisplayName(userId:string|null){
+ if(!userId)return '系统提醒'
+ const profile=props.memberProfiles.find(p=>p.memberUserId===userId)
+ return profile?.displayName?.trim()||'未设置姓名'
 }
 async function load(reset=true,focusId=''){
  if(!props.active)return
@@ -153,7 +161,7 @@ defineExpose({refresh:()=>load(true)})
     </div>
     <p v-if="item.message">{{ item.message }}</p>
     <div class="notice-bottom">
-     <small>{{ item.senderUserId===null?'系统提醒':view==='sent'?'发送给：'+item.recipientName:'来自：'+item.senderName }} · {{ timeOf(item.createdAt) }}</small>
+     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}</small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt&&item.deliveryStatus!=='failed'"
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>

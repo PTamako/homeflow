@@ -143,3 +143,14 @@ test('push click opens the matching notification or plan and keeps badge state i
  assert.match(sw,/else if\(target.searchParams.has\('notificationId'\)\)/)
  assert.match(sw,/notificationId:target.searchParams.get\('notificationId'\)/)
 })
+
+test('received and sent notifications display linked household member names, not login emails',()=>{
+ const app=read('src/App.vue'),ui=read('src/components/TodayNotifications.vue')
+ assert.match(app,/:member-profiles="profiles"/)
+ assert.match(ui,/memberProfiles:Array<\{memberUserId:string\|null;displayName:string\}>/)
+ assert.match(ui,/props\.memberProfiles\.find\(p=>p\.memberUserId===userId\)/)
+ assert.match(ui,/profile\?\.displayName\?\.trim\(\)\|\|'未设置姓名'/)
+ assert.match(ui,/'发送给：'\+memberDisplayName\(item\.recipientUserId\)/)
+ assert.match(ui,/'来自：'\+memberDisplayName\(item\.senderUserId\)/)
+ assert.doesNotMatch(ui,/\+item\.(senderName|recipientName)/)
+})
