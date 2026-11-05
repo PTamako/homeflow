@@ -4,8 +4,8 @@ import test from 'node:test'
 const read=(p)=>readFileSync(new URL('../'+p,import.meta.url),'utf8')
 const life=read('src/components/LifePanel.vue')
 const swipe=read('src/components/SwipeActions.vue')
-const start=life.indexOf('<div v-for="r in (planType===\'unscheduled\'?[]:routines)"',life.indexOf('<template v-else>',life.indexOf('class="plan-tasks-card"')))
-const task=life.indexOf('<div v-for="t in oneTimePlans"',start)
+const start=life.indexOf('<div v-for="r in [entry.item]"',life.indexOf('<template v-else-if="entry.kind===\'routine\'">',life.indexOf('class="plan-tasks-card"')))
+const task=life.indexOf('<div v-for="t in [entry.item]"',start)
 const routineMarkup=life.slice(start,task)
 const taskMarkup=life.slice(task,life.indexOf('<p v-if="!routines.length',task))
 
