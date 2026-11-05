@@ -52,7 +52,8 @@ const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
 const goalCompletionMarks=ref<string[]>([])
 const focusError=ref('')
 const focusedItemId=computed(()=>props.focusPlanId||'')
-const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value
+const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
+  (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
@@ -215,7 +216,7 @@ function listPath(kind:string,cursor?:string|null){
     }
   }
   if(cursor)q.set('cursor',cursor)
-  return '/'+kind+'?'+q.toString()
+  return '/'+(kind==='routines'&&planScope.value==='history'?'routines/period-history':kind)+'?'+q.toString()
 }
 async function toggleHistoricalGoalPeriod(period:GoalPeriodArchive){
   if(!props.isOwner)return
@@ -263,7 +264,7 @@ async function loadMoreGoalPeriods(){
 function assignRows(kind:string,rows:Row[],append=false){
   const target=kind==='tasks'?oneTimePlans:kind==='wishes'||kind==='memories'||kind==='anniversaries'?items:
     kind==='goals'?goals:kind==='shopping'?other:kind==='trips'?trips:routines
-  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id))]:rows
+  target.value=append?[...target.value,...rows.filter(row=>!target.value.some(existing=>existing.id===row.id&&existing.periodOn===row.periodOn))]:rows
 }
 async function loadMore(kind:string){
   const cursor=listCursors.value[kind]
@@ -292,40 +293,42 @@ function countdown(date:string){
   if(!Number.isFinite(days))return ''
   return days<=0?'今天':days===1?'明天 · 倒计时 1 天':'倒计时 '+days+' 天'
 }
-function routineNextDue(r:Row){
-  if(r.repeat_type!=='interval')return ''
-  let config:Record<string,any>={}
-  try{config=typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return ''}
-  if(config.anchor!=='completion'||!Number.isInteger(config.days)||config.days<1||config.days>3650)return ''
-  if(r.next_due_on)return String(r.next_due_on)
-  const timestamp=Date.parse(String(r.anchor_date||'')+'T00:00:00Z')
-  return Number.isFinite(timestamp)?new Date(timestamp+config.days*86400000).toISOString().slice(0,10):''
-}
-function canCompleteRoutineEarly(r:Row){
-  const next=routineNextDue(r),date=today()
-  if(!next||r.enabled===0||date<String(r.anchor_date||'')||date>=next)return false
-  // The stored next_due_on is completion-based. Once a completion is
-  // recorded today, don't offer a second early-complete button.
-  if(r.next_due_on){
-    let config:Record<string,any>={}
-    try{config=typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return false}
-    const dueMs=Date.parse(next+'T00:00:00Z')
-    if(new Date(dueMs-config.days*86400000).toISOString().slice(0,10)===date)return false
-  }
-  return true
-}
+function routineNextDue(r:Row){return String(r.nextDueOn||r.next_due_on||'')}
+function canCompleteRoutineEarly(r:Row){return !!r.earlyPeriodOn&&r.enabled!==0}
 async function completeRoutineEarly(r:Row){
   if(!canCompleteRoutineEarly(r)||busy.value)return
-  if(!confirm('确认今天已完成「'+r.title+'」？将记录实际完成日期并重新计算下次到期日。'))return
-  await update(()=>api('/routines/'+r.id+'/mark','POST',{date:today(),status:'completed',early:true}), '已提前完成，下一次按今天重新计算')
+  if(!confirm('确认提前完成「'+r.title+'」本期？仅本期归档，下期仍按计划生成。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.earlyPeriodOn,status:'completed',early:true}),'本期已提前完成')
+  if(!error.value)emit('tasksChanged')
+}
+async function completeCurrentRoutine(r:Row,status:'completed'|'skipped'){
+  if(!r.currentPeriodOn||r.currentStatus!=='pending'||busy.value)return
+  if(status==='skipped'&&!confirm('跳过本期？会保留一条历史记录。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.currentPeriodOn,status}),
+    status==='completed'?'本期已完成':'本期已跳过')
+  if(!error.value)emit('tasksChanged')
+}
+async function undoRoutineHistory(r:Row){
+  if(!r.periodOn||r.status==='missed'||busy.value)return
+  if(!confirm('撤销这一期的记录？对应的自动护理记录也会撤销。'))return
+  await update(()=>api('/routines/'+r.id+'/mark','POST',
+    {date:today(),periodOn:r.periodOn,recordOn:r.markOccurrenceOn||r.periodOn,status:'open'}),'已撤销本期记录')
+  if(!error.value)emit('tasksChanged')
+}
+async function completeOnce(t:Row){
+  if(busy.value||t.completedAt)return
+  await update(()=>api('/tasks/'+t.id,'PATCH',{completed:true}),'一次性任务已完成')
   if(!error.value)emit('tasksChanged')
 }
 function routineLabel(r:Row){
   const config=(()=>{try{return typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return {}}})()
   if(r.repeat_type==='weekly'&&config.excludeJapaneseHolidays)return '工作日'
-  return r.repeat_type==='once'?'一次性':r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
-    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
-    r.repeat_type==='workday'?'工作日':'定期'
+  if(r.repeat_type==='weekly')return '每周'+(config.weekdays||[]).map((d:number)=>'日一二三四五六'[d]).join('、')
+  if(r.repeat_type==='monthly')return '每月'+Number(config.day||1)+'日'
+  if(r.repeat_type==='interval')return '每'+Number(config.days||0)+'天'+(config.anchor==='completion'?' · 按完成日':'')
+  return r.repeat_type==='daily'?'每天':'定期'
 }
 function profileName(id:string|null|undefined){
   return props.profiles.find(p=>p.id===id)?.displayName||''
@@ -390,7 +393,9 @@ async function focusExactPlan(requestId:number){
   if(!id||!endpoints[kind]||props.mode!==destination||
     !/^[0-9a-f-]{36}$/i.test(id))return
   try{
-    const response=await api('/'+endpoints[kind]+'/'+encodeURIComponent(id))
+    const response=await api(kind==='routine'&&planScope.value==='history'&&props.focusPlanPeriodKey?
+      '/routines/'+encodeURIComponent(id)+'/period?on='+encodeURIComponent(props.focusPlanPeriodKey):
+      '/'+endpoints[kind]+'/'+encodeURIComponent(id))
     if(requestId!==activeFetch||props.mode!==destination)return
     const item=kind==='trip'?response.trip:kind==='task'?response.task:response.item
     if(!item?.id)throw Error('找不到对应搜索结果')
@@ -398,7 +403,7 @@ async function focusExactPlan(requestId:number){
         ['monthly','yearly'].includes(item.goal_mode))return
     const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
       kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
-    if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
+    if(!target.value.some(row=>row.id===item.id&&row.periodOn===item.periodOn))target.value=[item,...target.value]
     if(kind==='wish'){
       for(const related of response.linkedGoals||[]){
         if(!goals.value.some(row=>row.id===related.id))goals.value.push(related)
@@ -415,7 +420,7 @@ async function focusExactPlan(requestId:number){
     if(kind==='memory')await loadPhotos(requestId)
     await nextTick()
     if(requestId===activeFetch&&props.focusPlanId===id)
-      document.getElementById('plan-item-'+id)?.scrollIntoView({block:'start',behavior:'instant'})
+      document.getElementById('plan-item-'+id+(kind==='routine'&&item.periodOn?'-'+item.periodOn:''))?.scrollIntoView({block:'start',behavior:'instant'})
   }catch(e){
     if(requestId===activeFetch)focusError.value=(e as Error).message
   }
@@ -820,33 +825,61 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
-          <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id" :id="'plan-item-'+r.id"
-            class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
-            <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
-              @edit="edit('routines',r)" @delete="removeItem('routines',r)">
-              <div class="life-row" :class="{'detail-completed':r.enabled===0}">
-                <div class="life-details">
-                  <b class="detail-name">{{ r.title }}</b>
-                  <small>{{ r.enabled===0?'已停用':routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记入护理</template></small>
-                </div>
+          <template v-if="planScope==='history'">
+            <div v-for="r in (planType==='unscheduled'?[]:routines)"
+              :key="r.id+':'+r.periodOn" :id="'plan-item-'+r.id+'-'+r.periodOn"
+              class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
+              <div class="plan-task-head">
+                <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
+                <span class="routine-state" :class="'state-'+r.status">
+                  {{ r.status==='completed'?'已完成':r.status==='skipped'?'已跳过':'未完成' }}
+                </span>
               </div>
-            <div v-if="planScope==='active'&&(r.remind_enabled!==0||canCompleteRoutineEarly(r))"
-              class="plan-task-footer">
-              <span v-if="canCompleteRoutineEarly(r)" class="plan-task-next">下次预计：{{ routineNextDue(r) }}</span>
-              <div class="plan-task-controls">
-                <button v-if="r.remind_enabled!==0" type="button" class="plan-task-subtle"
-                  :aria-label="'设置「'+r.title+'」的提醒'"
-                  @click="toggleReminderEditor('routine',r.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
-                <button v-if="canCompleteRoutineEarly(r)" type="button" class="plan-task-action"
-                  :disabled="busy" @click="completeRoutineEarly(r)">今天提前完成</button>
+              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
+              <div class="plan-task-footer">
+                <span class="plan-task-next">{{ r.periodOn }} 期<template v-if="r.completedOn"> · 实际 {{ r.completedOn }}</template></span>
+                <button v-if="r.status!=='missed'" type="button" class="routine-text-action" :disabled="busy"
+                  @click="undoRoutineHistory(r)">撤销</button>
               </div>
             </div>
-            </SwipeActions>
-            <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
-              kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
-            <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
-              kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
-          </div>
+          </template>
+          <template v-else>
+            <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id"
+              :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
+              <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
+                @edit="edit('routines',r)" @delete="removeItem('routines',r)">
+                <div class="routine-compact">
+                  <div class="plan-task-head">
+                    <b class="detail-name">{{ r.title }}</b>
+                    <details class="routine-menu">
+                      <summary :aria-label="'更多操作：'+r.title">···</summary>
+                      <div class="routine-menu-items">
+                        <button type="button" @click="toggleReminderEditor('routine',r.id)">提醒设置</button>
+                        <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
+                          @click="completeCurrentRoutine(r,'skipped')">跳过本期</button>
+                        <button v-if="canEdit(r)" type="button" @click="edit('routines',r)">编辑计划</button>
+                      </div>
+                    </details>
+                  </div>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template></small>
+                  <div class="plan-task-footer">
+                    <span class="plan-task-next">
+                      {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?'逾期 '+r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
+                    </span>
+                    <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button" class="routine-text-action"
+                      :disabled="busy" @click="completeCurrentRoutine(r,'completed')">完成本期</button>
+                    <button v-else-if="canCompleteRoutineEarly(r)" type="button" class="routine-text-action"
+                      :disabled="busy" @click="completeRoutineEarly(r)">提前完成</button>
+                    <span v-else-if="r.completedToday" class="routine-state state-completed">今天已完成</span>
+                  </div>
+                </div>
+              </SwipeActions>
+              <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
+                kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
+              <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
+                kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
+            </div>
+          </template>
           <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
@@ -865,12 +898,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="button" class="plan-task-action" @click="scheduleUnplanned(t)">安排到今天</button>
               </div>
             </div>
-            <div v-if="planScope==='active'&&planType!=='unscheduled'&&t.remindEnabled!==false" class="plan-task-footer">
-              <div class="plan-task-controls">
-                <button type="button" class="plan-task-subtle"
-                  :aria-label="'设置「'+t.title+'」的提醒'"
-                  @click="toggleReminderEditor('task',t.id)"><AppIcon name="bell" :size="14" /> 提醒设置</button>
-              </div>
+            <div v-if="planScope==='active'&&planType!=='unscheduled'" class="plan-task-footer">
+              <span class="plan-task-next">{{ t.dueOn?'计划 '+t.dueOn:'尚未安排日期' }}</span>
+              <button v-if="!t.completedAt&&t.dueOn" type="button" class="routine-text-action"
+                :disabled="busy" @click="completeOnce(t)">{{ t.dueOn>today()?'提前完成':'完成' }}</button>
+              <details class="routine-menu">
+                <summary :aria-label="'更多操作：'+t.title">···</summary>
+                <div class="routine-menu-items">
+                  <button type="button" @click="toggleReminderEditor('task',t.id)">提醒设置</button>
+                  <button v-if="canEdit(t)" type="button" @click="editOnce(t)">编辑任务</button>
+                </div>
+              </details>
             </div>
             </SwipeActions>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
@@ -1248,6 +1286,31 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 /* Each task is one uninterrupted swipe surface (title, metadata and actions).
    Only the outside item owns a separator; no line is painted inside a task. */
 .plan-tasks-card .life-caption{margin:0 0 8px}
+
+/* Routine 2.0: one divider, compact rows, discreet actions. */
+.routine-compact{min-width:0;display:grid;gap:5px}
+.plan-task-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.plan-task-head .detail-name{font-size:14px;line-height:1.45;overflow-wrap:anywhere;min-width:0}
+.routine-meta{display:block;color:#85958a;font-size:11px;line-height:1.5}
+.plan-tasks-card .plan-task-item{border-bottom:1px solid #e5ece6;padding:11px 0;margin:0}
+.plan-tasks-card .plan-task-item:last-of-type{border-bottom:0}
+.plan-tasks-card .plan-task-footer{margin-top:3px;justify-content:space-between;flex-wrap:nowrap;gap:8px;min-height:30px}
+.plan-tasks-card .plan-task-next{white-space:normal;min-width:0;flex:1}
+.routine-text-action{border:0;background:transparent;color:#397f5f;font-size:12px;font-weight:650;flex:none;padding:6px 4px;min-height:32px}
+.routine-text-action:disabled{opacity:.5}
+.routine-menu{position:relative;flex:none;margin-left:auto}
+.routine-menu summary{list-style:none;cursor:pointer;font-size:20px;letter-spacing:1px;color:#8ba298;padding:0 6px;line-height:28px}
+.routine-menu summary::-webkit-details-marker{display:none}
+.routine-menu-items{position:absolute;right:0;top:100%;z-index:8;display:grid;gap:3px;min-width:132px;
+  padding:6px;background:#fff;border:1px solid #d9e5db;border-radius:12px;box-shadow:0 5px 18px #1a35241c}
+.routine-menu-items button{padding:10px;text-align:left;background:transparent;border:0;color:#415b4a;font-size:12px;border-radius:7px}
+.routine-menu-items button:active{background:#edf5ed}
+.routine-state{font-size:11px;color:#87988c;flex:none}
+.routine-state.state-completed{color:#43866a}
+.routine-state.state-missed{color:#aa7067}
+.routine-struck{text-decoration:line-through;color:#9ca99f}
+.routine-history-row{display:grid;gap:5px}
+@media(max-width:420px){.plan-task-head .detail-name{font-size:13px}.plan-tasks-card .plan-task-next{font-size:10px}}
 .plan-task-item{min-width:0;padding:12px 0;border-bottom:1px solid #e9eee9}
 .plan-task-item:last-of-type{border-bottom:0;padding-bottom:0}
 .plan-task-item .life-row{border:0;padding:0;min-height:0;align-items:flex-start}

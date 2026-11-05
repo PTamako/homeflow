@@ -1,7 +1,10 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
-import {dueOn,nextAnniversary,pendingCarryover,validateRule,canCompleteEarly,addDays} from './recurrence.js'
+import {nextAnniversary,validateRule,addDays} from './recurrence.js'
+import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday,routineVersions} from './routine-periods.js'
+import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
+import {isJapaneseWorkday} from './jp-holidays.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -32,7 +35,12 @@ function normalized(table,b,s){
       return [title,b.eventDate,b.repeatMode,JSON.stringify([...new Set(lead)]),trim(b.note,1000),b.subjectProfileId||null]
     case 'routines': {
       const repeatType=b.repeatType==='workday'?'weekly':b.repeatType
-      const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:(b.repeatConfig||{})
+      const input=b.repeatConfig||{}
+      // Keep version metadata exclusively server-owned.
+      const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
+        repeatType==='weekly'?{weekdays:input.weekdays,excludeJapaneseHolidays:input.excludeJapaneseHolidays===true}:
+        repeatType==='monthly'?{day:input.day}:
+        repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
@@ -129,32 +137,31 @@ export async function lifeRoute(request,db,path,session){
       .map(e=>({...e,nextOn:nextAnniversary(e.event_date,e.repeat_mode,now)}))
       .filter(e=>e.nextOn).sort((a,b)=>a.nextOn.localeCompare(b.nextOn))})
   }
+  if(table==='routines'&&id==='period-history'&&request.method==='GET')
+    return routineHistory(db,request,session)
   if(table==='routines'&&id==='today'&&request.method==='GET'){
-    const date=new URL(request.url).searchParams.get('date')||new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+    const date=new URL(request.url).searchParams.get('date')||jstToday()
     if(!ymd(date))return bad()
-    const [all,marks]=await db.batch([
-      db.prepare(`SELECT r.*,
-        (SELECT m.occurrence_on FROM routine_marks m
-         WHERE m.routine_id=r.id AND m.occurrence_on<=?3
-           AND (m.completed_at IS NOT NULL OR m.skipped_at IS NOT NULL)
-         ORDER BY m.occurrence_on DESC LIMIT 1) AS last_resolved_on
-        FROM routines r WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
-          AND (r.visibility='household' OR r.created_by=?2) LIMIT 250`)
-        .bind(session.household_id,session.user_id,date),
-      db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at
-        FROM routine_marks m JOIN routines r ON r.id=m.routine_id
-        WHERE r.household_id=?1 AND r.deleted_at IS NULL AND m.occurrence_on=?2
-          AND (r.visibility='household' OR r.created_by=?3)`)
-        .bind(session.household_id,date,session.user_id)
-    ])
-    const saved=new Map((marks.results||[]).map(x=>[x.routine_id,x]))
-    // One row per routine: today is a fresh occurrence; prior completed marks
-    // never leak into today. Unfinished earlier due dates can carry forward.
+    const {results}=await db.prepare(`SELECT r.* FROM routines r
+      WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
+        AND (r.visibility='household' OR r.created_by=?2) LIMIT 250`)
+      .bind(session.household_id,session.user_id).all()
+    const rules=await enrichRoutineList(db,results||[],date)
     const items=[]
-    for(const r of all.results||[]){
-      const due=dueOn(r,date),mark=saved.get(r.id)||null
-      const carriedFrom=due||mark?null:pendingCarryover(r,date,r.last_resolved_on)
-      if(due||mark||carriedFrom)items.push({...r,mark,carriedFrom})
+    for(const r of rules){
+      let config={}
+      try{config=JSON.parse(r.repeat_config||'{}')}catch{}
+      if(config.excludeJapaneseHolidays&&!isJapaneseWorkday(date))continue
+      const current=r.currentPeriodOn,mark=r.currentMark
+      const doneCurrent=!!mark?.completed_at&&jstDate(mark.completed_at)===date
+      const recent=r.completedTodayMark?.occurrence_on<=date?r.completedTodayMark:null
+      const pending=current&&r.currentStatus==='pending'
+      if(!pending&&!doneCurrent&&!recent)continue
+      const selected=pending||doneCurrent?mark:recent
+      items.push({...r,mark:selected||null,
+        occurrenceOn:pending||doneCurrent?current:(recent?.occurrence_on||current),
+        recordOn:selected?.occurrence_on||null,
+        carriedFrom:pending&&current<date?current:null})
     }
     return json({date,items})
   }
@@ -163,70 +170,93 @@ export async function lifeRoute(request,db,path,session){
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
     if(!rule)return json({error:'not_found'},404)
-    // An early completion is allowed only for actual-completion-anchored
-    // intervals, on the current JST date. It is not an early due occurrence.
-    const currentJstDay=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-    const early=body.early===true&&body.status==='completed'&&body.date===currentJstDay&&canCompleteEarly(rule,body.date)
-    if(!dueOn(rule,body.date)&&!early){
-      const [existing,lastResolved]=await db.batch([
-        db.prepare('SELECT completed_at,skipped_at FROM routine_marks WHERE routine_id=?1 AND occurrence_on=?2')
-          .bind(id,body.date),
-        db.prepare(`SELECT occurrence_on AS last_resolved_on FROM routine_marks
-          WHERE routine_id=?1 AND occurrence_on<=?2
-          AND (completed_at IS NOT NULL OR skipped_at IS NOT NULL)
-          ORDER BY occurrence_on DESC LIMIT 1`).bind(id,body.date)
-      ])
-      if(!(existing.results||[]).length &&
-          !pendingCarryover(rule,body.date,lastResolved.results?.[0]?.last_resolved_on||null))
-        return json({error:'not_found'},404)
+    if(rule.visibility==='private'&&rule.created_by!==session.user_id)
+      return json({error:'forbidden'},403)
+    const actual=body.date,current=currentRoutinePeriod(rule,actual)
+    const earlyOn=nextEarlyPeriod(rule,actual)
+    // The scheduled period and actual completion date are independent.
+    const periodOn=body.periodOn||(body.early===true?earlyOn:current)||actual
+    const recordOn=body.recordOn||periodOn
+    if(!ymd(periodOn)||!ymd(recordOn))return bad()
+    if(recordOn!==periodOn&&body.status!=='open'&&body.status!=='completed'&&body.status!=='skipped')
+      return bad()
+    const early=body.early===true&&body.status==='completed'&&actual===jstToday()&&
+      earlyOn===periodOn
+    const existing=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
+      WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,recordOn).first()
+    if(recordOn!==periodOn){
+      // This key is the actual completion date of a pre-v2 overdue mark.
+      // Validate it belongs to the requested scheduled period.
+      const older=routineVersions(rule).find(v=>periodOn>=v.validFrom&&
+        (!v.validUntil||periodOn<v.validUntil))||rule
+      const original=currentRoutinePeriod(older,recordOn)
+      if(!existing||original!==periodOn)return json({error:'legacy_mark_mismatch'},409)
     }
-    if(rule.visibility==='private' && rule.created_by!==session.user_id)return json({error:'forbidden'},403)
+    if(periodOn!==current&&!early&&!existing)return json({error:'period_not_current'},409)
+    if(early&&current&&current!==periodOn){
+      const prior=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
+        WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,current).first()
+      if(!prior?.completed_at&&!prior?.skipped_at)
+        return json({error:'resolve_previous_period_first'},409)
+    }
+    if(body.status==='completed'&&existing?.completed_at)return json({ok:true,unchanged:true})
+    if(body.status==='skipped'&&existing?.skipped_at)return json({ok:true,unchanged:true})
+    if(body.status==='open'&&!existing)return json({ok:true,unchanged:true})
+    if(early&&!existing){
+      const begin=new Date(actual+'T00:00:00+09:00').toISOString()
+      const finish=new Date(addDays(actual,1)+'T00:00:00+09:00').toISOString()
+      const completedToday=await db.prepare(`SELECT 1 FROM routine_marks
+        WHERE routine_id=?1 AND completed_at>=?2 AND completed_at<?3 LIMIT 1`)
+        .bind(id,begin,finish).first()
+      if(completedToday)return json({error:'already_completed_today'},409)
+    }
     const stamp=iso()
-    const st=db.prepare(`INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at)
+    // API date is the actual local completion date, including deterministic
+    // time-travel test requests. Normal app requests always use today.
+    const completedStamp=actual===jstToday()?stamp:new Date(actual+'T12:00:00+09:00').toISOString()
+    const statements=[db.prepare(`INSERT INTO routine_marks
+      (routine_id,occurrence_on,completed_at,completed_by,skipped_at)
       VALUES(?1,?2,?3,?4,?5)
-      ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET completed_at=excluded.completed_at,
-      completed_by=excluded.completed_by,skipped_at=excluded.skipped_at`)
-      .bind(id,body.date,body.status==='completed'?stamp:null,body.status==='completed'?session.user_id:null,
-        body.status==='skipped'?stamp:null)
-    // Completion and its pet-care record are committed together. The unique index
-    // keeps repeated requests and multi-device taps from creating duplicate history.
-    const statements=[st]
+      ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET
+        completed_at=excluded.completed_at,completed_by=excluded.completed_by,
+        skipped_at=excluded.skipped_at`)
+      .bind(id,recordOn,body.status==='completed'?completedStamp:null,
+        body.status==='completed'?session.user_id:null,
+        body.status==='skipped'?stamp:null)]
     if(body.status==='completed'&&rule.subject_profile_id&&rule.health_record_type){
       statements.push(db.prepare(`INSERT INTO pet_health_records
         (id,household_id,profile_id,created_by,visibility,record_type,event_on,note,
          source_routine_id,source_occurrence_on)
-        SELECT ?1,?2,p.id,?3,?4,?5,?6,?7,?8,?6 FROM family_profiles p
-        WHERE p.id=?9 AND p.household_id=?2 AND p.type='pet' AND p.archived_at IS NULL
+        SELECT ?1,?2,p.id,?3,?4,?5,?6,?7,?8,?9
+        FROM family_profiles p
+        WHERE p.id=?10 AND p.household_id=?2 AND p.type='pet' AND p.archived_at IS NULL
         ON CONFLICT(source_routine_id,source_occurrence_on)
-        DO UPDATE SET deleted_at=NULL`)
+        DO UPDATE SET deleted_at=NULL,event_on=excluded.event_on,
+          note=excluded.note,record_type=excluded.record_type`)
         .bind(crypto.randomUUID(),session.household_id,session.user_id,rule.visibility,
-          rule.health_record_type,body.date,rule.title,id,rule.subject_profile_id))
+          rule.health_record_type,actual,rule.title,id,recordOn,rule.subject_profile_id))
     }else if(body.status!=='completed'){
-      // Undoing or skipping a day removes only the auto-generated record,
-      // never an independent health record entered manually.
       statements.push(db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
         WHERE household_id=?1 AND source_routine_id=?2 AND source_occurrence_on=?3
-          AND deleted_at IS NULL`).bind(session.household_id,id,body.date))
+          AND deleted_at IS NULL`).bind(session.household_id,id,recordOn))
     }
-    let config={}
-    try{config=JSON.parse(rule.repeat_config||'{}')}catch{}
-    if(rule.repeat_type==='interval' && config.anchor==='completion'){
-      if(body.status==='completed'){
-        statements.push(db.prepare('UPDATE routines SET next_due_on=?1,updated_at=?2 WHERE id=?3 AND household_id=?4')
-          .bind(addDays(body.date,config.days),stamp,id,session.household_id))
+    if(isCompletionInterval(rule)){
+      const config=JSON.parse(rule.repeat_config||'{}')
+      if(body.status==='completed'||body.status==='skipped'){
+        statements.push(db.prepare(`UPDATE routines SET next_due_on=?1,updated_at=?2
+          WHERE id=?3 AND household_id=?4`)
+          .bind(addDays(actual,config.days),stamp,id,session.household_id))
       }else if(body.status==='open'){
-        // Undo restores the schedule based on the most recent *earlier*
-        // completed occurrence, or the original baseline if none exists.
         statements.push(db.prepare(`UPDATE routines SET next_due_on=date(
-          COALESCE((SELECT MAX(m.occurrence_on) FROM routine_marks m
-            WHERE m.routine_id=?1 AND m.occurrence_on<?2 AND m.completed_at IS NOT NULL),anchor_date),
-          '+'||?3||' days'),updated_at=?4 WHERE id=?1 AND household_id=?5`)
-          .bind(id,body.date,config.days,stamp,session.household_id))
+          COALESCE((SELECT MAX(date(m.completed_at,'+9 hours')) FROM routine_marks m
+            WHERE m.routine_id=?1 AND m.occurrence_on<>?2 AND m.completed_at IS NOT NULL),
+            anchor_date),'+'||?3||' days'),updated_at=?4
+          WHERE id=?1 AND household_id=?5`)
+          .bind(id,recordOn,config.days,stamp,session.household_id))
       }
     }
-    if(statements.length>1)await db.batch(statements)
-    else await st.run()
-    return json({ok:true})
+    await db.batch(statements)
+    return json({ok:true,periodOn,completedOn:body.status==='completed'?actual:null})
   }
   if(id&&parts[3]==='toggle'&&table==='shopping_items'&&request.method==='POST'){
     const item=await getObject(db,table,id,session)
@@ -248,9 +278,15 @@ export async function lifeRoute(request,db,path,session){
   if(!id&&request.method==='GET'){
     const filters=listFilters(request.url)
     if(filters?.invalid)return bad()
-    if(filters)return json(await listPage(db,table,session,filters))
+    if(filters){
+      const page=await listPage(db,table,session,filters)
+      if(table==='routines'&&filters.scope==='active')
+        page.items=await enrichRoutineList(db,page.items)
+      return json(page)
+    }
     const items=await view(db,table,session)
-    return json({items:table==='routines'?items.filter(x=>x.enabled!==0):items})
+    return json({items:table==='routines'?
+      await enrichRoutineList(db,items.filter(x=>x.enabled!==0)):items})
   }
   if(!id&&request.method==='POST'){
     const b=await readBody(request)
@@ -282,6 +318,11 @@ export async function lifeRoute(request,db,path,session){
     return json({ok:true,id},201)
   }
   if(id&&!hexId(id))return bad()
+  if(table==='routines'&&id&&parts[3]==='period'&&request.method==='GET'){
+    const rule=await getObject(db,table,id,session)
+    if(!rule)return json({error:'not_found'},404)
+    return routinePeriodDetail(db,rule,new URL(request.url).searchParams.get('on')||'',session)
+  }
   // Exact one-record lookup is used only when a Today item opens its plan
   // beyond the first five list rows. Keep visibility/household checks in SQL.
   if(id&&request.method==='GET'){
@@ -321,8 +362,50 @@ export async function lifeRoute(request,db,path,session){
     if(snapshotColumns.length&&b.expectedSnapshot!==undefined&&
        b.expectedSnapshot!==JSON.stringify(snapshotColumns.map(c=>current[c]??null)))
       return json({error:'plan_edit_conflict'},409)
-    const fields=['visibility',...catalog[table].columns,...(revisioned?['updated_at']:[])]
-    const args=[visibilityOf(b,session),...vals,...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
+    let resetDue=false,nextDueValue=null
+    if(table==='routines'){
+      let oldConfig={},nextConfig={}
+      try{oldConfig=JSON.parse(current.repeat_config||'{}')}catch{}
+      try{nextConfig=JSON.parse(vals[2]||'{}')}catch{}
+      const {_history,_effectiveFrom,...oldRuleConfig}=oldConfig
+      const comparable=(type,c)=>type==='weekly'?
+        {weekdays:c.weekdays,excludeJapaneseHolidays:c.excludeJapaneseHolidays===true}:
+        type==='monthly'?{day:c.day}:
+        type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
+      const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
+        JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
+      const changed=vals[0]!==current.title||vals[1]!==current.repeat_type||
+        vals[3]!==current.anchor_date||configChanged||
+        vals[5]!==current.subject_profile_id||vals[6]!==current.health_record_type||
+        visibilityOf(b,session)!==current.visibility
+      const scheduleChanged=vals[1]!==current.repeat_type||
+        vals[3]!==current.anchor_date||configChanged
+      if(changed){
+        const day=jstToday(),start=oldConfig._effectiveFrom||current.anchor_date
+        const previous=Array.isArray(oldConfig._history)?oldConfig._history.slice(-39):[]
+        if(start<day)previous.push({
+          from:start,until:day,title:current.title,repeatType:current.repeat_type,
+          repeatConfig:oldRuleConfig,anchorDate:current.anchor_date,nextDueOn:current.next_due_on,
+          subjectProfileId:current.subject_profile_id,healthRecordType:current.health_record_type,
+          visibility:current.visibility
+        })
+        nextConfig._history=previous
+        nextConfig._effectiveFrom=day
+      }else{
+        if(Array.isArray(oldConfig._history))nextConfig._history=oldConfig._history
+        if(oldConfig._effectiveFrom)nextConfig._effectiveFrom=oldConfig._effectiveFrom
+      }
+      vals[2]=JSON.stringify(nextConfig)
+      if(scheduleChanged){
+        resetDue=true
+        nextDueValue=vals[1]==='interval'&&nextConfig.anchor==='completion'?
+          addDays(vals[3],Number(nextConfig.days)):null
+      }
+    }
+    const fields=['visibility',...catalog[table].columns,...(resetDue?['next_due_on']:[]),
+      ...(revisioned?['updated_at']:[])]
+    const args=[visibilityOf(b,session),...vals,...(resetDue?[nextDueValue]:[]),
+      ...(revisioned?[iso()]:[]),id,session.household_id,session.user_id]
     let condition=''
     if(revisioned){
       condition=' AND updated_at=?'+(args.length+1)

@@ -15,7 +15,7 @@ const form=reactive({
  eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
- repeatAnchor:String(config.anchor||'fixed'),anchorDate:String(data.anchor_date||''),
+ repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),anchorDate:String(data.anchor_date||''),
  subjectProfileId:String(data.subject_profile_id||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
@@ -46,7 +46,7 @@ function values(){
    const type=form.repeatType
    const configNext=type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor}:
      type==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
-     type==='weekly'?{weekdays:Array.isArray(prev.weekdays)?prev.weekdays:[new Date().getDay()],
+     type==='weekly'?{weekdays:[Number(form.weekday)],
        excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
      type==='monthly'?{day:prev.day||Number(form.anchorDate.slice(-2))||1}:{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
@@ -101,6 +101,9 @@ async function save(){
   </template>
   <template v-else-if="kind==='routines'">
    <label>重复频率<select v-model="form.repeatType"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周（保留原设定星期）</option><option value="monthly">每月</option><option value="interval">间隔</option></select></label>
+   <label v-if="form.repeatType==='weekly'">每周执行日<select v-model.number="form.weekday" aria-label="每周执行星期">
+     <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
+   </select></label>
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
