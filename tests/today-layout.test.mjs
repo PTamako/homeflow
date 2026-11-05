@@ -73,7 +73,7 @@ test('Today only shows completions from the current JST day, without archive tog
  assert.match(app,/return t\.completedAt\?tokyoDate\(t\.completedAt\)===now:/);
  assert.match(app,/return '\/tasks\?status=all&today='\+date/);
  assert.match(app,/watch\(\[todayCategory,currentJstDay\]/);
- assert.doesNotMatch(app,/<b>事项分类<\\/b>/,'the filter tabs should not have a redundant title');
+ assert.ok(!app.includes('<b>事项分类</b>'),'the filter tabs should not have a redundant title');
  assert.match(app,/const visibleTasks=computed/);
 })
 
