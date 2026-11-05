@@ -234,9 +234,14 @@ const allToday=computed<TodayEntry[]>(()=>{
     key:'plan:'+plan.kind+':'+plan.id+(plan.periodKey?':'+plan.periodKey:''),kind:plan.kind,
     title:plan.title,done:plan.done,plan
   }))
+  // Sort the merged list as ONE timeline, not by each source's original result order.
+  // Tasks and overdue routine periods retain their original scheduled due dates.
+  const dueOn=(row:TodayEntry)=>row.task?.dueOn||row.routine?.currentPeriodOn||
+    row.routine?.occurrenceOn||row.plan?.dueOn||'9999-12-31'
   return [...standard,...recurring,...plans]
     .filter(row=>!dismissedTodayKeys.value.includes(row.key))
-    .sort((a,b)=>Number(a.done)-Number(b.done))
+    .sort((a,b)=>Number(a.done)-Number(b.done)||
+      dueOn(a).localeCompare(dueOn(b))||a.key.localeCompare(b.key))
 })
 const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
 const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
