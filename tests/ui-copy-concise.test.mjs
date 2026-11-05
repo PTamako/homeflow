@@ -16,7 +16,7 @@ const uiFiles=[
  'src/components/LifeItemEditor.vue'
 ]
 const ui=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
-const template=path=>ui(path).split('<template>')[1]?.split('</template>')[0]||''
+const template=path=>{const source=ui(path),start=source.indexOf('<template>'),end=source.lastIndexOf('</template>');return start>=0&&end>start?source.slice(start,end):''}
 
 test('customer-facing copy stays concise and free of implementation notes',()=>{
  for(const path of uiFiles){
