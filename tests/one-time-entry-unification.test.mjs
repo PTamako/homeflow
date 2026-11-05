@@ -3,11 +3,17 @@ import {readFileSync} from 'node:fs'
 import test from 'node:test'
 const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8')
 
-test('Today and Plans use exactly one shared one-time form',()=>{
+test('Today redirects to the single Plans one-time form',()=>{
  const today=read('src/App.vue'),plans=read('src/components/PlanCreator.vue')
+ const life=read('src/components/LifePanel.vue')
  const fields=read('src/components/OneTimeTaskFields.vue')
- assert.match(today,/<OneTimeTaskFields ref="newTaskFields" v-model="newTask" :profiles="profiles"\/>/)
+ assert.match(today,/@click="openNewTaskInPlans">＋ 新增待办/)
+ assert.match(today,/navigateTab\('plans'\)[\s\S]*?openPlanCreatorOnNavigate\.value=true/)
+ assert.match(today,/:open-plan-creator="openPlanCreatorOnNavigate"/)
+ assert.match(life,/:open-on-mount="props.openPlanCreator"/)
+ assert.match(plans,/const opened=ref\(!!props.openOnMount\)/)
  assert.match(plans,/<OneTimeTaskFields v-if="form\.repeatType==='once'" v-model="onceDraft" :profiles="profiles"\/>/)
+ assert.doesNotMatch(today,/<OneTimeTaskFields|@submit\.prevent="addTask"|showAddTask/)
  assert.match(fields,/v-model\.trim="model\.title"/)
  assert.match(fields,/v-model="model\.dueOn"/)
  assert.match(fields,/v-model="model\.remindEnabled"/)
@@ -19,11 +25,11 @@ test('Today and Plans use exactly one shared one-time form',()=>{
  assert.match(fields,/v-if="linkedPet"/)
  assert.match(fields,/model\.value\.healthRecordType=linkedPet\.value\?'other':''/)
 })
-test('both entry points use one task payload, private default and the same /api/tasks persistence',()=>{
+
+test('the sole creation entry keeps the existing one-time task payload and private defaults',()=>{
  const today=read('src/App.vue'),plans=read('src/components/PlanCreator.vue')
  const model=read('src/one-time-task.ts')
- assert.match(today,/oneTimeTaskPayload\(newTask\.value,isPet\(newTask\.value\.subjectProfileId\)\)/)
- assert.match(today,/sendOrQueueTask\(user\.value\.id,'create',payload\)/)
+ assert.doesNotMatch(today,/oneTimeTaskPayload\(newTask\.value/)
  assert.match(plans,/send\('\/tasks',oneTimeTaskPayload\(onceDraft\.value,oncePet\.value\)\)/)
  assert.match(model,/visibility:'private',dueOn:today,remindEnabled:true/)
  assert.match(model,/remindEnabled:!!draft\.dueOn&&draft\.remindEnabled/)
