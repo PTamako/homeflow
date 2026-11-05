@@ -95,11 +95,14 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  assert.equal(result.items.find(x=>x.kind==='wish').overdue,true)
  assert.equal(db.batches.length,2)
  assert.equal(db.batches[0].length,4)
- assert.equal(db.batches[1].length,2)
+ assert.equal(db.batches[1].length,3)
  assert.ok(db.batches[0].every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
  assert.ok(db.batches[1].every(q=>q.values[0]==='family'))
  assert.ok(db.batches[1].every(q=>q.sql.includes('IN (')),
    'Today history reads must be bounded by visible plan IDs')
+ assert.ok(db.batches[1][0].sql.includes("plan_type='goal'"))
+ assert.ok(db.batches[1][1].sql.includes("plan_type='wish'"))
+ assert.ok(!db.batches[1].some(q=>q.sql.includes(' OR ')),'separate lookups use compound primary keys')
  assert.ok(db.batches.flat().every(q=>!q.sql.includes('finance_links')&&!q.sql.includes('kakebo_')),
    'rendering Today must not query the external Kakebo ledger')
 })
