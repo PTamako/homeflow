@@ -56,7 +56,7 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
    throw Error(hints[data.error]||'任务推送失败，请稍后重试')
   }
   pushTarget.value='';pushMessage.value=''
-  notify('已通知处理人（'+data.sent+' 台设备）')
+  notify(data.inAppOnly?'已发送到处理人的今日通知':'已通知处理人（'+data.sent+' 台设备）')
  }catch(e){error.value=(e as Error).message}
  finally{pushBusyId.value=''}
 }
