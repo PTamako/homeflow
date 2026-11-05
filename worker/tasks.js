@@ -112,6 +112,14 @@ export async function tasksRoute(request,db,path,session) {
     AND deleted_at IS NULL AND (visibility='household' OR creator_user_id=?3)`)
     .bind(match[1],household,who).first()
   if(!task)return json({error:'not_found'},404)
+  if(request.method==='GET'){
+    return json({task:{id:task.id,title:task.title,notes:task.notes,
+      dueOn:task.due_on,visibility:task.visibility,
+      creatorUserId:task.creator_user_id,assigneeUserId:task.assignee_user_id,
+      subjectProfileId:task.subject_profile_id,healthRecordType:task.health_record_type,
+      completedAt:task.completed_at,remindEnabled:task.remind_enabled,
+      updatedAt:task.updated_at}})
+  }
   if(request.method==='PATCH'){
     const b=await readBody(request)
     if(!b)return json({error:'invalid_input'},400)
