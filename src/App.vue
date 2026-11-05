@@ -761,7 +761,7 @@ onBeforeUnmount(()=>{
       <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
-      <LifePanel v-if="tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
+      <LifePanel v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
          :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
