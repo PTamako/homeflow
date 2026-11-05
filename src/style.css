@@ -212,3 +212,13 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
   .today-task-heading{flex-wrap:wrap}
   .task-create-dialog{padding:18px}
 }
+
+/* Today checklist: filters sit at the top with no redundant section heading
+   or global .row-between top margin. Keep existing row dividers. */
+.today-checklist-panel{margin-top:10px;padding-top:14px;padding-bottom:12px}
+.today-checklist-panel>.today-category-tabs{margin:0 0 6px;padding:0;align-items:center}
+.today-checklist-panel>.today-category-tabs button{min-height:32px;padding:6px 11px}
+.today-checklist-panel>.pending{margin-top:0}
+@media(max-width:520px){
+  .today-checklist-panel{padding:14px 18px 12px}
+}
