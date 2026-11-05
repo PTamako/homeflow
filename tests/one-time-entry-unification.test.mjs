@@ -21,7 +21,7 @@ test('Today redirects to the single Plans one-time form',()=>{
  assert.match(fields,/v-model="model\.healthRecordType"/)
  assert.match(fields,/v-model="model\.visibility"/)
  assert.match(fields,/aria-label="清空计划日期"/)
- assert.match(fields,/未指定日期的任务将保存到「计划 → 待安排」/)
+ assert.match(fields,/不选日期将存入「待安排」/)
  assert.match(fields,/v-if="linkedPet"/)
  assert.match(fields,/model\.value\.healthRecordType=linkedPet\.value\?'other':''/)
 })
