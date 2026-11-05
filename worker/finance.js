@@ -208,7 +208,7 @@ export async function financeRoute(request,env,path,session){
      (shop&&(request.method==='POST'||request.method==='DELETE'))){
     // Owner may see shared items but never a different member's private item.
     const shoppingId=(shopList||shop)[1]
-    const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id,quantity,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
+    const item=await db.prepare('SELECT id,created_by,visibility,ledger_entry_id,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
       .bind(shoppingId,h).first()
     if(!item)return json({error:'not_found'},404)
     if(item.created_by!==user&&item.visibility!=='household')return json({error:'forbidden'},403)
@@ -227,12 +227,8 @@ export async function financeRoute(request,env,path,session){
           return {...row,entry:entry?.type==='expense'?entry:null,
             needsReview:!entry||entry.type!=='expense'}
         })
-        const purchasedCount=rows.reduce((sum,x)=>sum+(Number(x.purchaseQuantity)||0),0)
-        const unknownCount=rows.filter(x=>x.purchaseQuantity==null).length
         return json({items:links,linkedAmount:links.reduce((sum,x)=>sum+Number(x.entry?.amount||0),0),
-          purchasedCount,remainingCount:Math.max(0,item.quantity-purchasedCount),
-          unknownCount,plannedQuantity:item.quantity,completed:!!item.completed_at,
-          needsReview:links.some(x=>x.needsReview),readOnly:true})
+          completed:!!item.completed_at,needsReview:links.some(x=>x.needsReview),readOnly:true})
       }catch(error){return financeError(error)}
     }
 
@@ -248,15 +244,10 @@ export async function financeRoute(request,env,path,session){
         db.prepare('UPDATE shopping_items SET '+
           'ledger_entry_id=(SELECT external_entry_id FROM shopping_expense_links '+
           'WHERE household_id=?1 AND shopping_id=?2 ORDER BY linked_at,external_entry_id LIMIT 1),'+
-          'completed_at=CASE '+
-          'WHEN NOT EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2) THEN NULL '+
-          'WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2 AND purchase_quantity IS NULL) THEN completed_at '+
-          'WHEN (SELECT COALESCE(SUM(purchase_quantity),0) FROM shopping_expense_links WHERE shopping_id=?2)>=quantity '+
+          // A shopping item stays completed while at least one verified receipt is linked.
+          'completed_at=CASE WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2) '+
           'THEN COALESCE(completed_at,?4) ELSE NULL END,'+
-          'completed_by=CASE '+
-          'WHEN NOT EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2) THEN NULL '+
-          'WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2 AND purchase_quantity IS NULL) THEN completed_by '+
-          'WHEN (SELECT COALESCE(SUM(purchase_quantity),0) FROM shopping_expense_links WHERE shopping_id=?2)>=quantity '+
+          'completed_by=CASE WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?2) '+
           'THEN COALESCE(completed_by,?3) ELSE NULL END '+
           "WHERE id=?2 AND household_id=?1 AND (visibility='household' OR created_by=?3)")
           .bind(h,item.id,user,new Date().toISOString())
@@ -280,18 +271,13 @@ export async function financeRoute(request,env,path,session){
           .bind(h,item.id,entryId,user,purchaseQuantity),
         db.prepare('UPDATE shopping_items SET '+
           'ledger_entry_id=COALESCE(ledger_entry_id,?1),'+
-          'completed_at=CASE '+
-          'WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?4 AND purchase_quantity IS NULL) '+
-          'OR (SELECT COALESCE(SUM(purchase_quantity),0) FROM shopping_expense_links WHERE shopping_id=?4)>=quantity '+
-          'THEN COALESCE(completed_at,?2) ELSE NULL END,'+
-          'completed_by=CASE '+
-          'WHEN EXISTS(SELECT 1 FROM shopping_expense_links WHERE shopping_id=?4 AND purchase_quantity IS NULL) '+
-          'OR (SELECT COALESCE(SUM(purchase_quantity),0) FROM shopping_expense_links WHERE shopping_id=?4)>=quantity '+
-          'THEN COALESCE(completed_by,?3) ELSE NULL END '+
+          // A verified receipt completes this item regardless of its planned quantity.
+          'completed_at=COALESCE(completed_at,?2),'+
+          'completed_by=COALESCE(completed_by,?3) '+
           "WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3)")
           .bind(entryId,stamp,user,item.id,h)
       ])
-      return json({ok:true,linked:true,quantityRecorded:purchaseQuantity!==null})
+      return json({ok:true,linked:true})
     }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/candidates'&&request.method==='GET'){

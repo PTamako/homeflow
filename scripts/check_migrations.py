@@ -30,6 +30,7 @@ MIGRATIONS=[
     "0023_today_dismissals.sql",
     "0024_shopping_assignee.sql",
     "0025_daily_notification_inbox.sql",
+    "0026_shopping_any_receipt_complete.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"

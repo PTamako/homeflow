@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -638,55 +638,55 @@ test('on-demand monthly plan review uses JST bounds and hides the other member p
  sqlite.close()
 })
 
-test('partial shopping quantity remains active until enough verified items are linked',async()=>{
- const {db,sqlite}=makeDb()
- const {env,amount}=mockedProductionLedger(db,sqlite)
- amount.expenses.push({id:124,date:'2026-11-04',type:'expense',amount:1400,merchant:'第二家店'})
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
- const registered=await ask('/api/auth/bootstrap','POST',{
-   loginName:'partial-shopping-owner',password:'another-long-test-password-123',
-   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
- assert.equal(registered.status,201)
- const owner=extractCookie(registered.cookie)
- const item=await ask('/api/shopping','POST',{
-   title:'分批购买三件',quantity:3,visibility:'household'},owner)
- assert.equal(item.status,201)
- const base='/api/finance/shopping/'+item.body.id
- const first=await ask(base+'/link','POST',{entryId:123,purchaseQuantity:1},owner)
- assert.equal(first.status,200,JSON.stringify(first.body))
- const partial=sqlite.prepare('SELECT completed_at AS done FROM shopping_items WHERE id=?')
-   .get(item.body.id)
- assert.equal(partial.done,null)
- const progress=await ask(base+'/links','GET',undefined,owner)
- assert.equal(progress.status,200,JSON.stringify(progress.body))
- assert.equal(progress.body.purchasedCount,1)
- assert.equal(progress.body.remainingCount,2)
- assert.equal(progress.body.unknownCount,0)
- const second=await ask(base+'/link','POST',{entryId:124,purchaseQuantity:2},owner)
- assert.equal(second.status,200,JSON.stringify(second.body))
- assert.ok(sqlite.prepare('SELECT completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id).done)
- const total=(await ask(base+'/links','GET',undefined,owner)).body
- assert.equal(total.purchasedCount,3)
- assert.equal(total.remainingCount,0)
- assert.equal(total.completed,true)
- assert.equal((await ask(base+'/link','POST',{entryId:123,purchaseQuantity:8},owner)).status,200)
- assert.equal((await ask(base+'/links','GET',undefined,owner)).body.purchasedCount,3,
-   'repeating the same receipt must not inflate quantity')
- const invalid=await ask(base+'/link','POST',{entryId:124,purchaseQuantity:0},owner)
- assert.equal(invalid.status,400)
- const saved=(await ask('/api/portable','GET',undefined,owner)).body.records.shoppingExpenseLinks
- assert.deepEqual(saved.map(x=>x.purchase_quantity).sort(),[1,2])
- const undo=await ask(base+'/link','DELETE',{entryId:124},owner)
- assert.equal(undo.status,200)
- assert.equal(sqlite.prepare('SELECT completed_at AS done FROM shopping_items WHERE id=?').get(item.body.id).done,null)
- assert.equal((await ask(base+'/links','GET',undefined,owner)).body.remainingCount,2)
- const legacy=await ask('/api/shopping','POST',{title:'旧式已购买',quantity:5,visibility:'household'},owner)
- assert.equal(legacy.status,201)
- assert.equal((await ask('/api/finance/shopping/'+legacy.body.id+'/link','POST',{entryId:123},owner)).status,200)
- const oldRows=(await ask('/api/finance/shopping/'+legacy.body.id+'/links','GET',undefined,owner)).body
- assert.equal(oldRows.unknownCount,1,'old integrations are preserved without inventing quantities')
- assert.equal(oldRows.completed,true)
- sqlite.close()
+test('one verified receipt completes multiple shopping items without per-item allocation',async()=>{
+  const {db,sqlite}=makeDb()
+  const {env,amount}=mockedProductionLedger(db,sqlite)
+  amount.expenses.push({id:124,date:'2026-11-04',type:'expense',amount:1400,merchant:'第二家店'})
+  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+  const registered=await ask('/api/auth/bootstrap','POST',{
+    loginName:'shared-receipt-owner',password:'another-long-test-password-123',
+    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+  assert.equal(registered.status,201)
+  const owner=extractCookie(registered.cookie)
+  const firstItem=await ask('/api/shopping','POST',{title:'猫粮',quantity:3,visibility:'household'},owner)
+  const secondItem=await ask('/api/shopping','POST',{title:'洗衣液',quantity:1,visibility:'household'},owner)
+  assert.equal(firstItem.status,201)
+  assert.equal(secondItem.status,201)
+  const first='/api/finance/shopping/'+firstItem.body.id
+  const second='/api/finance/shopping/'+secondItem.body.id
+  // A single receipt completes each independently; item quantity is informational.
+  for(const base of [first,second]){
+    const linked=await ask(base+'/link','POST',{entryId:123},owner)
+    assert.equal(linked.status,200,JSON.stringify(linked.body))
+    const links=await ask(base+'/links','GET',undefined,owner)
+    assert.equal(links.status,200,JSON.stringify(links.body))
+    assert.equal(links.body.items.length,1)
+    assert.equal(links.body.completed,true)
+  }
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links WHERE external_entry_id=?')
+    .get('123').n,2,'one receipt is independently associated with two shopping items')
+  const firstDone=sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?')
+    .get(firstItem.body.id).completed_at
+  assert.ok(firstDone)
+  assert.ok(sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?')
+    .get(secondItem.body.id).completed_at)
+  assert.equal((await ask(first+'/link','POST',{entryId:123},owner)).status,200)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM shopping_expense_links WHERE shopping_id=?')
+    .get(firstItem.body.id).n,1,'relinking the same receipt is idempotent')
+  // Removing one of multiple receipts must not reopen the item; removing the last does.
+  assert.equal((await ask(first+'/link','POST',{entryId:124},owner)).status,200)
+  assert.equal((await ask(first+'/link','DELETE',{entryId:123},owner)).status,200)
+  assert.equal(sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?')
+    .get(firstItem.body.id).completed_at,firstDone)
+  assert.equal((await ask(first+'/link','DELETE',{entryId:124},owner)).status,200)
+  assert.equal(sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?')
+    .get(firstItem.body.id).completed_at,null)
+  assert.ok(sqlite.prepare('SELECT completed_at FROM shopping_items WHERE id=?')
+    .get(secondItem.body.id).completed_at,'other items sharing the receipt stay completed')
+  const saved=(await ask('/api/portable','GET',undefined,owner)).body.records.shoppingExpenseLinks
+  assert.equal(saved.length,1)
+  assert.equal(saved[0].purchase_quantity,null,'legacy quantity data stays nullable')
+  sqlite.close()
 })
 
 test('shopping supports two verified receipts, partial unlink, and source deletion review',async()=>{
