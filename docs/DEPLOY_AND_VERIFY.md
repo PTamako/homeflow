@@ -109,3 +109,8 @@
 - 计划删除不会硬删除原行或关联消费、储值周期结算、旅行进度和回忆照片；管理→回收箱按需每页 5 条查询，只有记录创建者能恢复。旧版硬删除的数据不能从空回收箱恢复，需检查历史 ZIP 备份。
 - 便携备份按需分页导出，并保留已删除事项的 deleted_at 状态；恢复只补充缺失记录，不覆盖当前已有数据。
 - 一律不因自动化 CI 通过就将真实 iPhone/iPad 通知、双账号、离线、家計簿交易核对或 ZIP 恢复标为真实验收完成；如未同意计费条件，保持 R2 未启用。
+
+## 2026-11-05 · D1 migration tracking repair and low-cost identity check
+- Verified independently that both Production and Preview already contained the five-column today_dismissals table with its composite primary key. Inserted *only* the missing migration tracker name, after Preview verification, then Production; both now record 24/24 official migration names. No schema SQL was replayed and no business records were changed.
+- Worker health verifies both the physical environment identity and latest migration tracker file name (`0023_today_dismissals.sql`). A per-binding 15-second success-only cache reduces repeated identity reads; missing, mismatched or unrecognized databases fail closed. No user records, sessions, or tokens are cached.
+- Updating migrations requires first applying the new migration safely in Preview and Production and then changing the Worker expected migration marker in the same validated release. Running the Worker against a database missing that marker intentionally returns HTTP 503.

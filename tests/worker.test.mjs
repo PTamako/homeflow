@@ -3,11 +3,11 @@ import test from 'node:test'
 import worker from '../worker/index.js'
 import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
 const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
-function environment(name='preview',database='homeflow-preview'){
+function environment(name='preview',database='homeflow-preview',migration='0023_today_dismissals.sql'){
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},
-      first:async()=>sql.includes('environment_identity')?{database_name:database}:null,
+      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -21,6 +21,22 @@ test('health confirms D1 identity',async()=>{
 test('preview fails closed when attached to production',async()=>{
   const res=await worker.fetch(request('/api/health'),environment('preview','homeflow'))
   assert.equal(res.status,503)
+})
+test('missing latest D1 migration fails closed even when the database identity matches',async()=>{
+  const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview','0022_recycle_plans.sql'))
+  assert.equal(res.status,503)
+})
+test('validated binding identity is reused briefly but never shared across different bindings',async()=>{
+  let count=0
+  const env=environment()
+  const original=env.DB.prepare
+  env.DB.prepare=(sql)=>{count++;return original(sql)}
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
+  assert.equal(count,1)
+  const changed={...env,APP_ENV:'production'}
+  assert.equal((await worker.fetch(request('/api/health'),changed)).status,503)
+  assert.equal(count,2)
 })
 test('unknown environment fails closed',async()=>{
   const res=await worker.fetch(request('/api/health'),environment('staging'))
