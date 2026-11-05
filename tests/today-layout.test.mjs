@@ -207,3 +207,12 @@ test('Today plan digest does not silently drop items after the first 100 already
  assert.match(source,/return json\(\{date,items:result,goalReviews:/)
  assert.doesNotMatch(source,/items:result\.slice\(0,100\)/)
 })
+
+
+test('Today notification and task heading use compact local spacing',()=>{
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
+ assert.ok(app.includes('class="section-title today-task-heading"'))
+ assert.match(css,/\.today-task-heading\{margin:10px 0 8px;gap:12px;align-items:center\}/)
+ assert.match(css,/\.today-task-heading h2\{margin:0\}/)
+ assert.match(css,/\.today-checklist-panel\{margin-top:10px;/)
+})
