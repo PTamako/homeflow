@@ -102,7 +102,7 @@ const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tok
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
-const error=ref(''),showDone=ref(false)
+const error=ref('')
 const {toast,notify,clear:clearToast}=usePageToast()
 const pendingTasks=ref<PendingTaskOp[]>([]),syncMessage=ref('')
 const openPetId=ref<string|null>(null)
@@ -117,7 +117,7 @@ function tokyoDate(timestamp:string){
 const currentJstDay=ref(tokyoToday())
 const visibleTasks=computed(()=>tasks.value.filter(t=>{
  const now=currentJstDay.value
- return t.completedAt?showDone.value||tokyoDate(t.completedAt)===now:
+ return t.completedAt?tokyoDate(t.completedAt)===now:
    !!t.dueOn&&t.dueOn<=now
 }))
 const allToday=computed<TodayEntry[]>(()=>{
@@ -163,8 +163,7 @@ function changedEditingSubject(){
 const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
-watch([todayCategory,showDone,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
-watch(showDone,()=>{if(user.value&&tab.value==='today')void loadTasks()})
+watch([todayCategory,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
@@ -303,7 +302,7 @@ async function logout(){
 }
 function todayTasksUrl(){
  const date=tokyoToday()
- return '/tasks?status=all&today='+date+(showDone.value?'&showHistory=1':'')
+ return '/tasks?status=all&today='+date
 }
 async function loadTasks(){tasks.value=(await api(todayTasksUrl())).tasks||[]}
 async function loadTodayRoutines(){
@@ -589,7 +588,6 @@ onBeforeUnmount(()=>{
           </div>
           <div class="row-between">
             <b>事项分类</b>
-            <label class="inline"><input v-model="showDone" type="checkbox"/> 显示历史完成</label>
           </div>
           <div class="today-category-tabs" role="group" aria-label="今日待办分类">
             <button v-for="category in visibleTodayCategories" :key="category.id" type="button"
