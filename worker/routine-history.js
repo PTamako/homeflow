@@ -99,15 +99,32 @@ export async function routineHistory(db,request,session){
   const dateClause=dates.length?'m.occurrence_on IN ('+dates.map(()=>'?').join(',')+')':'0'
   const completionClause=completionIds.length?
     'm.routine_id IN ('+completionIds.map(()=>'?').join(',')+') AND m.occurrence_on<=?':'0'
+  // Legacy marks (from v1) are stored on the action day, rather than the due
+  // day. The bounded recent window captures those without rewriting old rows.
+  const oldest=dates.length?[...dates].sort()[0]:today
   const cutoff=cursor?cursor.date:addDays(today,3651)
+  const legacyEnd=cursor?addDays(cursor.date,1):today
   const {results:markRows}=await db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at
     FROM routine_marks m JOIN routines r ON r.id=m.routine_id
     WHERE r.household_id=? AND (r.visibility='household' OR r.created_by=?)
-      AND (${dateClause} OR (${completionClause}))
+      AND (${dateClause} OR (${completionClause}) OR
+        (m.occurrence_on>=? AND m.occurrence_on<=?))
     ORDER BY m.occurrence_on DESC LIMIT 1500`)
     .bind(session.household_id,session.user_id,...dates,...completionIds,
-      ...(completionIds.length?[cutoff]:[])).all()
+      ...(completionIds.length?[cutoff]:[]),oldest,legacyEnd).all()
   const marks=new Map((markRows||[]).map(m=>[markerKey(m.routine_id,m.occurrence_on),m]))
+  const legacy=new Map()
+  const versionsById=new Map(rules.map(r=>[r.id,routineVersions(r)]))
+  for(const mark of markRows||[]){
+    if(periodStatus(mark)==='pending')continue
+    const variants=versionsById.get(mark.routine_id)||[]
+    const version=variants.find(v=>mark.occurrence_on>=v.validFrom&&
+      (!v.validUntil||mark.occurrence_on<v.validUntil))
+    if(!version||isCompletionInterval(version))continue
+    const due=currentRoutinePeriod(version,mark.occurrence_on)
+    if(due&&due!==mark.occurrence_on&&!marks.has(markerKey(version.id,due)))
+      legacy.set(markerKey(version.id,due),mark)
+  }
   // Completion-anchored intervals cannot safely infer old uncompleted cycles.
   // Their real completed/skipped periods are taken directly from marks.
   const byId=new Map(rules.map(r=>[r.id,routineVersions(r)]))
@@ -124,7 +141,7 @@ export async function routineHistory(db,request,session){
   for(const {rule,due} of candidates){
     if((range&&(due<range.start||due>=range.end))||
       (cursor&&(due>cursor.date||(due===cursor.date&&rule.id>=cursor.id))))continue
-    const mark=marks.get(markerKey(rule.id,due))
+    const mark=marks.get(markerKey(rule.id,due))||legacy.get(markerKey(rule.id,due))
     const state=statusOf(mark)
     const pastVersion=!!rule.validUntil&&rule.validUntil<=today&&due<rule.validUntil
     if(state==='pending'&&!pastVersion&&!isClosedRoutinePeriod(rule,due,today))continue
@@ -132,6 +149,7 @@ export async function routineHistory(db,request,session){
       repeat_config:rule.repeat_config,subject_profile_id:rule.subject_profile_id,
       health_record_type:rule.health_record_type,visibility:rule.visibility,
       created_by:rule.created_by,status:state==='pending'?'missed':state,
+      markOccurrenceOn:mark?.occurrence_on||null,
       completedAt:mark?.completed_at||null,completedOn:markDate(mark),
       skippedAt:mark?.skipped_at||null})
   }
