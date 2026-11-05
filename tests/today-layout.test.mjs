@@ -119,3 +119,14 @@ test('undated one-time plan stays in pending list and resets creation checkbox',
  assert.match(life,/planType\.value=unscheduled\?'unscheduled':kind/)
  assert.match(life,/notify\(unscheduled\?'已添加到待安排'/)
 })
+
+test('today provides an accessible clear button for optional plan dates',()=>{
+ assert.ok(app.includes('id="new-task-date-label"'),'date label needs an accessible target')
+ assert.ok(app.includes('<DateField v-model="due" aria-labelledby="new-task-date-label" />'))
+ assert.ok(app.includes('type="button" class="task-date-clear" aria-label="清空计划日期" @click="due=\'\'"'),'clear must not submit the form')
+ assert.ok(app.includes('dueOn:due.value||null'),'a cleared date must be saved as null')
+ assert.ok(app.includes('const unscheduled=!due.value'),'undated tasks should go to Plans')
+ assert.ok(app.includes('v-if="!due" class="task-object-hint"'),'explain where undated tasks go')
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8')
+ assert.ok(css.includes('.task-date-control{display:grid;gap:7px'),'the picker and clear control must fit on iPhone')
+})
