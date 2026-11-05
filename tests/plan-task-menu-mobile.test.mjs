@@ -9,22 +9,33 @@ const task=life.indexOf('<div v-for="t in oneTimePlans"',start)
 const routineMarkup=life.slice(start,task)
 const taskMarkup=life.slice(task,life.indexOf('<p v-if="!routines.length',task))
 
-test('only one overflow trigger per task row, without clipped floating menus',()=>{
+test('all task detail rows use blue/red swipe rails and preserve More only for extras',()=>{
  assert.ok(start>0&&task>start)
  for(const [name,markup] of [['routine',routineMarkup],['task',taskMarkup]]){
-  assert.match(markup,/:show-trigger="false"/,name+' hides the duplicate swipe ellipsis')
-  assert.match(markup,/class="routine-more-trigger"/,name+' renders one visible ellipsis')
-  assert.match(markup,/class="routine-inline-actions"/,name+' expands actions below swipe row')
-  assert.doesNotMatch(markup,/<details class="routine-menu">/,name+' removes the floating details dropdown')
-  assert.match(markup,/aria-expanded="expandedTaskMenu===/,name+' controls menu accessibility')
-  assert.match(markup,/<\/SwipeActions>\s*<div v-if="expandedTaskMenu===/,name+' keeps menu outside clipped swipe container')
+  assert.doesNotMatch(markup,/:show-trigger="false"/,name+' must show colored swipe rails')
+  assert.match(markup,/class="routine-more-trigger"/,name+' retains contextual More')
+  assert.match(markup,/class="routine-inline-actions"/,name+' expands extra actions beneath row')
+  assert.doesNotMatch(markup,/<details class="routine-menu">/)
+  assert.match(markup,/<\/SwipeActions>\s*<div v-if="expandedTaskMenu===/)
  }
- assert.doesNotMatch(life,/\.routine-menu-items\{position:absolute/)
- assert.match(life,/\.routine-inline-actions\{display:flex/)
+ const routineExtras=routineMarkup.split('class="routine-inline-actions"')[1]?.split('</div>')[0]||''
+ const taskExtras=taskMarkup.split('class="routine-inline-actions"')[1]?.split('</div>')[0]||''
+ assert.ok(routineExtras.includes('提醒设置')&&routineExtras.includes('跳过本期'))
+ assert.ok(taskExtras.includes('提醒设置'))
+ for(const extras of [routineExtras,taskExtras]){
+  assert.ok(!extras.includes('>编辑</button>'))
+  assert.ok(!extras.includes('>删除</button>'))
+ }
+ assert.match(taskMarkup,/v-if="planScope==='active'&&!!t\.dueOn"/)
  assert.match(swipe,/showTrigger\?:boolean/)
  assert.match(swipe,/showTrigger:true/)
+ assert.match(swipe,/class="swipe-stripes"/)
+ assert.match(swipe,/class="stripe-edit"/)
+ assert.match(swipe,/class="stripe-delete"/)
+ assert.match(swipe,/\.stripe-edit\{background:#558bc9\}/)
+ assert.match(swipe,/\.stripe-delete\{background:#d76178\}/)
+ assert.doesNotMatch(swipe,/<AppIcon name="ellipsis"/)
  assert.match(swipe,/v-if="showTrigger&&!opened"/)
- assert.match(swipe,/paddingRight:showTrigger\?'30px':'0px'/)
 })
 test('all actions remain reachable: reminders, skip, edit, delete and completion',()=>{
  assert.match(routineMarkup,/toggleReminderEditor\('routine',r\.id\)/)
