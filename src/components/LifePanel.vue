@@ -12,6 +12,7 @@ import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
 import {uniquePlanRows} from '../plan-list-identity.mjs'
+import {sortPlanTasks} from '../plan-task-sort.mjs'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
@@ -256,6 +257,12 @@ const anniversaryYear=ref(''),anniversaryMonth=ref('')
 const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
   items.value.slice(0,anniversaryVisibleCount.value))
 const visibleShopping=computed(()=>other.value)
+const taskPage=ref(0)
+const taskRows=computed(()=>sortPlanTasks(
+  planType.value==='unscheduled'?[]:routines.value,oneTimePlans.value,planScope.value))
+const visibleTaskRows=computed(()=>taskRows.value.slice(taskPage.value*pageLimit,(taskPage.value+1)*pageLimit))
+const canNextTaskPage=computed(()=>taskRows.value.length>(taskPage.value+1)*pageLimit||
+  !!listCursors.value.tasks||(planType.value!=='unscheduled'&&!!listCursors.value.routines))
 
 function listPath(kind:string,cursor?:string|null){
   const q=new URLSearchParams({limit:String(pageLimit)})
@@ -273,6 +280,8 @@ function listPath(kind:string,cursor?:string|null){
       q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)
     }
   }
+  if((kind==='routines'||kind==='tasks')&&planScope.value==='active'&&planType.value!=='unscheduled')
+    q.set('order','due')
   if(cursor)q.set('cursor',cursor)
   return '/'+(kind==='routines'&&planScope.value==='history'?'routines/period-history':kind)+'?'+q.toString()
 }
@@ -343,6 +352,22 @@ async function loadMore(kind:string){
   finally{pageBusy.value[kind]=false}
 }
 
+async function nextTaskPage(){
+  if(!canNextTaskPage.value)return
+  // Each source is individually ordered by the same due-date rule. Load enough
+  // of BOTH streams before advancing, so an unseen urgent item is not skipped.
+  const needed=(taskPage.value+2)*pageLimit
+  const kinds=planType.value==='unscheduled'?['tasks']:['routines','tasks']
+  await Promise.all(kinds.map(async kind=>{
+    while((kind==='routines'?routines.value:oneTimePlans.value).length<needed&&
+      listCursors.value[kind]&&!pageBusy.value[kind]){
+      const before=listCursors.value[kind]
+      await loadMore(kind)
+      if(before===listCursors.value[kind])break
+    }
+  }))
+  if(taskRows.value.length>(taskPage.value+1)*pageLimit)taskPage.value++
+}
 function toggleLedger(id:string){ledgerPickerId.value=ledgerPickerId.value===id?null:id;editing.value=null}
 
 function milestone(item:Row){return anniversaryMilestoneLabel(item,displayedDay.value)}
@@ -481,6 +506,11 @@ async function focusExactPlan(requestId:number){
       tripDetail.value=response.trip;tripProgress.value=response.progress||[]
     }
     if(kind==='memory')await loadPhotos(requestId)
+    if(kind==='task'||kind==='routine'){
+      const index=taskRows.value.findIndex(entry=>entry.kind===kind&&entry.item.id===id&&
+        (kind!=='routine'||!item.periodOn||entry.item.periodOn===item.periodOn))
+      if(index>=0)taskPage.value=Math.floor(index/pageLimit)
+    }
     await nextTick()
     if(requestId===activeFetch&&focusedItemId.value===id){
       // Wait until rendering settles; keep the selected row below the iOS safe area.
@@ -548,6 +578,7 @@ async function fetchMode(){
       listCursors.value.anniversaries=past?data.nextCursor||null:null
       await focusExactPlan(requestId)
     }else if(props.mode==='plans'){
+      taskPage.value=0
       // Only read the category that the user actually opened. The full view
       // still fetches all six; wishes also need goals for linked funding labels.
       const selected=planType.value
@@ -876,8 +907,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
-          <template v-if="planScope==='history'">
-            <div v-for="r in (planType==='unscheduled'?[]:routines)"
+          <template v-for="entry in visibleTaskRows" :key="entry.kind+':'+entry.item.id+':'+(entry.item.periodOn||'')">
+          <template v-if="entry.kind==='routine'&&planScope==='history'">
+            <div v-for="r in [entry.item]"
               :key="r.id+':'+r.periodOn" :id="'plan-item-'+r.id+'-'+r.periodOn"
               class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
               <div class="plan-task-head">
@@ -894,8 +926,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </div>
           </template>
-          <template v-else>
-            <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id"
+          <template v-else-if="entry.kind==='routine'">
+            <div v-for="r in [entry.item]" :key="r.id"
               :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
               <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
                 @edit="edit('routines',r)" @delete="removeItem('routines',r)">
@@ -946,7 +978,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 kind="routines" :item="r" :profiles="props.profiles" :members="props.members" :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
             </div>
           </template>
-          <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
+          <template v-else>
+          <div v-for="t in [entry.item]" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
@@ -1040,11 +1073,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </form>
           </div>
+          </template>
+          </template>
           <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planType==='unscheduled'?'没有待安排事项':planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
-          <button v-if="listCursors.routines" class="life-more" type="button" :disabled="pageBusy.routines"
-            @click="loadMore('routines')">加载更多定期任务</button>
-          <button v-if="listCursors.tasks" class="life-more" type="button" :disabled="pageBusy.tasks"
-            @click="loadMore('tasks')">加载更多一次性任务</button>
+          <nav v-if="taskPage>0||canNextTaskPage" class="task-list-pager" aria-label="任务列表分页">
+            <button type="button" :disabled="taskPage===0||pageBusy.routines||pageBusy.tasks"
+              @click="taskPage--">上一页</button>
+            <span>第 {{ taskPage+1 }} 页 · 每页 5 条</span>
+            <button type="button" :disabled="!canNextTaskPage||pageBusy.routines||pageBusy.tasks"
+              @click="nextTaskPage">下一页</button>
+          </nav>
 
         </section>
         <section v-if="planType==='all'||planType==='wish'" class="life-card">
@@ -1450,6 +1488,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
+.task-list-pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 0 4px;font-size:12px;color:#74897a}
+.task-list-pager button{border:1px solid #d3e5d8;border-radius:9px;background:#f4faf6;color:#397e5f;min-height:36px;padding:7px 13px;font-size:12px}
+.task-list-pager button:disabled{opacity:.42}
 /* Each task is one uninterrupted swipe surface (title, metadata and actions).
    Only the outside item owns a separator; no line is painted inside a task. */
 .plan-tasks-card .life-caption{margin:0 0 8px}

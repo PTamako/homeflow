@@ -1,6 +1,7 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
+import {sortPlanTasks,taskUrgencyKey} from '../src/plan-task-sort.mjs'
 import {nextAnniversary,validateRule,addDays} from './recurrence.js'
 import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday,routineVersions} from './routine-periods.js'
 import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
@@ -292,6 +293,26 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
     const filters=listFilters(request.url)
     if(filters?.invalid)return bad()
     if(filters){
+      if(table==='routines'&&filters.scope==='active'&&
+        new URL(request.url).searchParams.get('order')==='due'){
+        // A recurring rule's next occurrence is computed from its recurrence and
+        // completion marks, so sorting by created_at would not reflect urgency.
+        // Reuse one bounded rule query and one batched mark lookup, with no writes.
+        const {results}=await db.prepare(`SELECT * FROM routines
+          WHERE household_id=?1 AND deleted_at IS NULL AND enabled=1
+            AND (visibility='household' OR created_by=?2)
+          ORDER BY created_at DESC LIMIT 250`)
+          .bind(session.household_id,session.user_id).all()
+        const ordered=sortPlanTasks(await enrichRoutineList(db,results||[]),[],'active')
+          .map(entry=>entry.item)
+        const after=filters.cursor?ordered.filter(row=>{
+          const due=taskUrgencyKey('routine',row,'active')
+          return due>filters.cursor.date||(due===filters.cursor.date&&row.id>filters.cursor.id)
+        }):ordered
+        const items=after.slice(0,filters.limit),last=items.at(-1)
+        return json({items,nextCursor:after.length>filters.limit&&last?
+          taskUrgencyKey('routine',last,'active')+'|'+last.id:null})
+      }
       const page=await listPage(db,table,session,filters)
       if(table==='routines'&&filters.scope==='active')
         page.items=await enrichRoutineList(db,page.items)
