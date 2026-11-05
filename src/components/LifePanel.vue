@@ -52,7 +52,8 @@ const financeDetail=ref<{kind:'goal'|'trip';id:string}|null>(null)
 const goalCompletionMarks=ref<string[]>([])
 const focusError=ref('')
 const focusedItemId=computed(()=>props.focusPlanId||'')
-const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value
+const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
+  (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
@@ -387,7 +388,9 @@ async function focusExactPlan(requestId:number){
   if(!id||!endpoints[kind]||props.mode!==destination||
     !/^[0-9a-f-]{36}$/i.test(id))return
   try{
-    const response=await api('/'+endpoints[kind]+'/'+encodeURIComponent(id))
+    const response=await api(kind==='routine'&&planScope.value==='history'&&props.focusPlanPeriodKey?
+      '/routines/'+encodeURIComponent(id)+'/period?on='+encodeURIComponent(props.focusPlanPeriodKey):
+      '/'+endpoints[kind]+'/'+encodeURIComponent(id))
     if(requestId!==activeFetch||props.mode!==destination)return
     const item=kind==='trip'?response.trip:kind==='task'?response.task:response.item
     if(!item?.id)throw Error('找不到对应搜索结果')
@@ -395,7 +398,7 @@ async function focusExactPlan(requestId:number){
         ['monthly','yearly'].includes(item.goal_mode))return
     const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
       kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
-    if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
+    if(!target.value.some(row=>row.id===item.id&&row.periodOn===item.periodOn))target.value=[item,...target.value]
     if(kind==='wish'){
       for(const related of response.linkedGoals||[]){
         if(!goals.value.some(row=>row.id===related.id))goals.value.push(related)
@@ -412,7 +415,7 @@ async function focusExactPlan(requestId:number){
     if(kind==='memory')await loadPhotos(requestId)
     await nextTick()
     if(requestId===activeFetch&&props.focusPlanId===id)
-      document.getElementById('plan-item-'+id)?.scrollIntoView({block:'start',behavior:'instant'})
+      document.getElementById('plan-item-'+id+(kind==='routine'&&item.periodOn?'-'+item.periodOn:''))?.scrollIntoView({block:'start',behavior:'instant'})
   }catch(e){
     if(requestId===activeFetch)focusError.value=(e as Error).message
   }
@@ -813,7 +816,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
           <template v-if="planScope==='history'">
             <div v-for="r in (planType==='unscheduled'?[]:routines)"
-              :key="r.id+':'+r.periodOn" :id="'plan-item-'+r.id"
+              :key="r.id+':'+r.periodOn" :id="'plan-item-'+r.id+'-'+r.periodOn"
               class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
               <div class="plan-task-head">
                 <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
