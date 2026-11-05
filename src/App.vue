@@ -460,12 +460,11 @@ onBeforeUnmount(()=>{
       <GlobalSearch v-if="authReady&&user" @select="openSearchResult"/>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
     <main v-if="!authReady" class="auth-content" aria-live="polite">
-      <section class="panel" role="status"><h2>正在打开我们的小家…</h2><p class="hint">正在确认登录状态与家庭资料。</p></section>
+      <section class="panel" role="status"><h2>正在打开我们的小家…</h2></section>
     </main>
     <main v-else-if="authFailure" class="auth-content">
       <section class="panel"><h2>暂时无法连接 HomeFlow</h2>
         <p role="alert" class="error">{{ authFailure }}</p>
-        <p class="hint">会话尚未确认为失效；不会强制显示登录页。</p>
         <button class="primary" type="button" @click="retryAuth">重新连接</button>
       </section>
     </main>
@@ -473,12 +472,12 @@ onBeforeUnmount(()=>{
       <div class="eyebrow">OUR LITTLE HOME</div><h1>欢迎回家 ♡</h1><p class="lead">家人的共享生活，以及自己的小秘密。</p>
       <form class="panel auth-form" @submit.prevent="submitAuth">
         <h2>{{ authMode==='bootstrap'?'创建我们的家':authMode==='join'?'加入家庭':authMode==='recover'?'恢复账号':'登录 HomeFlow' }}</h2>
-        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='missing'" role="alert" class="error">生产 Worker 中尚未找到 HOMEFLOW_BOOTSTRAP_SECRET，请在 Cloudflare 设置至少 32 位的加密 Secret。</p>
-        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='too_short'" role="alert" class="error">Cloudflare Secret 已存在，但长度不足 32 字符。请在生产 Worker 的 Variables and Secrets 中更新密钥值。</p>
+        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='missing'" role="alert" class="error">家庭初始化密钥未配置，请联系管理员。</p>
+        <p v-if="authMode==='bootstrap'&&bootstrapIssue==='too_short'" role="alert" class="error">家庭初始化密钥无效，请联系管理员。</p>
         <label>登录账号（邮箱或用户名）
           <input v-model.trim="login" required maxlength="254" autocomplete="username" autocapitalize="none"
             spellcheck="false" placeholder="例如 name@example.com"/></label>
-        <p class="hint">也可使用 3～36 位英文用户名。邮箱目前仅作为登录账号，不会发送验证邮件。</p>
+        <p class="hint">支持邮箱或 3～36 位英文用户名。</p>
         <label v-if="authMode==='bootstrap'||authMode==='join'">你的昵称<input v-model="displayName" required maxlength="60" autocomplete="nickname" placeholder="怎么称呼你？"/></label>
         <label>{{ authMode==='recover'?'设置新密码':'密码' }}<input v-model="password" required type="password" minlength="12" maxlength="128"
           :autocomplete="authMode==='recover'?'new-password':'current-password'" placeholder="12～128 位"/></label>
@@ -509,7 +508,7 @@ onBeforeUnmount(()=>{
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <template v-if="tab==='today'">
         <section class="hero"><div><span>HOMEFLOW · TODAY</span><h2>照顾好我们的小家。</h2>
-          <p>私人的计划，家庭的约定，豆沙的每一天。</p></div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
+          </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
           <div class="row-between"><b>重要提醒 · 储值计划</b></div>
           <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
@@ -542,7 +541,7 @@ onBeforeUnmount(()=>{
               <button class="text-button" @click="discardPending(op.id)">取消</button>
             </div>
             <button v-if="pendingTasks.length>visiblePendingTasks.length" class="outline" type="button"
-              @click="pendingVisibleCount+=listPageSize">加载更多待同步任务（每次 5 条）</button>
+              @click="pendingVisibleCount+=listPageSize">加载更多</button>
             <p v-if="syncMessage" class="hint">{{ syncMessage }}</p>
           </div>
           <div class="today-category-tabs" role="group" aria-label="今日待办分类">
@@ -551,7 +550,7 @@ onBeforeUnmount(()=>{
               @click="todayCategory=category.id">{{ category.label }}</button>
           </div>
 
-          <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待处理事项。':'这个分类今天没有事项。' }}</div>
+          <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待办':'暂无事项' }}</div>
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
               :allow-edit="false" :allow-delete="true" delete-label="从今天移除"
@@ -596,7 +595,7 @@ onBeforeUnmount(()=>{
             </SwipeActions>
           </template>
           <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
-            @click="todayVisibleCount+=listPageSize">加载更多今日待办（每次 5 条）</button>
+            @click="todayVisibleCount+=listPageSize">加载更多</button>
         </section>
       </template>
       <template v-else-if="tab==='family'">
@@ -627,7 +626,7 @@ onBeforeUnmount(()=>{
             </div>
           </div>
           <button v-if="people.length>visiblePeople.length" class="outline" type="button"
-            @click="peopleVisibleCount+=listPageSize">加载更多家庭成员（每次 5 条）</button>
+            @click="peopleVisibleCount+=listPageSize">加载更多</button>
           <p v-if="!people.length" class="empty">还没有家庭成员档案</p>
         </section>
         <section class="panel">
@@ -635,8 +634,7 @@ onBeforeUnmount(()=>{
             <h2><AppIcon name="paw" :size="20" /> 宠物档案</h2>
             <span class="section-hint">{{ pets.length }} 只宠物</span>
           </div>
-          <p class="hint">点击宠物卡片，查看体重、驱虫、疫苗和护理记录。</p>
-          <div v-for="p in visiblePets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
+                    <div v-for="p in visiblePets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
             <button type="button" class="pet-profile-trigger" :aria-expanded="openPetId===p.id"
               :aria-controls="'pet-health-'+p.id" @click="togglePet(p.id)">
               <span class="profile-symbol"><AppIcon name="paw" :size="22" /></span>
@@ -648,7 +646,7 @@ onBeforeUnmount(()=>{
             <div v-if="openPetId===p.id" :id="'pet-health-'+p.id" class="pet-health-content">
               <button v-if="canEditProfile(p)" type="button" class="outline profile-pet-edit"
                 @click="toggleProfileEdit(p.id)">
-                {{ editProfileId===p.id?'收起编辑':'编辑豆沙／宠物档案' }}
+                {{ editProfileId===p.id?'收起编辑':'编辑宠物档案' }}
               </button>
               <ProfileEditor v-if="editProfileId===p.id&&canEditProfile(p)" :key="p.id"
                 :profile="p" @saved="profileSaved" @close="editProfileId=null"/>
@@ -656,8 +654,8 @@ onBeforeUnmount(()=>{
             </div>
           </div>
           <button v-if="pets.length>visiblePets.length" class="outline" type="button"
-            @click="petsVisibleCount+=listPageSize">加载更多宠物档案（每次 5 条）</button>
-          <p v-if="!pets.length" class="empty">尚无宠物档案，可以在下方添加豆沙。</p>
+            @click="petsVisibleCount+=listPageSize">加载更多</button>
+          <p v-if="!pets.length" class="empty">暂无宠物档案</p>
         </section>
         <section v-if="user.role==='owner'" class="panel">
           <button type="button" class="outline" :aria-expanded="showProfileForm"
@@ -687,7 +685,7 @@ onBeforeUnmount(()=>{
       </template>
       <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
-        <p>心愿、旅行和家庭回忆，现在可以开始记录。</p></div></section>
+        </div></section>
       <LifePanel v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
          :tasks="tasks" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
