@@ -211,7 +211,8 @@ export async function lifeRoute(request,db,path,session){
         FROM family_profiles p
         WHERE p.id=?10 AND p.household_id=?2 AND p.type='pet' AND p.archived_at IS NULL
         ON CONFLICT(source_routine_id,source_occurrence_on)
-        DO UPDATE SET deleted_at=NULL`)
+        DO UPDATE SET deleted_at=NULL,event_on=excluded.event_on,
+          note=excluded.note,record_type=excluded.record_type`)
         .bind(crypto.randomUUID(),session.household_id,session.user_id,rule.visibility,
           rule.health_record_type,actual,rule.title,id,periodOn,rule.subject_profile_id))
     }else if(body.status!=='completed'){
