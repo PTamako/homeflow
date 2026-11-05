@@ -175,11 +175,20 @@ export async function lifeRoute(request,db,path,session){
     const earlyOn=nextEarlyPeriod(rule,actual)
     // The scheduled period and actual completion date are independent.
     const periodOn=body.periodOn||(body.early===true?earlyOn:current)||actual
-    if(!ymd(periodOn))return bad()
+    const recordOn=body.recordOn||periodOn
+    if(!ymd(periodOn)||!ymd(recordOn))return bad()
+    if(recordOn!==periodOn&&body.status!=='open'&&body.status!=='completed'&&body.status!=='skipped')
+      return bad()
     const early=body.early===true&&body.status==='completed'&&actual===jstToday()&&
       earlyOn===periodOn
     const existing=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
-      WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,periodOn).first()
+      WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,recordOn).first()
+    if(recordOn!==periodOn){
+      // This key is the actual completion date of a pre-v2 overdue mark.
+      // Validate it belongs to the requested scheduled period.
+      const original=currentRoutinePeriod(rule,recordOn)
+      if(!existing||original!==periodOn)return json({error:'legacy_mark_mismatch'},409)
+    }
     if(periodOn!==current&&!early&&!existing)return json({error:'period_not_current'},409)
     if(early&&current&&current!==periodOn){
       const prior=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
@@ -190,6 +199,14 @@ export async function lifeRoute(request,db,path,session){
     if(body.status==='completed'&&existing?.completed_at)return json({ok:true,unchanged:true})
     if(body.status==='skipped'&&existing?.skipped_at)return json({ok:true,unchanged:true})
     if(body.status==='open'&&!existing)return json({ok:true,unchanged:true})
+    if(early&&!existing){
+      const begin=new Date(actual+'T00:00:00+09:00').toISOString()
+      const finish=new Date(addDays(actual,1)+'T00:00:00+09:00').toISOString()
+      const completedToday=await db.prepare(`SELECT 1 FROM routine_marks
+        WHERE routine_id=?1 AND completed_at>=?2 AND completed_at<?3 LIMIT 1`)
+        .bind(id,begin,finish).first()
+      if(completedToday)return json({error:'already_completed_today'},409)
+    }
     const stamp=iso()
     // API date is the actual local completion date, including deterministic
     // time-travel test requests. Normal app requests always use today.
@@ -200,7 +217,7 @@ export async function lifeRoute(request,db,path,session){
       ON CONFLICT(routine_id,occurrence_on) DO UPDATE SET
         completed_at=excluded.completed_at,completed_by=excluded.completed_by,
         skipped_at=excluded.skipped_at`)
-      .bind(id,periodOn,body.status==='completed'?completedStamp:null,
+      .bind(id,recordOn,body.status==='completed'?completedStamp:null,
         body.status==='completed'?session.user_id:null,
         body.status==='skipped'?stamp:null)]
     if(body.status==='completed'&&rule.subject_profile_id&&rule.health_record_type){
@@ -214,11 +231,11 @@ export async function lifeRoute(request,db,path,session){
         DO UPDATE SET deleted_at=NULL,event_on=excluded.event_on,
           note=excluded.note,record_type=excluded.record_type`)
         .bind(crypto.randomUUID(),session.household_id,session.user_id,rule.visibility,
-          rule.health_record_type,actual,rule.title,id,periodOn,rule.subject_profile_id))
+          rule.health_record_type,actual,rule.title,id,recordOn,rule.subject_profile_id))
     }else if(body.status!=='completed'){
       statements.push(db.prepare(`UPDATE pet_health_records SET deleted_at=CURRENT_TIMESTAMP
         WHERE household_id=?1 AND source_routine_id=?2 AND source_occurrence_on=?3
-          AND deleted_at IS NULL`).bind(session.household_id,id,periodOn))
+          AND deleted_at IS NULL`).bind(session.household_id,id,recordOn))
     }
     if(isCompletionInterval(rule)){
       const config=JSON.parse(rule.repeat_config||'{}')
@@ -232,7 +249,7 @@ export async function lifeRoute(request,db,path,session){
             WHERE m.routine_id=?1 AND m.occurrence_on<>?2 AND m.completed_at IS NOT NULL),
             anchor_date),'+'||?3||' days'),updated_at=?4
           WHERE id=?1 AND household_id=?5`)
-          .bind(id,periodOn,config.days,stamp,session.household_id))
+          .bind(id,recordOn,config.days,stamp,session.household_id))
       }
     }
     await db.batch(statements)
