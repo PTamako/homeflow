@@ -421,8 +421,16 @@ async function focusExactPlan(requestId:number){
     }
     if(kind==='memory')await loadPhotos(requestId)
     await nextTick()
-    if(requestId===activeFetch&&props.focusPlanId===id)
-      document.getElementById('plan-item-'+id+(kind==='routine'&&item.periodOn?'-'+item.periodOn:''))?.scrollIntoView({block:'start',behavior:'instant'})
+    if(requestId===activeFetch&&props.focusPlanId===id){
+      // Wait until rendering settles; keep the selected row below the iOS safe area.
+      window.requestAnimationFrame(()=>{
+        if(requestId!==activeFetch||props.focusPlanId!==id)return
+        const row=document.getElementById('plan-item-'+id+
+          (kind==='routine'&&item.periodOn?'-'+item.periodOn:''))
+        if(!row)return
+        window.scrollTo({top:Math.max(0,row.getBoundingClientRect().top+window.scrollY-176),behavior:'auto'})
+      })
+    }
   }catch(e){
     if(requestId===activeFetch)focusError.value=(e as Error).message
   }
@@ -773,28 +781,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
       <PlanCreator v-if="planScope==='active'" :profiles="props.profiles"
         @created="planCreated" @task-created="emit('tasksChanged')"/>
-      <details class="life-card plan-recap">
-        <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
-
-        <div class="plan-recap-controls">
-          <label>年份<select v-model="recapYear" aria-label="回顾年份">
-            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
-          </select></label>
-          <label>月份<select v-model="recapMonth" aria-label="回顾月份">
-            <option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
-          </select></label>
-          <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
-        </div>
-        <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
-        <div v-if="recap" class="plan-recap-results">
-          <strong>{{ recap.month }} · 已完成／核验 {{ recap.total }} 次</strong>
-          <div v-for="(label,key) in recapLabels" :key="key" class="plan-recap-line">
-            <span>{{ label }}</span><b>{{ recap.counts[key]||0 }} 次</b>
-          </div>
-          <small>{{ recap.note }}</small>
-        </div>
-      </details>
-      <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
+      <div class="plan-view-toolbar" aria-label="计划筛选与状态">
+        <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
           {id:'all',label:'全部'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
           {id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}]"
@@ -802,7 +790,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           :aria-pressed="planType===tab.id" @click="selectPlanType(tab.id as PlanType)">
           {{ tab.label }}</button>
       </div>
-      <div v-if="planType!=='unscheduled'" class="archive-toolbar">
+        <div v-if="planType!=='unscheduled'" class="archive-toolbar">
         <div class="archive-tabs" role="group" aria-label="计划记录筛选">
           <button type="button" :class="{selected:planScope==='active'}" :aria-pressed="planScope==='active'"
             @click="planScope='active'">进行中</button>
@@ -815,13 +803,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
             </select>
           </label>
-          <label>月份
-            <select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份"><option value="">全年</option>
+          <label v-if="planYear">月份
+            <select v-model="planMonth" aria-label="历史记录月份"><option value="">全年</option>
               <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
             </select>
           </label>
         </div>
-
+      </div>
       </div>
       <div class="life-grid">
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
@@ -1196,6 +1184,27 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </details>
         </section>
       </div>
+      <details class="life-card plan-recap">
+        <summary><AppIcon name="clipboard-check" :size="18" /> 月度计划回顾（按需生成）</summary>
+
+        <div class="plan-recap-controls">
+          <label>年份<select v-model="recapYear" aria-label="回顾年份">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
+          </select></label>
+          <label>月份<select v-model="recapMonth" aria-label="回顾月份">
+            <option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
+          </select></label>
+          <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
+        </div>
+        <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
+        <div v-if="recap" class="plan-recap-results">
+          <strong>{{ recap.month }} · 已完成／核验 {{ recap.total }} 次</strong>
+          <div v-for="(label,key) in recapLabels" :key="key" class="plan-recap-line">
+            <span>{{ label }}</span><b>{{ recap.counts[key]||0 }} 次</b>
+          </div>
+          <small>{{ recap.note }}</small>
+        </div>
+      </details>
      </template>
 
     <template v-else-if="mode==='memories'">
@@ -1277,8 +1286,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .focused-plan-banner small{font-size:11px;color:#688779;line-height:1.6}
 .focused-plan-banner button,.life-return{border:0;border-radius:9px;
   background:#43866a;color:#fff;padding:8px 10px;font-size:12px;white-space:nowrap}
-.focused-plan-entry{background:#f9fcfa;border-radius:12px;padding:2px 9px;
-  box-shadow:inset 0 0 0 1px #bbdbc5;scroll-margin-top:85px}
+.focused-plan-entry{background:#f7fbf8;border-radius:8px;padding:2px 9px;
+  box-shadow:inset 3px 0 0 #72aa88;scroll-margin-top:176px}
 .plan-action-strip{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 0}
 .plan-action-strip small{font-size:11px;color:#668776}
 .life-return{display:block;margin:10px 0 12px;background:#eaf3ec;color:#397e59}
@@ -1331,7 +1340,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-task-item :deep(.swipe-row),.plan-task-item :deep(.swipe-content){
   border:0;box-shadow:none;margin:0;
 }
-.plan-task-item :deep(.swipe-content){background:#fff}
+.plan-task-item :deep(.swipe-content){background:transparent}
 .plan-task-item .life-details .detail-name{display:block;font-size:14px;line-height:1.45}
 .plan-task-item .life-details small{font-size:11px;line-height:1.55;margin-top:4px}
 .plan-task-footer{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;margin-top:8px}
@@ -1406,4 +1415,26 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-more{display:block;margin:14px auto 0;padding:9px 15px;min-height:40px;border:1px solid #b4d4be;background:#f6faf6;color:#397e59;border-radius:10px;font-size:12px;font-weight:650}
 .life-more:disabled{opacity:.6}
 @media(max-width:420px){.archive-date-filters{gap:8px}}
+
+/* One compact plan-filter surface, with dates only when history is selected. */
+.plan-view-toolbar{margin:10px 0 15px;padding:11px 12px 5px;
+  background:#fff;border:1px solid #eeebe5;border-radius:16px}
+.plan-view-toolbar .plan-filter-tabs{gap:7px;padding:0 0 10px}
+.plan-view-toolbar .archive-toolbar{background:transparent;border:0;border-top:1px solid #edf0eb;
+  border-radius:0;padding:10px 0 0;margin:0 0 7px}
+.plan-view-toolbar .archive-date-filters{margin:9px 0 1px;gap:8px}
+.plan-view-toolbar .archive-date-filters label{font-size:11px}
+.plan-view-toolbar .archive-date-filters select{min-height:38px}
+.plan-view-toolbar .archive-tabs button{min-height:37px}
+.plan-recap{margin:10px 0 16px}
+.plan-tasks-card .plan-task-item.focused-plan-entry{
+  background:#f7fbf8;box-shadow:inset 3px 0 0 #72aa88;
+  border-radius:8px;padding:11px 9px;margin:0}
+.plan-tasks-card .plan-task-item.focused-plan-entry :deep(.swipe-content){background:transparent}
+@media(max-width:480px){
+  .plan-view-toolbar{padding:10px 11px 4px}
+  .plan-view-toolbar .plan-filter-tabs button{padding:7px 11px}
+  .plan-tasks-card .plan-task-item{padding:10px 0}
+  .plan-task-head .routine-more-trigger{width:30px;height:30px}
+}
 </style>

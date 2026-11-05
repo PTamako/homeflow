@@ -82,7 +82,7 @@ onBeforeUnmount(close)
     </div>
     <div class="swipe-content" :style="{
       transform:'translateX('+((opened?-actionWidth:0)+movement)+'px)',
-      paddingRight:showTrigger?'30px':'0px'
+      paddingRight:showTrigger?'25px':'0px'
     }" @click.capture="tapContent">
       <slot/>
     </div>
@@ -112,11 +112,11 @@ onBeforeUnmount(close)
   min-width:68px;max-width:68px;padding:0 4px}
 .swipe-actions .edit{background:#558bc9}
 .swipe-actions .delete{background:#d76178}
-.swipe-trigger{position:absolute;z-index:2;right:0;top:50%;transform:translateY(-50%);
-  height:54px;width:30px;display:grid;place-items:center;background:transparent;
+.swipe-trigger{position:absolute;z-index:2;right:0;top:8px;
+  height:34px;width:25px;display:grid;place-items:center;background:transparent;
   border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
 .swipe-stripes{display:flex;align-items:center;justify-content:center;gap:3px;width:100%;height:100%}
-.swipe-stripes span{display:block;width:5px;height:37px;border-radius:4px}
+.swipe-stripes span{display:block;width:3px;height:19px;border-radius:3px}
 .stripe-edit{background:#558bc9}
 .stripe-delete{background:#d76178}
 .swipe-trigger:active .swipe-stripes{opacity:.75}
