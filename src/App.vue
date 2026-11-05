@@ -58,7 +58,7 @@ function openPlans(kind:string,id='',periodKey='',done=false){
   focusPlanType.value=kind
   focusPlanId.value=id
   focusPlanPeriodKey.value=periodKey
-  focusPlanScope.value=done&&(kind==='wish'||(kind==='goal'&&(!periodKey||periodKey==='once')))
+  focusPlanScope.value=done&&(kind==='routine'||kind==='wish'||(kind==='goal'&&(!periodKey||periodKey==='once')))
     ?'history':'active'
   focusPlanRequest.value++
   tab.value='plans'
@@ -125,7 +125,7 @@ const allToday=computed<TodayEntry[]>(()=>{
     key:'task:'+task.id,kind:'task',title:task.title,done:!!task.completedAt,task
   }))
   const recurring:TodayEntry[]=todayRoutines.value.map(routine=>({
-    key:'routine:'+routine.id,kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
+    key:'routine:'+routine.id+':'+(routine.occurrenceOn||''),kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
   }))
   // All plan types use one visual list, while retaining each source's own
   // completion, privacy and recurrence rules.
@@ -147,9 +147,14 @@ const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).
 const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))
 const visiblePendingTasks=computed(()=>pendingTasks.value.slice(0,pendingVisibleCount.value))
 function recurringLabel(r:Routine){
-  return r.repeat_type==='daily'?'每天':r.repeat_type==='weekly'?'每周':
-    r.repeat_type==='monthly'?'每月':r.repeat_type==='interval'?'按间隔':
-    r.repeat_type==='workday'?'工作日':'定期'
+  let c:any={}
+  try{c=typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{}
+  if(r.repeat_type==='daily')return '每天'
+  if(r.repeat_type==='weekly'&&c.excludeJapaneseHolidays)return '工作日'
+  if(r.repeat_type==='weekly')return '每周'+(c.weekdays||[]).map((d:number)=>'日一二三四五六'[d]).join('、')
+  if(r.repeat_type==='monthly')return '每月'+Number(c.day||1)+'日'
+  if(r.repeat_type==='interval')return '每'+Number(c.days||0)+'天'
+  return '定期'
 }
 const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
@@ -361,7 +366,7 @@ async function toggleRoutine(r:Routine){
   routineBusy.value=true
   try{
     const status=r.mark?.completed_at?'open':'completed'
-    await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),status})
+    await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),periodOn:r.occurrenceOn||r.currentPeriodOn,status})
     await loadTodayRoutines()
     notify(status==='completed'?'定期事项已完成':'已撤销完成')
   }catch(e){error.value=(e as Error).message}
@@ -620,7 +625,7 @@ onBeforeUnmount(()=>{
                       <template v-if="row.task.healthRecordType&&isPet(row.task.subjectProfileId)"> · 完成后记护理</template>
                     </template>
                     <template v-else-if="row.routine">
-                      {{ row.routine.mark?.completed_at?'已完成':row.routine.carriedFrom?'未完成 · 顺延至今天':recurringLabel(row.routine) }}
+                      {{ row.routine.mark?.completed_at?'本期已完成':row.routine.carriedFrom?'逾期未完成':'今天到期' }} · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                     </template>
@@ -634,9 +639,9 @@ onBeforeUnmount(()=>{
                     </template>
                   </small>
                 </div>
-                <button v-if="row.plan" type="button" class="text-button today-plan-link"
+                <button v-if="row.plan||row.routine" type="button" class="text-button today-plan-link"
                   :aria-label="'前往'+todayKindLabels[row.kind]+'计划处理：'+row.title"
-                  @click="openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
+                  @click="row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
                   {{ row.done?'查看计划':'去处理' }}</button>
               </div>
             </SwipeActions>
