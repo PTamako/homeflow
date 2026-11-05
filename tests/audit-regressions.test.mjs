@@ -339,3 +339,19 @@ test('one-time account recovery codes are hashed, consumed and revoke sessions',
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM account_recovery_codes WHERE used_at IS NOT NULL").get().n,1)
  }finally{sqlite.close()}
 })
+
+test('exact task detail returns owner data but no private data to other accounts',async()=>{
+ const {db,sqlite}=database()
+ const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ try{
+  sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title) VALUES(?,'primary','u1','private','Search-only task')").run(id)
+  const request=new Request('https://homeflow.test/api/tasks/'+id),path='/api/tasks/'+id
+  const own=await tasksRoute(request,db,path,session)
+  assert.equal(own.status,200)
+  assert.equal((await own.json()).task.id,id)
+  sqlite.prepare("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('u2','member','x','y')").run()
+  sqlite.prepare("INSERT INTO household_members(household_id,user_id,role) VALUES('primary','u2','member')").run()
+  const other=await tasksRoute(request,db,path,{...session,user_id:'u2',role:'member'})
+  assert.equal(other.status,404)
+ }finally{sqlite.close()}
+})

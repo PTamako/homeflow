@@ -78,9 +78,17 @@ async function returnToToday(){
 }
 function openSearchResult(result:{id:string;kind:string}){
  settingsOpen.value=false
- if(['shopping','wish','goal','trip'].includes(result.kind))openPlans(result.kind,result.id)
- else if(result.kind==='task'||result.kind==='routine')openPlans('routine')
- else tab.value=result.kind==='memory'?'memories':'family'
+ if(['shopping','wish','goal','trip','task','routine'].includes(result.kind))
+   openPlans(result.kind,result.id)
+ else {
+   focusPlanType.value=result.kind
+   focusPlanId.value=result.id
+   focusPlanPeriodKey.value=''
+   focusPlanScope.value='active'
+   focusPlanFromToday.value=false
+   focusPlanRequest.value++
+   tab.value=result.kind==='memory'?'memories':'family'
+ }
 }
 function navigateTab(value:typeof tab.value){
   if(value==='plans'){

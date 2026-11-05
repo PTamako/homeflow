@@ -73,3 +73,11 @@ test('undated tasks go to Plans pending scheduling instead of Today',()=>{
  assert.ok(life.includes("type==='unscheduled'"))
  assert.ok(life.includes('安排到今天'))
 })
+
+test('search click targets the exact record, even beyond first five',()=>{
+ const worker=readFileSync(new URL('../worker/tasks.js',import.meta.url),'utf8')
+ assert.ok(app.includes('openPlans(result.kind,result.id)'))
+ assert.ok(life.includes("task:'tasks',routine:'routines',memory:'memories',anniversary:'anniversaries'"))
+ assert.ok(life.includes("document.getElementById('plan-item-'+id)?.scrollIntoView"))
+ assert.ok(worker.includes("if(request.method==='GET'){"))
+})

@@ -143,10 +143,15 @@ async function deleteOnce(t:Row){
   await onceChange(t,{},'DELETE')
 }
 watch(()=>props.focusPlanType,type=>{
-  if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+  if(type==='task')planType.value='routine'
+  else if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
 },{immediate:true})
 watch(()=>props.focusPlanRequest,()=>{
-  if(props.mode!=='plans')return
+  if(props.mode!=='plans'){
+    if((props.mode==='memories'&&props.focusPlanType==='memory')||
+       (props.mode==='family'&&props.focusPlanType==='anniversary'))void fetchMode()
+    return
+  }
   const requested=props.focusPlanScope||'active'
   if(planScope.value!==requested)planScope.value=requested
   else void fetchMode()
@@ -369,25 +374,28 @@ async function api(path:string,method='GET',body?:unknown):Promise<any>{
   return data
 }
 async function focusExactPlan(requestId:number){
-  const id=props.focusPlanId,kind=props.focusPlanType
-  if(!id||!['shopping','wish','goal','trip'].includes(kind||'')||
+  const id=props.focusPlanId,kind=props.focusPlanType||''
+  const endpoints:Record<string,string>={
+    shopping:'shopping',wish:'wishes',goal:'goals',trip:'trips',
+    task:'tasks',routine:'routines',memory:'memories',anniversary:'anniversaries'
+  }
+  const destination=kind==='memory'?'memories':kind==='anniversary'?'family':'plans'
+  if(!id||!endpoints[kind]||props.mode!==destination||
     !/^[0-9a-f-]{36}$/i.test(id))return
   try{
-    const endpoint=kind==='wish'?'wishes':kind==='goal'?'goals':kind==='trip'?'trips':'shopping'
-    const response=await api('/'+endpoint+'/'+encodeURIComponent(id))
-    if(requestId!==activeFetch||props.mode!=='plans')return
-    const item=kind==='trip'?response.trip:response.item
-    if(!item?.id)throw Error('没有找到对应计划')
-    // A recurring parent stays active. Never inject it into the History
-    // list merely because an older period was opened from another page.
+    const response=await api('/'+endpoints[kind]+'/'+encodeURIComponent(id))
+    if(requestId!==activeFetch||props.mode!==destination)return
+    const item=kind==='trip'?response.trip:kind==='task'?response.task:response.item
+    if(!item?.id)throw Error('找不到对应搜索结果')
     if(kind==='goal'&&planScope.value==='history'&&
         ['monthly','yearly'].includes(item.goal_mode))return
-    const target=kind==='wish'?items:kind==='goal'?goals:kind==='shopping'?other:trips
+    const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
+      kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
     if(!target.value.some(row=>row.id===item.id))target.value=[item,...target.value]
     if(kind==='wish'){
-      const attached=response.linkedGoals||[]
-      for(const goal of attached)
-        if(!goals.value.some(row=>row.id===goal.id))goals.value.push(goal)
+      for(const related of response.linkedGoals||[]){
+        if(!goals.value.some(row=>row.id===related.id))goals.value.push(related)
+      }
     }
     if(kind==='goal'){
       goalCompletionMarks.value=Array.isArray(response.completedPeriods)?response.completedPeriods:[]
@@ -395,9 +403,9 @@ async function focusExactPlan(requestId:number){
     }
     if(kind==='shopping'&&props.isOwner)ledgerPickerId.value=id
     if(kind==='trip'){
-      tripDetail.value=response.trip
-      tripProgress.value=response.progress||[]
+      tripDetail.value=response.trip;tripProgress.value=response.progress||[]
     }
+    if(kind==='memory')await loadPhotos(requestId)
     await nextTick()
     if(requestId===activeFetch&&props.focusPlanId===id)
       document.getElementById('plan-item-'+id)?.scrollIntoView({block:'start',behavior:'instant'})
@@ -455,6 +463,7 @@ async function fetchMode(){
         (past&&path!==listPath('anniversaries')))return
       items.value=data.items||[]
       listCursors.value.anniversaries=past?data.nextCursor||null:null
+      await focusExactPlan(requestId)
     }else if(props.mode==='plans'){
       // Only read the category that the user actually opened. The full view
       // still fetches all six; wishes also need goals for linked funding labels.
@@ -482,6 +491,7 @@ async function fetchMode(){
       items.value=data.items||[]
       listCursors.value.memories=data.nextCursor||null
       await loadPhotos(requestId)
+      await focusExactPlan(requestId)
     }
   }catch(e){if(requestId===activeFetch)error.value=(e as Error).message}
   finally{if(requestId===activeFetch)listLoading.value=false}
@@ -712,6 +722,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
         <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
+          <div :id="'plan-item-'+e.id" :class="{'focused-plan-entry':isFocused(e)}">
           <SwipeActions :id="e.id" scope="anniversaries"
             :allow-edit="canEdit(e)||canEditBirthday(e)" :allow-delete="canEdit(e)"
             @edit="editAnniversary(e)" @delete="removeItem('anniversaries',e)">
@@ -720,6 +731,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
+          </div>
         </template>
         <button v-if="anniversaryView==='upcoming'&&items.length>anniversaryVisibleCount" type="button" class="life-more"
           @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子（每次 5 条）</button>
@@ -795,7 +807,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
-          <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id" class="plan-task-item">
+          <div v-for="r in (planType==='unscheduled'?[]:routines)" :key="r.id" :id="'plan-item-'+r.id"
+            class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
             <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
               @edit="edit('routines',r)" @delete="removeItem('routines',r)">
               <div class="life-row" :class="{'detail-completed':r.enabled===0}">
@@ -821,7 +834,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
               kind="routines" :item="r" :profiles="props.profiles" @saved="changed" @cancel="editing=null"/>
           </div>
-          <div v-for="t in oneTimePlans" :key="t.id" class="plan-task-item">
+          <div v-for="t in oneTimePlans" :key="t.id" :id="'plan-item-'+t.id"
+            class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
@@ -1150,7 +1164,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
         <p v-else-if="!items.length" class="life-empty">这个时间范围没有回忆，可以选择其他年月。</p>
-        <article v-for="m in listLoading?[]:items" :key="m.id" class="memory">
+        <article v-for="m in listLoading?[]:items" :key="m.id" :id="'plan-item-'+m.id"
+          class="memory" :class="{'focused-plan-entry':isFocused(m)}">
           <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"
             @edit="edit('memories',m)" @delete="removeItem('memories',m)">
             <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
