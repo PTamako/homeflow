@@ -56,6 +56,11 @@ const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value
 const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true)
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
+const showAnniversaryForm=ref(false)
+function closeAnniversaryForm(){
+  showAnniversaryForm.value=false
+  eventTitle.value='';eventDate.value='';eventRepeat.value='yearly'
+}
 const routineTitle=ref(''),routineRepeat=ref('daily'),intervalDays=ref(30),intervalAnchor=ref('fixed'),routineSubject=ref(''),routineHealthType=ref('')
 const wishTitle=ref(''),wishType=ref('trip'),wishBudget=ref(0),wishVisibility=ref('household')
 const goalTitle=ref(''),goalAmount=ref(100000),goalTarget=ref('')
@@ -508,7 +513,7 @@ function today(){const d=new Date(Date.now()+9*3600000);return d.toISOString().s
 async function addAnniversary(){
   if(!eventTitle.value.trim()||!eventDate.value)return
   await update(()=>api('/anniversaries','POST',{title:eventTitle.value,eventDate:eventDate.value,repeatMode:eventRepeat.value,advanceDays:[30,7,1,0],visibility:'household'}))
-  if(!error.value){eventTitle.value='';eventDate.value=''}
+  if(!error.value)closeAnniversaryForm()
 }
 async function addRoutine(){
   if(!routineTitle.value.trim())return
@@ -739,10 +744,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子（每次 5 条）</button>
         <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
-        <form class="life-form" @submit.prevent="addAnniversary">
+        <button type="button" class="life-more" :aria-expanded="showAnniversaryForm"
+          aria-controls="new-anniversary-form" :disabled="busy"
+          @click="showAnniversaryForm?closeAnniversaryForm():showAnniversaryForm=true">
+          {{ showAnniversaryForm?'收起表单':'＋ 添加纪念日' }}
+        </button>
+        <form v-if="showAnniversaryForm" id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><DateField v-model="eventDate" required />
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
           <button :disabled="busy">添加纪念日</button>
+          <button type="button" class="life-cancel" :disabled="busy" @click="closeAnniversaryForm">取消</button>
         </form>
       </section>
     </template>
@@ -1279,6 +1290,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-form input[type="date"]{min-inline-size:0}
 .life-form label,.trip-import label{min-width:0;max-width:100%}
 .life-form button{width:100%}
+.life-form .life-cancel{background:#fff;color:#43866a;border:1px solid #9ac2a8}
 .life-details{min-width:0;flex:1}
 .detail-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;flex:none}
 .life-row .detail-actions .life-link{font-size:11px;padding:6px 8px;min-width:0}
