@@ -37,6 +37,13 @@ test('swipe supports horizontal motion and tap/keyboard alternative while keepin
  assert.match(swipe,/aria-label="deleteLabel"/)
  assert.match(icons,/name==='ellipsis'/)
 })
+test('inactive swipe action backgrounds cannot bleed thin green/red lines into plan history rows',()=>{
+ assert.match(swipe,/\.swipe-actions\{[^}]*visibility:hidden/);
+ assert.match(swipe,/\.swipe-row\.is-open \.swipe-actions,\.swipe-row\.is-dragging \.swipe-actions\{visibility:visible\}/);
+ assert.match(swipe,/:class="\{'is-open':opened,'is-dragging':dragging\}"/);
+ assert.match(swipe,/:tabindex="opened\?0:-1"/);
+})
+
 test('installed PWA prevents accidental zoom without blocking Safari browser zoom',()=>{
  assert.ok(main.includes("display-mode: standalone"))
  assert.ok(main.includes("navigator as Navigator"))
