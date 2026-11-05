@@ -240,9 +240,10 @@ async function refresh(){
   }
   if(user.value){
     try{
-      const [a,b]=await Promise.all([api('/family'),api(todayTasksUrl())])
-      profiles.value=a.profiles||[];tasks.value=b.tasks||[]
-      await loadTodayRoutines()
+      // Today data is loaded once by reloadToday after authentication.
+      // Avoid duplicate D1 task and routine reads during the initial session check.
+      const a=await api('/family')
+      profiles.value=a.profiles||[]
       try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
     }catch(e){error.value=(e as Error).message}
   }else{
@@ -256,7 +257,10 @@ async function refresh(){
 }
 async function retryAuth(){
   authReady.value=false
-  try{await refresh()}finally{authReady.value=true}
+  try{
+    await refresh()
+    if(user.value&&tab.value==='today')await reloadToday()
+  }finally{authReady.value=true}
 }
 async function submitAuth(){
   error.value='';loading.value=true
