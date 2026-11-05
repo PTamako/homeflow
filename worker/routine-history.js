@@ -3,7 +3,7 @@
 import {listFilters,monthWindow} from './list-pagination.js'
 import {addDays} from './recurrence.js'
 import {currentRoutinePeriod,historyCandidates,isClosedRoutinePeriod,jstDate,jstToday,
-  nextEarlyPeriod,nextRoutineDue,periodStatus,isCompletionInterval} from './routine-periods.js'
+  nextEarlyPeriod,nextRoutineDue,periodStatus,isCompletionInterval,routineVersions} from './routine-periods.js'
 import {json} from './security.js'
 
 const statusOf=mark=>mark?periodStatus(mark):'pending'
@@ -57,35 +57,52 @@ export async function routineHistory(db,request,session){
   if(!rules.length)return json({items:[],nextCursor:null})
   const candidates=[]
   const maxPerRule=filters.limit+3
-  for(const rule of rules){
-    for(const due of historyCandidates(rule,before,maxPerRule))
-      candidates.push({rule,due})
-    // A future dated occurrence completed early already belongs to History.
-    if(!cursor&&!range){
+  // Rule revisions live in repeat_config; historical dates remain unchanged
+  // after a user edits the frequency, weekday, title, or pet association.
+  const versions=rules.flatMap(rule=>routineVersions(rule).filter(v=>
+    v.visibility==='household'||rule.created_by===session.user_id))
+  for(const rule of versions){
+    const stop=rule.validUntil||(rule.enabled===0?jstDate(rule.updated_at):null)||
+      (rule.deleted_at?jstDate(rule.deleted_at):null)
+    const capped=stop&&stop<before?stop:before
+    for(const due of historyCandidates(rule,capped,maxPerRule)){
+      if(due>=rule.validFrom&&(!rule.validUntil||due<rule.validUntil))
+        candidates.push({rule,due})
+    }
+    // Only actually completed future occurrences enter the archive.
+    if(!cursor){
       const upcoming=nextRoutineDue(rule,today)
-      if(upcoming&&upcoming>today&&upcoming!==candidates.at(-1)?.due)
+      if(upcoming&&upcoming>today&&upcoming>=rule.validFrom&&
+        (!rule.validUntil||upcoming<rule.validUntil)&&
+        (!range||(upcoming>=range.start&&upcoming<range.end)))
         candidates.push({rule,due:upcoming})
     }
   }
   const dates=[...new Set(candidates.map(c=>c.due))]
-  const hasCompletionIntervals=rules.some(isCompletionInterval)
-  if(!dates.length&&!hasCompletionIntervals)return json({items:[],nextCursor:null})
+  const completionIds=[...new Set(versions.filter(isCompletionInterval).map(r=>r.id))]
+  if(!dates.length&&!completionIds.length)return json({items:[],nextCursor:null})
   const dateClause=dates.length?'m.occurrence_on IN ('+dates.map(()=>'?').join(',')+')':'0'
+  const completionClause=completionIds.length?
+    'm.routine_id IN ('+completionIds.map(()=>'?').join(',')+') AND m.occurrence_on<=?':'0'
   const cutoff=cursor?cursor.date:addDays(today,3651)
   const {results:markRows}=await db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at
     FROM routine_marks m JOIN routines r ON r.id=m.routine_id
     WHERE r.household_id=? AND (r.visibility='household' OR r.created_by=?)
-      AND (${dateClause} OR (r.repeat_type='interval' AND
-        json_extract(r.repeat_config,'$.anchor')='completion' AND m.occurrence_on<=?))
+      AND (${dateClause} OR (${completionClause}))
     ORDER BY m.occurrence_on DESC LIMIT 1500`)
-    .bind(session.household_id,session.user_id,...dates,cutoff).all()
+    .bind(session.household_id,session.user_id,...dates,...completionIds,
+      ...(completionIds.length?[cutoff]:[])).all()
   const marks=new Map((markRows||[]).map(m=>[markerKey(m.routine_id,m.occurrence_on),m]))
   // Completion-anchored intervals cannot safely infer old uncompleted cycles.
   // Their real completed/skipped periods are taken directly from marks.
-  const byId=new Map(rules.map(r=>[r.id,r]))
+  const byId=new Map(rules.map(r=>[r.id,routineVersions(r)]))
   for(const mark of markRows||[]){
-    const rule=byId.get(mark.routine_id)
-    if(rule&&isCompletionInterval(rule)&&!candidates.some(c=>c.rule.id===rule.id&&c.due===mark.occurrence_on))
+    const matches=byId.get(mark.routine_id)||[]
+    const rule=matches.find(v=>mark.occurrence_on>=v.validFrom&&
+      (!v.validUntil||mark.occurrence_on<v.validUntil))||matches.at(-1)
+    if(rule&&isCompletionInterval(rule)&&
+      (rule.visibility==='household'||rule.created_by===session.user_id)&&
+      !candidates.some(c=>c.rule.id===rule.id&&c.due===mark.occurrence_on))
       candidates.push({rule,due:mark.occurrence_on})
   }
   const rows=[]
@@ -94,7 +111,8 @@ export async function routineHistory(db,request,session){
       (cursor&&(due>cursor.date||(due===cursor.date&&rule.id>=cursor.id))))continue
     const mark=marks.get(markerKey(rule.id,due))
     const state=statusOf(mark)
-    if(state==='pending'&&!isClosedRoutinePeriod(rule,due,today))continue
+    const pastVersion=!!rule.validUntil&&rule.validUntil<=today&&due<rule.validUntil
+    if(state==='pending'&&!pastVersion&&!isClosedRoutinePeriod(rule,due,today))continue
     rows.push({id:rule.id,periodOn:due,title:rule.title,repeat_type:rule.repeat_type,
       repeat_config:rule.repeat_config,subject_profile_id:rule.subject_profile_id,
       health_record_type:rule.health_record_type,visibility:rule.visibility,
