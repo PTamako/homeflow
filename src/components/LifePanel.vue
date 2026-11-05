@@ -144,7 +144,7 @@ async function deleteOnce(t:Row){
 }
 watch(()=>props.focusPlanType,type=>{
   if(type==='task')planType.value='routine'
-  else if(['routine','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
+  else if(['routine','unscheduled','shopping','wish','goal','trip'].includes(type||''))planType.value=type as PlanType
 },{immediate:true})
 watch(()=>props.focusPlanRequest,()=>{
   if(props.mode!=='plans'){

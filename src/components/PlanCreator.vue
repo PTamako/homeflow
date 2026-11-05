@@ -16,7 +16,7 @@ const choices=[
 const opened=ref(false),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
- title:'',visibility:'household',date:today(),repeatType:'once',
+ title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',remindEnabled:true,
  subjectProfileId:'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
@@ -49,7 +49,8 @@ async function submit(){
       remindEnabled:form.remindEnabled
     }
     if(form.repeatType==='once'){
-      result=await send('/tasks',{...details,notes:'',dueOn:form.date})
+      result=await send('/tasks',{...details,notes:'',dueOn:form.leaveUnscheduled?null:form.date,
+        remindEnabled:form.leaveUnscheduled?false:form.remindEnabled})
       emit('taskCreated')
     }else{
       const config=form.repeatType==='weekly'?{weekdays:[utcWeekday(form.date)]}:
@@ -105,7 +106,11 @@ async function submit(){
        <option value="workday">工作日（排除日本祝日）</option>
        <option value="interval">自定义间隔</option>
      </select></label>
-     <label>{{ form.repeatType==='once'?'计划日期':'起始日期' }}
+     <label v-if="form.repeatType==='once'" class="plan-checkbox">
+       <input v-model="form.leaveUnscheduled" type="checkbox"/>
+       <span>暂不安排日期 <small>保存到「待安排」，以后再决定哪天执行</small></span>
+     </label>
+     <label v-if="form.repeatType!=='once'||!form.leaveUnscheduled">{{ form.repeatType==='once'?'计划日期':'起始日期' }}
        <DateField v-model="form.date" required /></label>
      <template v-if="form.repeatType==='interval'">
       <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
@@ -113,8 +118,9 @@ async function submit(){
        <option value="fixed">按原定日期</option><option value="completion">按上次完成日期</option>
       </select></label>
      </template>
-     <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/>
-      <span>开启提醒 <small>关闭后仍显示在「今天」</small></span></label>
+     <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"
+       :disabled="form.repeatType==='once'&&form.leaveUnscheduled"/>
+      <span>开启提醒 <small>{{ form.repeatType==='once'&&form.leaveUnscheduled?'安排日期后才能提醒':'关闭后仍会显示在到期事项中' }}</small></span></label>
      <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
       <option value="">不关联</option>
       <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>

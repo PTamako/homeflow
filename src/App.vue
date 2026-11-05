@@ -104,7 +104,7 @@ function navigateTab(value:typeof tab.value){
 const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=ref(true),loading=ref(false)
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
-const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(''),subjectId=ref(''),taskCareType=ref('')
+const title=ref(''),visibility=ref<'private'|'household'>('private'),due=ref(tokyoToday()),subjectId=ref(''),taskCareType=ref('')
 const editingTask=ref<{id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string;
   assigneeUserId:string|null;subjectProfileId:string;healthRecordType:string;expectedUpdatedAt:string}|null>(null)
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
@@ -170,6 +170,7 @@ const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
 watch([todayCategory,showDone,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
+watch(showDone,()=>{if(user.value&&tab.value==='today')void loadTasks()})
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
@@ -239,9 +240,10 @@ async function refresh(){
   }
   if(user.value){
     try{
-      const [a,b]=await Promise.all([api('/family'),api('/tasks?status=all')])
-      profiles.value=a.profiles||[];tasks.value=b.tasks||[]
-      await loadTodayRoutines()
+      // Today data is loaded once by reloadToday after authentication.
+      // Avoid duplicate D1 task and routine reads during the initial session check.
+      const a=await api('/family')
+      profiles.value=a.profiles||[]
       try{pendingTasks.value=await listPending(user.value.id)}catch{pendingTasks.value=[]}
     }catch(e){error.value=(e as Error).message}
   }else{
@@ -255,7 +257,10 @@ async function refresh(){
 }
 async function retryAuth(){
   authReady.value=false
-  try{await refresh()}finally{authReady.value=true}
+  try{
+    await refresh()
+    if(user.value&&tab.value==='today')await reloadToday()
+  }finally{authReady.value=true}
 }
 async function submitAuth(){
   error.value='';loading.value=true
@@ -303,7 +308,11 @@ async function logout(){
   clearToast()
   user.value=null;profiles.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
 }
-async function loadTasks(){tasks.value=(await api('/tasks?status=all')).tasks||[]}
+function todayTasksUrl(){
+ const date=tokyoToday()
+ return '/tasks?status=all&today='+date+(showDone.value?'&showHistory=1':'')
+}
+async function loadTasks(){tasks.value=(await api(todayTasksUrl())).tasks||[]}
 async function loadTodayRoutines(){
   if(!user.value)return
   const date=tokyoToday()
@@ -373,9 +382,10 @@ async function addTask(){
     const outcome=await sendOrQueueTask(user.value.id,'create',{title:title.value,notes:'',
       visibility:visibility.value,dueOn:due.value||null,subjectProfileId:subjectId.value||null,
       healthRecordType:newTaskPet.value?taskCareType.value||null:null})
-    title.value='';due.value='';subjectId.value='';taskCareType.value=''
+    const unscheduled=!due.value
+    title.value='';due.value=tokyoToday();subjectId.value='';taskCareType.value=''
     if(outcome==='queued')syncMessage.value='离线保存到本机，联网后可同步'
-    else {await loadTasks();notify('任务已添加')}
+    else {await loadTasks();notify(unscheduled?'已存入「计划 → 待安排」':'任务已添加')}
     pendingTasks.value=await listPending(user.value.id)
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
@@ -428,6 +438,7 @@ function onForeground(){
   if(document.visibilityState!=='visible')return
   const d=tokyoToday()
   if(d!==currentJstDay.value){
+    if(due.value===currentJstDay.value)due.value=d
     currentJstDay.value=d
     if(user.value&&tab.value==='today')void reloadToday()
   }else if(user.value)importantRemindersRef.value?.refreshIfStale()
@@ -587,7 +598,9 @@ onBeforeUnmount(()=>{
           <form class="task-form" @submit.prevent="addTask">
             <input v-model="title" required maxlength="150" placeholder="新增一件待办……" aria-label="任务标题"/>
             <select v-model="visibility" aria-label="可见范围"><option value="private">仅自己</option><option value="household">家庭共享</option></select>
-            <DateField v-model="due" aria-label="完成日期" />
+            <label>计划日期（可清空）<DateField v-model="due" aria-label="完成日期" /></label>
+            <button type="button" class="text-button" @click="openPlans('unscheduled')">查看待安排</button>
+            <p v-if="!due" class="task-object-hint">不填日期会存到「计划 → 待安排」，不会出现在今日待办。</p>
             <label class="task-object">关联对象（可选）
               <select v-model="subjectId" aria-label="这项任务与谁有关"><option value="">不关联任何人或宠物</option>
                 <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}（{{ p.type==='pet'?'宠物':'家人' }}）</option>

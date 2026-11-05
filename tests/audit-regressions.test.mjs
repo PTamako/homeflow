@@ -379,3 +379,31 @@ test('soft-deleted task recycling is five-row keyed and creator-only',async()=>{
   assert.equal((await request('/api/tasks/'+target+'/restore','POST')).status,404)
  }finally{sqlite.close()}
 })
+
+test('Today task read excludes undated and future tasks, but plans can still fetch them',async()=>{
+ const {db,sqlite}=database()
+ const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,due_on,completed_at) VALUES(?,'primary','u1','private',?,?,?)")
+ const id=n=>'abbb'+String(n).padStart(4,'0')+'-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ try{
+  insert.run(id(1),'overdue','2026-11-01',null)
+  insert.run(id(2),'today','2026-11-05',null)
+  insert.run(id(3),'future','2026-11-06',null)
+  insert.run(id(4),'unscheduled',null,null)
+  insert.run(id(5),'completed today','2026-11-05','2026-11-05T03:00:00.000Z')
+  insert.run(id(6),'completed before','2026-11-01','2026-11-01T03:00:00.000Z')
+  const fetch=async(path)=>{
+   const response=await tasksRoute(new Request('https://homeflow.test'+path),db,'/api/tasks',session)
+   assert.equal(response.status,200)
+   return response.json()
+  }
+  const today=await fetch('/api/tasks?status=all&today=2026-11-05')
+  assert.deepEqual(new Set(today.tasks.map(t=>t.title)),new Set(['overdue','today','completed today']))
+  const historical=await fetch('/api/tasks?status=all&today=2026-11-05&showHistory=1')
+  assert.ok(historical.tasks.some(t=>t.title==='completed before'))
+  const unscheduled=await fetch('/api/tasks?scope=unscheduled&limit=5')
+  assert.equal(unscheduled.items.length,1)
+  assert.equal(unscheduled.items[0].title,'unscheduled')
+  const invalid=await tasksRoute(new Request('https://homeflow.test/api/tasks?status=all&today=2026-02-30'),db,'/api/tasks',session)
+  assert.equal(invalid.status,400)
+ }finally{sqlite.close()}
+})
