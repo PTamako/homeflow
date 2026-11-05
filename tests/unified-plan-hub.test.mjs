@@ -79,13 +79,13 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  const db=recordDb()
  db.batch=async statements=>{
   db.batches.push(statements.map(s=>({sql:s.sql,values:s.values})))
-  return [
+  if(db.batches.length===1)return [
    {results:[{id:'shop',title:'猫粮',dueOn:'2026-11-04'}]},
    {results:[{id:'wish',title:'电脑',dueOn:'2026-11-03'}]},
    {results:[{id:'goal',title:'储值',goal_mode:'once',target_on:'2026-11-04',target_amount:10000,reserved_amount:0}]},
-   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-01',destination:'上海'}]},
-   {results:[]}
+   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-01',destination:'上海'}]}
   ]
+  return statements.map(()=>({results:[]}))
  }
  const r=await todayPlansRoute(url('/api/plans/today?date=2026-11-04'),db,owner)
  assert.equal(r.status,200)
@@ -93,11 +93,14 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  assert.equal(result.items.length,4)
  assert.deepEqual(new Set(result.items.map(x=>x.kind)),new Set(['shopping','wish','goal','trip']))
  assert.equal(result.items.find(x=>x.kind==='wish').overdue,true)
- assert.equal(db.batches.length,1)
- assert.equal(db.batches[0].length,6)
- assert.ok(db.batches[0].slice(0,4).every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
- assert.equal(db.batches[0][4].values[0],'family')
- assert.ok(db.batches[0].every(q=>!q.sql.includes('finance_links')&&!q.sql.includes('kakebo_')),
+ assert.equal(db.batches.length,2)
+ assert.equal(db.batches[0].length,4)
+ assert.equal(db.batches[1].length,2)
+ assert.ok(db.batches[0].every(q=>q.values[0]==='family'&&q.values[1]==='u-1'))
+ assert.ok(db.batches[1].every(q=>q.values[0]==='family'))
+ assert.ok(db.batches[1].every(q=>q.sql.includes('IN (')),
+   'Today history reads must be bounded by visible plan IDs')
+ assert.ok(db.batches.flat().every(q=>!q.sql.includes('finance_links')&&!q.sql.includes('kakebo_')),
    'rendering Today must not query the external Kakebo ledger')
 })
 test('invalid Today date never queries D1',async()=>{
