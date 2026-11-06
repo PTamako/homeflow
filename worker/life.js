@@ -35,11 +35,15 @@ function normalized(table,b,s){
       if(lead.length>10||!lead.every(x=>Number.isInteger(x)&&x>=0&&x<=365))return null
       return [title,b.eventDate,b.repeatMode,JSON.stringify([...new Set(lead)]),trim(b.note,1000),b.subjectProfileId||null]
     case 'routines': {
-      const repeatType=b.repeatType==='workday'?'weekly':b.repeatType
+      // Keep the original D1 CHECK constraint and represent ordinal weekdays
+      // as a monthly config rather than a fifth database repeat_type.
+      const repeatType=b.repeatType==='workday'?'weekly':
+        b.repeatType==='monthly_weekday'?'monthly':b.repeatType
       const input=b.repeatConfig||{}
       // Keep version metadata exclusively server-owned.
       const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
         repeatType==='weekly'?{weekdays:input.weekdays,excludeJapaneseHolidays:input.excludeJapaneseHolidays===true}:
+        b.repeatType==='monthly_weekday'?{weekday:input.weekday,weeks:input.weeks}:
         repeatType==='monthly'?{day:input.day}:
         repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
@@ -404,7 +408,8 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
       const {_history,_effectiveFrom,...oldRuleConfig}=oldConfig
       const comparable=(type,c)=>type==='weekly'?
         {weekdays:c.weekdays,excludeJapaneseHolidays:c.excludeJapaneseHolidays===true}:
-        type==='monthly'?{day:c.day}:
+        type==='monthly'?(Array.isArray(c.weeks)?
+          {weekday:c.weekday,weeks:[...c.weeks].sort((a,b)=>a-b)}:{day:c.day}):
         type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
       const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
         JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
