@@ -155,7 +155,7 @@ async function save(){
        <span>第 {{ n }} 个</span>
       </label>
      </fieldset>
-     <small v-if="!form.monthWeekNumbers.length" class="editor-error">请至少选择一个星期序号</small>
+     <small v-if="!form.monthWeekNumbers.length" class="edit-error">请至少选择一个星期序号</small>
     </template>
    </template>
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
@@ -218,7 +218,7 @@ async function save(){
   <p v-if="error" role="alert" class="edit-error">{{ error }}</p>
   <div class="editor-actions">
    <button class="editor-cancel" type="button" :disabled="busy" @click="emit('cancel')">取消</button>
-   <button class="editor-save" :disabled="busy">{{ busy?'保存中…':'保存修改' }}</button>
+   <button class="editor-save" :disabled="busy||(kind==='routines'&&form.repeatType==='monthly'&&form.monthlyMode==='weekday'&&!form.monthWeekNumbers.length)">{{ busy?'保存中…':'保存修改' }}</button>
   </div>
  </form>
 </template>
@@ -229,6 +229,10 @@ async function save(){
 .detail-editor :is(input,select,textarea){width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #d4e0d6;border-radius:9px;background:#fff;min-height:40px;padding:9px;color:#273e30}
 .detail-editor .edit-remind{display:flex;align-items:center;gap:9px}
 .detail-editor .edit-remind input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:none}
+.detail-editor .monthly-week-select{display:flex;flex-wrap:wrap;gap:7px;min-width:0;margin:0;padding:10px;border:1px solid #d4e0d6;border-radius:10px}
+.detail-editor .monthly-week-select legend{padding:0 5px;font-size:12px;color:#65796e}
+.detail-editor .monthly-week-option{display:flex;align-items:center;gap:5px;border:1px solid #d4e0d6;background:#fff;border-radius:8px;padding:7px 9px}
+.detail-editor .monthly-week-option input[type="checkbox"]{width:17px;height:17px;min-height:17px;padding:0;flex:none;accent-color:#43866a}
 .detail-editor textarea{line-height:1.5;resize:vertical}
 .editor-actions{display:flex;justify-content:flex-end;gap:10px}
 .editor-actions button{padding:10px 12px;border-radius:10px;border:0;font-size:13px}
