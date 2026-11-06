@@ -38,12 +38,12 @@ function detail(item:Notice){
 // notification whose server-generated identity embeds the exact goal/period.
 function wishTarget(item:Notice){
  if(item.kind!=='system'||!item.sourceId||!item.dedupeKey)return null
- const match=/^scheduled:wish:([0-9a-f-]{36}):\\d{4}-\\d{2}-\\d{2}:(?:0|1|3|7)$/.exec(item.dedupeKey)
+ const match=/^scheduled:wish:([0-9a-f-]{36}):[0-9]{4}-[0-9]{2}-[0-9]{2}:(?:0|1|3|7)$/.exec(item.dedupeKey)
  return match&&match[1]===item.sourceId?{id:match[1]}:null
 }
 function savingsTarget(item:Notice){
  if(item.kind!=='system'||!item.sourceId||!item.dedupeKey)return null
- const match=/^scheduled:goal:([0-9a-f-]{36}):(once|\\d{4}(?:-\\d{2})?):(due|advance|pending|result):\\d{4}-\\d{2}-\\d{2}:\\d+$/.exec(item.dedupeKey)
+ const match=/^scheduled:goal:([0-9a-f-]{36}):(once|[0-9]{4}(?:-[0-9]{2})?):(due|advance|pending|result):[0-9]{4}-[0-9]{2}-[0-9]{2}:[0-9]+$/.exec(item.dedupeKey)
  if(!match||match[1]!==item.sourceId)return null
  return {id:match[1],periodKey:match[2]}
 }
