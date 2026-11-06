@@ -23,7 +23,8 @@ const form=reactive({
  anchorDate:String(data.anchor_date||''),
  subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
- estimatedAmount:Number(data.estimated_amount||0),
+ estimatedAmount:Number(data.estimated_amount||0),wishRemindEnabled:data.remind_enabled===1,
+ wishRemindAdvanceDays:Number(data.remind_advance_days??0),
  targetAmount:Number(data.target_amount||0),reservedAmount:Number(data.reserved_amount||0),
  goalMode:String(data.goal_mode||'once'),goalStartOn:String(data.start_on||''),
  targetOn:String(data.target_on||''),happenedOn:String(data.happened_on||''),
@@ -63,7 +64,8 @@ function values(){
   }
   case 'wishes':
    return {...common,wishType:form.wishType,status:form.status,
-     estimatedAmount:form.estimatedAmount,currency:data.currency||'JPY',note:form.note,targetOn:form.targetOn||null}
+     estimatedAmount:form.estimatedAmount,currency:data.currency||'JPY',note:form.note,targetOn:form.targetOn||null,
+     remindEnabled:!!form.targetOn&&form.wishRemindEnabled,remindAdvanceDays:form.wishRemindAdvanceDays}
   case 'goals':
    return {...common,targetAmount:form.targetAmount,reservedAmount:form.reservedAmount,
      goalMode:form.goalMode,startOn:form.goalStartOn||null,
@@ -186,6 +188,11 @@ async function save(){
    <label>状态<select v-model="form.status"><option value="wished">想做</option><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
    <label>预计金额（¥）<input v-model.number="form.estimatedAmount" type="number" min="0"/></label>
    <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
+   <label class="edit-remind"><input v-model="form.wishRemindEnabled" type="checkbox" :disabled="!form.targetOn"/> 开启提醒</label>
+   <label v-if="form.wishRemindEnabled&&form.targetOn">提醒时间<select v-model.number="form.wishRemindAdvanceDays">
+      <option :value="0">到期当天 06:00</option><option :value="1">提前 1 天</option>
+      <option :value="3">提前 3 天</option><option :value="7">提前 7 天</option>
+    </select></label>
    <label>备注<textarea v-model="form.note" rows="2" maxlength="2000"/></label>
   </template>
   <template v-else-if="kind==='goals'">
