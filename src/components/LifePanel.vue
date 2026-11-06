@@ -7,6 +7,7 @@ import {upcomingWithinDays} from '../today-presentation.mjs'
 import FinancePanel from './FinancePanel.vue'
 import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
+import StatusBadge from './StatusBadge.vue'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
@@ -953,7 +954,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <div v-for="entry in skippedTodayActions" :key="entry.kind+':'+entry.id+':'+entry.originalOn"
             class="skipped-action-history-row">
             <b>{{ entry.title }}</b>
-            <small>{{ ({task:'一次性任务',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'})[entry.kind] }} · {{ entry.originalOn }} · 已跳过</small>
+            <small>{{ ({task:'一次性任务',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'})[entry.kind] }} · {{ entry.originalOn }} · <StatusBadge code="skipped" /></small>
           </div>
           <button v-if="skippedActionCursor" type="button" class="outline" :disabled="skippedActionBusy"
             @click="loadMoreSkippedActions">加载更多</button>
@@ -968,9 +969,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
               <div class="plan-task-head">
                 <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
-                <span class="routine-state" :class="'state-'+r.status">
-                  {{ r.status==='completed'?'已完成':r.status==='skipped'?'已跳过':'未完成' }}
-                </span>
+                <StatusBadge class="routine-state" :code="r.status" :label="r.status==='missed'?'未完成':undefined" />
               </div>
               <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
               <div class="plan-task-footer">
@@ -999,13 +998,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
-                      {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?'逾期 '+r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
+                      <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()" code="overdue" label="逾期" />
+                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
                     </span>
                     <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button" class="routine-text-action"
                       :disabled="busy" @click="completeCurrentRoutine(r,'completed')">完成本期</button>
                     <button v-else-if="canCompleteRoutineEarly(r)" type="button" class="routine-text-action"
                       :disabled="busy" @click="completeRoutineEarly(r)">提前完成</button>
-                    <span v-else-if="r.completedToday" class="routine-state state-completed">今天已完成</span>
+                    <StatusBadge v-else-if="r.completedToday" class="routine-state state-completed" code="completed" label="今天已完成" />
                   </div>
                 </div>
               </SwipeActions>
@@ -1042,7 +1042,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <b class="detail-name">{{ t.title }}</b>
                   <small class="once-task-summary">一次性任务 · {{ t.dueOn||'无截止日期' }}
                     <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
-                    <template v-if="t.completedAt"> · 已完成</template>
+                     · <StatusBadge :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'overdue':t.dueOn?'pending':'unscheduled'" :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'逾期':t.dueOn?'待处理':'待安排'" />
                   </small>
                   <small class="once-task-identity">
                     <span>发起人：{{ memberName(t.creatorUserId) }}</span>
@@ -1146,8 +1146,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
-                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · {{ w.status }}<template v-if="w.target_on"> · {{ w.target_on }}</template></small>
-                  <small v-if="linkedGoal(w)">已关联储值计划：{{ linkedGoal(w)?.title }}</small></div>
+                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · <StatusBadge :code="w.status" /><template v-if="w.target_on"> · {{ w.target_on }}</template></small>
+                  <small v-if="linkedGoal(w)"><StatusBadge code="linked" /> 储值计划：{{ linkedGoal(w)?.title }}</small></div>
                 <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
                   type="button" class="life-link" @click="convertWish(w)">计划</button>
               </div>
@@ -1199,11 +1199,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
                   <small v-if="period.actualAmount!==null">
                     实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
-                    {{ period.status==='met'?'已达标':period.status==='shortfall'?'未达标':'待核验' }} ·
+                    <StatusBadge :code="period.status" /> ·
                     {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
                        Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
                   </small>
-                  <small v-else>{{ period.status==='met'?'已达标 · 金额未记录':'待核验 · 金额未记录' }}</small>
+                  <small v-else><StatusBadge :code="period.status" /> · 金额未记录</small>
                 </div>
                 <button v-if="isOwner" type="button" class="life-link"
                   :disabled="historicalGoalDetailLoading===period.goalId+'|'+period.periodKey"
@@ -1233,7 +1233,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</small>
                   <small v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
                   <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
-                  <small v-if="g.wish_id">已关联心愿计划</small></div>
+                  <small v-if="g.wish_id"><StatusBadge code="linked" /> 心愿计划</small></div>
                 <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
             </SwipeActions>
@@ -1262,7 +1262,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
                 <div class="shopping-check">
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small>{{ s.completed_at?'已完成':'待购买' }}</small>
+                    <small><StatusBadge :code="s.completed_at?'completed':'to_buy'" /></small>
                     <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ memberName(s.assigned_to) }}</small>
                   </span>
                 </div>
@@ -1323,7 +1323,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
-                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small></div>
+                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · <StatusBadge :code="t.status" /></small></div>
                 <div class="trip-card-actions">
                   <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
                   <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('trip',t.id)">费用</button>
@@ -1371,6 +1371,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <label class="trip-item" :class="{done:itemDone(it.externalId)}">
                     <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
                     <span>{{ it.startTime||'待定' }} · {{ it.title }}</span>
+                    <StatusBadge :code="itemDone(it.externalId)?'completed':'pending'" />
                   </label>
                 </div>
                 </SwipeActions></div>
@@ -1384,6 +1385,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <label class="trip-item" :class="{done:itemDone(task.externalId)}">
                     <input type="checkbox" :checked="itemDone(task.externalId)" @change="toggleTrip(task.externalId)"/>
                     <span>{{ task.title }} · {{ task.dueDate||'未设置日期' }}</span>
+                    <StatusBadge :code="itemDone(task.externalId)?'completed':'pending'" />
                   </label>
                   <button v-if="task.dueDate&&(tripDetail.createdBy===props.userId||task.visibility==='household')"
                     type="button" class="life-link" @click.stop="toggleReminderEditor('trip',tripDetail.id+':'+task.externalId)">提醒设置</button>
@@ -1402,6 +1404,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <label class="trip-item" :class="{done:itemDone(piece.externalId)}">
                     <input type="checkbox" :checked="itemDone(piece.externalId)" @change="toggleTrip(piece.externalId)"/>
                     <span>{{ piece.label }} × {{ piece.quantity }}</span>
+                    <StatusBadge :code="itemDone(piece.externalId)?'completed':'pending'" />
                   </label>
                 </div>
                 </SwipeActions>
@@ -1413,7 +1416,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     :allow-delete="tripDetail.createdBy===props.userId"
                     @edit="editTripItem(booking)" @delete="removeTripItem(booking)">
                   <div class="trip-detail-row">
-                  <span>{{ booking.title }} · {{ booking.status }}</span>
+                  <span>{{ booking.title }} · <StatusBadge :code="booking.status||'pending'" /></span>
                 </div>
                 </SwipeActions>
               </div>
@@ -1427,7 +1430,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <textarea v-model="paste" rows="6" placeholder="粘贴完整的 JSON 内容"></textarea>
             <button class="life-light" @click="previewTrip">验证与预览</button>
             <div v-if="preview" class="trip-preview">
-              <b>{{ preview.changes==='new'?'新旅行':preview.changes==='unchanged'?'未发生变化':'更新已有旅行' }}</b>
+              <b><StatusBadge :code="preview.changes==='new'?'new':preview.changes==='unchanged'?'unchanged':'updated'" :label="preview.changes==='new'?'新旅行':preview.changes==='unchanged'?'未发生变化':'更新已有旅行'" /></b>
               <p>{{ preview.summary.days }} 天 / {{ preview.summary.itineraryItems }} 项行程 / {{ preview.summary.tasks }} 项准备任务</p>
               <button :disabled="busy" @click="importTrip">确认导入</button>
             </div>
