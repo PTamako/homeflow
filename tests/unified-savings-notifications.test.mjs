@@ -18,7 +18,7 @@ test('monthly, yearly and once goals have independent reminder dates',()=>{
  assert.equal(month[0].daysBefore,3)
  assert.equal(month[0].periodKey,'2026-11')
  assert.equal(month[0].dueOn,'2026-11-30')
- assert.equal(savingsReminders([monthly],'2026-11-26').length,0)
+ assert.equal(savingsReminders([monthly],'2026-11-26')[0].notifyToday,false)
 
  const annual=savingsReminders([yearly],'2026-12-24')
  assert.equal(annual.length,1)
@@ -41,9 +41,10 @@ test('overdue periods remain financially unverified but do not push every day',(
  assert.equal(due[0].stage,'pending')
  assert.equal(due[0].periodKey,'2026-10')
  assert.equal(due[0].priority,'important')
- assert.equal(savingsReminders([g],'2026-11-02').length,0)
+ assert.equal(savingsReminders([g],'2026-11-02')[0].notifyToday,false)
  assert.equal(savingsReminders([g],'2026-11-08').length,1)
  assert.equal(savingsReminders([g],'2026-11-08')[0].stage,'pending')
+ assert.equal(savingsReminders([g],'2026-11-08')[0].notifyToday,true)
  assert.equal(savingsReminders([g],'2026-11-01',[],
    [{plan_id:id,period_key:'2026-10'}]).length,0)
 })
@@ -103,6 +104,19 @@ test('savings records are included only in the scheduler and scoped pending view
  assert.match(goalQuery.sql,/visibility='household' OR created_by=\?2/)
  assert.match(statements.find(s=>s.sql.includes('FROM goal_period_settlements')).sql,/household_id=\?1/)
 })
+
+test('pending retains near-due savings notices without emitting daily scheduled pushes',async()=>{
+ const {db}=fixture()
+ const base='https://homeflow.invalid/api/reminders?date=2026-11-28'
+ const pending=await remindersRoute(new Request(base+'&pending=1'),db,session)
+ const pendingItems=(await pending.json()).items
+ assert.equal(pendingItems.length,1)
+ assert.equal(pendingItems[0].kind,'goal')
+ assert.equal(pendingItems[0].notifyToday,false)
+ const scheduled=await remindersRoute(new Request(base+'&goals=1'),db,session)
+ assert.deepEqual((await scheduled.json()).items,[])
+})
+
 test('after 06:00, recorded savings reminders leave pending but remain in inbox',async()=>{
  const evt=savingsReminders([monthly],'2026-11-27')[0]
  const {db}=fixture(['scheduled:'+reminderDeliveryKey(evt)])
