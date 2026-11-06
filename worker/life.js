@@ -6,6 +6,7 @@ import {nextAnniversary,validateRule,addDays,intervalStartsOnAnchor} from './rec
 import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday,routineVersions} from './routine-periods.js'
 import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
 import {isJapaneseWorkday} from './jp-holidays.js'
+import {readTodayRows} from './today-source-read.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -135,7 +136,7 @@ async function getObject(db,table,id,session){
     " WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,session.household_id,session.user_id).first()
 }
-export async function lifeRoute(request,db,path,session,onComplete=null){
+export async function lifeRoute(request,db,path,session,onComplete=null,options={}){
   const parts=path.split('/').filter(Boolean),kind=parts[1],table=plural[kind]
   if(!table||!catalog[table])return json({error:'not_found'},404)
   const id=parts[2]
@@ -157,11 +158,20 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
   if(table==='routines'&&id==='today'&&request.method==='GET'){
     const date=new URL(request.url).searchParams.get('date')||jstToday()
     if(!ymd(date))return bad()
-    const {results}=await db.prepare(`SELECT r.* FROM routines r
+    const sourceSql=`SELECT r.* FROM routines r
       WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
-        AND (r.visibility='household' OR r.created_by=?2) LIMIT 250`)
-      .bind(session.household_id,session.user_id).all()
-    const rules=await enrichRoutineList(db,results||[],date)
+        AND (r.visibility='household' OR r.created_by=?2)`
+    const bindings=[session.household_id,session.user_id]
+    const {results}=options.fullToday
+      ? {results:await readTodayRows(db,sourceSql,bindings)}
+      : await db.prepare(sourceSql+' LIMIT 250').bind(...bindings).all()
+    // Enrichment has an IN-list and mark-window limit; chunk large households
+    // instead of silently losing routine marks after the 250th template.
+    const rules=[]
+    if(options.fullToday){
+      for(let i=0;i<(results||[]).length;i+=40)
+        rules.push(...await enrichRoutineList(db,results.slice(i,i+40),date))
+    }else rules.push(...await enrichRoutineList(db,results||[],date))
     const items=[]
     for(const r of rules){
       let config={}
