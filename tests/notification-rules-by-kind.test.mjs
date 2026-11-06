@@ -13,13 +13,13 @@ test('Management groups reminder rules without changing the existing preference 
   assert.match(panel,/<h3>储值计划<\/h3>/)
   assert.match(panel,/<h3>心愿计划<\/h3>/)
   assert.match(panel,/<h3>生日与纪念日<\/h3>/)
-  assert.match(panel,/<h3>通用推送时段<\/h3>/)
+  assert.match(panel,/<h3>自动提醒的安静时段<\/h3>/)
   assert.match(panel,/单项提醒设置优先/)
   assert.match(panel,/>默认提前提醒/)
   assert.match(panel,/@change="saveLead/)
   assert.match(panel,/@click="saveQuiet"/)
   assert.match(panel,/mode==='settings'/)
-  assert.match(panel,/不影响「今日通知」记录/)
+  assert.match(panel,/不影响手动通知家人或「今日通知」记录/)
 })
 
 test('ordinary advance preference cannot override savings, wishes or anniversaries',()=>{
