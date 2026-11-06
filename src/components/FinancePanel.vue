@@ -3,6 +3,7 @@ import DateField from './DateField.vue'
 import {savingsPeriodDisplay} from '../savings-period-display.mjs'
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
@@ -293,7 +294,7 @@ onMounted(()=>{
       </div>
       <template v-if="target">
         <div v-if="kind==='trip'" class="summary">
-          <span>已关联实际支出</span><strong>{{ fmt(total) }}</strong>
+          <span><StatusBadge code="linked" /> 实际支出</span><strong>{{ fmt(total) }}</strong>
           <small>已关联 {{ links.filter(x=>x.entry).length }} 笔支出</small>
           <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
           <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
@@ -305,7 +306,7 @@ onMounted(()=>{
           <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
           <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
           <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
-          <small v-if="periodFuture">期间尚未开始</small>
+          <small v-if="periodFuture"><StatusBadge code="not_started" label="期间尚未开始" /></small>
           <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
         <label class="adjustment-label">调整额（日元，可为负数）
@@ -324,7 +325,7 @@ onMounted(()=>{
           <div v-if="periodDisplay" class="period-info">
             <small>本期：{{ periodDisplay.start }} ～ {{ periodDisplay.end }}</small>
             <small>统计截至：{{ netLoaded?end:'尚未读取' }}</small>
-            <small>状态：{{ periodDisplay.status }}</small>
+            <small>状态：<StatusBadge :code="periodDisplay.status.startsWith('未开始')?'not_started':periodDisplay.status.startsWith('进行中')?'active':'verification_pending'" :label="periodDisplay.status.split(' · ')[0]" /><template v-if="periodDisplay.status.includes(' · ')"> · {{ periodDisplay.status.split(' · ').slice(1).join(' · ') }}</template></small>
           </div>
         </div>
         <div v-else class="fields">
@@ -339,8 +340,8 @@ onMounted(()=>{
           <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
         <div v-if="kind==='goal'" class="goal-completion-panel">
-          <p v-if="!recurringGoal&&alreadyCompleted" class="hint">已确认达标</p>
-          <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint">储值计划尚未开始</p>
+          <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="已确认达标" /></p>
+          <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint"><StatusBadge code="not_started" label="储值计划尚未开始" /></p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"
             @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期' }}</button>
           <button v-else type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
@@ -358,8 +359,8 @@ onMounted(()=>{
             @click="linkedVisibleCount+=linkedPageSize">加载更多</button>
           <div v-for="row in entries" :key="row.id" class="line">
             <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
-            <button type="button" :disabled="busy || links.some(x=>String(x.entryId)===String(row.id))" @click="linkEntry(row)">
-              {{ links.some(x=>String(x.entryId)===String(row.id))?'已关联':'关联' }}</button>
+            <StatusBadge v-if="links.some(x=>String(x.entryId)===String(row.id))" code="linked" />
+            <button v-else type="button" :disabled="busy" @click="linkEntry(row)">关联</button>
           </div>
           <button v-if="nextCursor" type="button" class="more" :disabled="busy" @click="loadCandidates(true)">加载更多支出</button>
         </template>
