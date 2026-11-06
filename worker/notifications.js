@@ -17,6 +17,10 @@ export async function saveNotification(db,item){
       delivery_status,sent_devices,failed_devices,local_day,dedupe_key)
     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
     ON CONFLICT(recipient_user_id,local_day,dedupe_key) DO UPDATE SET
+      sender_user_id=CASE WHEN ?14=1 THEN excluded.sender_user_id ELSE notification_inbox.sender_user_id END,
+      title=CASE WHEN ?14=1 THEN excluded.title ELSE notification_inbox.title END,
+      message=CASE WHEN ?14=1 THEN excluded.message ELSE notification_inbox.message END,
+      created_at=CASE WHEN ?14=1 THEN CURRENT_TIMESTAMP ELSE notification_inbox.created_at END,
       delivery_status=CASE WHEN notification_inbox.sent_devices>0 AND excluded.sent_devices=0
         THEN notification_inbox.delivery_status ELSE excluded.delivery_status END,
       sent_devices=MAX(notification_inbox.sent_devices,excluded.sent_devices),
@@ -24,7 +28,21 @@ export async function saveNotification(db,item){
     .bind(item.id,item.householdId,item.senderId||null,item.recipientId,
       item.kind,item.sourceId||null,String(item.title||'').slice(0,90),
       String(item.message||'').slice(0,160),status,
-      item.sentDevices||0,item.failedDevices||0,day,item.dedupeKey||null).run()
+      item.sentDevices||0,item.failedDevices||0,day,item.dedupeKey||null,item.mergeCompletion?1:0).run()
+}
+
+// Find this recipient's scheduled reminder for the same task occurrence. A
+// completion may update that inbox row without suppressing the separate Push.
+// This lookup is limited to a recipient's current-day indexed inbox entries.
+export async function findScheduledNotification(db,{householdId,recipientId,kind,sourceId,periodOn=null,localDay=jstNotificationDay()}){
+  const prefix='scheduled:'+kind+':'+sourceId+':'+
+    (kind==='routine'&&periodOn?periodOn+':':'')
+  return db.prepare(`SELECT id,dedupe_key AS dedupeKey FROM notification_inbox
+    WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+      AND kind=?4 AND source_id=?5
+      AND substr(dedupe_key,1,length(?6))=?6
+    ORDER BY created_at DESC,id DESC LIMIT 1`)
+    .bind(householdId,recipientId,localDay,kind,sourceId,prefix).first()
 }
 
 // Called in the existing 06:00 JST schedule, not on every page request.
