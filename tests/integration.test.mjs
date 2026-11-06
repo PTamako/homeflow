@@ -811,14 +811,14 @@ test('dated shopping, wishes and savings goals require explicit postpone',async(
  assert.equal(get('wish',wish.body.id),undefined,'wish disappears on next JST day')
  assert.equal(get('goal',once.body.id),undefined,'one-time saving disappears after completion')
  assert.equal(get('shopping',shopping.body.id),undefined,'purchased item disappears next day')
- assert.ok(get('trip',trip.body.id),'unfinished trip follows up after return')
+ assert.equal(get('trip',trip.body.id),undefined,'an unfinished trip does not automatically carry over')
  const undoWish=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:false},owner)
  assert.equal(undoWish.status,200)
  const undoGoal=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:false},owner)
  assert.equal(undoGoal.status,409,'historic settlement is rechecked, not manually unchecked')
  rows=(await ask('/api/plans/today?date='+tomorrow,'GET',undefined,owner)).body.items
- assert.equal(get('wish',wish.body.id).done,false)
+ assert.equal(get('wish',wish.body.id),undefined,'undo never schedules another due day')
  assert.equal(get('goal',saving.body.id),undefined,'settled periods never re-enter Today')
  assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(wish.body.id).status,'wished')
  sqlite.close()
