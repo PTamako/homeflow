@@ -37,3 +37,19 @@ test('a historical Today deep link never duplicates a row when switching to acti
   assert.match(focus,/kind!=='routine'\|\|planScope\.value!=='history'\|\|row\.periodOn===item\.periodOn/)
   assert.match(focus,/if\(!listed\)target\.value=uniquePlanRows\(\[item,\.\.\.target\.value\]/)
 })
+
+test('task and routine status chips always occupy the right side of the heading',()=>{
+  const section=life.slice(life.indexOf('class="life-card plan-tasks-card"'),
+    life.indexOf('<p v-if="!routines.length'))
+  const history=section.slice(0,section.indexOf('<template v-else-if="entry.kind===\'routine\'">'))
+  const activeRoutine=section.slice(section.indexOf('<template v-else-if="entry.kind===\'routine\'">'),
+    section.indexOf('<div v-for="t in [entry.item]"'))
+  const oneTime=section.slice(section.indexOf('<div v-for="t in [entry.item]"'))
+  assert.match(history,/<div class="plan-task-head">[\s\S]*?<StatusBadge class="plan-task-status routine-state"/)
+  assert.match(activeRoutine,/<div class="plan-task-head">[\s\S]*?<div class="plan-task-heading-actions">[\s\S]*?<StatusBadge v-if="r.currentPeriodOn/)
+  assert.match(oneTime,/<div class="plan-task-head">[\s\S]*?<div class="plan-task-heading-actions">[\s\S]*?<StatusBadge class="plan-task-status"/)
+  assert.doesNotMatch(activeRoutine.slice(activeRoutine.indexOf('<div class="plan-task-footer">')), /<StatusBadge/)
+  assert.doesNotMatch(oneTime.split('<small class="once-task-summary">')[1]?.split('</small>')[0], /<StatusBadge/)
+  assert.match(life,/\.plan-task-heading-actions\{[^}]*margin-left:auto/)
+  assert.match(life,/\.plan-task-head>\.plan-task-status\{margin-left:auto\}/)
+})
