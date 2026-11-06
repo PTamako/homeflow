@@ -402,6 +402,9 @@ async function submitAuth(){
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
     if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
+    // On a fresh login, establish the revision baseline immediately. Otherwise
+    // an edit between login and the first 25s poll could be missed.
+    if(user.value)void checkRemoteChanges()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
@@ -537,12 +540,12 @@ async function checkRemoteChanges(){
    if(prior!==null&&prior!==version){
      sharedRefreshCounter.value++
      if(tab.value==='today')await loadTodayPage(true)
-     if(tab.value==='family'){
-       const family=await api('/family')
-       if(user.value?.id===id){
-         profiles.value=family.profiles||[]
-         members.value=family.members||[]
-       }
+     // Member names and pet/family profiles appear in Today as well as Family,
+     // so refresh this small scoped dataset on any remote household change.
+     const family=await api('/family')
+     if(user.value?.id===id){
+       profiles.value=family.profiles||[]
+       members.value=family.members||[]
      }
      if(tab.value==='today')void todayNotificationsRef.value?.refresh()
    }

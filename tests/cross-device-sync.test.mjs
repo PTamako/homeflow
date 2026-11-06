@@ -4,6 +4,8 @@ import {DatabaseSync} from 'node:sqlite'
 import {readFileSync} from 'node:fs'
 import {householdRevision,syncStateRoute,bumpHouseholdRevision} from '../worker/sync.js'
 import {todayPageRoute} from '../worker/today-page.js'
+import worker from '../worker/index.js'
+import {sha256} from '../worker/security.js'
 
 const owner={household_id:'shared',user_id:'alice',role:'owner'}
 const member={household_id:'shared',user_id:'bob',role:'member'}
@@ -86,4 +88,64 @@ test('PWA refreshes when returning on the same day and when another family membe
  assert.match(app,/sharedRefreshCounter\.value\+\+/)
  assert.match(panel,/props\.syncRevision/)
  assert.match(worker,/response\.ok&&!?\['GET','HEAD','OPTIONS'\]/)
+})
+
+test('actual authenticated Worker writes by either family account advance the other account sync revision',async()=>{
+ const {db,sqlite}=dbFixture()
+ const origin='https://homeflow.example'
+ const aliceToken='a'.repeat(64),bobToken='b'.repeat(64)
+ const cookie=token=>'__Host-hf_session='+token
+ const env={APP_ENV:'preview',DB:db}
+ const request=(path,token,method='GET',body)=>new Request(origin+path,{
+  method,headers:{cookie:cookie(token),...(method==='GET'?{}:{origin,
+   'content-type':'application/json'})},
+  ...(body===undefined?{}:{body:JSON.stringify(body)})
+ })
+ const invoke=async(path,token,method='GET',body)=>{
+  const response=await worker.fetch(request(path,token,method,body),env)
+  return {status:response.status,body:await response.json()}
+ }
+ try{
+  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
+  sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0029_household_revisions.sql')")
+  sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
+  for(const name of ['alice','bob']){
+   sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
+     .run(name,name,'salt','verifier')
+   sqlite.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)')
+     .run('shared',name,name==='alice'?'owner':'member')
+  }
+  for(const [name,token] of [['alice',aliceToken],['bob',bobToken]]){
+   const hash=await sha256(token)
+   sqlite.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)')
+     .run(hash,name,Date.now()+3600000)
+  }
+  assert.equal((await invoke('/api/sync/state',aliceToken)).body.revision,0)
+  assert.equal((await invoke('/api/sync/state',bobToken)).body.revision,0)
+  const created=await invoke('/api/tasks',aliceToken,'POST',{
+   title:'家里买牛奶',visibility:'household',dueOn:'2026-11-06'
+  })
+  assert.equal(created.status,201,JSON.stringify(created))
+  assert.equal((await invoke('/api/sync/state',bobToken)).body.revision,1)
+  const visible=await invoke('/api/today/page?date=2026-11-06',bobToken)
+  assert.equal(visible.status,200)
+  assert.ok(visible.body.items.some(item=>item.title==='家里买牛奶'))
+  const rejected=await invoke('/api/tasks',aliceToken,'POST',{
+   title:'',visibility:'household',dueOn:'2026-11-06'
+  })
+  assert.equal(rejected.status,400)
+  assert.equal((await invoke('/api/sync/state',bobToken)).body.revision,1,
+   'a rejected mutation must not invalidate remote clients')
+  const privateTask=await invoke('/api/tasks',bobToken,'POST',{
+   title:'私人安排',visibility:'private',dueOn:'2026-11-06'
+  })
+  assert.equal(privateTask.status,201)
+  assert.equal((await invoke('/api/sync/state',aliceToken)).body.revision,2)
+  const alicePage=await invoke('/api/today/page?date=2026-11-06',aliceToken)
+  assert.equal(alicePage.status,200)
+  assert.ok(alicePage.body.items.some(item=>item.title==='家里买牛奶'))
+  assert.ok(!alicePage.body.items.some(item=>item.title==='私人安排'))
+ }finally{sqlite.close()}
 })
