@@ -1656,7 +1656,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   border:0;box-shadow:none;margin:0;
 }
 .plan-task-item :deep(.swipe-content){background:#fff}
-.plan-task-item :deep(.swipe-actions){align-items:flex-start;background:#f4f7f4}
+.plan-task-item :deep(.swipe-actions){align-items:flex-start;background:#fff}
 .plan-task-item :deep(.swipe-actions button){height:min(72px,100%);flex:0 0 72px}
 /* An opaque movable surface masks the rail below the rest of the row, while
    compact Edit / Delete buttons stay aligned at the top of tall tasks. */
@@ -1686,7 +1686,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .memory-swipe-body .memory-swipe-heading h3{margin:7px 0 8px;line-height:1.45}
 .memory :deep(.swipe-row){border-radius:8px}
 .memory :deep(.swipe-content){background:#fff}
-.memory :deep(.swipe-actions){align-items:flex-start;background:#f4f7f4}
+.memory :deep(.swipe-actions){align-items:flex-start;background:#fff}
 .memory :deep(.swipe-actions button){height:72px;flex:0 0 72px}
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
