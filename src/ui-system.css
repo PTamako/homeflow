@@ -1,0 +1,216 @@
+/* HomeFlow mobile-first visual system. Shared across every Vue view.
+   Component-scoped styles keep feature-specific layout; these rules normalize
+   visual hierarchy, touch targets and form/list behavior without changing data. */
+:root{
+ --ui-ink:#26392f;--ui-muted:#6e8176;--ui-subtle:#87998d;
+ --ui-brand:#357b5c;--ui-brand-hover:#2d6c51;--ui-brand-soft:#eaf4ed;
+ --ui-bg:#f6f7f2;--ui-card:#fff;--ui-surface:#f8faf8;
+ --ui-line:#e2ebe4;--ui-field:#cbdcd0;--ui-shadow:0 5px 18px #243b2d0a;
+ --ui-radius:14px;--ui-radius-sm:10px;--ui-touch:44px;
+}
+html{color-scheme:light}
+body{background:var(--ui-bg);color:var(--ui-ink)}
+.shell{width:100%;min-inline-size:0}
+.shell :is(.panel,.life-card,.pet-card,.finance-card){
+ background:var(--ui-card);border:1px solid var(--ui-line);
+ border-radius:var(--ui-radius);box-shadow:var(--ui-shadow);
+ min-inline-size:0;max-inline-size:100%;
+}
+.shell .content{padding:18px 14px calc(112px + env(safe-area-inset-bottom))}
+.shell :is(.panel,.life-card,.pet-card,.finance-card){padding:16px;margin-block:10px}
+.shell .management-page .panel{padding:16px;margin-block:9px}
+.shell :is(.panel h2,.life-card h2,.pet-card h2,.finance-card h2){font-size:16px;line-height:1.35;letter-spacing:0}
+.shell .hero{padding:20px;border-radius:20px;min-height:150px}
+.shell .hero h2{font-size:22px}
+.shell .life-grid{grid-template-columns:minmax(0,1fr);gap:0}
+.shell :is(.life-row,.task-row,.record,.notice-item,.reminder-item,.ledger-entry,.trash-item){
+ min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere;
+}
+.shell .life-row{gap:10px;padding-block:12px;border-color:var(--ui-line)}
+.shell .task-row{gap:10px;padding-block:12px}
+.shell .record{padding-block:12px}
+.shell .life-details{min-width:0}
+.shell :is(.detail-name,.routine-name){line-height:1.5;overflow-wrap:anywhere}
+.shell :is(.routine-meta,.once-task-summary,.plan-task-next,.life-row small,.task-meta,.notice-bottom small){
+ color:var(--ui-muted);line-height:1.55;
+}
+.shell :is(.task-meta,.once-task-identity){row-gap:5px;column-gap:7px}
+.shell :is(.plan-task-item,.shopping-plan-entry){border-color:var(--ui-line)}
+.shell .plan-tasks-card .plan-task-item{padding-block:12px}
+.shell .plan-task-footer{gap:8px;flex-wrap:wrap}
+.shell :is(.plan-task-next,.routine-meta){white-space:normal}
+.shell :is(.skipped-action-history-row,.historical-goal-entry,.line,.ledger-entry){
+ border-color:var(--ui-line);
+}
+.shell .life-row .detail-name{font-weight:700}
+
+/* Form hierarchy: single column on phones; never let native controls escape. */
+.shell :is(.plan-fields,.detail-editor,.life-form,.pet-form,.task-form,
+           .task-edit-form,.profile-form,.profile-editor-grid,.family-message-form,
+           .once-task-editor,.task-push-form,.fields,.shopping-ledger,.backup){
+ min-inline-size:0;max-inline-size:100%;gap:12px;
+}
+.shell :is(.plan-fields,.detail-editor,.life-form,.pet-form,.task-form,
+           .profile-form,.family-message-form,.once-task-editor,.task-push-form)
+ :is(label,fieldset){min-inline-size:0;max-inline-size:100%}
+.shell :is(.plan-fields,.detail-editor,.life-form,.pet-form,.task-form,
+           .profile-form,.family-message-form,.once-task-editor,.task-push-form,.fields,
+           .shopping-ledger,.archive-date-filters,.pet-history-filter,.search-panel,.finance-card)
+ :is(input:not([type="checkbox"]):not([type="radio"]):not(.date-field__native),select,textarea){
+ box-sizing:border-box;inline-size:100%;max-inline-size:100%;min-inline-size:0;
+ min-block-size:var(--ui-touch);border:1px solid var(--ui-field);
+ border-radius:var(--ui-radius-sm);background:#fff;color:var(--ui-ink);
+ padding:10px 12px;line-height:1.4;box-shadow:none;
+}
+.shell textarea{resize:vertical;line-height:1.55}
+.shell :is(.detail-editor,.once-task-editor,.task-push-form,.plan-memory-form){
+ border:1px solid var(--ui-line);border-radius:13px;
+ background:var(--ui-surface);padding:14px;
+}
+.shell :is(.plan-creator,.archive-toolbar,.plan-view-toolbar){
+ border-color:var(--ui-line);border-radius:14px;
+}
+.shell :is(.plan-fields,.detail-editor,.pet-form,.life-form,.task-form,
+           .profile-form,.family-message-form) label{
+ color:#566e5f;line-height:1.45;gap:6px;
+}
+.shell :is(.plan-fields,.detail-editor,.pet-form,.life-form,.task-form,
+           .profile-form,.family-message-form) input[type="checkbox"]{
+ accent-color:var(--ui-brand);min-width:19px;min-height:19px;
+}
+.shell :is(input,select,textarea,button):focus-visible{
+ outline:2px solid var(--ui-brand);outline-offset:2px;
+}
+.shell :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea):focus{
+ border-color:#73aa89;
+}
+.shell :is(input,select,textarea):disabled{
+ background:#f1f4f0;color:#8c9a91;opacity:.8;
+}
+
+/* One button language: positive filled, contextual soft, cancel outlined.
+   Destructive actions remain red; disabled states are never disguised. */
+.shell button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+ transition:background-color .15s ease,border-color .15s ease,opacity .15s ease}
+.shell :is(.primary,.creator-trigger,.creator-save,.editor-save,.search-submit,
+           .push-toggle,.finance-actions button:not(.unlink),
+           .life-form button:not(.life-cancel),.pet-form button:not(.pet-cancel),
+           .trip-preview button,.task-push-actions button[type="submit"]){
+ background:var(--ui-brand);color:white;border:1px solid var(--ui-brand);
+ border-radius:var(--ui-radius-sm);font-weight:700;
+}
+.shell :is(.outline,.creator-cancel,.editor-cancel,.life-cancel,.pet-cancel,
+           .task-push-actions button:not([type="submit"]),.life-light){
+ border:1px solid var(--ui-field);background:white;color:var(--ui-brand);
+ border-radius:var(--ui-radius-sm);font-weight:650;
+}
+.shell :is(.life-link,.routine-text-action,.plan-task-action,.snooze-button,
+           .search-more,.life-more,.task-push-form button:not([type="submit"]),
+           .reminder-rules-trigger,.notice-item-actions button,.notice-text-button){
+ border-radius:var(--ui-radius-sm);font-weight:650;
+}
+.shell :is(.life-link,.plan-task-action,.snooze-button,.routine-inline-actions button,
+           .notice-tabs button,.task-list-pager button){
+ border-color:#d5e7d9;background:#edf5ef;color:#367454;
+}
+.shell :is(.life-danger,.management-logout,.trash-danger,.trash-clear){
+ color:#a54148;background:#fff0ef;border-color:#e7c6c4;
+}
+.shell button:disabled{opacity:.45;cursor:not-allowed}
+.shell button[aria-pressed="true"]:not(.swipe-trigger){
+ font-weight:700;
+}
+.shell :is(.creator-actions,.editor-actions,.task-push-actions,
+           .plan-memory-actions,.pet-form-actions,.today-decision-actions){
+ display:flex;flex-wrap:wrap;align-items:center;gap:9px;
+}
+.shell :is(.creator-actions,.editor-actions,.task-push-actions,
+           .plan-memory-actions,.pet-form-actions,.today-decision-actions) button{
+ flex:1 1 115px;min-width:0;
+}
+
+/* More = optional actions only; swipe controls edit/delete. */
+.shell .routine-more-trigger{
+ display:grid;place-items:center;width:44px;height:44px;
+ border-radius:12px;background:transparent;color:var(--ui-muted);
+}
+.shell .routine-more-trigger[aria-expanded="true"]{background:var(--ui-brand-soft);color:var(--ui-brand)}
+.shell .routine-inline-actions{
+ display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+ margin:6px 0 10px;padding:10px;
+ border:1px solid var(--ui-line);border-radius:12px;
+ background:var(--ui-surface);
+}
+.shell .routine-inline-actions button{
+ min-height:40px;padding:8px 12px;border-radius:9px;
+ border:1px solid #d8e7dc;
+}
+.shell .shopping-plan-entry .shopping-inline-actions{
+ padding:10px;margin-bottom:10px;border:1px solid var(--ui-line);
+}
+.shell :is(.routine-inline-actions,.plan-action-strip,.trip-card-actions,
+           .shopping-row-actions){min-width:0}
+.shell :is(.today-category-tabs,.plan-filter-tabs,.notice-tabs){
+ scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain;
+}
+.shell :is(.today-category-tabs,.plan-filter-tabs,.notice-tabs)::-webkit-scrollbar{display:none}
+.shell :is(.today-category-tabs,.plan-filter-tabs,.notice-tabs,.archive-tabs) button{
+ min-height:40px;white-space:nowrap;
+}
+.shell .task-list-pager button,.shell .life-more{min-height:44px}
+.shell .nav{background:#fff;box-shadow:0 -6px 22px #243b2d14}
+.shell .nav-item{min-height:52px}
+.shell .today-checklist-panel{margin-top:10px}
+.shell .notice-item-actions{display:flex;gap:6px;flex-wrap:wrap}
+.shell .notice-item-actions button{min-height:38px}
+.shell .notice-tabs{overflow-x:auto;flex-wrap:nowrap}
+.shell .notice-item-top{min-width:0}
+.shell .notice-item-heading{min-width:0}
+.shell .important-reminders .reminder-item{gap:9px;border-color:var(--ui-line)}
+.shell .snooze-actions{gap:8px}
+.shell .search-results button{min-height:48px}
+
+/* Phone is the base layout. Keep modal/search usable above keyboard/safe areas. */
+@media(max-width:720px){
+ .shell :is(.panel,.life-card,.pet-card,.finance-card){padding:15px;margin-block:10px}
+ .shell .life-grid{grid-template-columns:minmax(0,1fr)}
+ .shell :is(.pet-form,.fields,.task-form,.profile-form){grid-template-columns:minmax(0,1fr)}
+ .shell :is(.plan-fields,.detail-editor,.life-form,.pet-form,.task-form,
+           .profile-form,.family-message-form,.once-task-editor,.task-push-form,.fields,
+           .search-panel) :is(input:not([type="checkbox"]):not([type="radio"]):not(.date-field__native),select,textarea){
+  font-size:16px;
+ }
+ .shell :is(.primary,.outline,.creator-trigger,.creator-actions button,.editor-actions button,
+            .pet-form-actions button,.task-push-actions button,.plan-memory-actions button,
+            .today-decision-actions button,.reminder-rules-trigger,.snooze-actions button,
+            .finance-actions button,.notice-item-actions button,.life-link,.routine-text-action,
+            .routine-inline-actions button,.plan-task-action,.today-plan-link,
+            .search-submit,.search-more,.search-close,.trash-item button,.ledger-entry button){
+  min-height:var(--ui-touch);
+ }
+ .shell .today-category-tabs button,.shell .plan-filter-tabs button,.shell .notice-tabs button{
+  min-height:40px;
+ }
+ .shell .plan-task-head .routine-more-trigger{height:44px;width:44px}
+ .shell .plan-task-footer{align-items:center}
+ .shell .shopping-row-actions{max-width:55%;gap:5px}
+ .shell .trip-card-actions{max-width:50%;gap:5px}
+ .shell .search-panel{
+  position:fixed;top:calc(env(safe-area-inset-top) + 68px);
+  left:12px;right:12px;width:auto;
+  max-height:calc(100dvh - env(safe-area-inset-top) - 100px);
+  overflow-y:auto;overscroll-behavior:contain;
+  border-radius:16px;box-shadow:0 18px 48px #1d362d2b;
+ }
+ .shell .notice-item-top{gap:8px}
+ .shell .notice-state{flex-wrap:wrap;justify-content:flex-end}
+}
+@media(min-width:721px){
+ .shell .content{padding:32px 24px 120px}
+ .shell :is(.panel,.life-card,.pet-card,.finance-card){padding:20px;margin-block:14px}
+ .shell .life-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+ .shell .life-card{margin:0}
+}
+@media(prefers-reduced-motion:reduce){
+ .shell button{transition:none}
+}
