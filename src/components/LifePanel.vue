@@ -981,7 +981,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               class="plan-task-item routine-history-row" :class="{'focused-plan-entry':isFocused(r)}">
               <div class="plan-task-head">
                 <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
-                <StatusBadge class="routine-state" :code="r.status" :label="r.status==='missed'?'未完成':undefined" />
+                <StatusBadge class="plan-task-status routine-state" :code="r.status" :label="r.status==='missed'?'未完成':undefined" />
               </div>
               <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
               <div class="plan-task-footer">
@@ -999,26 +999,31 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="routine-compact">
                   <div class="plan-task-head">
                     <b class="detail-name">{{ r.title }}</b>
-                    <button type="button" class="routine-more-trigger"
-                      :aria-label="'更多操作：'+r.title"
-                      :aria-expanded="expandedTaskMenu==='routine:'+r.id"
-                      :aria-controls="'routine-actions-'+r.id"
-                      @click.stop="toggleTaskMenu('routine:'+r.id)">
-                      <AppIcon name="ellipsis" :size="19"/>
-                    </button>
+                    <div class="plan-task-heading-actions">
+                      <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'"
+                        class="plan-task-status"
+                        :code="r.currentPeriodOn<today()?'overdue':'pending'"
+                        :label="r.currentPeriodOn<today()?'逾期':'待处理'" />
+                      <StatusBadge v-else-if="r.completedToday"
+                        class="plan-task-status" code="completed" label="今天已完成" />
+                      <button type="button" class="routine-more-trigger"
+                        :aria-label="'更多操作：'+r.title"
+                        :aria-expanded="expandedTaskMenu==='routine:'+r.id"
+                        :aria-controls="'routine-actions-'+r.id"
+                        @click.stop="toggleTaskMenu('routine:'+r.id)">
+                        <AppIcon name="ellipsis" :size="19"/>
+                      </button>
+                    </div>
                   </div>
                   <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
-                      <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()" code="overdue" label="逾期" />
-                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
+                      {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
                     </span>
-                    <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn>=today()" code="pending" label="待处理" />
                     <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button" class="routine-text-action"
                       :disabled="busy" @click="completeCurrentRoutine(r,'completed')">完成本期</button>
                     <button v-else-if="canCompleteRoutineEarly(r)" type="button" class="routine-text-action"
                       :disabled="busy" @click="completeRoutineEarly(r)">提前完成</button>
-                    <StatusBadge v-else-if="r.completedToday" class="routine-state state-completed" code="completed" label="今天已完成" />
                   </div>
                 </div>
               </SwipeActions>
@@ -1053,23 +1058,29 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @open="expandedTaskMenu=null" @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
                 <div class="life-details">
-                  <b class="detail-name">{{ t.title }}</b>
+                  <div class="plan-task-head">
+                    <b class="detail-name">{{ t.title }}</b>
+                    <div class="plan-task-heading-actions">
+                      <StatusBadge class="plan-task-status"
+                        :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'overdue':t.dueOn?'pending':'unscheduled'"
+                        :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'逾期':t.dueOn?'待处理':'待安排'" />
+                      <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
+                        :aria-label="'更多操作：'+t.title"
+                        :aria-expanded="expandedTaskMenu==='task:'+t.id"
+                        :aria-controls="'task-actions-'+t.id"
+                        @click.stop="toggleTaskMenu('task:'+t.id)">
+                        <AppIcon name="ellipsis" :size="19"/>
+                      </button>
+                    </div>
+                  </div>
                   <small class="once-task-summary">一次性任务 · {{ t.dueOn||'无截止日期' }}
                     <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
-                     · <StatusBadge :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'overdue':t.dueOn?'pending':'unscheduled'" :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'逾期':t.dueOn?'待处理':'待安排'" />
                   </small>
                   <small class="once-task-identity">
                     <span>发起人：{{ memberName(t.creatorUserId) }}</span>
                     <span>处理人：{{ memberName(t.assigneeUserId) }}</span>
                   </small>
                 </div>
-                <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
-                  :aria-label="'更多操作：'+t.title"
-                  :aria-expanded="expandedTaskMenu==='task:'+t.id"
-                  :aria-controls="'task-actions-'+t.id"
-                  @click.stop="toggleTaskMenu('task:'+t.id)">
-                  <AppIcon name="ellipsis" :size="19"/>
-                </button>
               </div>
             <div v-if="planType==='unscheduled'" class="plan-task-footer">
               <div class="plan-task-controls">
@@ -1632,8 +1643,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
 /* Routine 2.0: one divider, compact rows, discreet actions. */
 .routine-compact{min-width:0;display:grid;gap:5px}
-.plan-task-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.plan-task-head .detail-name{font-size:14px;line-height:1.45;overflow-wrap:anywhere;min-width:0}
+.plan-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0;width:100%}
+.plan-task-head .detail-name{font-size:14px;line-height:1.45;overflow-wrap:anywhere;min-width:0;flex:1}
+.plan-task-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none;margin-left:auto}
+.plan-task-status{flex:none;white-space:nowrap}
+.plan-task-head>.plan-task-status{margin-left:auto}
 .routine-meta{display:block;color:#85958a;font-size:11px;line-height:1.5}
 .plan-tasks-card .plan-task-item{border-bottom:1px solid #e5ece6;padding:11px 0;margin:0}
 .plan-tasks-card .plan-task-item:last-of-type{border-bottom:0}
