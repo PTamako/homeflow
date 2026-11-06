@@ -62,7 +62,7 @@ async function submit(){
           {mode:'weekday',weekday:Number(form.monthWeekday),
            weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
           {mode:'day',days:[...form.monthDays].sort((a,b)=>a-b)}):
-        form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
+        form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor,startOnAnchor:true}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
         repeatConfig:config,anchorDate:form.date})
     }
