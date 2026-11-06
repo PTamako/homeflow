@@ -60,7 +60,7 @@ test('portable full restore retains savings cadence, adjustments, dates and remi
  try{
   const x=source.sqlite
   x.prepare('INSERT INTO family_profiles(id,household_id,type,display_name) VALUES(?,?,?,?)').run(person,'primary','pet','豆沙')
-  x.prepare('INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,target_on) VALUES(?,?,?,?,?,?,?)').run(wish,'primary','u1','household','猫咪新玩具','purchase','2027-01-09')
+  x.prepare('INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,target_on,remind_enabled,remind_advance_days) VALUES(?,?,?,?,?,?,?,?,?)').run(wish,'primary','u1','household','猫咪新玩具','purchase','2027-01-09',1,3)
   x.prepare('INSERT INTO goals(id,household_id,created_by,visibility,wish_id,title,target_amount,goal_mode,start_on,target_on) VALUES(?,?,?,?,?,?,?,?,?,?)').run(goal,'primary','u1','household',wish,'按月储值',5000,'monthly','2026-11-01','2027-11-30')
   x.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity,due_on) VALUES(?,?,?,?,?,?,?)').run(shop,'primary','u1','household','猫粮',1,'2027-02-01')
   x.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,remind_enabled,subject_profile_id) VALUES(?,?,?,?,?,?,?)').run(taskId,'primary','u1','private','买东西',0,person)
@@ -86,7 +86,10 @@ test('portable full restore retains savings cadence, adjustments, dates and remi
   assert.equal(restoredGoal.goal_mode,'monthly')
   assert.equal(restoredGoal.start_on,'2026-11-01')
   assert.equal(restoredGoal.target_on,'2027-11-30')
-  assert.equal(target.sqlite.prepare('SELECT target_on FROM wishes WHERE id=?').get(wish).target_on,'2027-01-09')
+  const restoredWish=target.sqlite.prepare('SELECT target_on,remind_enabled,remind_advance_days FROM wishes WHERE id=?').get(wish)
+  assert.equal(restoredWish.target_on,'2027-01-09')
+  assert.equal(restoredWish.remind_enabled,1)
+  assert.equal(restoredWish.remind_advance_days,3)
   assert.equal(target.sqlite.prepare('SELECT due_on FROM shopping_items WHERE id=?').get(shop).due_on,'2027-02-01')
   assert.equal(target.sqlite.prepare('SELECT remind_enabled FROM tasks WHERE id=?').get(taskId).remind_enabled,0)
   assert.equal(target.sqlite.prepare('SELECT remind_enabled FROM routines WHERE id=?').get(routine).remind_enabled,0)
