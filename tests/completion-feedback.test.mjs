@@ -96,7 +96,7 @@ test('feedback is best-effort and completed push opens historical plan',()=>{
  for(const kind of ['tasksRoute','lifeRoute','financeRoute'])
   assert.match(index,new RegExp('return '+kind+'\\([^\\n]*onComplete\\)'))
  assert.match(web,/recordInInbox:true/)
- assert.match(web,/dedupeKey:'complete:'/)
+ assert.match(web,/dedupeKey:scheduled\?\.dedupeKey\|\|'complete:'/)
  assert.match(web,/u\.disabled_at IS NULL/)
  assert.match(web,/taskDone:'1'/)
  assert.match(app,/kind==='shopping'\|\|kind==='wish'/)
