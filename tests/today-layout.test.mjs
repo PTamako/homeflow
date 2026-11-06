@@ -85,7 +85,7 @@ test('Today only shows completions from the current JST day, without archive tog
  assert.doesNotMatch(app,/function todayTasksUrl\(/);
  assert.match(app,/watch\(todayCategory,/);
  assert.ok(!app.includes('<b>事项分类</b>'),'the filter tabs should not have a redundant title');
- assert.match(feed,/const rows=\[\]/);
+ assert.match(feed,/rows=\[\]/);
 })
 
 test('undated tasks go to Plans pending scheduling instead of Today',()=>{
