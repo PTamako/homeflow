@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref,watch,onBeforeUnmount} from 'vue'
 import AppIcon from './AppIcon.vue'
+import DateField from './DateField.vue'
 import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
@@ -219,7 +220,7 @@ onBeforeUnmount(()=>{requestId++})
         <button v-if="prefOf(item)" type="button" :disabled="savingItem" @click="saveItem(item,advanceDays,'normal',true)">重置</button>
        </div>
        <div v-if="selectedSnoozeId===item.kind+':'+item.id" class="snooze-calendar">
-        <input v-model="againOn" type="date" :min="tomorrow" :max="maxSnoozeDate" aria-label="重新提醒日期"/>
+        <DateField v-model="againOn" :min="tomorrow" :max="maxSnoozeDate" aria-label="重新提醒日期"/>
         <button type="button" :disabled="snoozing||!againOn||againOn<tomorrow||againOn>maxSnoozeDate"
          @click="snooze(item,againOn)">保存</button>
        </div>
@@ -299,7 +300,7 @@ onBeforeUnmount(()=>{requestId++})
 .snooze-button:disabled{opacity:.5}
 .snooze-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;min-width:0}
 .snooze-calendar{display:flex;gap:7px;flex:1 0 100%;align-items:center;min-width:0}
-.snooze-calendar input{min-width:0;max-width:180px;flex:1;border:1px solid #d5e3d8;border-radius:8px;padding:6px}
+.snooze-calendar :deep(.date-field){flex:1 1 150px;max-width:180px;min-inline-size:0}
 .item-settings{align-items:flex-end;flex-wrap:wrap}
 .item-settings label{display:grid;gap:3px;font-size:11px}
 .item-settings select{border:1px solid #d5e3d8;border-radius:8px;padding:5px;min-height:30px;max-width:100%}
