@@ -6,7 +6,7 @@ import {currentRoutinePeriod,historyCandidates,nextEarlyPeriod,nextRoutineDue,
 
 test('fixed 10-day interval starts on the selected first date, not ten days later',()=>{
   const rule={anchor_date:'2026-11-08',repeat_type:'interval',
-    repeat_config:'{"days":10,"anchor":"fixed"}',enabled:1}
+    repeat_config:'{"days":10,"anchor":"fixed","startOnAnchor":true}',enabled:1}
   assert.equal(dueOn(rule,'2026-11-06'),false)
   assert.equal(dueOn(rule,'2026-11-08'),true)
   assert.equal(dueOn(rule,'2026-11-18'),true)
@@ -28,7 +28,7 @@ test('fixed 10-day interval starts on the selected first date, not ten days late
 
 test('completion-based interval also starts on selected date, then follows last action',()=>{
   const rule={anchor_date:'2026-11-08',repeat_type:'interval',
-    repeat_config:'{"days":10,"anchor":"completion"}',enabled:1}
+    repeat_config:'{"days":10,"anchor":"completion","startOnAnchor":true}',enabled:1}
   assert.equal(nextRoutineDue(rule,'2026-11-06'),'2026-11-08')
   assert.equal(dueOn(rule,'2026-11-08'),true)
   assert.equal(currentRoutinePeriod(rule,'2026-11-08'),'2026-11-08')
@@ -46,9 +46,21 @@ test('completion-based interval also starts on selected date, then follows last 
 
 test('fixed interval with a one-day cadence includes its first day and next day',()=>{
   const rule={anchor_date:'2026-11-08',repeat_type:'interval',
-    repeat_config:'{"days":1,"anchor":"fixed"}',enabled:1}
+    repeat_config:'{"days":1,"anchor":"fixed","startOnAnchor":true}',enabled:1}
   assert.equal(nextRoutineDue(rule,'2026-11-06'),'2026-11-08')
   assert.equal(nextRoutineDue(rule,'2026-11-08'),'2026-11-08')
   assert.equal(nextRoutineDue(rule,'2026-11-09'),'2026-11-09')
   assert.equal(currentRoutinePeriod(rule,'2026-11-09'),'2026-11-09')
+})
+
+test('future legacy start date uses first date, but past baseline histories stay intact',()=>{
+  const future={anchor_date:'2026-11-08',created_at:'2026-11-06 04:00:00',
+    repeat_type:'interval',repeat_config:'{"days":10,"anchor":"fixed"}',enabled:1}
+  assert.equal(nextRoutineDue(future,'2026-11-06'),'2026-11-08')
+  assert.equal(dueOn(future,'2026-11-08'),true)
+  assert.equal(nextRoutineDue(future,'2026-11-09'),'2026-11-18')
+  const old={anchor_date:'2026-08-26',created_at:'2026-11-01 12:00:00',
+    repeat_type:'interval',repeat_config:'{"days":90,"anchor":"fixed"}',enabled:1}
+  assert.equal(dueOn(old,'2026-08-26'),false)
+  assert.equal(nextRoutineDue(old,'2026-11-05'),'2026-11-24')
 })
