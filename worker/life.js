@@ -264,10 +264,12 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
           WHERE id=?3 AND household_id=?4`)
           .bind(addDays(actual,config.days),stamp,id,session.household_id))
       }else if(body.status==='open'){
-        statements.push(db.prepare(`UPDATE routines SET next_due_on=date(
-          COALESCE((SELECT MAX(date(m.completed_at,'+9 hours')) FROM routine_marks m
-            WHERE m.routine_id=?1 AND m.occurrence_on<>?2 AND m.completed_at IS NOT NULL),
-            anchor_date),'+'||?3||' days'),updated_at=?4
+        statements.push(db.prepare(`UPDATE routines SET next_due_on=COALESCE(
+          (SELECT date(MAX(date(COALESCE(m.completed_at,m.skipped_at),'+9 hours')),
+            '+'||?3||' days') FROM routine_marks m
+            WHERE m.routine_id=?1 AND m.occurrence_on<>?2
+              AND (m.completed_at IS NOT NULL OR m.skipped_at IS NOT NULL)),
+          anchor_date),updated_at=?4
           WHERE id=?1 AND household_id=?5`)
           .bind(id,recordOn,config.days,stamp,session.household_id))
       }
@@ -447,7 +449,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
       if(scheduleChanged){
         resetDue=true
         nextDueValue=vals[1]==='interval'&&nextConfig.anchor==='completion'?
-          addDays(vals[3],Number(nextConfig.days)):null
+          vals[3]:null
       }
     }
     const fields=['visibility',...catalog[table].columns,...(resetDue?['next_due_on']:[]),
