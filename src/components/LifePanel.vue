@@ -1240,17 +1240,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row">
                 <div class="life-details"><b class="detail-name">{{ g.title }}</b>
-                  <small v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</small>
-                  <small v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
-                  <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
-                  <small class="goal-status-line">
-                    <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
+                  <small class="goal-amount-line">
+                    <span v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</span>
+                    <span v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</span>
                     <button v-if="g.wish_id" type="button" class="goal-wish-link"
                       :aria-label="'查看“'+g.title+'”关联的心愿计划'"
                       @click="emit('openPlans','wish',String(g.wish_id))">
                       <AppIcon name="heart" :size="13" />已关联心愿
                     </button>
-                  </small></div>
+                  </small>
+                  <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
+                  <small><StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" /></small></div>
                 <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
             </SwipeActions>
@@ -1656,9 +1656,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-form button{width:100%}
 .life-form .life-cancel{background:#fff;color:#43866a;border:1px solid #9ac2a8}
 .life-details{min-width:0;flex:1}
-.goal-status-line{display:flex!important;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
+.goal-amount-line{display:flex!important;align-items:center;flex-wrap:wrap;column-gap:6px;row-gap:0;min-width:0}
+.goal-amount-line>span{min-width:0;overflow-wrap:anywhere}
 .goal-wish-link{display:inline-flex;align-items:center;justify-content:center;gap:4px;
-  flex:none;min-width:0;min-height:36px;padding:4px 8px;border:0;border-radius:8px;
+  flex:none;min-width:0;min-height:32px;padding:4px 7px;border:0;border-radius:8px;
   background:var(--hf-success-bg);color:var(--hf-success-text);
   font:inherit;font-size:11px;font-weight:700;line-height:1.3;white-space:nowrap;
   touch-action:manipulation}
