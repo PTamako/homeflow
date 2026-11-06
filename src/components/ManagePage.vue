@@ -61,7 +61,7 @@ async function generateInvite(){
      <PushPanel v-if="active" :user-id="userId" :members="members"/>
 <button type="button" class="reminder-rules-trigger"
        :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
-       <span>提醒规则</span>
+       <span>分类提醒规则</span>
        <span aria-hidden="true">{{ reminderRulesOpen?'收起':'展开' }}</span>
      </button>
      <ImportantReminders v-if="active&&reminderRulesOpen" :today-date="todayDate"
