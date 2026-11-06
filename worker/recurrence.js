@@ -31,6 +31,13 @@ export function dueOn(rule,date) {
     }
     case 'monthly': {
       const [year,month,day]=date.split('-').map(Number)
+      // An ordinal weekday is still a monthly rule in the existing D1 CHECK
+      // constraint. Missing fifth occurrences are skipped, not moved to fourth.
+      if(Array.isArray(c.weeks)){
+        const weekday=new Date(date+'T00:00:00Z').getUTCDay()
+        const ordinal=Math.floor((day-1)/7)+1
+        return weekday===c.weekday&&c.weeks.includes(ordinal)
+      }
       const last=new Date(Date.UTC(year,month,0)).getUTCDate()
       return day===Math.min(Number(c.day),last)
     }
@@ -50,7 +57,14 @@ export function validateRule(r){
   if(r.repeatType==='workday')return true
   if(r.repeatType==='weekly')return Array.isArray(c.weekdays)&&c.weekdays.length>0&&c.weekdays.length<=7&&
     c.weekdays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)
-  if(r.repeatType==='monthly')return Number.isInteger(c.day)&&c.day>=1&&c.day<=31
+  if(r.repeatType==='monthly'){
+    if(c.weeks!==undefined||c.weekday!==undefined)
+      return Number.isInteger(c.weekday)&&c.weekday>=0&&c.weekday<=6&&
+        Array.isArray(c.weeks)&&c.weeks.length>=1&&c.weeks.length<=5&&
+        c.weeks.every(n=>Number.isInteger(n)&&n>=1&&n<=5)&&
+        new Set(c.weeks).size===c.weeks.length
+    return Number.isInteger(c.day)&&c.day>=1&&c.day<=31
+  }
   if(r.repeatType==='interval')return Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
   return true
 }
@@ -97,7 +111,7 @@ export function lastScheduledBefore(rule,date){
     d.setUTCDate(d.getUTCDate()+scheduled)
     return d.toISOString().slice(0,10)
   }
-  const max=rule.repeat_type==='monthly'?65:rule.repeat_type==='daily'?1:35
+  const max=rule.repeat_type==='monthly'?185:rule.repeat_type==='daily'?1:35
   const d=new Date(date+'T00:00:00Z')
   for(let i=1;i<=max&&i<=age;i++){
     d.setUTCDate(d.getUTCDate()-1)
