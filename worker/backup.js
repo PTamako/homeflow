@@ -8,6 +8,8 @@ const definitions=[
   ['trips',"SELECT * FROM trips WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 100"],
   ['goals',"SELECT * FROM goals WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 250"],
   ['shopping',"SELECT * FROM shopping_items WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 500"],
+  ['todayPlanActions',"SELECT kind,source_id,original_on,title,action,postponed_to,acted_at "+
+    "FROM today_plan_actions WHERE household_id=?1 AND acted_by=?2 ORDER BY acted_at DESC LIMIT 500"],
   ['memories',"SELECT * FROM memories WHERE household_id=?1 AND (visibility='household' OR created_by=?2) LIMIT 500"],
   ['petHealth',"SELECT * FROM pet_health_records WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 1000"]
 ]

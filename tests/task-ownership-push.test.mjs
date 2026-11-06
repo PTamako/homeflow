@@ -53,7 +53,7 @@ test('push reminders are scoped to the designated handler and preserve private v
  const worker=read('worker/index.js')
  const panel=read('src/components/PushPanel.vue')
  assert.match(reminders,/AND \(visibility='household' OR created_by=\?2\) AND \(assigned_to=\?2 OR assigned_to IS NULL\)/)
- assert.match(reminders,/AND \(visibility='household' OR creator_user_id=\?3\) AND \(assignee_user_id=\?3 OR assignee_user_id IS NULL\)/)
+ assert.match(reminders,/AND \(visibility='household' OR creator_user_id=\?4\) AND \(assignee_user_id=\?4 OR assignee_user_id IS NULL\)/)
  assert.match(server,/const key='manual-'\+slot/)
  assert.match(server,/INSERT OR IGNORE INTO notification_deliveries/)
  assert.match(worker,/path==='\/api\/push\/send-now'/)

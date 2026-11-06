@@ -211,3 +211,11 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 @media(max-width:520px){
   .today-checklist-panel{padding:14px 18px 12px}
 }
+
+/* Today decisions are distinct from completion and notification read-state. */
+.today-decision-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:0 12px 10px}
+.today-decision-actions button{font-size:12px;min-height:32px;padding:5px 12px}
+.today-postpone-form{margin:0 10px 12px;padding:12px;border:1px solid #dce7e0;border-radius:12px;min-width:0}
+.today-postpone-form label{display:grid;gap:7px;min-width:0;font-size:12px;color:#54685b}
+.today-postpone-form .today-decision-actions{padding:10px 0 0}
+@media(max-width:720px){.today-postpone-form{margin:0 6px 10px}.today-decision-actions{padding-right:8px}}

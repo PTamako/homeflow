@@ -23,7 +23,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql',
   '0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_finance_target_settings.sql',
   '0009_routine_pet_care.sql','0010_task_pet_care.sql','0011_unified_plan_hub.sql',
-  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql']
+  '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -61,6 +61,9 @@ test('portable full restore retains savings cadence, adjustments, dates and remi
   const x=source.sqlite
   x.prepare('INSERT INTO family_profiles(id,household_id,type,display_name) VALUES(?,?,?,?)').run(person,'primary','pet','豆沙')
   x.prepare('INSERT INTO wishes(id,household_id,created_by,visibility,title,wish_type,target_on,remind_enabled,remind_advance_days) VALUES(?,?,?,?,?,?,?,?,?)').run(wish,'primary','u1','household','猫咪新玩具','purchase','2027-01-09',1,3)
+  x.prepare(`INSERT INTO today_plan_actions
+    (household_id,kind,source_id,original_on,title,action,acted_by)
+    VALUES(?,?,?,?,?,'skipped',?)`).run('primary','wish',wish,'2027-01-09','猫咪新玩具','u1')
   x.prepare('INSERT INTO goals(id,household_id,created_by,visibility,wish_id,title,target_amount,goal_mode,start_on,target_on) VALUES(?,?,?,?,?,?,?,?,?,?)').run(goal,'primary','u1','household',wish,'按月储值',5000,'monthly','2026-11-01','2027-11-30')
   x.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity,due_on) VALUES(?,?,?,?,?,?,?)').run(shop,'primary','u1','household','猫粮',1,'2027-02-01')
   x.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,remind_enabled,subject_profile_id) VALUES(?,?,?,?,?,?,?)').run(taskId,'primary','u1','private','买东西',0,person)
@@ -90,6 +93,10 @@ test('portable full restore retains savings cadence, adjustments, dates and remi
   assert.equal(restoredWish.target_on,'2027-01-09')
   assert.equal(restoredWish.remind_enabled,1)
   assert.equal(restoredWish.remind_advance_days,3)
+  const restoredAction=target.sqlite.prepare('SELECT action,original_on,title FROM today_plan_actions WHERE source_id=?').get(wish)
+  assert.equal(restoredAction.action,'skipped')
+  assert.equal(restoredAction.original_on,'2027-01-09')
+  assert.equal(restoredAction.title,'猫咪新玩具')
   assert.equal(target.sqlite.prepare('SELECT due_on FROM shopping_items WHERE id=?').get(shop).due_on,'2027-02-01')
   assert.equal(target.sqlite.prepare('SELECT remind_enabled FROM tasks WHERE id=?').get(taskId).remind_enabled,0)
   assert.equal(target.sqlite.prepare('SELECT remind_enabled FROM routines WHERE id=?').get(routine).remind_enabled,0)
@@ -423,7 +430,7 @@ test('Today task read excludes undated and future tasks, but plans can still fet
    return response.json()
   }
   const today=await fetch('/api/tasks?status=all&today=2026-11-05')
-  assert.deepEqual(new Set(today.tasks.map(t=>t.title)),new Set(['overdue','today','completed today']))
+  assert.deepEqual(new Set(today.tasks.map(t=>t.title)),new Set(['today','completed today']))
   const historical=await fetch('/api/tasks?status=all&today=2026-11-05&showHistory=1')
   assert.ok(historical.tasks.some(t=>t.title==='completed before'))
   const unscheduled=await fetch('/api/tasks?scope=unscheduled&limit=5')

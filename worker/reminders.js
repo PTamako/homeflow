@@ -3,6 +3,7 @@ import {daysBetween,dueOn,nextAnniversary} from './recurrence.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {savingsReminders} from './savings-reminders.js'
 import {wishReminders} from './wish-reminders.js'
+import {actionWindow,effectiveReminderDate} from './today-actions.js'
 
 // Reuse exactly the same identity for Cron records and pending-list de-duplication.
 export const reminderDeliveryKey=event=>[event.kind,event.id,
@@ -140,12 +141,17 @@ export async function remindersRoute(request,db,session) {
       AND m.occurrence_on>=?2 AND m.occurrence_on<=?3
       AND (r.visibility='household' OR r.created_by=?4)`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
-      AND completed_at IS NULL AND remind_enabled=1 AND due_on<=?2 AND (visibility='household' OR creator_user_id=?3) AND (assignee_user_id=?3 OR assignee_user_id IS NULL)
-      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
+      AND completed_at IS NULL AND remind_enabled=1
+      AND due_on<=?3 AND (due_on>=?2 OR id IN(SELECT source_id FROM today_plan_actions
+        WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?2 AND ?3))
+      AND (visibility='household' OR creator_user_id=?4) AND (assignee_user_id=?4 OR assignee_user_id IS NULL)
+      ORDER BY due_on LIMIT 100`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
+      AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
+        WHERE household_id=?1 AND kind='shopping' AND action='postponed' AND postponed_to BETWEEN ?4 AND ?2))
       AND (visibility='household' OR created_by=?3) AND (assigned_to=?3 OR assigned_to IS NULL)
-      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u),
+      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u,date),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')
       AND (visibility='household' OR created_by=?2)
@@ -164,6 +170,10 @@ export async function remindersRoute(request,db,session) {
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
         AND dedupe_key LIKE 'scheduled:%'`).bind(hid,u,date)]:[])
   ])
+  // Only manually rescheduled dates replace original due dates. A missed
+  // occurrence does not create a notification the next morning.
+  const future=addDays(date,7)
+  const activeActions=await actionWindow(db,hid,date,future)
   const leadDays=validLead(preference.results?.[0]?.advance_days)?preference.results[0].advance_days:0
   const overrides=new Map((itemPrefs.results||[]).map(x=>[x.kind+':'+x.item_id,x]))
   const forItem=(kind,id)=>{
@@ -195,17 +205,21 @@ export async function remindersRoute(request,db,session) {
     }catch{}
   }
   for(const t of tasks.results||[]){
-    const ahead=daysBetween(date,t.due_on)
+    const effective=effectiveReminderDate('task',t.id,t.due_on,date,future,activeActions)
+    if(!effective)continue
+    const ahead=daysBetween(date,effective)
     const opts=forItem('task',t.id)
-    if(ahead<=0||ahead===opts.days)
-      announcements.push({kind:'task',id:t.id,title:t.title,dueOn:t.due_on,priority:opts.priority,
+    if(ahead===0||ahead===opts.days)
+      announcements.push({kind:'task',id:t.id,title:t.title,dueOn:effective,priority:opts.priority,
         ...(ahead>0?{daysBefore:ahead}:{})})
   }
   for(const item of shopping.results||[]){
-    const ahead=daysBetween(date,item.due_on)
+    const effective=effectiveReminderDate('shopping',item.id,item.due_on,date,future,activeActions)
+    if(!effective)continue
+    const ahead=daysBetween(date,effective)
     const opts=forItem('shopping',item.id)
-    if(ahead<=0||ahead===opts.days)
-      announcements.push({kind:'shopping',id:item.id,title:item.title,dueOn:item.due_on,
+    if(ahead===0||ahead===opts.days)
+      announcements.push({kind:'shopping',id:item.id,title:item.title,dueOn:effective,
         priority:opts.priority,...(ahead>0?{daysBefore:ahead}:{})})
   }
   const finished=new Set((tripProgress.results||[]).map(r=>r.trip_id+':'+r.item_id))
@@ -227,7 +241,7 @@ export async function remindersRoute(request,db,session) {
         const ahead=daysBetween(date,task.dueDate)
         const itemId=trip.id+':'+task.externalId
         const opts=forItem('trip',itemId)
-        if(ahead<=0||ahead===opts.days)
+        if(ahead===0||ahead===opts.days)
           announcements.push({kind:'trip',id:itemId,priority:opts.priority,
             title:trip.title+' · '+task.title,dueOn:task.dueDate,
             ...(ahead>0?{daysBefore:ahead}:{})})
@@ -246,12 +260,18 @@ export async function remindersRoute(request,db,session) {
   // The normal reminders/settings API keeps its existing query budget.
   // Only Today's pending tab and the 06:00 scheduled pass include savings.
   if(includeGoals){
-    const {results:goals=[]}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
+    const {results:sourceGoals=[]}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
       FROM goals WHERE household_id=?1 AND deleted_at IS NULL
       AND (visibility='household' OR created_by=?2)
       AND (start_on IS NULL OR start_on<=?3)
-      AND (goal_mode IN ('monthly','yearly') OR (goal_mode='once' AND target_on=?3))
+      AND (goal_mode IN ('monthly','yearly') OR (goal_mode='once' AND
+          (target_on=?3 OR id IN(SELECT source_id FROM today_plan_actions
+            WHERE household_id=?1 AND kind='goal' AND action='postponed' AND postponed_to=?3))))
       ORDER BY created_at DESC LIMIT 60`).bind(hid,u,date).all()
+    const goals=sourceGoals.map(goal=>goal.goal_mode==='once'
+      ?{...goal,target_on:effectiveReminderDate('goal',goal.id,goal.target_on,
+        date,date,activeActions)}
+      :goal)
     if(goals.length){
       const ids=goals.map(x=>x.id)
       const placeholders=ids.map((_,i)=>'?'+(i+2)).join(',')
@@ -275,12 +295,17 @@ export async function remindersRoute(request,db,session) {
     // A single bounded indexed query, scoped to visible and enabled wishes.
     // Missing dates, completed/cancelled and reminder-disabled wishes never
     // enter the notification inbox.
-    const {results:wishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
+    const {results:sourceWishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
       FROM wishes WHERE household_id=?1 AND deleted_at IS NULL
-        AND remind_enabled=1 AND target_on>=?3 AND target_on<=?4
+        AND remind_enabled=1 AND (target_on BETWEEN ?3 AND ?4 OR
+          id IN(SELECT source_id FROM today_plan_actions WHERE household_id=?1
+            AND kind='wish' AND action='postponed' AND postponed_to BETWEEN ?3 AND ?4))
         AND status NOT IN ('completed','cancelled')
         AND (visibility='household' OR created_by=?2)
       ORDER BY target_on,id LIMIT 100`).bind(hid,u,date,addDays(date,7)).all()
+    const wishes=sourceWishes.map(wish=>({...wish,
+      target_on:effectiveReminderDate('wish',wish.id,wish.target_on,
+        date,future,activeActions)})).filter(wish=>wish.target_on)
     announcements.push(...wishReminders(wishes,date))
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))

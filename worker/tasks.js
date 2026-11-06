@@ -1,6 +1,7 @@
 import {iso,json,readBody,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
 import {jstToday} from './routine-periods.js'
+import {actionWindow,actionDue} from './today-actions.js'
 function validated(body,session) {
   const title=shortText(body?.title,150),notes=shortText(body?.notes??'',1000)
   const visibility=body?.visibility
@@ -164,13 +165,19 @@ export async function tasksRoute(request,db,path,session,onComplete=null) {
         AND (?3='all' OR (?3='open' AND completed_at IS NULL)
           OR (?3='done' AND completed_at IS NOT NULL))
         AND (?4 IS NULL OR
-          (completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?4) OR
+          (completed_at IS NULL AND due_on IS NOT NULL AND (due_on=?4 OR
+            id IN (SELECT source_id FROM today_plan_actions WHERE household_id=?1
+              AND kind='task' AND action='postponed' AND postponed_to=?4))) OR
           (completed_at IS NOT NULL AND (?7=1 OR (completed_at>=?5 AND completed_at<?6))))
       ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
         CASE WHEN due_on IS NULL THEN 1 ELSE 0 END,due_on,created_at DESC
       LIMIT 250`).bind(household,who,mode,today,todayStart,tomorrow,showHistory?1:0).all()
-    // This existing Today request carries hidden keys for every category.
-    // No new client request, cron write, or scan of historical dates is needed.
+    // No overdue task rolls into Today automatically. Manual target dates are
+    // displayed once, and explicit skips remain only in the history log.
+    const actions=today?await actionWindow(db,household,today):[]
+    const listed=(results||[]).filter(row=>row.completedAt||
+      !today||actionDue('task',row.id,row.dueOn,today,actions))
+      .map(row=>row.completedAt||!today?row:{...row,dueOn:today})
     let hiddenTodayKeys=[]
     if(today){
       const hidden=await db.prepare(`SELECT item_key FROM today_dismissals
@@ -178,7 +185,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null) {
         .bind(household,who,today).all()
       hiddenTodayKeys=(hidden.results||[]).map(row=>row.item_key)
     }
-    return json({tasks:results||[],hiddenTodayKeys})
+    return json({tasks:listed,hiddenTodayKeys})
   }
   if(path==='/api/tasks' && request.method==='POST'){
     const body=await readBody(request)

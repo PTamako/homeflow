@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -389,7 +389,7 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
  const yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10)
  const task=await ask('/api/tasks','POST',{
    title:'明天再提醒的测试任务',visibility:'household',
-   dueOn:yesterday,notes:'',remindEnabled:true},owner)
+   dueOn:today,notes:'',remindEnabled:true},owner)
  assert.equal(task.status,201,JSON.stringify(task.body))
  const endpoint='/api/reminders?date='
  const initial=await ask(endpoint+today,'GET',undefined,owner)
@@ -403,8 +403,8 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
  assert.ok(!after.body.items.some(x=>x.kind==='task'&&x.id===task.body.id))
  const tomorrow=await ask(endpoint+nextDay,'GET',undefined,owner)
  assert.equal(tomorrow.status,200)
- assert.ok(tomorrow.body.items.some(x=>x.kind==='task'&&x.id===task.body.id),
-   'snooze must never alter the underlying task due date')
+ assert.ok(!tomorrow.body.items.some(x=>x.kind==='task'&&x.id===task.body.id),
+   'snooze cannot silently postpone a one-time task')
  const duplicate=await ask('/api/reminders/snooze','POST',{
    kind:'task',id:task.body.id,untilOn:today},owner)
  assert.equal(duplicate.status,200)
@@ -736,7 +736,7 @@ test('shopping supports two verified receipts, partial unlink, and source deleti
  sqlite.close()
 })
 
-test('dated shopping, wishes and savings goals carry forward until verified completion',async()=>{
+test('dated shopping, wishes and savings goals require explicit postpone',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
@@ -768,13 +768,13 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  for(const created of [shopping,wish,saving,once,trip])assert.equal(created.status,201,JSON.stringify(created.body))
  let rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
  const get=(kind,id)=>rows.find(x=>x.kind===kind&&x.id===id)
- assert.equal(get('shopping',shopping.body.id).overdue,true)
- assert.equal(get('wish',wish.body.id).overdue,true)
- assert.equal(get('goal',once.body.id).overdue,true)
+ assert.equal(get('shopping',shopping.body.id),undefined)
+ assert.equal(get('wish',wish.body.id),undefined)
+ assert.equal(get('goal',once.body.id),undefined)
  assert.equal(get('goal',saving.body.id),undefined,'closed recurring period is not an overdue Today task')
  const reviews=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.goalReviews
  assert.equal(reviews.find(x=>x.id===saving.body.id).periodKey,lastMonthKey)
- assert.equal(get('trip',trip.body.id).tripEnded,true)
+ assert.equal(get('trip',trip.body.id),undefined)
  assert.equal((await ask('/api/plans/complete','POST',
    {kind:'goal',id:saving.body.id,periodKey:today.slice(0,7),completed:true},owner)).status,409,
    'current monthly goal must not complete before the end of its period')
@@ -811,14 +811,14 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  assert.equal(get('wish',wish.body.id),undefined,'wish disappears on next JST day')
  assert.equal(get('goal',once.body.id),undefined,'one-time saving disappears after completion')
  assert.equal(get('shopping',shopping.body.id),undefined,'purchased item disappears next day')
- assert.ok(get('trip',trip.body.id),'unfinished trip follows up after return')
+ assert.equal(get('trip',trip.body.id),undefined,'an unfinished trip does not automatically carry over')
  const undoWish=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:false},owner)
  assert.equal(undoWish.status,200)
  const undoGoal=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:false},owner)
  assert.equal(undoGoal.status,409,'historic settlement is rechecked, not manually unchecked')
  rows=(await ask('/api/plans/today?date='+tomorrow,'GET',undefined,owner)).body.items
- assert.equal(get('wish',wish.body.id).done,false)
+ assert.equal(get('wish',wish.body.id),undefined,'undo never schedules another due day')
  assert.equal(get('goal',saving.body.id),undefined,'settled periods never re-enter Today')
  assert.equal(sqlite.prepare("SELECT status FROM wishes WHERE id=?").get(wish.body.id).status,'wished')
  sqlite.close()
@@ -1086,7 +1086,7 @@ test('future interval can be completed early in Plans and undone without duplica
  sqlite.close()
 })
 
-test('uncompleted weekly and monthly routines roll over without duplicate occurrences',async()=>{
+test('missed weekly and monthly occurrences expire; later cycles are independent',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
@@ -1102,15 +1102,16 @@ test('uncompleted weekly and monthly routines roll over without duplicate occurr
  assert.equal(weekly.status,201,JSON.stringify(weekly.body))
  const day=(date)=>ask('/api/routines/today?date='+date,'GET',undefined,owner)
  const tuesday=await day('2026-11-03')
- const carried=tuesday.body.items.find(x=>x.id===weekly.body.id)
- assert.ok(carried,JSON.stringify(tuesday.body))
- assert.equal(carried.carriedFrom,'2026-11-02')
- assert.equal(carried.mark,null)
+ assert.equal(tuesday.body.items.some(x=>x.id===weekly.body.id),false)
+ const missedHistory=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.ok(missedHistory.body.items.some(x=>x.id===weekly.body.id&&x.periodOn==='2026-11-02'&&x.status==='missed'))
  const marked=await ask('/api/routines/'+weekly.body.id+'/mark','POST',
-   {date:'2026-11-03',status:'completed'},owner)
+   {date:'2026-11-02',status:'skipped'},owner)
  assert.equal(marked.status,200,JSON.stringify(marked.body))
  const sameDay=await day('2026-11-03')
- assert.ok(sameDay.body.items.find(x=>x.id===weekly.body.id)?.mark?.completed_at)
+ assert.equal(sameDay.body.items.some(x=>x.id===weekly.body.id),false)
+ const skippedHistory=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.ok(skippedHistory.body.items.some(x=>x.id===weekly.body.id&&x.status==='skipped'))
  const wednesday=await day('2026-11-04')
  assert.equal(wednesday.body.items.some(x=>x.id===weekly.body.id),false,
    'completed overdue Monday is not re-shown Wednesday')
@@ -1124,9 +1125,9 @@ test('uncompleted weekly and monthly routines roll over without duplicate occurr
  },owner)
  assert.equal(monthly.status,201,JSON.stringify(monthly.body))
  const nov4=await day('2026-11-04')
- assert.equal(nov4.body.items.find(x=>x.id===monthly.body.id)?.carriedFrom,'2026-11-01')
+ assert.equal(nov4.body.items.some(x=>x.id===monthly.body.id),false)
  const saved=await ask('/api/routines/'+monthly.body.id+'/mark','POST',
-   {date:'2026-11-04',status:'completed'},owner)
+   {date:'2026-11-01',status:'skipped'},owner)
  assert.equal(saved.status,200,JSON.stringify(saved.body))
  const nov5=await day('2026-11-05')
  assert.equal(nov5.body.items.some(x=>x.id===monthly.body.id),false)
@@ -1768,10 +1769,10 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   assert.equal(reminder.status,200,JSON.stringify(reminder.body))
   assert.ok(reminder.body.items.some(r=>r.kind==='routine'&&r.id===id&&r.dueOn==='2026-11-10'))
   const missed=await day('2026-11-11')
-  assert.equal(missed.body.items.find(r=>r.id===id)?.carriedFrom,'2026-11-10')
-  const completed=await ask('/api/routines/'+id+'/mark','POST',
-   {date:'2026-11-11',status:'completed'},owner)
-  assert.equal(completed.status,200,JSON.stringify(completed.body))
+  assert.equal(missed.body.items.some(r=>r.id===id),false)
+  const skipped=await ask('/api/routines/'+id+'/mark','POST',
+   {date:'2026-11-10',status:'skipped'},owner)
+  assert.equal(skipped.status,200,JSON.stringify(skipped.body))
   assert.equal((await day('2026-11-12')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-11-17')).body.items.some(r=>r.id===id),false)
   const twentyFourth=await day('2026-11-24')
@@ -1784,7 +1785,7 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   assert.equal((await day('2026-11-25')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-12-01')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-12-08')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-08')
-  assert.equal((await day('2026-12-29')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-22')
+  assert.equal((await day('2026-12-29')).body.items.some(r=>r.id===id),false)
   const marks=sqlite.prepare('SELECT occurrence_on FROM routine_marks WHERE routine_id=? ORDER BY occurrence_on').all(id)
   assert.deepEqual(marks.map(r=>r.occurrence_on),['2026-11-10','2026-11-24'])
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)

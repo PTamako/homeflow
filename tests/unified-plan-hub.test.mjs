@@ -15,7 +15,7 @@ function recordDb(){
  return {calls,batches,prepare(sql){
   const q={sql,values:[],bind(...values){this.values=values;return this},
     async run(){calls.push({sql,values:this.values});return {meta:{changes:1}}},
-    async first(){return null}}
+    async first(){return null},async all(){return {results:[]}}}
   return q
  },async batch(statements){
   const items=statements.map(s=>({sql:s.sql,values:s.values}))
@@ -81,9 +81,9 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
   db.batches.push(statements.map(s=>({sql:s.sql,values:s.values})))
   if(db.batches.length===1)return [
    {results:[{id:'shop',title:'猫粮',dueOn:'2026-11-04'}]},
-   {results:[{id:'wish',title:'电脑',dueOn:'2026-11-03'}]},
+   {results:[{id:'wish',title:'电脑',dueOn:'2026-11-04'}]},
    {results:[{id:'goal',title:'储值',goal_mode:'once',target_on:'2026-11-04',target_amount:10000,reserved_amount:0}]},
-   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-01',destination:'上海'}]}
+   {results:[{id:'trip',title:'旅行',dueOn:'2026-11-04',destination:'上海'}]}
   ]
   return statements.map(()=>({results:[]}))
  }
@@ -92,7 +92,7 @@ test('Today shows date-matched plans without calling external ledger',async()=>{
  const result=await r.json()
  assert.equal(result.items.length,4)
  assert.deepEqual(new Set(result.items.map(x=>x.kind)),new Set(['shopping','wish','goal','trip']))
- assert.equal(result.items.find(x=>x.kind==='wish').overdue,true)
+ assert.equal(result.items.find(x=>x.kind==='wish').overdue,false)
  assert.equal(db.batches.length,2)
  assert.equal(db.batches[0].length,4)
  assert.equal(db.batches[1].length,3)

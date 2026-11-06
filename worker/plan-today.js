@@ -3,6 +3,7 @@ import {goalPeriod} from './goal-period.js'
 import {verifiedGoalProgress} from './finance.js'
 import {jstDayOf} from './today-periods.js'
 import {closedGoalPeriods,settleGoalPeriod} from './goal-settlements.js'
+import {actionWindow,actionDue} from './today-actions.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
 const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -123,22 +124,35 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
       ledger_entry_id AS ledgerEntryId FROM shopping_items
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND (completed_at IS NULL OR completed_at>=?4)
-        AND due_on IS NOT NULL AND due_on<=?3
-      ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 25`).bind(h,u,date,startOfDayUtc),
+        AND due_on IS NOT NULL AND (due_on=?3 OR completed_at>=?4 OR id IN (
+          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='shopping'
+          AND action='postponed' AND postponed_to=?3))
+      ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,target_on AS dueOn,status FROM wishes
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND status!='cancelled' AND target_on IS NOT NULL AND target_on<=?3
-      ORDER BY target_on,id LIMIT 100`).bind(h,u,date),
+        AND status!='cancelled' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
+          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='wish'
+            AND action='postponed' AND postponed_to=?3) OR
+          (status='completed' AND id IN(SELECT plan_id FROM plan_completion_marks
+            WHERE household_id=?1 AND plan_type='wish' AND completed_at>=?4)))
+      ORDER BY target_on,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount
       FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND ((goal_mode='once' AND target_on IS NOT NULL AND target_on<=?3)
+        AND ((goal_mode='once' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
+          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='goal'
+          AND action='postponed' AND postponed_to=?3) OR id IN (
+          SELECT plan_id FROM plan_completion_marks WHERE household_id=?1 AND
+            plan_type='goal' AND period_key='once' AND completed_at>=?4)))
           OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))
-      ORDER BY created_at,id LIMIT 100`).bind(h,u,date),
+      ORDER BY created_at,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND status IN ('planning','active') AND start_on IS NOT NULL AND start_on<=?3
-      ORDER BY start_on,id LIMIT 25`).bind(h,u,date)
+        AND status IN ('planning','active') AND start_on IS NOT NULL AND
+          (start_on=?3 OR id IN (SELECT source_id FROM today_plan_actions
+            WHERE household_id=?1 AND kind='trip' AND action='postponed' AND postponed_to=?3))
+      ORDER BY start_on,id LIMIT 50`).bind(h,u,date)
   ])
+  const actionRows=await actionWindow(db,h,date)
   const goalIds=(sourceBatch[2].results||[]).map(row=>row.id)
   const wishIds=(sourceBatch[1].results||[]).map(row=>row.id)
   // Separate goal and wish lookups let D1 use the covering primary-key
@@ -168,14 +182,17 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
     if(!settledByGoal.has(record.goal_id))settledByGoal.set(record.goal_id,new Set())
     settledByGoal.get(record.goal_id).add(record.period_key)
   }
-  const add=(kind,row,done=false,periodKey)=>result.push({
-    kind,id:row.id,title:row.title,dueOn:row.dueOn,
-    done,overdue:row.dueOn<date&&!done,
+  const add=(kind,row,done=false,periodKey)=>{
+    if(!done&&!actionDue(kind,row.id,row.dueOn,date,actionRows))return
+    result.push({
+    kind,id:row.id,title:row.title,dueOn:done?row.dueOn:date,
+    done,overdue:false,
     ...(periodKey?{periodKey}:{}),
     ...(kind==='shopping'?{ledgerEntryId:row.ledgerEntryId||null}:{}),
     ...(row.destination?{destination:row.destination}:{}),
     ...(kind==='trip'&&row.endOn&&row.endOn<date?{tripEnded:true}: {})
   })
+  }
   const marksByPlan=new Map()
   for(const mark of batch[4].results||[]){
     const key=mark.plan_type+':'+mark.plan_id
@@ -222,9 +239,7 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
       }
     }
   }
-  for(const row of batch[3].results||[]){
-    add('trip',{...row,dueOn:row.endOn&&row.endOn<date?row.endOn:row.dueOn})
-  }
+  for(const row of batch[3].results||[])add('trip',row)
   result.sort((a,b)=>Number(a.done)-Number(b.done)||a.dueOn.localeCompare(b.dueOn))
   goalReviews.sort((a,b)=>a.reviewType==='pending'&&b.reviewType!=='pending'?-1:
     b.reviewType==='pending'&&a.reviewType!=='pending'?1:a.dueOn.localeCompare(b.dueOn))

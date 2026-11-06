@@ -163,6 +163,27 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>(props.focusPlanScope||'active')
+type SkippedTodayAction={kind:'task'|'shopping'|'wish'|'goal'|'trip';id:string;title:string;originalOn:string;actedAt:string}
+const skippedTodayActions=ref<SkippedTodayAction[]>([]),skippedActionCursor=ref<string|null>(null),skippedActionBusy=ref(false)
+function skippedActionPath(cursor?:string|null){
+ const q=new URLSearchParams({limit:'5'})
+ if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
+ if(cursor)q.set('cursor',cursor)
+ return '/api/plans/action-history?'+q.toString()
+}
+async function loadMoreSkippedActions(){
+ if(!skippedActionCursor.value||skippedActionBusy.value)return
+ const cursor=skippedActionCursor.value,path=skippedActionPath(cursor)
+ skippedActionBusy.value=true
+ try{
+   const data=await api(path)
+   if(props.mode==='plans'&&planScope.value==='history'&&path===skippedActionPath(cursor)){
+     skippedTodayActions.value=[...skippedTodayActions.value,...(data.items||[])]
+     skippedActionCursor.value=data.nextCursor||null
+   }
+ }catch(e){error.value=(e as Error).message}
+ finally{skippedActionBusy.value=false}
+}
 function changePlanScope(value:'active'|'history'){
   if(planScope.value===value)return
   planScope.value=value
@@ -591,8 +612,10 @@ async function fetchMode(){
       const paths=kinds.map(kind=>listPath(kind))
       const goalArchivePath=props.isOwner&&planScope.value==='history'&&['all','goal'].includes(selected)?
         historicalGoalPath():null
+      const actionPath=planScope.value==='history'?skippedActionPath():null
       const pages=await Promise.all([...paths.map(path=>api(path)),
-        ...(goalArchivePath?[api(goalArchivePath)]:[])])
+        ...(goalArchivePath?[api(goalArchivePath)]:[]),
+        ...(actionPath?[api(actionPath)]:[])])
       if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
          paths.some((path,i)=>path!==listPath(kinds[i]))||
          (goalArchivePath!==null&&goalArchivePath!==historicalGoalPath()))return
@@ -602,6 +625,9 @@ async function fetchMode(){
       })
       historicalGoalPeriods.value=goalArchivePath?pages[kinds.length].items||[]:[]
       historicalGoalCursor.value=goalArchivePath?pages[kinds.length].nextCursor||null:null
+      const actionIndex=kinds.length+(goalArchivePath?1:0)
+      skippedTodayActions.value=actionPath?pages[actionIndex].items||[]:[]
+      skippedActionCursor.value=actionPath?pages[actionIndex].nextCursor||null:null
       await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
@@ -909,6 +935,17 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       </div>
       </div>
       <div class="life-grid">
+        <section v-if="planScope==='history'&&(skippedTodayActions.length||skippedActionCursor)"
+          class="life-card skipped-action-history">
+          <h2 class="life-heading"><AppIcon name="archive" :size="20"/> 跳过记录</h2>
+          <div v-for="entry in skippedTodayActions" :key="entry.kind+':'+entry.id+':'+entry.originalOn"
+            class="skipped-action-history-row">
+            <b>{{ entry.title }}</b>
+            <small>{{ ({task:'一次性任务',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'})[entry.kind] }} · {{ entry.originalOn }} · 已跳过</small>
+          </div>
+          <button v-if="skippedActionCursor" type="button" class="outline" :disabled="skippedActionBusy"
+            @click="loadMoreSkippedActions">加载更多</button>
+        </section>
         <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 

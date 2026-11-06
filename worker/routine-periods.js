@@ -72,8 +72,8 @@ export function isClosedRoutinePeriod(rule,periodOn,today){
   // Actual-completion intervals have only one unresolved occurrence; prior
   // completions are historical marks, never synthetic missed periods.
   if(isCompletionInterval(rule))return false
-  const next=nextRoutineDue(rule,addDays(periodOn,1))
-  return !!next&&next<=today
+  // A calendar occurrence expires after its due day, independent of the next cycle.
+  return true
 }
 export function periodStatus(mark){
   return mark?.completed_at?'completed':mark?.skipped_at?'skipped':'pending'

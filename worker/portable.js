@@ -52,6 +52,14 @@ const queries=[
      OR (m.plan_type='goal' AND EXISTS(SELECT 1 FROM goals g WHERE g.id=m.plan_id
        AND g.household_id=m.household_id AND g.created_by=?2)))
     ORDER BY m.completed_at,m.plan_type,m.plan_id,m.period_key LIMIT 501`],
+  ['todayPlanActions',`SELECT a.kind,a.source_id,a.original_on,a.title,a.action,a.postponed_to,a.acted_at
+    FROM today_plan_actions a WHERE a.household_id=?1 AND (
+    (a.kind='task' AND EXISTS(SELECT 1 FROM tasks s WHERE s.id=a.source_id AND s.household_id=a.household_id AND s.creator_user_id=?2)) OR
+    (a.kind='shopping' AND EXISTS(SELECT 1 FROM shopping_items s WHERE s.id=a.source_id AND s.household_id=a.household_id AND s.created_by=?2)) OR
+    (a.kind='wish' AND EXISTS(SELECT 1 FROM wishes s WHERE s.id=a.source_id AND s.household_id=a.household_id AND s.created_by=?2)) OR
+    (a.kind='goal' AND EXISTS(SELECT 1 FROM goals s WHERE s.id=a.source_id AND s.household_id=a.household_id AND s.created_by=?2)) OR
+    (a.kind='trip' AND EXISTS(SELECT 1 FROM trips s WHERE s.id=a.source_id AND s.household_id=a.household_id AND s.created_by=?2)))
+    ORDER BY a.acted_at,a.kind,a.source_id LIMIT 501`],
   ['reminderSnoozes',"SELECT kind,item_id,until_on FROM reminder_snoozes "+
     "WHERE household_id=?1 AND user_id=?2 ORDER BY updated_at LIMIT 501"],
   ['reminderPreferences',"SELECT advance_days,quiet_start_hour,quiet_end_hour FROM reminder_preferences "+
@@ -64,7 +72,7 @@ const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','todayPlanActions','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   if(!optionalDeletion(r.deleted_at))return null
@@ -230,6 +238,26 @@ function normalized(key,r,h,u) {
         "SELECT ?1,?2,?3,?4,?5 WHERE EXISTS(SELECT 1 FROM shopping_items "+
         "WHERE household_id=?1 AND id=?2 AND created_by=?4)",
         [h,r.shopping_id,String(r.external_entry_id),u,r.purchase_quantity??null]]
+    }
+    case 'todayPlanActions': {
+      if(!['task','shopping','wish','goal','trip'].includes(r.kind)||!id(r.source_id)||
+         !date(r.original_on)||str(r.title,150)===null||!r.title||
+         !['postponed','skipped'].includes(r.action)||
+         (r.action==='postponed'&&(!date(r.postponed_to)||r.postponed_to<=r.original_on))||
+         (r.action==='skipped'&&r.postponed_to!=null))return null
+      const stamp=typeof r.acted_at==='string'&&
+        /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/.test(r.acted_at)
+        ?r.acted_at:null
+      const table={task:'tasks',shopping:'shopping_items',wish:'wishes',
+        goal:'goals',trip:'trips'}[r.kind]
+      const creator=r.kind==='task'?'creator_user_id':'created_by'
+      // Restore only source plans owned by this account; imported actions
+      // never mark a plan done or alter financial targets.
+      return [`INSERT OR IGNORE INTO today_plan_actions
+        (household_id,kind,source_id,original_on,title,action,postponed_to,acted_by,acted_at)
+        SELECT ?1,?2,?3,?4,?5,?6,?7,?8,COALESCE(?9,CURRENT_TIMESTAMP)
+        WHERE EXISTS(SELECT 1 FROM ${table} WHERE id=?3 AND household_id=?1 AND ${creator}=?8)`,
+        [h,r.kind,r.source_id,r.original_on,r.title,r.action,r.postponed_to||null,u,stamp]]
     }
     case 'reminderPreferences': {
       if(![0,1,3,7].includes(r.advance_days))return null
