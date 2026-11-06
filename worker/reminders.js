@@ -2,6 +2,7 @@ import {json,validDate,readBody} from './security.js'
 import {daysBetween,dueOn,nextAnniversary} from './recurrence.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {savingsReminders} from './savings-reminders.js'
+import {wishReminders} from './wish-reminders.js'
 
 // Reuse exactly the same identity for Cron records and pending-list de-duplication.
 export const reminderDeliveryKey=event=>[event.kind,event.id,
@@ -269,6 +270,18 @@ export async function remindersRoute(request,db,session) {
       announcements.push(...(pendingOnly?goalNotices:
         goalNotices.filter(event=>event.notifyToday!==false)))
     }
+  }
+  if(includeGoals){
+    // A single bounded indexed query, scoped to visible and enabled wishes.
+    // Missing dates, completed/cancelled and reminder-disabled wishes never
+    // enter the notification inbox.
+    const {results:wishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
+      FROM wishes WHERE household_id=?1 AND deleted_at IS NULL
+        AND remind_enabled=1 AND target_on>=?3 AND target_on<=?4
+        AND status NOT IN ('completed','cancelled')
+        AND (visibility='household' OR created_by=?2)
+      ORDER BY target_on,id LIMIT 100`).bind(hid,u,date,addDays(date,7)).all()
+    announcements.push(...wishReminders(wishes,date))
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
   const deliveredKeys=new Set((deliveredNotices?.results||[]).map(x=>x.dedupe_key))
