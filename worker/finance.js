@@ -90,7 +90,7 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT '+(kind==='goal'?'id,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
+  return db.prepare('SELECT '+(kind==='goal'?'id,created_by,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
@@ -116,10 +116,14 @@ const LEDGER_ERROR_CODES=new Set([
 const financeError=error=>json({error:LEDGER_ERROR_CODES.has(error?.message)
   ?error.message:'ledger_connection_unavailable'},502)
 export async function financeRoute(request,env,path,session,onComplete=null){
-  if(session.role!=='owner')return json({error:'forbidden'},403)
+  const owner=session.role==='owner'
+  const sharedGoalRead=path==='/api/finance/goal/net'&&request.method==='GET'
+    ||path==='/api/finance/settings'&&['GET','PUT'].includes(request.method)
+  if(!owner&&path!=='/api/finance/status'&&!sharedGoalRead)
+    return json({error:'forbidden'},403)
   const db=env.DB
   if(path==='/api/finance/status'&&request.method==='GET'){
-    return json({connected:ready(env),readOnly:true,ownerOnly:true})
+    return json({connected:ready(env),readOnly:true,ownerOnly:owner})
   }
   if(!ready(env))return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
@@ -145,7 +149,10 @@ export async function financeRoute(request,env,path,session,onComplete=null){
       if(!Number.isSafeInteger(data.income)||!Number.isSafeInteger(data.expense)||
          !Number.isSafeInteger(data.net)||data.income-data.expense!==data.net)
         return json({error:'ledger_invalid_response'},502)
-      return json({start,end,income:data.income,expense:data.expense,net:data.net,readOnly:true})
+      // Shared goals show the net progress, not the underlying income and
+      // expense totals or individual Kakebo entries of another family member.
+      return json(owner?{start,end,income:data.income,expense:data.expense,net:data.net,readOnly:true}:
+        {start,end,net:data.net,readOnly:true})
     }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/settings'&&request.method==='PUT'){
@@ -153,6 +160,8 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     const kind=body?.type,id=body?.targetId,amount=body?.adjustmentAmount
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
+    if(!owner&&(kind!=='goal'||item.created_by!==user))
+      return json({error:'forbidden'},403)
     if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
       const window=goalPeriod(item,body?.periodKey)
       if(!window||!validAdjustment(amount))return json({error:'invalid_input'},400)
@@ -184,6 +193,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
+    if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
     if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
       const window=goalPeriod(item,url.searchParams.get('periodKey'))
       if(!window)return json({error:'invalid_range'},400)
