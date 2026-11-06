@@ -1,6 +1,6 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
-import {jstNotificationDay,saveNotification} from './notifications.js'
+import {jstNotificationDay,saveNotification,findScheduledNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -442,16 +442,37 @@ export async function sendCompletionFeedback(env,session,event){
   const recipients=completionRecipientIds(members.map(m=>m.userId),{
     ...event,actorId:session.user_id})
   const actorName=String(members[0]?.actorName||'家庭成员').slice(0,60)
+  const title=(String(event.title).slice(0,65)+' · 已完成').slice(0,90)
+  const message='已完成 · '+actorName+
+    (event.kind==='routine'&&event.periodOn?' · '+event.periodOn:'')
+  const localDay=jstNotificationDay()
+  const reminderScope=recipientId=>({
+    householdId:session.household_id,recipientId,kind:event.kind,
+    sourceId:event.id,periodOn:event.periodOn,localDay
+  })
+  // The person who completed the task may have received the 06:00 reminder,
+  // too. Update it silently; completion Push remains addressed to OTHER members.
+  try{
+    const ownReminder=await findScheduledNotification(db,reminderScope(session.user_id))
+    if(ownReminder)await saveNotification(db,{
+      id:crypto.randomUUID(),householdId:session.household_id,
+      recipientId:session.user_id,kind:event.kind,sourceId:event.id,
+      senderId:null,title,message,localDay,dedupeKey:ownReminder.dedupeKey,
+      mergeCompletion:true,sentDevices:0,failedDevices:0
+    })
+  }catch{ /* Inbox updates never block a committed completion. */ }
   let sent=0,failed=0
   for(const recipientId of recipients){
-    const notificationId=crypto.randomUUID()
+    // A second OS Push is still sent for completion; only the in-app row is
+    // reused. Keep the original reminder ID so either push opens that row.
+    const receiptId=crypto.randomUUID()
+    let scheduled=null
+    try{scheduled=await findScheduledNotification(db,reminderScope(recipientId))}catch{}
+    const notificationId=scheduled?.id||receiptId
     const params=new URLSearchParams({taskType:event.kind,taskId:event.id,
       taskDone:'1',notificationId})
     if(event.kind==='routine'&&/^\d{4}-\d{2}-\d{2}$/.test(event.periodOn||''))
       params.set('taskPeriod',event.periodOn)
-    const title=(String(event.title).slice(0,65)+' · 已完成').slice(0,90)
-    const message='已完成 · '+actorName+
-      (event.kind==='routine'&&event.periodOn?' · '+event.periodOn:'')
     try{
       const reply=await deliverToHouseholdUser(env,session.household_id,recipientId,{
         title,body:message,url:'/?'+params.toString(),
@@ -460,9 +481,10 @@ export async function sendCompletionFeedback(env,session,event){
         // Apple Web Push uses the high Urgency hint to attempt immediate delivery.
         priority:'important',recordInInbox:true
       },'complete:'+event.kind+':'+event.id+':'+event.completedAt,Date.now(),{
-        id:notificationId,senderId:session.user_id,kind:event.kind,
+        id:receiptId,senderId:session.user_id,kind:event.kind,
         sourceId:event.id,title,message,
-        dedupeKey:'complete:'+event.kind+':'+event.id+':'+event.completedAt
+        dedupeKey:scheduled?.dedupeKey||'complete:'+event.kind+':'+event.id+':'+event.completedAt,
+        mergeCompletion:!!scheduled
       })
       const data=await reply.json()
       sent+=Number(data?.sent||0)
