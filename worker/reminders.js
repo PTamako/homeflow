@@ -262,8 +262,12 @@ export async function remindersRoute(request,db,session) {
           WHERE household_id=?1 AND plan_type='goal' AND plan_id IN (${placeholders})
           LIMIT 1000`).bind(hid,...ids)
       ])
-      announcements.push(...savingsReminders(goals,date,
-        settlements.results||[],marks.results||[]))
+      const goalNotices=savingsReminders(goals,date,
+        settlements.results||[],marks.results||[])
+      // Cron sends on configured dates; the pending UI retains ongoing alerts
+      // without creating a new phone push or unread record every day.
+      announcements.push(...(pendingOnly?goalNotices:
+        goalNotices.filter(event=>event.notifyToday!==false)))
     }
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
