@@ -112,11 +112,17 @@ export function lastScheduledBefore(rule,date){
     d.setUTCDate(d.getUTCDate()+scheduled)
     return d.toISOString().slice(0,10)
   }
-  // A 5th weekday is absent in some months; search far enough back to find
-  // its most recent genuine occurrence without creating phantom periods.
-  const max=rule.repeat_type==='monthly'?
-    (rule.repeat_config&&typeof rule.repeat_config==='string'&&
-      rule.repeat_config.includes('"weekday"')?400:65):
+  // A fifth weekday can be absent for several months. Preserve the genuine
+  // most recent occurrence without inventing a fourth/fifth-week fallback.
+  let monthlyByWeekday=false
+  if(rule.repeat_type==='monthly'){
+    try{
+      const config=typeof rule.repeat_config==='string'?
+        JSON.parse(rule.repeat_config):rule.repeat_config||{}
+      monthlyByWeekday=config.mode==='weekday'
+    }catch{return null}
+  }
+  const max=rule.repeat_type==='monthly'?(monthlyByWeekday?400:65):
     rule.repeat_type==='daily'?1:35
   const d=new Date(date+'T00:00:00Z')
   for(let i=1;i<=max&&i<=age;i++){
