@@ -403,8 +403,8 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
  assert.ok(!after.body.items.some(x=>x.kind==='task'&&x.id===task.body.id))
  const tomorrow=await ask(endpoint+nextDay,'GET',undefined,owner)
  assert.equal(tomorrow.status,200)
- assert.ok(tomorrow.body.items.some(x=>x.kind==='task'&&x.id===task.body.id),
-   'snooze must never alter the underlying task due date')
+ assert.ok(!tomorrow.body.items.some(x=>x.kind==='task'&&x.id===task.body.id),
+   'snooze cannot silently postpone a one-time task')
  const duplicate=await ask('/api/reminders/snooze','POST',{
    kind:'task',id:task.body.id,untilOn:today},owner)
  assert.equal(duplicate.status,200)
