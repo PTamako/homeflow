@@ -225,20 +225,39 @@ onBeforeUnmount(()=>{requestId++})
     </div>
     </template>
     <div v-if="mode!=='list'" class="reminder-settings">
-      <label>默认提前提醒
-       <select :value="String(advanceDays)" :disabled="savingAdvance" @change="saveLead(($event.target as HTMLSelectElement).value)">
-        <option value="0">到期当天</option><option value="1">提前 1 天</option>
-        <option value="3">提前 3 天</option><option value="7">提前 7 天</option>
-       </select>
-      </label>
-      <div class="quiet-controls">
+      <div class="reminder-rule-section">
+        <h3>普通与定期计划</h3>
+        <p class="reminder-rule-desc">适用于一次性待办、定期、购物和旅行事项。单项提醒设置优先。</p>
+        <label>默认提前提醒
+         <select :value="String(advanceDays)" :disabled="savingAdvance" @change="saveLead(($event.target as HTMLSelectElement).value)">
+          <option value="0">到期当天</option><option value="1">提前 1 天</option>
+          <option value="3">提前 3 天</option><option value="7">提前 7 天</option>
+         </select>
+        </label>
+      </div>
+      <template v-if="mode==='settings'">
+        <div class="reminder-rule-section">
+          <h3>储值计划</h3>
+          <p class="reminder-rule-desc">一次性目标到期当天提醒；每月目标提前 3 天，每年目标提前 7 天。逾期待核算和结算结果独立通知。</p>
+        </div>
+        <div class="reminder-rule-section">
+          <h3>心愿计划</h3>
+          <p class="reminder-rule-desc">默认不提醒。到「计划 → 心愿」单独开启，可选当天或提前 1、3、7 天；完成或取消后不再提醒。</p>
+        </div>
+        <div class="reminder-rule-section">
+          <h3>生日与纪念日</h3>
+          <p class="reminder-rule-desc">家庭档案生日默认提前 30、7、1 天及当天；其他纪念日按各自已保存的提醒日期执行。</p>
+        </div>
+      </template>
+      <div class="quiet-controls reminder-rule-section">
+       <h3>通用推送时段</h3>
        <label class="quiet-toggle"><input v-model="quietEnabled" type="checkbox"/> 启用推送安静时段</label>
        <div v-if="quietEnabled" class="quiet-hours">
         <label>开始<select v-model="quietStart"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
         <label>结束<select v-model="quietEnd"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
        </div>
        <button class="snooze-button" type="button" :disabled="savingAdvance" @click="saveQuiet">保存安静时段</button>
-       <small>每日 06:00 推送，安静时段不通知。</small>
+       <small>适用于所有手机推送，不影响「今日通知」记录。每日 06:00 推送，安静时段不通知。</small>
       </div>
     </div>
     <div v-if="mode!=='list'&&snoozed.length" class="snoozed-items">
@@ -282,12 +301,17 @@ onBeforeUnmount(()=>{requestId++})
 .item-settings{align-items:flex-end;flex-wrap:wrap}
 .item-settings label{display:grid;gap:3px;font-size:11px}
 .item-settings select{border:1px solid #d5e3d8;border-radius:8px;padding:5px;min-height:30px;max-width:100%}
-.quiet-controls{display:grid;gap:7px;border-top:1px solid #e3eee6;margin-top:8px;padding-top:9px}
+.quiet-controls{display:grid;gap:7px}
+.reminder-rule-section{padding:12px 0;border-bottom:1px solid #e7eee9}
+.reminder-rule-section:last-child{border-bottom:0}
+.reminder-rule-section h3{margin:0 0 7px;color:#385c47;font-size:13px;font-weight:700}
+.reminder-rule-desc{margin:0 0 8px;color:#71867a;font-size:12px;line-height:1.65}
+.reminder-rule-section label{color:#465b4d}
 .quiet-controls .quiet-toggle{display:flex;align-items:center;gap:6px}
 .quiet-hours{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .quiet-hours select{width:100%;border:1px solid #d5e3d8;border-radius:8px;padding:6px;background:white}
 .quiet-controls>.snooze-button{justify-self:start}
-.reminder-settings{margin-top:8px;border-top:1px solid #e7eee9;padding-top:8px}
+.reminder-settings{margin-top:10px;border-top:1px solid #e7eee9}
 .reminder-settings label{font-size:12px;display:grid;gap:5px}
 .reminder-settings select{min-height:34px;width:100%;border-radius:8px;border:1px solid #d5e3d8;background:white}
 .reminder-settings small{color:#71867a;font-size:11px}
