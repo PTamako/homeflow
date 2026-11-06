@@ -13,6 +13,7 @@ function makeDb() {
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
  sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
+ sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0029_household_revisions.sql')")
  const db={
    prepare(sql) {
