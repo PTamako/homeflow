@@ -3,8 +3,13 @@
 // combined Today endpoint sorts and selects the requested five rows server-side.
 // All source SQL is parameterized and must enforce household/visibility itself.
 export async function readTodayRows(db,sourceSql,params,chunkSize=80){
- const out=[]
- let last=''
+  // Current households normally fit in one indexed filtered read. Avoid an
+  // unnecessary ID sort (and SQLite temp B-tree) for those small datasets.
+  const first=await db.prepare(sourceSql+' LIMIT ?'+(params.length+1))
+    .bind(...params,chunkSize+1).all()
+  if((first.results||[]).length<=chunkSize)return first.results||[]
+  const out=[]
+  let last=''
  for(;;){
   const sql='SELECT * FROM ('+sourceSql+') AS candidates WHERE candidates.id>?'+
    (params.length+1)+' ORDER BY candidates.id ASC LIMIT ?'+(params.length+2)

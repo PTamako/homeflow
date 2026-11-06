@@ -17,7 +17,8 @@ const migrations=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_proj
  '0020_goal_period_settlements.sql','0021_account_recovery.sql',
  '0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql',
  '0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql',
- '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql']
+ '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
+ '0029_household_revisions.sql']
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
@@ -127,5 +128,27 @@ test('privacy, invalid cursors and completed sort keys are enforced at the serve
   assert.equal(wrongCategory.status,400)
   const wrongLimit=await page(db,owner,{limit:'100'})
   assert.equal(wrongLimit.status,400)
+ }finally{sqlite.close()}
+})
+
+test('the full six-source Today feed traverses every page without duplicates or missing records',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  fill(sqlite)
+  let cursor=null,all=[],count=0
+  while(true){
+   const response=await page(db,owner,cursor?{cursor}:{})
+   assert.equal(response.status,200)
+   assert.equal(response.total,739)
+   assert.ok(response.items.length>0&&response.items.length<=5)
+   all.push(...response.items)
+   count++
+   assert.ok(count<=150,'cursor must terminate')
+   if(!response.nextCursor)break
+   cursor=response.nextCursor
+  }
+  assert.equal(all.length,739)
+  assert.equal(new Set(all.map(x=>x.key)).size,739)
+  for(let i=1;i<all.length;i++)assert.ok(compareTodayRows(all[i-1],all[i])<0)
  }finally{sqlite.close()}
 })

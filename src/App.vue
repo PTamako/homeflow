@@ -28,7 +28,7 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
 type Data={nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
-const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([]),tasks=ref<Task[]>([])
+const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([])
 function memberName(id:string|null|undefined){
  if(!id)return '未指派'
  return profiles.value.find(p=>p.memberUserId===id)?.displayName||members.value.find(m=>m.id===id)?.loginName||(id===user.value?.id?'我':'家庭成员')
@@ -42,6 +42,11 @@ const todayTotal=ref(0),todayCompleted=ref(0)
 const todayAvailableKinds=ref<TodayKind[]>([])
 const todayEntryKeys=ref<string[]>([])
 const todayMoreBusy=ref(false)
+const sharedRefreshCounter=ref(0)
+const syncRevision=ref<number|null>(null)
+let syncBusy=false
+let syncInterval:number|undefined
+let lastVisibleRefresh=0
 let todayPageGeneration=0
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
@@ -161,6 +166,7 @@ function onPushMessage(event:MessageEvent){
    }
  }
  if(payload?.type==='homeflow-notification-pushed'){
+   void checkRemoteChanges()
    // Sync in every tab; the Today component is unmounted outside its tab.
    window.setTimeout(()=>{
      if(tab.value==='today'&&todayNotificationsRef.value)
@@ -271,7 +277,10 @@ const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===i
 const people=computed(()=>profiles.value.filter(p=>p.type==='person').sort(profileUrgency))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
-watch(todayCategory,()=>{if(user.value&&tab.value==='today')void loadTodayPage(true)})
+watch(todayCategory,()=>{
+ todayRows.value=[];todayNextCursor.value=null;todayTotal.value=0;todayCompleted.value=0
+ if(user.value&&tab.value==='today')void loadTodayPage(true)
+})
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
@@ -408,18 +417,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];pendingTasks.value=[];await refresh()
-}
-function todayTasksUrl(){
- const date=tokyoToday()
- return '/tasks?status=all&today='+date
-}
-async function loadTasks(){
- const date=tokyoToday()
- const result=await api(todayTasksUrl())
- if(date===tokyoToday()){
-   tasks.value=result.tasks||[]
- }
+  user.value=null;profiles.value=[];members.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];syncRevision.value=null;todayPageGeneration++;pendingTasks.value=[];await refresh()
 }
 async function loadTodayPage(reset=true){
  if(!user.value||(!reset&&(!todayNextCursor.value||todayMoreBusy.value)))return
@@ -450,7 +448,7 @@ async function loadTodayPage(reset=true){
    if(generation===todayPageGeneration)todayMoreBusy.value=false
  }
 }
-async function reloadToday(){await Promise.all([loadTasks(),loadTodayPage(true)])}
+async function reloadToday(){await loadTodayPage(true)}
 const postponeKey=ref(''),postponeOn=ref(''),todayActionBusy=ref(false)
 const tomorrowJst=()=>new Date(Date.parse(tokyoToday()+'T00:00:00Z')+86400000).toISOString().slice(0,10)
 function openPostpone(row:TodayEntry){
@@ -509,7 +507,12 @@ async function flushTasks(){
   try{
     const result=await syncPending(user.value.id)
     pendingTasks.value=await listPending(user.value.id)
-    if(result.synced){syncMessage.value='';await loadTasks();if(tab.value==='today'){await loadTodayPage(true);notify('已同步 '+result.synced+' 项任务')}}
+    if(result.synced){
+      syncMessage.value=''
+      if(tab.value==='today')await loadTodayPage(true)
+      else sharedRefreshCounter.value++
+      notify('已同步 '+result.synced+' 项任务')
+    }
     if(result.conflicts)syncMessage.value='发现 '+result.conflicts+' 项版本冲突，请取消本机草稿并重新编辑'
   }catch(e){syncMessage.value=(e as Error).message}
 }
@@ -518,22 +521,66 @@ async function discardPending(id:string){
   if(user.value)pendingTasks.value=await listPending(user.value.id)
   if(tab.value==='today')notify('已取消待同步任务')
 }
-function onOnline(){if(user.value)void flushTasks()}
+// One cheap D1 read every 25 seconds while a PWA is visible.
+const SHARED_SYNC_MS=25000
+async function checkRemoteChanges(){
+ if(syncBusy||!user.value||document.visibilityState!=='visible'||!navigator.onLine)return
+ const id=user.value.id
+ syncBusy=true
+ try{
+   const data=await api('/sync/state')
+   if(user.value?.id!==id)return
+   const version=Number((data as any).revision)
+   if(!Number.isSafeInteger(version)||version<0)return
+   const prior=syncRevision.value
+   syncRevision.value=version
+   if(prior!==null&&prior!==version){
+     sharedRefreshCounter.value++
+     if(tab.value==='today')await loadTodayPage(true)
+     if(tab.value==='family'){
+       const family=await api('/family')
+       if(user.value?.id===id){
+         profiles.value=family.profiles||[]
+         members.value=family.members||[]
+       }
+     }
+     if(tab.value==='today')void todayNotificationsRef.value?.refresh()
+   }
+ }catch{
+   // Network outages must not log out either family member.
+ }finally{syncBusy=false}
+}
+function onOnline(){
+ if(user.value){
+   void flushTasks()
+   onForeground()
+ }
+}
 function onForeground(){
-  if(document.visibilityState!=='visible')return
-  const d=tokyoToday()
-  if(d!==currentJstDay.value){
-    currentJstDay.value=d
-    if(user.value&&tab.value==='today')void reloadToday()
-    else if(user.value)void refreshNotificationCount()
-  }else if(user.value){
-    if(tab.value==='today')todayNotificationsRef.value?.refresh()
-    else void refreshNotificationCount()
-  }
+ if(document.visibilityState!=='visible'||!user.value)return
+ const now=Date.now()
+ if(now-lastVisibleRefresh<1800)return
+ lastVisibleRefresh=now
+ const d=tokyoToday()
+ if(d!==currentJstDay.value)currentJstDay.value=d
+ // Same-day foreground returns must refresh too: iOS PWAs may stay alive.
+ if(tab.value==='today'){
+   void loadTodayPage(true)
+   void todayNotificationsRef.value?.refresh()
+ }else{
+   sharedRefreshCounter.value++
+   void refreshNotificationCount()
+ }
+ void checkRemoteChanges()
+}
+function syncTick(){
+ if(!user.value||document.visibilityState!=='visible')return
+ if(tokyoToday()!==currentJstDay.value){onForeground();return}
+ void checkRemoteChanges()
 }
 async function toggleTask(t:Task){
   try{
-    await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await Promise.all([loadTasks(),loadTodayPage(true)])
+    await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTodayPage(true)
     notify(t.completedAt?'已撤销完成':'任务已完成')
   }catch(e){error.value=(e as Error).message}
 }
@@ -550,9 +597,9 @@ watch(tab,value=>{
   clearToast()
   if(value==='today'){
     if(!returningToToday){
-            pendingVisibleCount.value=listPageSize
-      todayCategory.value='all'
-      if(user.value)void reloadToday()
+      pendingVisibleCount.value=listPageSize
+      if(todayCategory.value!=='all')todayCategory.value='all'
+      else if(user.value)void reloadToday()
     }
   }else if(value==='family'){
     peopleVisibleCount.value=listPageSize
@@ -570,12 +617,17 @@ onMounted(async()=>{
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
+  if(user.value)void checkRemoteChanges()
+  syncInterval=window.setInterval(syncTick,SHARED_SYNC_MS)
+  window.addEventListener('focus',onForeground)
 })
 onBeforeUnmount(()=>{
   navigator.serviceWorker?.removeEventListener('message',onPushMessage)
   window.removeEventListener('homeflow-badge-refresh',refreshNotificationCount)
   window.removeEventListener('online',onOnline)
   document.removeEventListener('visibilitychange',onForeground)
+  window.removeEventListener('focus',onForeground)
+  if(syncInterval!==undefined)window.clearInterval(syncInterval)
 })
 </script>
 
@@ -812,11 +864,11 @@ onBeforeUnmount(()=>{
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         </div></section>
       <LifePanel v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
-         :tasks="tasks" :members="members" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
+         :members="members" :sync-revision="sharedRefreshCounter" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
-        @edit-profile="openBirthdayProfileEditor" @tasks-changed="loadTasks"
+        @edit-profile="openBirthdayProfileEditor" @tasks-changed="() => loadTodayPage(true)"
         @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
       <ManagePage v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"

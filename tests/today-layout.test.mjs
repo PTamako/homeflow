@@ -81,10 +81,11 @@ test('Today includes dated plans in the single default All checklist with catego
 test('Today only shows completions from the current JST day, without archive toggle or extra D1 reads',()=>{
  assert.doesNotMatch(app,/显示历史完成|showDone|showHistory=1/);
  assert.match(feed,/done\?jstStamp\(task\.completedAt\)!==date:/);
- assert.match(app,/return '\/tasks\?status=all&today='\+date/);
+ assert.match(app,/await api\('\/today\/page\?'\+params\.toString\(\)\)/);
+ assert.doesNotMatch(app,/function todayTasksUrl\(/);
  assert.match(app,/watch\(todayCategory,/);
  assert.ok(!app.includes('<b>事项分类</b>'),'the filter tabs should not have a redundant title');
- assert.match(feed,/const rows=\[\]/);
+ assert.match(feed,/rows=\[\]/);
 })
 
 test('undated tasks go to Plans pending scheduling instead of Today',()=>{
@@ -118,7 +119,8 @@ test('Today add opens the unified Plans creation choices, while existing tasks r
  assert.match(app,/@click="openNewTaskInPlans">＋ 新增待办/)
  assert.match(app,/function openNewTaskInPlans\(\)\{\s+navigateTab\('plans'\)\s+focusPlanType\.value='all'\s+openPlanCreatorOnNavigate\.value=true/)
  assert.match(app,/:open-plan-creator="openPlanCreatorOnNavigate"/)
- assert.match(app,/return '\/tasks\?status=all&today='\+date/)
+ assert.match(app,/await api\('\/today\/page\?'\+params\.toString\(\)\)/);
+ assert.doesNotMatch(app,/function todayTasksUrl\(/);
  assert.match(creator,/oneTimeTaskPayload\(onceDraft\.value,oncePet\.value\)/)
  assert.match(creator,/<OneTimeTaskFields v-if="form\.repeatType==='once'"/)
  assert.doesNotMatch(app,/<form class="task-form" @submit\.prevent="addTask"/)
