@@ -151,6 +151,14 @@ export async function goalPeriodsRoute(request,env,path,session){
 
 // Bound cron: a single goals scan, up to 12 recent closed periods per goal,
 // at most 8 remote ledger summaries per execution; never runs in preview.
+// A deterministic daily rotation avoids starving later goals when an earlier
+// period keeps failing, while preserving the strict daily ledger request cap.
+export function rotateGoalsForDate(goals,date){
+ if(!goals.length)return []
+ const days=Math.floor(Date.parse(date+'T00:00:00Z')/86400000)
+ const offset=((days%goals.length)+goals.length)%goals.length
+ return [...goals.slice(offset),...goals.slice(0,offset)]
+}
 export async function runGoalSettlementSchedule(env){
   if(env.APP_ENV!=='production'||typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')
     return {skipped:'ledger_or_production_unavailable'}
@@ -160,7 +168,7 @@ export async function runGoalSettlementSchedule(env){
     ORDER BY created_at DESC LIMIT 60`).bind(today).all()
   let processed=0,settled=0,failed=0
   const failures={}
-  for(const goal of results||[]){
+  for(const goal of rotateGoalsForDate(results||[],today)){
     if(processed>=8)break
     const windows=closedGoalPeriods(goal,today,12).reverse()
     if(!windows.length)continue
