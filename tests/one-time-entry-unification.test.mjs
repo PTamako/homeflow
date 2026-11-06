@@ -20,7 +20,7 @@ test('Today redirects to the single Plans one-time form',()=>{
  assert.match(fields,/v-model="model\.subjectProfileId"/)
  assert.match(fields,/v-model="model\.healthRecordType"/)
  assert.match(fields,/v-model="model\.visibility"/)
- assert.match(fields,/aria-label="清空计划日期"/)
+ assert.match(read("src/components/DateField.vue"),/aria-label="清空日期"/)
  assert.match(fields,/不选日期将存入「待安排」/)
  assert.match(fields,/v-if="linkedPet"/)
  assert.match(fields,/model\.value\.healthRecordType=linkedPet\.value\?'other':''/)
