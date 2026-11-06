@@ -204,6 +204,13 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
  }
  .shell .notice-item-top{gap:8px}
  .shell .notice-state{flex-wrap:wrap;justify-content:flex-end}
+ .shell button{min-height:var(--ui-touch)}
+ .shell :is(.day-option,.monthly-week-option,.plan-checkbox,.edit-remind,
+            .quiet-toggle,.once-remind){min-height:var(--ui-touch)}
+ .shell .day-option{padding-inline:0}
+ .shell :is(.creator-actions,.editor-actions,.task-push-actions,
+            .plan-memory-actions,.today-decision-actions) button{min-width:0}
+ .shell .search-results button{min-height:48px}
 }
 @media(min-width:721px){
  .shell .content{padding:32px 24px 120px}
