@@ -130,3 +130,25 @@ test('privacy, invalid cursors and completed sort keys are enforced at the serve
   assert.equal(wrongLimit.status,400)
  }finally{sqlite.close()}
 })
+
+test('the full six-source Today feed traverses every page without duplicates or missing records',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  fill(sqlite)
+  let cursor=null,all=[],count=0
+  while(true){
+   const response=await page(db,owner,cursor?{cursor}:{})
+   assert.equal(response.status,200)
+   assert.equal(response.total,739)
+   assert.ok(response.items.length>0&&response.items.length<=5)
+   all.push(...response.items)
+   count++
+   assert.ok(count<=150,'cursor must terminate')
+   if(!response.nextCursor)break
+   cursor=response.nextCursor
+  }
+  assert.equal(all.length,739)
+  assert.equal(new Set(all.map(x=>x.key)).size,739)
+  for(let i=1;i<all.length;i++)assert.ok(compareTodayRows(all[i-1],all[i])<0)
+ }finally{sqlite.close()}
+})
