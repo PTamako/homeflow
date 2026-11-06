@@ -19,14 +19,15 @@ const due=row=>row.task?.dueOn||row.routine?.currentPeriodOn||
  row.routine?.occurrenceOn||row.plan?.dueOn||'9999-12-31'
 export const compareTodayRows=(a,b)=>Number(a.done)-Number(b.done)||
  due(a).localeCompare(due(b))||a.key.localeCompare(b.key)
-const cursorKey=(date,category,row)=>[date,category,Number(row.done),due(row),row.key].join('|')
+const cursorKey=(date,category,revision,row)=>[date,category,revision,Number(row.done),due(row),row.key].join('|')
 const cursorParts=value=>{
  if(!value||value.length>220)return null
  const parts=value.split('|')
- if(parts.length!==5||!/^\d{4}-\d{2}-\d{2}$/.test(parts[0])||
-   !categories.has(parts[1])||!['0','1'].includes(parts[2])||
-   !/^\d{4}-\d{2}-\d{2}$/.test(parts[3])||
-   !/^(?:task|routine|plan):[a-z0-9:_-]+$/.test(parts[4]))return null
+ if(parts.length!==6||!/^\d{4}-\d{2}-\d{2}$/.test(parts[0])||
+   !categories.has(parts[1])||!/^(0|[1-9][0-9]{0,14})$/.test(parts[2])||
+   !['0','1'].includes(parts[3])||
+   !/^\d{4}-\d{2}-\d{2}$/.test(parts[4])||
+   !/^(?:task|routine|plan):[a-z0-9:_-]+$/.test(parts[5]))return null
  return parts
 }
 const internalGet=(path)=>new Request('https://homeflow.internal'+path)
@@ -49,6 +50,7 @@ export async function todayPageRoute(request,db,session){
     (cursor&&(!parts||parts[0]!==date||parts[1]!==category)))
    return json({error:'invalid_input'},400)
  const revision=await householdRevision(db,session.household_id)
+ if(parts&&Number(parts[2])!==revision)return json({error:'stale_cursor'},409)
  let cache=feedCaches.get(db)
  if(!cache){cache=new Map();feedCaches.set(db,cache)}
  const key=[session.household_id,session.user_id,date,revision].join('|')
@@ -90,14 +92,14 @@ export async function todayPageRoute(request,db,session){
  }
  const filtered=category==='all'?rows:rows.filter(row=>row.kind===category)
  const total=filtered.length,completed=filtered.filter(row=>row.done).length
- const pointer=parts?{key:parts[4],done:parts[2]==='1',
-  task:{dueOn:parts[3]}}:null
+ const pointer=parts?{key:parts[5],done:parts[3]==='1',
+  task:{dueOn:parts[4]}}:null
  // The cursor is an exclusive global sort boundary across all six kinds.
  const candidates=pointer?filtered.filter(row=>compareTodayRows(row,pointer)>0):filtered
  const items=candidates.slice(0,limit)
  const last=items.at(-1)
- const nextCursor=candidates.length>limit&&last?cursorKey(date,category,last):null
- return json({date,category,items,nextCursor,total,completed,
+ const nextCursor=candidates.length>limit&&last?cursorKey(date,category,revision,last):null
+ return json({date,category,revision,items,nextCursor,total,completed,
   categories:[...new Set(rows.map(row=>row.kind))],
-  entryKeys:rows.map(row=>row.key)})
+  ...(!cursor?{entryKeys:rows.map(row=>row.key)}:{})})
 }

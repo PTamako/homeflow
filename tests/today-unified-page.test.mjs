@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
 import {readFileSync} from 'node:fs'
 import {todayPageRoute,compareTodayRows} from '../worker/today-page.js'
+import {bumpHouseholdRevision} from '../worker/sync.js'
 
 const date='2026-11-06'
 const owner={household_id:'family',user_id:'owner',role:'owner'}
@@ -81,6 +82,7 @@ test('all six source types share one deterministic five-item server cursor',asyn
    assert.ok(compareTodayRows(first.items[i-1],first.items[i])<=0)
   const second=await page(db,owner,{cursor:first.nextCursor})
   assert.equal(second.items.length,5)
+  assert.equal(second.entryKeys,undefined,'later pages must not resend entire reminder set')
   assert.equal(new Set([...first.items,...second.items].map(x=>x.key)).size,10)
   assert.ok(compareTodayRows(first.items.at(-1),second.items[0])<0)
  }finally{sqlite.close()}
@@ -95,7 +97,7 @@ test('source limits 250/100/50 never hide later task, routine, shopping or wish 
    ['routine','routine',id(255),255],
    ['shopping','shopping',id(110),110],
    ['wish','wish',id(110),110]]){
-    const cursor=[date,category,0,date,
+    const cursor=[date,category,0,0,date,
       kind==='task'?'task:'+id(category==='task'?255:1):
       kind==='routine'?'routine:'+id(250)+':'+date:
       'plan:'+kind+':'+id(105)].join('|')
@@ -119,12 +121,12 @@ test('privacy, invalid cursors and completed sort keys are enforced at the serve
   assert.equal(shared.total,261)
   assert.ok(owned.entryKeys.includes('task:'+id(270)))
   assert.ok(!shared.entryKeys.includes('task:'+id(270)))
-  const done=await page(db,owner,{category:'task',cursor:[date,'task',0,date,'task:'+id(999)].join('|')})
+  const done=await page(db,owner,{category:'task',cursor:[date,'task',0,0,date,'task:'+id(999)].join('|')})
   assert.equal(done.items[0].done,true)
   assert.equal(done.items[0].task.completedAt,'2026-11-06T03:00:00.000Z')
-  const wrongDate=await page(db,owner,{cursor:['2026-11-07','all',0,date,'task:'+id(1)].join('|')})
+  const wrongDate=await page(db,owner,{cursor:['2026-11-07','all',0,0,date,'task:'+id(1)].join('|')})
   assert.equal(wrongDate.status,400)
-  const wrongCategory=await page(db,owner,{category:'wish',cursor:[date,'task',0,date,'task:'+id(1)].join('|')})
+  const wrongCategory=await page(db,owner,{category:'wish',cursor:[date,'task',0,0,date,'task:'+id(1)].join('|')})
   assert.equal(wrongCategory.status,400)
   const wrongLimit=await page(db,owner,{limit:'100'})
   assert.equal(wrongLimit.status,400)
@@ -150,5 +152,24 @@ test('the full six-source Today feed traverses every page without duplicates or 
   assert.equal(all.length,739)
   assert.equal(new Set(all.map(x=>x.key)).size,739)
   for(let i=1;i<all.length;i++)assert.ok(compareTodayRows(all[i-1],all[i])<0)
+ }finally{sqlite.close()}
+})
+ 
+test('a household edit invalidates an old cursor rather than mixing two snapshots',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  fill(sqlite)
+  const first=await page(db,owner)
+  const revision=first.revision
+  sqlite.prepare('UPDATE tasks SET due_on=? WHERE id=?').run('2026-11-07',id(260))
+  await bumpHouseholdRevision(db,owner)
+  const old=await page(db,owner,{cursor:first.nextCursor})
+  assert.equal(old.status,409)
+  assert.equal(old.error,'stale_cursor')
+  const fresh=await page(db,owner)
+  assert.equal(fresh.revision,revision+1)
+  assert.equal(fresh.total,first.total-1)
+  assert.equal(new Set(fresh.entryKeys).size,fresh.total)
+  assert.ok(fresh.nextCursor)
  }finally{sqlite.close()}
 })

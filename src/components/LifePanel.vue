@@ -647,9 +647,11 @@ async function fetchMode(){
       await loadPhotos(requestId)
       await focusExactPlan(requestId)
     }
-  }catch(e){if(requestId===activeFetch)error.value=(e as Error).message}
+  }catch(e){if(requestId===activeFetch)error.value=(e as Error).message;return false}
   finally{if(requestId===activeFetch)listLoading.value=false}
+  return requestId===activeFetch
 }
+defineExpose({refreshForSync:()=>fetchMode()})
 async function update(action:()=>Promise<any>,successMessage='已保存'){
   error.value='';busy.value=true
   try{await action();await fetchMode();notify(successMessage)}

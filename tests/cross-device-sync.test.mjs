@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {readFileSync} from 'node:fs'
 import {householdRevision,syncStateRoute,bumpHouseholdRevision} from '../worker/sync.js'
 import {todayPageRoute} from '../worker/today-page.js'
+import {backupRoute} from '../worker/backup.js'
 import worker from '../worker/index.js'
 import {sha256} from '../worker/security.js'
 
@@ -148,4 +149,51 @@ test('actual authenticated Worker writes by either family account advance the ot
   assert.ok(alicePage.body.items.some(item=>item.title==='家里买牛奶'))
   assert.ok(!alicePage.body.items.some(item=>item.title==='私人安排'))
  }finally{sqlite.close()}
+})
+
+test('successful 06:00 system notifications advance only affected household revisions',async()=>{
+ const {db,sqlite}=dbFixture()
+ try{
+  const date=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
+  sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0029_household_revisions.sql')")
+  sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home'),('other','Unchanged')")
+  sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('alice','alice','salt','verifier')")
+  sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('shared','alice','owner')")
+  sqlite.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,due_on) VALUES(?,?,?,?,?,?)')
+    .run('00000000-0000-4000-8000-000000000001','shared','alice','household','重要任务',date)
+  const waiters=[]
+  await worker.scheduled({}, {APP_ENV:'preview',DB:db}, {waitUntil(p){waiters.push(p)}})
+  await Promise.all(waiters)
+  const sent=sqlite.prepare('SELECT COUNT(*) n FROM notification_inbox').get().n
+  assert.ok(sent>0,'scheduled reminder creates an in-app notice')
+  assert.equal(await rev(db,owner),1,'changed household is invalidated')
+  assert.equal(await rev(db,other),0,'unaffected household is not invalidated')
+ }finally{sqlite.close()}
+})
+test('legacy JSON backup reports overflow instead of silently truncating source data',async()=>{
+ const {db,sqlite}=dbFixture()
+ try{
+  const insert=sqlite.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,due_on) VALUES(?,?,?,?,?,?)')
+  for(let i=0;i<1001;i++)
+   insert.run('00000000-0000-4000-8000-'+String(i).padStart(12,'0'),
+      'shared','alice','household','任务'+i,'2026-11-06')
+  const response=await backupRoute(new Request('https://homeflow.invalid/api/export'),db,owner)
+  assert.equal(response.status,413)
+  const body=await response.json()
+  assert.equal(body.error,'export_pagination_required')
+  assert.ok(body.datasets.includes('tasks'))
+ }finally{sqlite.close()}
+})
+test('the remote revision is confirmed only after visible page and plans succeed',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+ const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
+ const acknowledge=app.lastIndexOf('syncRevision.value=version',app.indexOf('function onOnline()'))
+ const page=app.indexOf('await loadTodayPage(true)',app.indexOf('async function checkRemoteChanges'))
+ const panel=app.indexOf('await panel.refreshForSync()',app.indexOf('async function checkRemoteChanges'))
+ assert.ok(page>=0&&panel>page&&acknowledge>panel,'no early acknowledgment')
+ assert.match(life,/defineExpose\(\{refreshForSync:\(\)=>fetchMode\(\)\}\)/)
+ assert.match(app,/stale_cursor/)
 })
