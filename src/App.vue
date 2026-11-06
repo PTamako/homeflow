@@ -280,6 +280,13 @@ const pets=computed(()=>profiles.value.filter(p=>p.type==='pet').sort(profileUrg
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
 const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
 const people=computed(()=>profiles.value.filter(p=>p.type==='person').sort(profileUrgency))
+function personAvatar(p:Profile):string|null{
+  // Match the family profile, not its position: both household accounts see the same pair.
+  const name=p.displayName.trim()
+  if(name==='白ちゃん'||name==='小白')return '/avatars/xiaobai.svg'
+  if(name==='鸡毛大王'||name==='鸡毛')return '/avatars/jimao.svg'
+  return null
+}
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
 watch(todayCategory,()=>{
@@ -827,14 +834,14 @@ onBeforeUnmount(()=>{
             <div v-for="p in visiblePeople" :key="p.id" :id="'profile-'+p.id" class="profile-entry">
               <button v-if="canEditProfile(p)" type="button" class="profile profile-button"
                 :aria-expanded="editProfileId===p.id" @click="toggleProfileEdit(p.id)">
-                <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
+                <span class="profile-symbol"><img v-if="personAvatar(p)" class="profile-avatar" :src="personAvatar(p) || undefined" alt="" /><AppIcon v-else name="users" :size="22" /></span>
                 <span class="profile-description"><b>{{ p.displayName }}</b>
                   <small>{{ p.relation||'家庭成员' }} · {{ p.birthday||'未填写生日' }}</small>
                 </span>
                 <span class="profile-edit-action">{{ editProfileId===p.id?'收起':'编辑' }}</span>
               </button>
               <div v-else class="profile">
-                <span class="profile-symbol"><AppIcon name="users" :size="22" /></span>
+                <span class="profile-symbol"><img v-if="personAvatar(p)" class="profile-avatar" :src="personAvatar(p) || undefined" alt="" /><AppIcon v-else name="users" :size="22" /></span>
                 <div class="profile-description"><b>{{ p.displayName }}</b>
                   <p>{{ p.relation||'家庭成员' }} · {{ p.birthday||'未填写生日' }}</p>
                 </div>
