@@ -33,9 +33,9 @@ export function nextRoutineDue(rule,date){
   if(rule.repeat_type==='interval'){
     const days=Number(config.days)
     if(!Number.isInteger(days)||days<1||days>3650)return null
-    if(config.anchor==='completion')return rule.next_due_on||addDays(anchor,days)
+    if(config.anchor==='completion')return rule.next_due_on||anchor
     const distance=daysBetween(anchor,date)
-    const cycles=Math.max(1,Math.ceil(distance/days))
+    const cycles=Math.max(0,Math.ceil(distance/days))
     return addDays(anchor,cycles*days)
   }
   const start=date>anchor?date:anchor
