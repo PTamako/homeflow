@@ -60,7 +60,7 @@ secondary_indexes={
   "idx_shopping_due_active","idx_wishes_target_active","idx_goals_target_on",
   "idx_plan_completion_household_date","idx_shop_links_household",
   "idx_reminder_snoozes_expiration","idx_shopping_household_created",
-  "idx_goal_settlements_goal_period","idx_today_actions_target","idx_today_actions_history"
+  "idx_goal_settlements_goal_period","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
