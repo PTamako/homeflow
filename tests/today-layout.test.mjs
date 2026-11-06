@@ -9,15 +9,16 @@ const sections={
   plans:life.slice(life.indexOf('<template v-else-if="mode===\'plans\'">'),life.indexOf('<template v-else-if="mode===\'memories\'">'))
 }
 const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+const feed=readFileSync(new URL('../worker/today-page.js',import.meta.url),'utf8')
 test('Today combines one-off and recurring tasks in one checklist',()=>{
  assert.ok(app.includes('<h2>今日待办</h2>'))
  assert.ok(app.includes('v-for="row in visibleToday"'))
- assert.ok(app.includes('const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))'))
+ assert.ok(app.includes('const visibleToday=computed(()=>unifiedToday.value)'))
  assert.ok(app.includes('scope="today-unified"'))
- assert.ok(app.includes("key:'task:'+task.id"))
- assert.ok(app.includes("key:'routine:'+routine.id"))
- assert.ok(app.includes('Number(a.done)-Number(b.done)'),'incomplete rows should precede done')
- assert.ok(app.includes("api('/routines/today?date='"))
+ assert.ok(feed.includes("key:'task:'+task.id"))
+ assert.ok(feed.includes("key:'routine:'+routine.id"))
+ assert.ok(feed.includes('Number(a.done)-Number(b.done)'),'incomplete rows should precede done')
+ assert.ok(feed.includes("lifeRoute(internalGet('/api/routines/today?date='"))
  assert.ok(app.includes("api('/routines/'+r.id+'/mark'"))
  assert.ok(app.includes('toggleTask(row.task)'))
  assert.ok(app.includes('toggleRoutine(row.routine)'))
@@ -59,11 +60,11 @@ test('Today includes dated plans in the single default All checklist with catego
  for(const kind of ['shopping','wish','goal','trip']){
    assert.ok(app.includes(kind+":'"),'missing category '+kind)
  }
- assert.ok(app.includes("key:'plan:'+plan.kind+':'+plan.id"))
- assert.ok(app.includes("api('/plans/today?date='"))
+ assert.ok(feed.includes("key:'plan:'+plan.kind+':'+plan.id"))
+ assert.ok(feed.includes("todayPlansRoute(internalGet('/api/plans/today?date='"))
  assert.ok(app.includes('v-for="category in visibleTodayCategories"'))
  assert.ok(app.includes('v-for="row in visibleToday"'))
- assert.ok(app.includes('const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))'))
+ assert.ok(app.includes('const visibleToday=computed(()=>unifiedToday.value)'))
  assert.ok(!app.includes('ShoppingLedgerPicker'))
  assert.ok(!app.includes('toggleShoppingLink(row.plan)'))
  assert.ok(!app.includes('completeDuePlan(row.plan)'))
@@ -79,15 +80,15 @@ test('Today includes dated plans in the single default All checklist with catego
 
 test('Today only shows completions from the current JST day, without archive toggle or extra D1 reads',()=>{
  assert.doesNotMatch(app,/显示历史完成|showDone|showHistory=1/);
- assert.match(app,/return t\.completedAt\?tokyoDate\(t\.completedAt\)===now:/);
+ assert.match(feed,/done\?jstStamp\(task\.completedAt\)!==date:/);
  assert.match(app,/return '\/tasks\?status=all&today='\+date/);
- assert.match(app,/watch\(\[todayCategory,currentJstDay\]/);
+ assert.match(app,/watch\(todayCategory,/);
  assert.ok(!app.includes('<b>事项分类</b>'),'the filter tabs should not have a redundant title');
- assert.match(app,/const visibleTasks=computed/);
+ assert.match(feed,/const rows=\[\]/);
 })
 
 test('undated tasks go to Plans pending scheduling instead of Today',()=>{
- assert.ok(app.includes('!!t.dueOn&&t.dueOn<=now'))
+ assert.ok(feed.includes('!task.dueOn||task.dueOn>date'))
  assert.ok(life.includes("type==='unscheduled'"))
  assert.ok(life.includes('安排到今天'))
 })
