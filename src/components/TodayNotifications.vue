@@ -28,9 +28,12 @@ function timeOf(value:string|null){
  }).format(new Date(n)):''
 }
 function detail(item:Notice){
- if(item.readAt)return '已读 '+timeOf(item.readAt)
- if(view.value==='sent'&&item.sentDevices===0)return '仅应用内'
+ if(item.readAt)return (view.value==='sent'?'对方已读 ':'已读 ')+timeOf(item.readAt)
  return view.value==='sent'?'对方未读':'未读'
+}
+function deliveryDetail(item:Notice){
+ if(item.sentDevices===0)return '仅应用内'
+ return item.failedDevices>0?'部分推送成功':'已推送'
 }
 // Resolve notification participants from the household's existing linked profiles.
 // Keep login emails out of the UI and avoid extra D1 queries for each notice.
@@ -194,7 +197,7 @@ defineExpose({refresh:()=>load(true)})
     </div>
     <p v-if="item.message">{{ item.message }}</p>
     <div class="notice-bottom">
-     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}</small>
+     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · {{ deliveryDetail(item) }}</template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
