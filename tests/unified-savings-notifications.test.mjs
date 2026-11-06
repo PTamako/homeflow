@@ -18,7 +18,7 @@ test('monthly, yearly and once goals have independent reminder dates',()=>{
  assert.equal(month[0].daysBefore,3)
  assert.equal(month[0].periodKey,'2026-11')
  assert.equal(month[0].dueOn,'2026-11-30')
- assert.equal(savingsReminders([monthly],'2026-11-26')[0].notifyToday,false)
+ assert.equal(savingsReminders([monthly],'2026-11-28')[0].notifyToday,false)
 
  const annual=savingsReminders([yearly],'2026-12-24')
  assert.equal(annual.length,1)
