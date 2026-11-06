@@ -1769,10 +1769,10 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   assert.equal(reminder.status,200,JSON.stringify(reminder.body))
   assert.ok(reminder.body.items.some(r=>r.kind==='routine'&&r.id===id&&r.dueOn==='2026-11-10'))
   const missed=await day('2026-11-11')
-  assert.equal(missed.body.items.find(r=>r.id===id)?.carriedFrom,'2026-11-10')
-  const completed=await ask('/api/routines/'+id+'/mark','POST',
-   {date:'2026-11-11',status:'completed'},owner)
-  assert.equal(completed.status,200,JSON.stringify(completed.body))
+  assert.equal(missed.body.items.some(r=>r.id===id),false)
+  const skipped=await ask('/api/routines/'+id+'/mark','POST',
+   {date:'2026-11-10',status:'skipped'},owner)
+  assert.equal(skipped.status,200,JSON.stringify(skipped.body))
   assert.equal((await day('2026-11-12')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-11-17')).body.items.some(r=>r.id===id),false)
   const twentyFourth=await day('2026-11-24')
@@ -1785,7 +1785,7 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   assert.equal((await day('2026-11-25')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-12-01')).body.items.some(r=>r.id===id),false)
   assert.equal((await day('2026-12-08')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-08')
-  assert.equal((await day('2026-12-29')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-22')
+  assert.equal((await day('2026-12-29')).body.items.some(r=>r.id===id),false)
   const marks=sqlite.prepare('SELECT occurrence_on FROM routine_marks WHERE routine_id=? ORDER BY occurrence_on').all(id)
   assert.deepEqual(marks.map(r=>r.occurrence_on),['2026-11-10','2026-11-24'])
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)
