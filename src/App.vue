@@ -37,7 +37,6 @@ function memberName(id:string|null|undefined){
 const authReady=ref(false)
 const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
-const dismissedTodayKeys=ref<string[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
 const todayVisibleCount=ref(listPageSize)
@@ -249,7 +248,6 @@ const allToday=computed<TodayEntry[]>(()=>{
   const dueOn=(row:TodayEntry)=>row.task?.dueOn||row.routine?.currentPeriodOn||
     row.routine?.occurrenceOn||row.plan?.dueOn||'9999-12-31'
   return [...standard,...recurring,...plans]
-    .filter(row=>!dismissedTodayKeys.value.includes(row.key))
     .sort((a,b)=>Number(a.done)-Number(b.done)||
       dueOn(a).localeCompare(dueOn(b))||a.key.localeCompare(b.key))
 })
@@ -437,7 +435,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];dismissedTodayKeys.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
 }
 function todayTasksUrl(){
  const date=tokyoToday()
@@ -448,7 +446,6 @@ async function loadTasks(){
  const result=await api(todayTasksUrl())
  if(date===tokyoToday()){
    tasks.value=result.tasks||[]
-   dismissedTodayKeys.value=result.hiddenTodayKeys||[]
  }
 }
 async function loadTodayRoutines(){

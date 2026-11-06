@@ -12,31 +12,49 @@ const jstToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const dateOk=date=>typeof date==='string'&&date.length===10&&validDate(date)
 
 // Read one bounded date window shared by the Today UI and 06:00 notifications.
+// Trace predecessors of a postponed target in the same bounded D1 query.
+// This correctly handles multiple postponements without a whole-history scan.
 export async function actionWindow(db,household,date,end=date){
- const {results}=await db.prepare(`SELECT kind,source_id,original_on,action,postponed_to
+ const {results}=await db.prepare(`WITH RECURSIVE chain(
+   kind,source_id,original_on,action,postponed_to,depth
+ ) AS (
+   SELECT kind,source_id,original_on,action,postponed_to,0
    FROM today_plan_actions WHERE household_id=?1
-   AND ((original_on>=?2 AND original_on<=?3) OR
-     (postponed_to>=?2 AND postponed_to<=?3))
-   ORDER BY original_on DESC LIMIT 500`).bind(household,date,end).all()
+     AND ((original_on>=?2 AND original_on<=?3) OR
+          (postponed_to>=?2 AND postponed_to<=?3))
+   UNION ALL
+   SELECT prev.kind,prev.source_id,prev.original_on,prev.action,
+          prev.postponed_to,chain.depth+1
+   FROM today_plan_actions prev JOIN chain
+     ON prev.kind=chain.kind AND prev.source_id=chain.source_id
+     AND prev.postponed_to=chain.original_on
+   WHERE prev.household_id=?1 AND chain.depth<32
+ )
+ SELECT DISTINCT kind,source_id,original_on,action,postponed_to
+ FROM chain LIMIT 500`).bind(household,date,end).all()
  return results||[]
 }
+// Decisions from an old source date remain in history, but are no longer active
+// after the parent plan's own date is edited.
+export function activeActionDate(kind,id,original,actions=[]){
+ if(!original)return null
+ const byDate=new Map(actions.filter(a=>a.kind===kind&&a.source_id===id)
+   .map(a=>[a.original_on,a]))
+ let current=original
+ for(let i=0;i<=byDate.size;i++){
+  const a=byDate.get(current)
+  if(!a)return current
+  if(a.action!=='postponed'||!a.postponed_to||a.postponed_to<=current)return null
+  current=a.postponed_to
+ }
+ return null
+}
 export function actionDue(kind,id,original,date,actions=[]){
- // Only a real scheduled date or manually postponed target can be displayed.
- // A decision made *on* that date consumes the occurrence, including a skip.
- if(!original)return false
- if(actions.some(a=>a.kind===kind&&a.source_id===id&&a.original_on===date))
-   return false
- return original===date || actions.some(a=>a.kind===kind&&a.source_id===id&&
-   a.action==='postponed'&&a.postponed_to===date)
+ return activeActionDate(kind,id,original,actions)===date
 }
 export function effectiveReminderDate(kind,id,original,date,end,actions=[]){
- // A postponed occurrence replaces (never supplements) the original date.
- const matching=actions.filter(a=>a.kind===kind&&a.source_id===id)
- const active=matching.filter(a=>a.action==='postponed'&&a.postponed_to>=date&&a.postponed_to<=end&&
-   !matching.some(b=>b.original_on===a.postponed_to))
- const base=original>=date&&original<=end&&
-   !matching.some(a=>a.original_on===original)?original:null
- return active[0]?.postponed_to||base
+ const effective=activeActionDate(kind,id,original,actions)
+ return effective&&effective>=date&&effective<=end?effective:null
 }
 
 function sourceAvailable(kind,row){
@@ -68,10 +86,10 @@ async function handleAction(request,db,session){
    (kind==='shopping'&&row.assigned_to===u&&row.visibility==='household')
  if(!canAct)return json({error:'forbidden'},403)
  if(!sourceAvailable(kind,row)||!row[config.date])return json({error:'already_resolved'},409)
- const last=await db.prepare(`SELECT original_on,action,postponed_to FROM today_plan_actions
-   WHERE household_id=?1 AND kind=?2 AND source_id=?3
-   ORDER BY original_on DESC LIMIT 1`).bind(h,kind,id).first()
- const current=last?(last.action==='postponed'?last.postponed_to:null):row[config.date]
+ const {results:decisions}=await db.prepare(`SELECT original_on,action,postponed_to,kind,source_id
+   FROM today_plan_actions WHERE household_id=?1 AND kind=?2 AND source_id=?3
+   ORDER BY original_on DESC LIMIT 500`).bind(h,kind,id).all()
+ const current=activeActionDate(kind,id,row[config.date],decisions||[])
  if(current!==day)return json({error:'not_today'},409)
  const result=await db.prepare(`INSERT OR IGNORE INTO today_plan_actions
    (household_id,kind,source_id,original_on,title,action,postponed_to,acted_by)

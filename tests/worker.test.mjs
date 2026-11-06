@@ -3,11 +3,11 @@ import test from 'node:test'
 import worker from '../worker/index.js'
 import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
 const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
-function environment(name='preview',database='homeflow-preview',migration='0025_daily_notification_inbox.sql'){
+function environment(name='preview',database='homeflow-preview',migration='0028_explicit_today_actions.sql'){
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},
-      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration}:null,
+      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,action_index_ready:1}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -18,11 +18,18 @@ test('health confirms D1 identity',async()=>{
   assert.equal(res.status,200)
   assert.equal((await res.json()).database,'ready')
 })
-test('health accepts either migration state during safe receipt backfill rollout',async()=>{
+test('health rejects old migration baselines even if they were accepted during rollout',async()=>{
   for(const migration of ['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql']){
     const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview',migration))
-    assert.equal(res.status,200,migration)
+    assert.equal(res.status,503,migration)
   }
+})
+test('health rejects a missing physical Today index even with a current migration name',async()=>{
+  const env=environment()
+  env.DB.prepare=()=>({first:async()=>({
+   database_name:'homeflow-preview',latest_migration:'0028_explicit_today_actions.sql',
+   action_index_ready:0})})
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
   const res=await worker.fetch(request('/api/health'),environment('preview','homeflow'))

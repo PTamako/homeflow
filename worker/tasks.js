@@ -178,8 +178,10 @@ export async function tasksRoute(request,db,path,session,onComplete=null) {
     const listed=(results||[]).filter(row=>row.completedAt||
       !today||actionDue('task',row.id,row.dueOn,today,actions))
       .map(row=>row.completedAt||!today?row:{...row,dueOn:today})
+    // The new Today screen never dismisses entries implicitly. Keep legacy
+    // dismissal lookup opt-in for old clients, avoiding a D1 read every day.
     let hiddenTodayKeys=[]
-    if(today){
+    if(today&&url.searchParams.get('legacyDismissals')==='1'){
       const hidden=await db.prepare(`SELECT item_key FROM today_dismissals
         WHERE household_id=?1 AND user_id=?2 AND view_on=?3 LIMIT 250`)
         .bind(household,who,today).all()

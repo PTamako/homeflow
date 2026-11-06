@@ -161,6 +161,7 @@ async function restore(){
     <small v-if="lastExportAt">上次备份：{{ lastExportAt.slice(0,10) }}</small>
     <small v-if="backupOld">本机照片请定期备份。</small>
     <button :disabled="pending" @click="exportArchive">下载备份</button>
+    <small>恢复仅补充缺失记录，不会覆盖已存在的记录或撤销误编辑。两位家庭成员请各自备份，并保管好本机照片 ZIP。</small>
     <label class="import-label">恢复备份（ZIP / JSON）
       <input type="file" accept=".zip,.json,application/zip,application/json"
         :disabled="pending" @change="chooseArchive(($event.target as HTMLInputElement).files?.[0]||null)"/>

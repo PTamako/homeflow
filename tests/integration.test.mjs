@@ -13,7 +13,7 @@ function makeDb() {
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
  sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
- sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0025_daily_notification_inbox.sql')")
+ sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
  const db={
    prepare(sql) {
      const stmt=sqlite.prepare(sql)
@@ -1710,7 +1710,7 @@ test('hiding a Today detail is per-person and per-date, never deletes a plan or 
  assert.equal((await dismiss(periodKey)).status,200)
  assert.equal((await dismiss(taskKey)).status,200)
  assert.equal((await dismiss(periodKey)).status,200,'repeat dismiss is idempotent')
- const today=(await ask('/api/tasks?status=all&today='+date,'GET',undefined,owner))
+ const today=(await ask('/api/tasks?status=all&today='+date+'&legacyDismissals=1','GET',undefined,owner))
  assert.equal(today.status,200)
  assert.deepEqual(new Set(today.body.hiddenTodayKeys),new Set([periodKey,taskKey]))
  assert.equal(today.body.tasks.some(x=>x.id===taskId),true,'one-off task is still stored')
@@ -1729,7 +1729,7 @@ test('hiding a Today detail is per-person and per-date, never deletes a plan or 
    displayName:'家人',invitationCode:invitation.body.invitationCode})
  assert.equal(partner.status,201)
  const member=extractCookie(partner.cookie)
- const otherToday=await ask('/api/tasks?status=all&today='+date,'GET',undefined,member)
+ const otherToday=await ask('/api/tasks?status=all&today='+date+'&legacyDismissals=1','GET',undefined,member)
  assert.deepEqual(otherToday.body.hiddenTodayKeys,[],'one member cannot dismiss another member view')
  const privateTask=await ask('/api/tasks','POST',{
    title:'私人待办',visibility:'private',dueOn:date},owner)

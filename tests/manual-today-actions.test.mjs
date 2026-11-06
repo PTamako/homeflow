@@ -161,3 +161,36 @@ test('skipped history filters by selected plan kind before five-item pagination'
   assert.equal(bad.body.error,'invalid_filter')
  }finally{x.sqlite.close()}
 })
+
+test('repeated postponements resolve through the original action and ignore edited source dates',async()=>{
+ const x=fixture()
+ try{
+  const past=add(today,-2),yesterday=add(today,-1),later=add(today,3)
+  x.sqlite.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,due_on) VALUES(?,?,?,?,?,?)')
+   .run(id,'family','owner','household','购物',past)
+  const insert=x.sqlite.prepare(`INSERT INTO today_plan_actions
+   (household_id,kind,source_id,original_on,title,action,postponed_to,acted_by)
+   VALUES(?,?,?,?,?,?,?,?)`)
+  insert.run('family','shopping',id,past,'购物','postponed',yesterday,'owner')
+  insert.run('family','shopping',id,yesterday,'购物','postponed',today,'owner')
+  const actions=await actionWindow(x.db,'family',today)
+  assert.equal(actions.length,2)
+  assert.equal(actionDue('shopping',id,past,today,actions),true)
+  assert.equal(effectiveReminderDate('shopping',id,past,today,today,actions),today)
+  x.sqlite.prepare('UPDATE shopping_items SET due_on=? WHERE id=?').run(later,id)
+  assert.equal(actionDue('shopping',id,later,today,actions),false)
+  assert.equal(actionDue('shopping',id,later,later,actions),true)
+  const result=await todayActionRoute(x.req('/api/plans/today-action','POST',
+    {kind:'shopping',id,on:today,action:'skipped'}),x.db,'/api/plans/today-action',session)
+  assert.equal(result.status,409,'an old postpone cannot authorize an edited plan')
+  assert.equal(x.sqlite.prepare('SELECT COUNT(*) AS n FROM today_plan_actions').get().n,2)
+ }finally{x.sqlite.close()}
+})
+test('a skip in a postponed chain prevents future reminders',()=>{
+ const a='2026-11-01',b='2026-11-02',c='2026-11-03'
+ const actions=[
+  {kind:'wish',source_id:id,original_on:a,action:'postponed',postponed_to:b},
+  {kind:'wish',source_id:id,original_on:b,action:'skipped',postponed_to:null}]
+ assert.equal(actionDue('wish',id,a,c,actions),false)
+ assert.equal(effectiveReminderDate('wish',id,a,b,c,actions),null)
+})

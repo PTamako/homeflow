@@ -25,7 +25,7 @@ test('Today combines one-off and recurring tasks in one checklist',()=>{
  assert.ok(app.includes('edit-label="延期" delete-label="跳过"'))
  assert.ok(app.includes('@edit="openPostpone(row)" @delete="skipToday(row)"'))
  assert.ok(!app.includes('delete-label="从今天移除"'))
- assert.ok(app.includes('dismissedTodayKeys.value.includes(row.key)'))
+ assert.ok(!app.includes('dismissedTodayKeys.value.includes(row.key)'))
  assert.ok(!app.includes('deleteRoutine(row.routine)'), 'Today must never delete the recurring source')
  assert.ok(!app.includes('deleteTask(row.task)'), 'Today must never delete the one-off source')
  assert.ok(!app.includes('editingRoutine'), 'Today must not embed a recurring-plan editor')
