@@ -169,13 +169,13 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
       const current=r.currentPeriodOn,mark=r.currentMark
       const doneCurrent=!!mark?.completed_at&&jstDate(mark.completed_at)===date
       const recent=r.completedTodayMark?.occurrence_on<=date?r.completedTodayMark:null
-      const pending=current&&r.currentStatus==='pending'
+      const pending=current===date&&r.currentStatus==='pending'
       if(!pending&&!doneCurrent&&!recent)continue
       const selected=pending||doneCurrent?mark:recent
       items.push({...r,mark:selected||null,
         occurrenceOn:pending||doneCurrent?current:(recent?.occurrence_on||current),
         recordOn:selected?.occurrence_on||null,
-        carriedFrom:pending&&current<date?current:null})
+        carriedFrom:null})
     }
     return json({date,items})
   }
@@ -187,7 +187,8 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
     if((rule.visibility==='private'&&rule.created_by!==session.user_id)||
       (rule.assigned_to&&rule.assigned_to!==session.user_id&&rule.created_by!==session.user_id))
       return json({error:'forbidden'},403)
-    const actual=body.date,current=currentRoutinePeriod(rule,actual)
+    const actual=body.date,scheduled=currentRoutinePeriod(rule,actual)
+    const current=scheduled===actual?scheduled:null
     const earlyOn=nextEarlyPeriod(rule,actual)
     // The scheduled period and actual completion date are independent.
     const periodOn=body.periodOn||(body.early===true?earlyOn:current)||actual
