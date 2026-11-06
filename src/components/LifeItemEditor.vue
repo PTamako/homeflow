@@ -15,9 +15,9 @@ const form=reactive({
  eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
- repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),
+ repeatAnchor:String(config.anchor||'fixed'),weekdays:Array.isArray(config.weekdays)?[...config.weekdays] as number[]:[new Date().getDay()] as number[],
  monthlyMode:String(config.mode==='weekday'?'weekday':'day'),
- monthDay:Number(config.day||String(data.anchor_date||'').slice(-2)||1),
+ monthDays:Array.isArray(config.days)?[...config.days] as number[]:[Number(config.day||String(data.anchor_date||'').slice(-2)||1)] as number[],
  monthWeekday:Number(config.weekday??2),
  monthWeekNumbers:Array.isArray(config.weekNumbers)?[...config.weekNumbers] as number[]:[2,4] as number[],
  anchorDate:String(data.anchor_date||''),
@@ -52,12 +52,12 @@ function values(){
    const type=form.repeatType
    const configNext=type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor}:
      type==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
-     type==='weekly'?{weekdays:[Number(form.weekday)],
-       excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
+     type==='weekly'?{weekdays:[...form.weekdays].sort((a,b)=>a-b),
+       excludeJapaneseHolidays:false}:
      type==='monthly'?(form.monthlyMode==='weekday'?
        {mode:'weekday',weekday:Number(form.monthWeekday),
         weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
-       {day:Number(form.monthDay)}):{}
+       {mode:'day',days:[...form.monthDays].sort((a,b)=>a-b)}):{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
      assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
      remindEnabled:form.remindEnabled,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
@@ -130,9 +130,17 @@ async function save(){
   </template>
   <template v-else-if="kind==='routines'">
    <label>重复频率<select v-model="form.repeatType"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周（保留原设定星期）</option><option value="monthly">每月</option><option value="interval">间隔</option></select></label>
-   <label v-if="form.repeatType==='weekly'">每周执行日<select v-model.number="form.weekday" aria-label="每周执行星期">
-     <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
-   </select></label>
+   <fieldset v-if="form.repeatType==='weekly'" class="day-select-group">
+    <legend>每周执行日（可多选）</legend>
+    <div class="day-select">
+     <label v-for="(day,i) in ['日','一','二','三','四','五','六']" :key="i"
+      :class="['day-option',{ 'is-selected':form.weekdays.includes(i) }]">
+      <input v-model="form.weekdays" type="checkbox" :value="i"/>
+      <span>{{ day }}</span>
+     </label>
+    </div>
+    <small v-if="!form.weekdays.length" class="edit-error">请至少选择一个星期</small>
+   </fieldset>
    <template v-if="form.repeatType==='monthly'">
     <label>每月规则
      <select v-model="form.monthlyMode" aria-label="编辑每月规则类型">
@@ -140,9 +148,18 @@ async function save(){
       <option value="weekday">指定第几个星期几</option>
      </select>
     </label>
-    <label v-if="form.monthlyMode==='day'">每月日期（1～31）
-     <input v-model.number="form.monthDay" type="number" min="1" max="31" required/>
-    </label>
+    <fieldset v-if="form.monthlyMode==='day'" class="day-select-group">
+     <legend>每月执行日期（可多选）</legend>
+     <div class="day-select">
+      <label v-for="n in 31" :key="n"
+       :class="['day-option',{ 'is-selected':form.monthDays.includes(n) }]">
+       <input v-model="form.monthDays" type="checkbox" :value="n"/>
+       <span>{{ n }}</span>
+      </label>
+     </div>
+     <small>月底不存在的日期自动调整为当月最后一天，同一天只执行一次</small>
+     <small v-if="!form.monthDays.length" class="edit-error">请至少选择一个日期</small>
+    </fieldset>
     <template v-else>
      <label>执行星期
       <select v-model.number="form.monthWeekday" aria-label="编辑每月执行星期">
@@ -225,7 +242,7 @@ async function save(){
   <p v-if="error" role="alert" class="edit-error">{{ error }}</p>
   <div class="editor-actions">
    <button class="editor-cancel" type="button" :disabled="busy" @click="emit('cancel')">取消</button>
-   <button class="editor-save" :disabled="busy||(kind==='routines'&&form.repeatType==='monthly'&&form.monthlyMode==='weekday'&&!form.monthWeekNumbers.length)">{{ busy?'保存中…':'保存修改' }}</button>
+   <button class="editor-save" :disabled="busy||(kind==='routines'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':'保存修改' }}</button>
   </div>
  </form>
 </template>
@@ -240,6 +257,14 @@ async function save(){
 .detail-editor .monthly-week-select legend{padding:0 5px;font-size:12px;color:#65796e}
 .detail-editor .monthly-week-option{display:flex;align-items:center;gap:5px;border:1px solid #d4e0d6;background:#fff;border-radius:8px;padding:7px 9px}
 .detail-editor .monthly-week-option input[type="checkbox"]{width:17px;height:17px;min-height:17px;padding:0;flex:none;accent-color:#43866a}
+.detail-editor .day-select-group{min-width:0;padding:0;margin:0;border:0;display:grid;gap:7px}
+.detail-editor .day-select-group legend{font-size:12px;color:#65796e;margin-bottom:6px}
+.detail-editor .day-select-group small{font-size:11px;color:#708778}
+.detail-editor .day-select{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.detail-editor .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:36px;cursor:pointer;border:1px solid #d4e0d6;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
+.detail-editor .day-option.is-selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
+.detail-editor .day-option:focus-within{outline:2px solid #7bbda1;outline-offset:2px}
+.detail-editor .day-option input{position:absolute;opacity:0;width:1px;height:1px;min-height:1px;padding:0;pointer-events:none}
 .detail-editor textarea{line-height:1.5;resize:vertical}
 .editor-actions{display:flex;justify-content:flex-end;gap:10px}
 .editor-actions button{padding:10px 12px;border-radius:10px;border:0;font-size:13px}
