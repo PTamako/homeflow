@@ -46,7 +46,8 @@ async function load(){
  error.value=''
  loadedDate.value=''
  try{
-  const res=await fetch('/api/reminders?date='+encodeURIComponent(date),{
+  const res=await fetch('/api/reminders?date='+encodeURIComponent(date)+
+    (props.mode==='list'?'&pending=1':''),{
    credentials:'same-origin',cache:'no-store'})
   if(!res.ok)throw Error('无法读取今天的重要提醒')
   const data=await res.json() as {items?:Reminder[];advanceDays?:number;snoozed?:Snooze[];quietHours?:{start:number|null;end:number|null};itemPreferences?:ItemPreference[]}
@@ -162,7 +163,7 @@ async function saveItem(item:Reminder,days:number,priority:'normal'|'important',
 function refreshIfStale(){
  if(!loading.value&&Date.now()-lastLoadedAt.value>15*60*1000)void load()
 }
-defineExpose({refreshIfStale})
+defineExpose({refreshIfStale,refresh:load})
 watch(()=>props.todayDate,()=>{visibleCount.value=pageSize;void load()},{immediate:true})
 watch([visibleReminders,loading,error],([rows,isLoading,loadError])=>{
  emit('presenceChange',!isLoading&&!loadError&&rows.length>0)
