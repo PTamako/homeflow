@@ -22,5 +22,5 @@ test('shopping links complete on receipt association with no quantity or amount 
   assert.match(picker,/关联一笔真实账单后，这件物品即完成/)
   assert.match(picker,/{entryId:entry.id}/)
   assert.doesNotMatch(picker,/buyQty|本次购买数量|购物金额调整|saveAdjustment|purchasedCount/)
-  assert.match(panel,/s\.completed_at\?'已完成':'待购买'/)
+  assert.match(panel,/s\.completed_at\?'completed':'to_buy'/)
 })
