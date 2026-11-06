@@ -16,10 +16,17 @@ const definitions=[
 export async function backupRoute(request,db,session){
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
   const args=definitions.map(([key,sql])=>{
-    const p=db.prepare(sql)
+    // A sentinel row detects truncation. Never call an incomplete file a backup.
+    const p=db.prepare(sql.replace(/LIMIT (\d+)$/,(_,cap)=>'LIMIT '+(Number(cap)+1)))
     return key==='familyProfiles'?p.bind(session.household_id):p.bind(session.household_id,session.user_id)
   })
   const result=await db.batch(args)
+  const truncated=definitions.flatMap(([key,sql],i)=>{
+    const cap=Number(sql.match(/LIMIT (\d+)$/)?.[1]||0)
+    return (result[i]?.results||[]).length>cap?[key]:[]
+  })
+  if(truncated.length)return json({error:'export_pagination_required',datasets:truncated,
+    message:'简易 JSON 导出记录已超过数量上限，请使用管理页的完整分页 ZIP 备份'},413)
   const records={}
   definitions.forEach(([key],i)=>{records[key]=result[i]?.results||[]})
   return json({format:'homeflow.export',schemaVersion:1,exportedAt:new Date().toISOString(),

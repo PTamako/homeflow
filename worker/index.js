@@ -105,11 +105,18 @@ export default {
     if(!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
       const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env)])
+      // These automated writes bypass fetch(); only touched households advance.
+      const changed=new Set(jobs.flatMap(job=>job.status==='fulfilled'?
+        (job.value?.changedHouseholds||[]):[]))
+      for(const household_id of changed){
+        try{await bumpHouseholdRevision(env.DB,{household_id})}
+        catch{console.warn('homeflow_scheduled_sync_failed')}
+      }
       // Purge expired inbox rows on the existing 06:00 JST cron; tasks/plans are never deleted.
       try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
       // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
-        {job:index===0?'push':'savings',...job.value}:
+        {job:index===0?'push':'savings',...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
         {job:index===0?'push':'savings',failed:1,reason:'unexpected'})
       console.info('homeflow_daily_jobs',JSON.stringify(summary))
     })())

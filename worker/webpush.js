@@ -311,6 +311,7 @@ export async function runPushSchedule(env,now=Date.now()){
   // Reuse each member's reminder batch for subscribed devices.
   const remindersCache=new Map()
   const notificationIds=new Map(),scheduledNotices=new Map(),deliveryTotals=new Map()
+  const changedHouseholds=new Set()
   const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
     FROM household_members m JOIN users u ON u.id=m.user_id
     WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 20`).all()
@@ -338,9 +339,10 @@ export async function runPushSchedule(env,now=Date.now()){
   // Write each scheduled notice before sending to devices, not afterwards.
   for(const notice of scheduledNotices.values()){
     await saveNotification(db,{...notice,sentDevices:0,failedDevices:0})
+    changedHouseholds.add(notice.householdId)
     inbox++
   }
-  if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox}
+  if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox,changedHouseholds:[...changedHouseholds]}
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     if(!remindersCache.has(sub.user_id))continue
@@ -409,7 +411,7 @@ export async function runPushSchedule(env,now=Date.now()){
       await saveNotification(db,{...scheduledNotices.get(logicalKey),
         sentDevices:totals.sent,failedDevices:totals.failed})
   }
-  return {checked,sent,failed,inbox}
+  return {checked,sent,failed,inbox,changedHouseholds:[...changedHouseholds]}
 }
 
 /**

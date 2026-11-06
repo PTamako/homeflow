@@ -167,6 +167,7 @@ export async function runGoalSettlementSchedule(env){
     WHERE deleted_at IS NULL AND goal_mode IN ('monthly','yearly') AND start_on<?1
     ORDER BY created_at DESC LIMIT 60`).bind(today).all()
   let processed=0,settled=0,failed=0
+  const changedHouseholds=new Set()
   const failures={}
   for(const goal of rotateGoalsForDate(results||[],today)){
     if(processed>=8)break
@@ -189,10 +190,10 @@ export async function runGoalSettlementSchedule(env){
       processed++
       try{
         const outcome=await settleGoalPeriod(env,goal,window.periodKey,today)
-        if(outcome?.ok)settled++
+        if(outcome?.ok){settled++;if(!outcome.unchanged)changedHouseholds.add(goal.household_id)}
         else{failed++;const reason=String(outcome?.error||'unknown');failures[reason]=(failures[reason]||0)+1}
       }catch{failed++;failures.unexpected=(failures.unexpected||0)+1}
     }
   }
-  return {attempted:processed,settled,failed,failures}
+  return {attempted:processed,settled,failed,failures,changedHouseholds:[...changedHouseholds]}
 }
