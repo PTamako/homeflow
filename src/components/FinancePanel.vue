@@ -351,8 +351,8 @@ onMounted(()=>{
         </div>
         <template v-if="kind==='trip'">
           <div v-for="row in visibleLinks" :key="row.linkId" class="line">
-            <span>{{ row.entry?.date||'原账目已删除' }} · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
-              <small>{{ row.entry?fmt(row.entry.amount):'未找到明细' }}</small></span>
+            <span><template v-if="row.entry">{{ row.entry.date }}</template><StatusBadge v-else code="deleted" label="原账目已删除" /> · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
+              <small v-if="row.entry">{{ fmt(row.entry.amount) }}</small><small v-else><StatusBadge code="verification_pending" label="未找到明细" /></small></span>
             <button type="button" class="unlink" @click="unlink(row)" :disabled="busy">移除关联</button>
           </div>
           <button v-if="links.length>visibleLinks.length" type="button" class="more"
