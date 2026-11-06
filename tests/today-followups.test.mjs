@@ -32,7 +32,7 @@ test('Japan calendar completion timestamp determines same-day checked visibility
 test('Today category tabs show actual due rows while wish/goal actions live only in Plans',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  assert.match(app,/visibleTodayCategories=computed/)
- assert.match(app,/allToday\.value\.some\(row=>row\.kind===category\.id\)/)
+ assert.match(app,/todayAvailableKinds\.value\.includes\(category\.id as TodayKind\)/)
  assert.match(app,/v-for="category in visibleTodayCategories"/)
  assert.match(app,/openPlans\(row\.plan\.kind,row\.plan\.id,row\.plan\.periodKey\|\|''/)
  assert.doesNotMatch(app,/completeDuePlan/)
