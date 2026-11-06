@@ -20,9 +20,10 @@ test('Plan navigation uses a single compact filter panel and hides disabled mont
     'Plan recap should follow the list, not push plan rows below the fold')
 })
 
-test('Swipe edit/delete cues remain available but are compact and header-aligned',()=>{
+test('Swipe actions remain accessible through a neutral icon instead of colored rails',()=>{
   assert.match(swipe,/\.swipe-trigger\{[^}]*top:8px/)
-  assert.match(swipe,/\.swipe-stripes span\{[^}]*height:19px/)
+  assert.match(swipe,/\.swipe-chevron\{display:grid/)
+  assert.doesNotMatch(swipe,/swipe-stripes|stripe-edit|stripe-delete/)
   assert.match(swipe,/<button v-if="allowEdit" ref="firstAction" type="button" class="edit"/)
   assert.match(swipe,/<button v-if="allowDelete" ref="deleteAction" type="button" class="delete"/)
 })
