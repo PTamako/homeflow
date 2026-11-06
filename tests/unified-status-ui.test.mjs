@@ -16,6 +16,8 @@ test('one semantic palette covers every workflow status, including status aliase
     ['overdue','逾期','danger'],['missed','未完成','danger'],
     ['shortfall','未达标','danger'],['conflict','同步冲突','danger'],
     ['skipped','已跳过','muted'],['cancelled','已取消','muted'],
+    ['deleted','已删除','danger'],['enabled','已开启','success'],
+    ['disabled','已关闭','muted'],['unavailable','不可用','warning'],
     ['unscheduled','待安排','muted'],['not_started','未开始','muted']
   ]
   for(const [code,label,tone] of expectations){
@@ -34,11 +36,14 @@ test('all workflow list surfaces use one StatusBadge implementation',()=>{
   const reminders=read('src/components/ImportantReminders.vue')
   const finance=read('src/components/FinancePanel.vue')
   const shopping=read('src/components/ShoppingLedgerPicker.vue')
+  const push=read('src/components/PushPanel.vue')
+  const trash=read('src/components/TrashPanel.vue')
   const component=read('src/components/StatusBadge.vue')
   const palette=read('src/style.css')
   for(const [name,file] of [
     ['Today tasks',app],['Plans/history',life],['Pending reminders',reminders],
-    ['Savings ledger',finance],['Shopping ledger picker',shopping]
+    ['Savings ledger',finance],['Shopping ledger picker',shopping],
+    ['Push settings',push],['Recycle bin',trash]
   ]){
     assert.match(file,/import StatusBadge from/,name)
     assert.match(file,/<StatusBadge/,name)
@@ -78,6 +83,8 @@ test('today, notifications, reminders and finance share statuses without changin
   assert.match(reminder,/item.dueOn<todayDate/)
   assert.match(finance,/periodDisplay.status.startsWith\('进行中'\)\?'active'/)
   assert.match(picker,/linkedEntryIds.has\(String\(entry.id\)\)/)
+  assert.match(read('src/components/PushPanel.vue'),/!available\?'unavailable':enabled\?'enabled':'disabled'/)
+  assert.match(read('src/components/TrashPanel.vue'),/<StatusBadge code="deleted" \/>/)
   assert.match(notifications,/var\(--hf-success-text\)/)
   assert.match(notifications,/var\(--hf-danger-text\)/)
   assert.match(notifications,/function readStateLabel\(item:Notice\)/)
