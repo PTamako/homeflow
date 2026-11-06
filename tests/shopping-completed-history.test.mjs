@@ -25,7 +25,7 @@ test('shopping active never includes items completed earlier today',async()=>{
  const {sql,args}=await shoppingList('active')
  assert.match(sql,/completed_at IS NULL/)
  assert.doesNotMatch(sql,/completed_at>=|completed_at IS NOT NULL/)
- assert.match(sql,/ORDER BY created_at DESC,id DESC/)
+ assert.match(sql,/ORDER BY COALESCE\\(due_on,'9999-12-31'\\) ASC,id ASC/)
  assert.equal(args.at(-1),6) // fetch one extra row for a five-item page
 })
 test('shopping history includes completed items immediately, including today',async()=>{
