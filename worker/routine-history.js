@@ -42,13 +42,13 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
     const period=current.get(r.id)||null,next=nextRoutineDue(r,day),earlyOn=early.get(r.id)||null
     const mark=period?(marks.get(markerKey(r.id,period))||legacy.get(markerKey(r.id,period))||null):null
     const lastToday=(results||[]).find(m=>m.routine_id===r.id&&markDate(m)===day&&m.completed_at)
-    const activePending=period&&statusOf(mark)==='pending'
+    const activePending=period===day&&statusOf(mark)==='pending'
     const earlyMark=earlyOn?(marks.get(markerKey(r.id,earlyOn))||legacy.get(markerKey(r.id,earlyOn))):null
     const canEarly=!!earlyOn&&!activePending&&!lastToday&&!earlyMark
     const following=earlyOn&&earlyMark?.completed_at?nextRoutineDue(r,addDays(earlyOn,1)):null
     const afterResolved=period&&mark&&statusOf(mark)!=='pending'?
       nextRoutineDue(r,addDays(period,1)):null
-    return {...r,currentPeriodOn:period,currentMark:mark,currentStatus:statusOf(mark),
+    return {...r,currentPeriodOn:activePending?period:null,currentMark:activePending?mark:null,currentStatus:activePending?'pending':statusOf(mark),
       nextDueOn:activePending?period:(following||afterResolved||earlyOn||next),
       earlyPeriodOn:canEarly?earlyOn:null,
       completedToday:!!lastToday,
