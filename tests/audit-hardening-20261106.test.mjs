@@ -84,12 +84,15 @@ test('family messages without Push remain as two separate in-app notifications',
  assert.equal(notices[1].args[9],0)
 })
 
-test('Today sorts merged sources by due date before applying five-row slice',()=>{
+test('Today sorts across six sources on the server before applying cursor limit',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
- assert.match(app,/dueOn\(a\)\.localeCompare\(dueOn\(b\)\)/)
- assert.match(app,/a\.key\.localeCompare\(b\.key\)/)
- assert.match(app,/Number\(a\.done\)-Number\(b\.done\)/)
- assert.match(app,/unifiedToday\.value\.slice\(0,todayVisibleCount\.value\)/)
+ const feed=readFileSync(new URL('../worker/today-page.js',import.meta.url),'utf8')
+ assert.match(feed,/due\(a\)\.localeCompare\(due\(b\)\)/)
+ assert.match(feed,/a\.key\.localeCompare\(b\.key\)/)
+ assert.match(feed,/Number\(a\.done\)-Number\(b\.done\)/)
+ assert.match(feed,/candidates\.slice\(0,limit\)/)
+ assert.match(app,/loadTodayPage\(false\)/)
+ assert.doesNotMatch(app,/todayVisibleCount/)
 })
 
 test('scheduled notice IDs are stable per account, day and reminder key',async()=>{
