@@ -1243,8 +1243,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</small>
                   <small v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
                   <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
-                  <small><StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" /></small>
-                  <small v-if="g.wish_id"><StatusBadge code="linked" /> 心愿计划</small></div>
+                  <small class="goal-status-line">
+                    <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
+                    <button v-if="g.wish_id" type="button" class="goal-wish-link"
+                      :aria-label="'查看“'+g.title+'”关联的心愿计划'"
+                      @click="emit('openPlans','wish',String(g.wish_id))">
+                      <AppIcon name="heart" :size="13" />已关联心愿
+                    </button>
+                  </small></div>
                 <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
             </SwipeActions>
@@ -1650,6 +1656,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-form button{width:100%}
 .life-form .life-cancel{background:#fff;color:#43866a;border:1px solid #9ac2a8}
 .life-details{min-width:0;flex:1}
+.goal-status-line{display:flex!important;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
+.goal-wish-link{display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  flex:none;min-width:0;min-height:36px;padding:4px 8px;border:0;border-radius:8px;
+  background:var(--hf-success-bg);color:var(--hf-success-text);
+  font:inherit;font-size:11px;font-weight:700;line-height:1.3;white-space:nowrap;
+  touch-action:manipulation}
+.goal-wish-link:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+@media(max-width:720px){.goal-wish-link{min-height:44px}}
+
 .detail-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;flex:none}
 .life-row .detail-actions .life-link{font-size:11px;padding:6px 8px;min-width:0}
 .life-danger{color:#a45b4c!important;background:#faefeb!important}
