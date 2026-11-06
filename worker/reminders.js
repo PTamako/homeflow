@@ -122,7 +122,9 @@ export async function remindersRoute(request,db,session) {
   const date=url.searchParams.get('date')||today
   if(!stringDate(date))return json({error:'invalid_input'},400)
   const hid=session.household_id,u=session.user_id
-  const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs]=await db.batch([
+  // Pending inbox is a display filter; the 06:00 scheduler must keep the complete list.
+  const pendingOnly=url.searchParams.get('pending')==='1'
+  const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs,deliveredNotices]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) AND (assigned_to=?2 OR assigned_to IS NULL) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at FROM routine_marks m
@@ -148,7 +150,11 @@ export async function remindersRoute(request,db,session) {
     db.prepare('SELECT kind,item_id,until_on FROM reminder_snoozes WHERE household_id=?1 AND user_id=?2 AND until_on>=?3 LIMIT 500')
       .bind(hid,u,date),
     db.prepare('SELECT advance_days,quiet_start_hour,quiet_end_hour FROM reminder_preferences WHERE household_id=?1 AND user_id=?2').bind(hid,u),
-    db.prepare('SELECT kind,item_id,advance_days,priority FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 LIMIT 500').bind(hid,u)
+    db.prepare('SELECT kind,item_id,advance_days,priority FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 LIMIT 500').bind(hid,u),
+    // Query only the current recipient's scheduled notices, using the existing daily index.
+    ...(pendingOnly?[db.prepare(`SELECT dedupe_key FROM notification_inbox
+      WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+        AND dedupe_key LIKE 'scheduled:%'`).bind(hid,u,date)]:[])
   ])
   const leadDays=validLead(preference.results?.[0]?.advance_days)?preference.results[0].advance_days:0
   const overrides=new Map((itemPrefs.results||[]).map(x=>[x.kind+':'+x.item_id,x]))
@@ -230,11 +236,14 @@ export async function remindersRoute(request,db,session) {
     }
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
+  const deliveredKeys=new Set((deliveredNotices?.results||[]).map(x=>x.dedupe_key))
   const pref=preference.results?.[0]||{}
   return json({date,advanceDays:leadDays,
     quietHours:{start:pref.quiet_start_hour??null,end:pref.quiet_end_hour??null},
     itemPreferences:(itemPrefs.results||[]).map(x=>({kind:x.kind,id:x.item_id,
       advanceDays:x.advance_days,priority:x.priority})),
     snoozed:(snoozes.results||[]).map(x=>({kind:x.kind,id:x.item_id,untilOn:x.until_on})),
-    items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id))})
+    items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id)&&
+      (!pendingOnly||!deliveredKeys.has('scheduled:'+
+        [x.kind,x.id,x.dueOn,x.daysBefore??0].join(':'))))})
 }
