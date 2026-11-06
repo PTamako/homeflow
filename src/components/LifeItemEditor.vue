@@ -8,14 +8,17 @@ const emit=defineEmits<{saved:[];cancel:[]}>()
 const busy=ref(false),error=ref('')
 const data=props.item
 const config=(()=>{try{return typeof data.repeat_config==='string'?JSON.parse(data.repeat_config):data.repeat_config||{}}catch{return {}}})()
-const mode=data.repeat_type==='weekly'&&config.excludeJapaneseHolidays?'workday':data.repeat_type
+const mode=data.repeat_type==='weekly'&&config.excludeJapaneseHolidays?'workday':
+  data.repeat_type==='monthly'&&Array.isArray(config.weeks)?'monthly_weekday':data.repeat_type
 const form=reactive({
  title:String(data.title||''),visibility:String(data.visibility||'household'),
  quantity:Number(data.quantity||1),dueOn:String(data.due_on||''),remindEnabled:data.remind_enabled!==0,
  eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
- repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),anchorDate:String(data.anchor_date||''),
+ repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekday??config.weekdays?.[0]??2),
+ ordinalWeeks:Array.isArray(config.weeks)?[...config.weeks] as number[]:[2,4] as number[],
+ anchorDate:String(data.anchor_date||''),
  subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
@@ -44,7 +47,11 @@ function values(){
   case 'routines':{
    const prev=config
    const type=form.repeatType
-   const configNext=type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor}:
+   if(type==='monthly_weekday'&&!form.ordinalWeeks.length)
+     throw Error('请至少选择一个星期序号')
+   const configNext=type==='monthly_weekday'?
+      {weekday:Number(form.weekday),weeks:[...form.ordinalWeeks].sort((a,b)=>a-b)}:
+     type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor}:
      type==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
      type==='weekly'?{weekdays:[Number(form.weekday)],
        excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
@@ -119,10 +126,20 @@ async function save(){
    <label>备注<textarea v-model="form.note" maxlength="1000" rows="2"/></label>
   </template>
   <template v-else-if="kind==='routines'">
-   <label>重复频率<select v-model="form.repeatType"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周（保留原设定星期）</option><option value="monthly">每月</option><option value="interval">间隔</option></select></label>
-   <label v-if="form.repeatType==='weekly'">每周执行日<select v-model.number="form.weekday" aria-label="每周执行星期">
+   <label>重复频率<select v-model="form.repeatType"><option value="daily">每天</option><option value="workday">工作日（日本祝日除外）</option><option value="weekly">每周（保留原设定星期）</option><option value="monthly">每月固定日期</option><option value="monthly_weekday">每月指定星期</option><option value="interval">间隔</option></select></label>
+   <label v-if="form.repeatType==='weekly'||form.repeatType==='monthly_weekday'">
+    {{ form.repeatType==='weekly'?'每周执行日':'星期' }}
+    <select v-model.number="form.weekday" aria-label="选择每月指定星期">
      <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
    </select></label>
+   <fieldset v-if="form.repeatType==='monthly_weekday'" class="ordinal-weeks">
+    <legend>每月第几个星期（可多选）</legend>
+    <label v-for="n in [1,2,3,4,5]" :key="n" class="ordinal-week-option">
+     <input v-model="form.ordinalWeeks" type="checkbox" :value="n"/>
+     <span>第 {{ n }} 个</span>
+    </label>
+    <small>没有第 5 次的月份会自动跳过该次。</small>
+   </fieldset>
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
