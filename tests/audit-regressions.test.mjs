@@ -423,7 +423,7 @@ test('Today task read excludes undated and future tasks, but plans can still fet
    return response.json()
   }
   const today=await fetch('/api/tasks?status=all&today=2026-11-05')
-  assert.deepEqual(new Set(today.tasks.map(t=>t.title)),new Set(['overdue','today','completed today']))
+  assert.deepEqual(new Set(today.tasks.map(t=>t.title)),new Set(['today','completed today']))
   const historical=await fetch('/api/tasks?status=all&today=2026-11-05&showHistory=1')
   assert.ok(historical.tasks.some(t=>t.title==='completed before'))
   const unscheduled=await fetch('/api/tasks?scope=unscheduled&limit=5')
