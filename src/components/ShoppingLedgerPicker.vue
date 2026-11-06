@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
+import StatusBadge from './StatusBadge.vue'
 import {computed,onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
 type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
@@ -84,19 +85,20 @@ onMounted(()=>{void check()})
    <div v-for="entry in entries" :key="entry.id" class="ledger-entry">
     <span>{{ entry.date }} · {{ entry.merchant||entry.category||'支出' }}
      <small>¥{{ Number(entry.amount||0).toLocaleString('ja-JP') }}</small></span>
-    <button type="button" :disabled="busy||entry.type!=='expense'||linkedEntryIds.has(String(entry.id))"
-      @click="attach(entry)">{{ linkedEntryIds.has(String(entry.id))?'已关联':'关联并完成' }}</button>
+    <StatusBadge v-if="linkedEntryIds.has(String(entry.id))" code="linked" />
+    <button v-else type="button" :disabled="busy||entry.type!=='expense'"
+      @click="attach(entry)">关联并完成</button>
    </div>
    <button v-if="cursor" type="button" :disabled="busy" class="ledger-search" @click="search(true)">加载更多</button>
    <div v-if="links.length" class="shopping-linked">
-     <b>已关联 {{ links.length }} 笔消费</b>
+     <b><StatusBadge code="linked" /> {{ links.length }} 笔消费</b>
      <div v-for="link in links" :key="link.entryId" class="ledger-entry">
        <span>{{ link.entry?.date||'原始明细不可用' }} · {{ link.entry?.merchant||('账目 #'+link.entryId) }}
          <small>{{ link.entry?'¥'+Number(link.entry.amount).toLocaleString('ja-JP'):'需要重新核对' }}
        </small></span>
        <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink(link.entryId)">解除这一笔</button>
      </div>
-     <small v-if="linksNeedReview" class="ledger-error">关联消费已变更，请核对。</small>
+     <small v-if="linksNeedReview" class="ledger-error"><StatusBadge code="verification_pending" label="待核对" /> 关联消费已变更，请核对。</small>
      <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink()">解除全部关联</button>
    </div>
   </template>
