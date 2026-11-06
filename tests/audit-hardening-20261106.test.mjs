@@ -45,17 +45,27 @@ test('same-day recurring goal cannot settle via legacy route and returns 409',as
  assert.equal((await r.json()).error,'not_due')
 })
 
-test('period history and archive do not expose household financial estimates to members',async()=>{
+test('members see shared historical goal status but not another creator\'s cash estimates',async()=>{
  let writes=0
- const db={prepare(){return {bind(){return {
-   first:async()=>target,run:async()=>{writes++;throw Error('unexpected mutation')}
+ const db={prepare(sql){return {bind(){return {
+   first:async()=>target,
+   all:async()=>({results:sql.includes('FROM goals WHERE')?[{...target,title:'家庭共享储值'}]:
+     [{goal_id:goalId,period_key:'2026-10',status:'met',target_amount:60000,
+       actual_amount:90000,difference_amount:-30000}]}),
+   run:async()=>{writes++;throw Error('unexpected mutation')}
  }}}}}
  const detail='/api/goals/'+goalId+'/periods'
  const r=await goalPeriodsRoute(new Request(base+detail),{DB:db},detail,member)
  assert.equal(r.status,403)
  const archive=await goalPeriodArchiveRoute(
    new Request(base+'/api/goals/period-archive'),db,member)
- assert.equal(archive.status,403)
+ assert.equal(archive.status,200)
+ const rows=(await archive.json()).items
+ assert.ok(rows.length>0)
+ const october=rows.find(x=>x.periodKey==='2026-10')
+ assert.equal(october.status,'met')
+ assert.equal(october.actualAmount,null)
+ assert.equal(october.differenceAmount,null)
  assert.equal(writes,0)
 })
 
