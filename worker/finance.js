@@ -216,7 +216,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     if(shopList){
       const {results}=await db.prepare(
         'SELECT external_entry_id AS entryId,linked_at AS linkedAt,purchase_quantity AS purchaseQuantity FROM shopping_expense_links '+
-        'WHERE household_id=?1 AND shopping_id=?2 ORDER BY linked_at,external_entry_id LIMIT 50'
+        'WHERE household_id=?1 AND shopping_id=?2 ORDER BY linked_at DESC,external_entry_id DESC LIMIT 50'
       ).bind(h,item.id).all()
       const rows=results||[]
       try{
