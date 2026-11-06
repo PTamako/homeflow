@@ -15,7 +15,12 @@ const form=reactive({
  eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
- repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),anchorDate:String(data.anchor_date||''),
+ repeatAnchor:String(config.anchor||'fixed'),weekday:Number(config.weekdays?.[0]??new Date().getDay()),
+ monthlyMode:String(config.mode==='weekday'?'weekday':'day'),
+ monthDay:Number(config.day||String(data.anchor_date||'').slice(-2)||1),
+ monthWeekday:Number(config.weekday??2),
+ monthWeekNumbers:Array.isArray(config.weekNumbers)?[...config.weekNumbers] as number[]:[2,4] as number[],
+ anchorDate:String(data.anchor_date||''),
  subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),
@@ -48,7 +53,10 @@ function values(){
      type==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
      type==='weekly'?{weekdays:[Number(form.weekday)],
        excludeJapaneseHolidays:!!prev.excludeJapaneseHolidays}:
-     type==='monthly'?{day:prev.day||Number(form.anchorDate.slice(-2))||1}:{}
+     type==='monthly'?(form.monthlyMode==='weekday'?
+       {mode:'weekday',weekday:Number(form.monthWeekday),
+        weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
+       {day:Number(form.monthDay)}):{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
      assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
      remindEnabled:form.remindEnabled,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
@@ -123,6 +131,33 @@ async function save(){
    <label v-if="form.repeatType==='weekly'">每周执行日<select v-model.number="form.weekday" aria-label="每周执行星期">
      <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
    </select></label>
+   <template v-if="form.repeatType==='monthly'">
+    <label>每月规则
+     <select v-model="form.monthlyMode" aria-label="编辑每月规则类型">
+      <option value="day">指定日期</option>
+      <option value="weekday">指定第几个星期几</option>
+     </select>
+    </label>
+    <label v-if="form.monthlyMode==='day'">每月日期（1～31）
+     <input v-model.number="form.monthDay" type="number" min="1" max="31" required/>
+    </label>
+    <template v-else>
+     <label>执行星期
+      <select v-model.number="form.monthWeekday" aria-label="编辑每月执行星期">
+       <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']"
+        :key="i" :value="i">{{ day }}</option>
+      </select>
+     </label>
+     <fieldset class="monthly-week-select">
+      <legend>每月第几个（可多选）</legend>
+      <label v-for="n in [1,2,3,4,5]" :key="n" class="monthly-week-option">
+       <input v-model="form.monthWeekNumbers" type="checkbox" :value="n"/>
+       <span>第 {{ n }} 个</span>
+      </label>
+     </fieldset>
+     <small v-if="!form.monthWeekNumbers.length" class="editor-error">请至少选择一个星期序号</small>
+    </template>
+   </template>
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
