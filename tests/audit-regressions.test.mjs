@@ -335,7 +335,7 @@ test('unscheduled tasks are paged on server and excluded from Today',async()=>{
   assert.equal(r.status,200)
   const body=await r.json()
   assert.equal(body.items[0].id,task)
-  assert.match(readFileSync(new URL('../src/App.vue',import.meta.url),'utf8'),/!!t\.dueOn&&t\.dueOn<=now/)
+  assert.match(readFileSync(new URL('../worker/today-page.js',import.meta.url),'utf8'),/!task\.dueOn\|\|task\.dueOn>date/)
  }finally{sqlite.close()}
 })
 

@@ -41,7 +41,9 @@ test('Today completion marks are split by plan type to use compound D1 indexes',
  const source=readFileSync(new URL('../worker/plan-today.js',import.meta.url),'utf8')
  assert.match(source,/plan_type='goal'/)
  assert.match(source,/plan_type='wish'/)
- assert.match(source,/const markCount=Number\(!!goalIds.length\)\+Number\(!!wishIds.length\)/)
+ assert.match(source,/const markStatements=\[\]/)
+  assert.match(source,/for\(const ids of chunks\(goalIds\)\)/)
+  assert.match(source,/for\(const ids of chunks\(wishIds\)\)/)
  assert.doesNotMatch(source,/FROM plan_completion_marks WHERE household_id=\?1 AND \(\$\{where\.join/)
 })
 

@@ -2,6 +2,7 @@ import {iso,json,readBody,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
 import {jstToday} from './routine-periods.js'
 import {actionWindow,actionDue} from './today-actions.js'
+import {readTodayRows} from './today-source-read.js'
 function validated(body,session) {
   const title=shortText(body?.title,150),notes=shortText(body?.notes??'',1000)
   const visibility=body?.visibility
@@ -61,7 +62,7 @@ function parseTodayItemKey(key){
   }else return null
   return {table,id:uuid,ownerColumn:kind==='task'?'creator_user_id':'created_by'}
 }
-export async function tasksRoute(request,db,path,session,onComplete=null) {
+export async function tasksRoute(request,db,path,session,onComplete=null,options={}) {
   const household=session.household_id,who=session.user_id
   if(path==='/api/tasks/today/dismiss'){
     if(request.method!=='POST')return json({error:'method_not_allowed'},405)
@@ -155,7 +156,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null) {
     if(today==='')return json({error:'invalid_date'},400)
     const tomorrow=today?new Date(Date.parse(today+'T00:00:00+09:00')+86400000).toISOString():null
     const todayStart=today?new Date(today+'T00:00:00+09:00').toISOString():null
-    const {results}=await db.prepare(`SELECT id,title,notes,visibility,due_on AS dueOn,
+    const sourceSql=`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
       subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
       completed_at AS completedAt,
@@ -168,10 +169,13 @@ export async function tasksRoute(request,db,path,session,onComplete=null) {
           (completed_at IS NULL AND due_on IS NOT NULL AND (due_on=?4 OR
             id IN (SELECT source_id FROM today_plan_actions WHERE household_id=?1
               AND kind='task' AND action='postponed' AND postponed_to=?4))) OR
-          (completed_at IS NOT NULL AND (?7=1 OR (completed_at>=?5 AND completed_at<?6))))
-      ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
-        CASE WHEN due_on IS NULL THEN 1 ELSE 0 END,due_on,created_at DESC
-      LIMIT 250`).bind(household,who,mode,today,todayStart,tomorrow,showHistory?1:0).all()
+          (completed_at IS NOT NULL AND (?7=1 OR (completed_at>=?5 AND completed_at<?6))))`
+    const bindings=[household,who,mode,today,todayStart,tomorrow,showHistory?1:0]
+    const {results}=options.fullToday&&today
+      ? {results:await readTodayRows(db,sourceSql,bindings)}
+      : await db.prepare(sourceSql+` ORDER BY CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
+          CASE WHEN due_on IS NULL THEN 1 ELSE 0 END,due_on,created_at DESC LIMIT 250`)
+        .bind(...bindings).all()
     // No overdue task rolls into Today automatically. Manual target dates are
     // displayed once, and explicit skips remain only in the history log.
     const actions=today?await actionWindow(db,household,today):[]
