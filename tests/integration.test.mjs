@@ -1086,7 +1086,7 @@ test('future interval can be completed early in Plans and undone without duplica
  sqlite.close()
 })
 
-test('uncompleted weekly and monthly routines roll over without duplicate occurrences',async()=>{
+test('missed weekly and monthly occurrences expire; later cycles are independent',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
@@ -1102,15 +1102,16 @@ test('uncompleted weekly and monthly routines roll over without duplicate occurr
  assert.equal(weekly.status,201,JSON.stringify(weekly.body))
  const day=(date)=>ask('/api/routines/today?date='+date,'GET',undefined,owner)
  const tuesday=await day('2026-11-03')
- const carried=tuesday.body.items.find(x=>x.id===weekly.body.id)
- assert.ok(carried,JSON.stringify(tuesday.body))
- assert.equal(carried.carriedFrom,'2026-11-02')
- assert.equal(carried.mark,null)
+ assert.equal(tuesday.body.items.some(x=>x.id===weekly.body.id),false)
+ const missedHistory=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.ok(missedHistory.body.items.some(x=>x.id===weekly.body.id&&x.periodOn==='2026-11-02'&&x.status==='missed'))
  const marked=await ask('/api/routines/'+weekly.body.id+'/mark','POST',
-   {date:'2026-11-03',status:'completed'},owner)
+   {date:'2026-11-02',status:'skipped'},owner)
  assert.equal(marked.status,200,JSON.stringify(marked.body))
  const sameDay=await day('2026-11-03')
- assert.ok(sameDay.body.items.find(x=>x.id===weekly.body.id)?.mark?.completed_at)
+ assert.equal(sameDay.body.items.some(x=>x.id===weekly.body.id),false)
+ const skippedHistory=await ask('/api/routines/period-history?scope=history&limit=5','GET',undefined,owner)
+ assert.ok(skippedHistory.body.items.some(x=>x.id===weekly.body.id&&x.status==='skipped'))
  const wednesday=await day('2026-11-04')
  assert.equal(wednesday.body.items.some(x=>x.id===weekly.body.id),false,
    'completed overdue Monday is not re-shown Wednesday')
