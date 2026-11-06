@@ -246,7 +246,7 @@ function normalized(key,r,h,u) {
          (r.action==='postponed'&&(!date(r.postponed_to)||r.postponed_to<=r.original_on))||
          (r.action==='skipped'&&r.postponed_to!=null))return null
       const stamp=typeof r.acted_at==='string'&&
-        /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(r.acted_at)
+        /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/.test(r.acted_at)
         ?r.acted_at:null
       const table={task:'tasks',shopping:'shopping_items',wish:'wishes',
         goal:'goals',trip:'trips'}[r.kind]
