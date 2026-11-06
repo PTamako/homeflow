@@ -265,7 +265,9 @@ export async function remindersRoute(request,db,session) {
       FROM goals WHERE household_id=?1 AND deleted_at IS NULL
       AND (visibility='household' OR created_by=?2)
       AND (start_on IS NULL OR start_on<=?3)
-      AND (goal_mode IN ('monthly','yearly') OR (goal_mode='once' AND target_on=?3))
+      AND (goal_mode IN ('monthly','yearly') OR (goal_mode='once' AND
+          (target_on=?3 OR id IN(SELECT source_id FROM today_plan_actions
+            WHERE household_id=?1 AND kind='goal' AND action='postponed' AND postponed_to=?3))))
       ORDER BY created_at DESC LIMIT 60`).bind(hid,u,date).all()
     if(goals.length){
       const ids=goals.map(x=>x.id)
@@ -278,7 +280,11 @@ export async function remindersRoute(request,db,session) {
           WHERE household_id=?1 AND plan_type='goal' AND plan_id IN (${placeholders})
           LIMIT 1000`).bind(hid,...ids)
       ])
-      const goalNotices=savingsReminders(goals,date,
+      const currentGoals=goals.map(goal=>goal.goal_mode==='once'
+        ?{...goal,target_on:effectiveReminderDate('goal',goal.id,goal.target_on,
+          date,date,activeActions)}
+        :goal)
+      const goalNotices=savingsReminders(currentGoals,date,
         settlements.results||[],marks.results||[])
       // Cron sends on configured dates; the pending UI retains ongoing alerts
       // without creating a new phone push or unread record every day.
@@ -292,11 +298,16 @@ export async function remindersRoute(request,db,session) {
     // enter the notification inbox.
     const {results:wishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
       FROM wishes WHERE household_id=?1 AND deleted_at IS NULL
-        AND remind_enabled=1 AND target_on>=?3 AND target_on<=?4
+        AND remind_enabled=1 AND (target_on BETWEEN ?3 AND ?4 OR
+          id IN(SELECT source_id FROM today_plan_actions WHERE household_id=?1
+            AND kind='wish' AND action='postponed' AND postponed_to BETWEEN ?3 AND ?4))
         AND status NOT IN ('completed','cancelled')
         AND (visibility='household' OR created_by=?2)
       ORDER BY target_on,id LIMIT 100`).bind(hid,u,date,addDays(date,7)).all()
-    announcements.push(...wishReminders(wishes,date))
+    const currentWishes=wishes.map(wish=>({...wish,
+      target_on:effectiveReminderDate('wish',wish.id,wish.target_on,
+        date,future,activeActions)})).filter(wish=>wish.target_on)
+    announcements.push(...wishReminders(currentWishes,date))
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
   const deliveredKeys=new Set((deliveredNotices?.results||[]).map(x=>x.dedupe_key))
