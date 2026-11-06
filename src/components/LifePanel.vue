@@ -1001,6 +1001,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()" code="overdue" label="逾期" />
                        {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
                     </span>
+                    <StatusBadge v-if="r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn>=today()" code="pending" label="待处理" />
                     <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button" class="routine-text-action"
                       :disabled="busy" @click="completeCurrentRoutine(r,'completed')">完成本期</button>
                     <button v-else-if="canCompleteRoutineEarly(r)" type="button" class="routine-text-action"
@@ -1199,11 +1200,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
                   <small v-if="period.actualAmount!==null">
                     实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
-                    <StatusBadge :code="period.status" /> ·
+                    <StatusBadge :code="period.status==='pending'?'verification_pending':period.status" /> ·
                     {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
                        Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
                   </small>
-                  <small v-else><StatusBadge :code="period.status" /> · 金额未记录</small>
+                  <small v-else><StatusBadge :code="period.status==='pending'?'verification_pending':period.status" /> · 金额未记录</small>
                 </div>
                 <button v-if="isOwner" type="button" class="life-link"
                   :disabled="historicalGoalDetailLoading===period.goalId+'|'+period.periodKey"
@@ -1233,6 +1234,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</small>
                   <small v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</small>
                   <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
+                  <small><StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" /></small>
                   <small v-if="g.wish_id"><StatusBadge code="linked" /> 心愿计划</small></div>
                 <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
               </div>
@@ -1590,9 +1592,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .routine-inline-actions button{border:0;border-radius:9px;background:#eff5f0;
   color:#476d57;font-size:12px;min-height:36px;padding:8px 12px;font-weight:600}
 .routine-inline-actions button:disabled{opacity:.45}
-.routine-state{font-size:11px;color:#87988c;flex:none}
-.routine-state.state-completed{color:#43866a}
-.routine-state.state-missed{color:#aa7067}
+.routine-state{flex:none}
 .routine-struck{text-decoration:line-through;color:#9ca99f}
 .routine-history-row{display:grid;gap:5px}
 @media(max-width:420px){.plan-task-head .detail-name{font-size:13px}.plan-tasks-card .plan-task-next{font-size:10px}}
