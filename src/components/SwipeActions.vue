@@ -146,7 +146,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
 .swipe-content{position:relative;z-index:1;background:#fff;min-width:0;max-width:100%;
   transition:transform .18s ease-out;will-change:transform}
 .is-dragging .swipe-content{transition:none}
-.swipe-actions{position:absolute;right:0;inset-block:0;display:flex;align-items:stretch;z-index:0;
+.swipe-actions{position:absolute;right:0;inset-block:0;display:flex;align-items:stretch;z-index:0;background:#fff;
   /* Hidden action backgrounds can bleed through at iOS compositing edges. */
   visibility:hidden}
 .swipe-row.is-open .swipe-actions,.swipe-row.is-dragging .swipe-actions{visibility:visible}

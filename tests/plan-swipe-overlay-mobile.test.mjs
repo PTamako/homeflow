@@ -18,7 +18,7 @@ test('all plan task swipe surfaces are opaque so action rails cannot show behind
 })
 
 test('recurring and one-off task edit/delete rails stay top-aligned and short on tall rows',()=>{
- assert.match(life,/\.plan-task-item :deep\(\.swipe-actions\)\{align-items:flex-start;background:#f4f7f4\}/)
+ assert.match(life,/\.plan-task-item :deep\(\.swipe-actions\)\{align-items:flex-start;background:#fff\}/)
  assert.match(life,/\.plan-task-item :deep\(\.swipe-actions button\)\{height:min\(72px,100%\);flex:0 0 72px\}/)
  assert.match(swipe,/\.swipe-actions\{[\s\S]*?visibility:hidden/)
  assert.match(swipe,/\.swipe-actions \.edit\{background:#558bc9\}/)

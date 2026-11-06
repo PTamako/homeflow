@@ -32,7 +32,7 @@ test('timeline swipes one complete memory: date, title, photos, story and visibi
 test('blue edit/red delete remain clipped to a compact top-right action rail for long stories',()=>{
   assert.match(life,/\.memory-swipe-body\{min-width:0;width:100%;overflow-wrap:anywhere/)
   assert.match(life,/\.memory :deep\(\.swipe-row\)\{border-radius:8px\}/)
-  assert.match(life,/\.memory :deep\(\.swipe-actions\)\{align-items:flex-start;background:#f4f7f4\}/)
+  assert.match(life,/\.memory :deep\(\.swipe-actions\)\{align-items:flex-start;background:#fff\}/)
   assert.match(life,/\.memory :deep\(\.swipe-actions button\)\{height:72px;flex:0 0 72px\}/)
   assert.match(memory,/@edit="edit\('memories',m\)" @delete="removeItem\('memories',m\)"/)
   assert.match(memory,/:allow-edit="canEdit\(m\)" :allow-delete="canEdit\(m\)"/)
