@@ -142,10 +142,10 @@ export async function remindersRoute(request,db,session) {
       AND (r.visibility='household' OR r.created_by=?4)`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND remind_enabled=1
-      AND due_on<=?2 AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
-        WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?4 AND ?2))
-      AND (visibility='household' OR creator_user_id=?3) AND (assignee_user_id=?3 OR assignee_user_id IS NULL)
-      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u,date),
+      AND due_on<=?3 AND (due_on>=?2 OR id IN(SELECT source_id FROM today_plan_actions
+        WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?2 AND ?3))
+      AND (visibility='household' OR creator_user_id=?4) AND (assignee_user_id=?4 OR assignee_user_id IS NULL)
+      ORDER BY due_on LIMIT 100`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
       AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
