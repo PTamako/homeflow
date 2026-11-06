@@ -630,9 +630,13 @@ async function fetchMode(){
       const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
         historicalGoalPath():null
       const actionPath=planScope.value==='history'?skippedActionPath():null
-      const pages=await Promise.all([...paths.map(path=>api(path)),
+      // A failing category must not make every completed shared plan disappear.
+      // Display successful household-visible categories and surface a retry hint.
+      const results=await Promise.allSettled([...paths.map(path=>api(path)),
         ...(goalArchivePath?[api(goalArchivePath)]:[]),
         ...(actionPath?[api(actionPath)]:[])])
+      const pages=results.map(result=>result.status==='fulfilled'?result.value:{items:[],nextCursor:null})
+      const failed=results.filter(result=>result.status==='rejected').length
       if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
          paths.some((path,i)=>path!==listPath(kinds[i]))||
          (goalArchivePath!==null&&goalArchivePath!==historicalGoalPath()))return
@@ -645,6 +649,7 @@ async function fetchMode(){
       const actionIndex=kinds.length+(goalArchivePath?1:0)
       skippedTodayActions.value=actionPath?pages[actionIndex].items||[]:[]
       skippedActionCursor.value=actionPath?pages[actionIndex].nextCursor||null:null
+      if(failed)error.value='部分计划记录读取失败，请稍后重试或切换分类查看'
       await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
