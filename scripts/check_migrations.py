@@ -31,7 +31,8 @@ MIGRATIONS=[
     "0024_shopping_assignee.sql",
     "0025_daily_notification_inbox.sql",
     "0026_shopping_any_receipt_complete.sql",
-    "0027_wish_reminder_settings.sql"
+    "0027_wish_reminder_settings.sql",
+    "0028_explicit_today_actions.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -44,7 +45,7 @@ for migration in MIGRATIONS:
     db.executescript(source)
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
-          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox"}
+          "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox","today_plan_actions"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
@@ -59,7 +60,7 @@ secondary_indexes={
   "idx_shopping_due_active","idx_wishes_target_active","idx_goals_target_on",
   "idx_plan_completion_household_date","idx_shop_links_household",
   "idx_reminder_snoozes_expiration","idx_shopping_household_created",
-  "idx_goal_settlements_goal_period"
+  "idx_goal_settlements_goal_period","idx_today_actions_target","idx_today_actions_history"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
