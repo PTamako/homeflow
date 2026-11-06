@@ -190,7 +190,7 @@ test('legacy JSON backup reports overflow instead of silently truncating source 
 test('the remote revision is confirmed only after visible page and plans succeed',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const life=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
- const acknowledge=app.indexOf('syncRevision.value=version',app.indexOf('async function checkRemoteChanges'))
+ const acknowledge=app.lastIndexOf('syncRevision.value=version',app.indexOf('function onOnline()'))
  const page=app.indexOf('await loadTodayPage(true)',app.indexOf('async function checkRemoteChanges'))
  const panel=app.indexOf('await panel.refreshForSync()',app.indexOf('async function checkRemoteChanges'))
  assert.ok(page>=0&&panel>page&&acknowledge>panel,'no early acknowledgment')
