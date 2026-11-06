@@ -158,7 +158,7 @@ defineExpose({refresh:()=>load(true)})
      :class="['notice-item',{'notice-focused':highlightedId===item.id}]">
     <div class="notice-item-top">
      <b>{{ item.title }}</b>
-     <span :class="['notice-state',{'notice-state-unread':!item.readAt&&item.deliveryStatus!=='failed'}]">
+     <span :class="['notice-state',{'notice-state-unread':!item.readAt}]">
       {{ detail(item) }}
      </span>
     </div>
