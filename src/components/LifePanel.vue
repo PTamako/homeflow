@@ -990,7 +990,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <div v-for="r in [entry.item]" :key="r.id"
               :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
               <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
-                @edit="edit('routines',r)" @delete="removeItem('routines',r)">
+                @open="expandedTaskMenu=null" @edit="edit('routines',r)" @delete="removeItem('routines',r)">
                 <div class="routine-compact">
                   <div class="plan-task-head">
                     <b class="detail-name">{{ r.title }}</b>
@@ -1045,7 +1045,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <div v-for="t in [entry.item]" :key="t.id" :id="'plan-item-'+t.id"
             class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
-              @edit="editOnce(t)" @delete="deleteOnce(t)">
+              @open="expandedTaskMenu=null" @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
                 <div class="life-details">
                   <b class="detail-name">{{ t.title }}</b>
@@ -1154,7 +1154,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-for="w in items" :key="w.id">
             <div :id="'plan-item-'+w.id" :class="{'focused-plan-entry':isFocused(w)}">
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
-              @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
+              @open="expandedTaskMenu=null" @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · <StatusBadge :code="w.status" /><template v-if="w.target_on"> · {{ w.target_on }}</template></small>
                   <small v-if="linkedGoal(w)"><StatusBadge code="linked" /> 储值计划：{{ linkedGoal(w)?.title }}</small></div>
@@ -1296,7 +1296,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
-              @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
+              @open="expandedTaskMenu=null" @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
                 <div class="shopping-check">
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
@@ -1359,7 +1359,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <template v-for="t in trips" :key="t.id">
             <div :id="'plan-item-'+t.id" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
-              @edit="edit('trips',t)" @delete="removeItem('trips',t)">
+              @open="expandedTaskMenu=null" @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · <StatusBadge :code="t.status" /></small></div>
@@ -1655,7 +1655,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-task-item :deep(.swipe-row),.plan-task-item :deep(.swipe-content){
   border:0;box-shadow:none;margin:0;
 }
-.plan-task-item :deep(.swipe-content){background:transparent}
+.plan-task-item :deep(.swipe-content){background:#fff}
+.plan-task-item :deep(.swipe-actions){align-items:flex-start;background:#f4f7f4}
+.plan-task-item :deep(.swipe-actions button){height:min(72px,100%);flex:0 0 72px}
+/* An opaque movable surface masks the rail below the rest of the row, while
+   compact Edit / Delete buttons stay aligned at the top of tall tasks. */
+.plan-task-item .routine-compact{width:100%;min-width:0;overflow-wrap:anywhere}
 .plan-task-item .life-details .detail-name{display:block;font-size:14px;line-height:1.45}
 .plan-task-item .life-details small{font-size:11px;line-height:1.55;margin-top:4px}
 .plan-task-footer{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap;margin-top:8px}
@@ -1788,7 +1793,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-tasks-card .plan-task-item.focused-plan-entry{
   background:#f7fbf8;box-shadow:inset 3px 0 0 #72aa88;
   border-radius:8px;padding:11px 9px;margin:0}
-.plan-tasks-card .plan-task-item.focused-plan-entry :deep(.swipe-content){background:transparent}
+.plan-tasks-card .plan-task-item.focused-plan-entry :deep(.swipe-content){background:#f7fbf8}
 @media(max-width:480px){
   .plan-view-toolbar{padding:10px 11px 4px}
   .plan-view-toolbar .plan-filter-tabs button{padding:7px 11px}
