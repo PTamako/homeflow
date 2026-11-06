@@ -264,10 +264,26 @@ function recurringLabel(r:Routine){
   if(r.repeat_type==='interval')return '每'+Number(c.days||0)+'天'
   return '定期'
 }
-const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
+// Family profiles have no deadline; show the next birthday/adoption anniversary first.
+function upcomingProfileDay(value:string|null|undefined){
+  if(!value||!/^\\d{4}-\\d{2}-\\d{2}$/.test(value))return '9999-12-31'
+  const now=tokyoToday(),monthDay=value.slice(5)
+  for(const y of [Number(now.slice(0,4)),Number(now.slice(0,4))+1]){
+    const date=new Date(Date.UTC(y,Number(monthDay.slice(0,2))-1,Number(monthDay.slice(3))))
+      .toISOString().slice(0,10)
+    if(date>=now)return date
+  }
+  return '9999-12-31'
+}
+function profileUrgency(a:Profile,b:Profile){
+  const dateA=upcomingProfileDay(a.birthday||a.adoptedOn)
+  const dateB=upcomingProfileDay(b.birthday||b.adoptedOn)
+  return dateA.localeCompare(dateB)||a.displayName.localeCompare(b.displayName)||a.id.localeCompare(b.id)
+}
+const pets=computed(()=>profiles.value.filter(p=>p.type==='pet').sort(profileUrgency))
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
 const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
-const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
+const people=computed(()=>profiles.value.filter(p=>p.type==='person').sort(profileUrgency))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
 watch([todayCategory,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
