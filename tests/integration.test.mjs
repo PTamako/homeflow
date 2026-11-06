@@ -1125,9 +1125,9 @@ test('missed weekly and monthly occurrences expire; later cycles are independent
  },owner)
  assert.equal(monthly.status,201,JSON.stringify(monthly.body))
  const nov4=await day('2026-11-04')
- assert.equal(nov4.body.items.find(x=>x.id===monthly.body.id)?.carriedFrom,'2026-11-01')
+ assert.equal(nov4.body.items.some(x=>x.id===monthly.body.id),false)
  const saved=await ask('/api/routines/'+monthly.body.id+'/mark','POST',
-   {date:'2026-11-04',status:'completed'},owner)
+   {date:'2026-11-01',status:'skipped'},owner)
  assert.equal(saved.status,200,JSON.stringify(saved.body))
  const nov5=await day('2026-11-05')
  assert.equal(nov5.body.items.some(x=>x.id===monthly.body.id),false)
