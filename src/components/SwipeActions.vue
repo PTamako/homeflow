@@ -21,6 +21,7 @@ const actionWidth=computed(()=>count.value*72)
 const movement=ref(0)
 const dragging=ref(false)
 const firstAction=ref<HTMLButtonElement|null>(null)
+const deleteAction=ref<HTMLButtonElement|null>(null)
 const triggerRef=ref<HTMLButtonElement|null>(null)
 let touchStart:{x:number;y:number}|null=null
 let axis:'horizontal'|'vertical'|null=null
@@ -32,7 +33,7 @@ function toggle(){
  open()
  // The trigger is visually hidden while open. Move keyboard focus to an action
  // instead of letting Tab skip to the following row.
- void nextTick(()=>firstAction.value?.focus())
+ void nextTick(()=>(firstAction.value||deleteAction.value)?.focus())
 }
 function closeFromKeyboard(){close();void nextTick(()=>triggerRef.value?.focus())}
 function start(event:TouchEvent){
@@ -87,7 +88,7 @@ onBeforeUnmount(close)
     <div class="swipe-actions" :style="{width:actionWidth+'px'}">
       <button v-if="allowEdit" ref="firstAction" type="button" class="edit" :tabindex="opened?0:-1"
         :aria-label="editLabel" @click.stop="run('edit')">{{ editLabel }}</button>
-      <button v-if="allowDelete" :ref="allowEdit?undefined:(element)=>{firstAction=element as HTMLButtonElement|null}" type="button" class="delete" :tabindex="opened?0:-1"
+      <button v-if="allowDelete" ref="deleteAction" type="button" class="delete" :tabindex="opened?0:-1"
         :aria-label="deleteLabel" @click.stop="run('delete')">{{ deleteLabel }}</button>
     </div>
     <div class="swipe-content" :style="{
