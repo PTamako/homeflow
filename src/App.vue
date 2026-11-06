@@ -9,6 +9,7 @@ import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import AppIcon from './components/AppIcon.vue'
+import StatusBadge from './components/StatusBadge.vue'
 import SwipeActions from './components/SwipeActions.vue'
 import PageToast from './components/PageToast.vue'
 import TodayNotifications from './components/TodayNotifications.vue'
@@ -742,7 +743,7 @@ onBeforeUnmount(()=>{
               <button type="button" class="text-button" @click="flushTasks">立即同步</button></div>
             <div v-for="op in visiblePendingTasks" :key="op.id" class="task-row">
               <AppIcon name="archive" :size="18" /><div class="task-detail">{{ op.payload.title }}
-                <small>{{ op.status==='conflict'?'其他设备已修改，需要重新确认':'待网络恢复后同步' }}</small></div>
+                <small><StatusBadge :code="op.status==='conflict'?'conflict':'awaiting_network'" /> {{ op.status==='conflict'?'其他设备已修改，需要重新确认':'待网络恢复后同步' }}</small></div>
               <button class="text-button" @click="discardPending(op.id)">取消</button>
             </div>
             <button v-if="pendingTasks.length>visiblePendingTasks.length" class="outline" type="button"
@@ -772,6 +773,7 @@ onBeforeUnmount(()=>{
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
                     <span class="today-kind-label">{{ todayKindLabels[row.kind] }}</span>
+                    <StatusBadge v-if="row.task" :code="row.done?'completed':row.task.dueOn&&row.task.dueOn<tokyoToday()?'overdue':'pending'" :label="row.done?'已完成':row.task.dueOn&&row.task.dueOn<tokyoToday()?'逾期':'待处理'" />
                     <template v-if="row.task">
                       <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
@@ -780,13 +782,13 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ memberName(row.task.assigneeUserId) }}</span>
                     </template>
                     <template v-else-if="row.routine">
-                      {{ row.routine.mark?.completed_at?'本期已完成':'今天到期' }} · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
+                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'本期已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ memberName(row.routine.assigned_to) }}</span>
                     </template>
                     <template v-else-if="row.plan">
-                      {{ row.done?'今天已完成':'今天到期' }} · {{ row.plan.dueOn }}
+                      <StatusBadge :code="row.done?'completed':'pending'" :label="row.done?'今天已完成':'今天到期'" /> · {{ row.plan.dueOn }}
                       <template v-if="row.plan.kind==='goal'&&row.plan.periodKey&&row.plan.periodKey!=='once'">
                         · {{ row.plan.periodKey }}{{ row.plan.periodKey.length===7?'月':'年' }}目标
                       </template>
