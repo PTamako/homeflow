@@ -4,6 +4,7 @@ import {verifiedGoalProgress} from './finance.js'
 import {jstDayOf} from './today-periods.js'
 import {closedGoalPeriods,settleGoalPeriod} from './goal-settlements.js'
 import {actionWindow,actionDue} from './today-actions.js'
+import {readTodayRows} from './today-source-read.js'
 
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
 const tokyoToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -109,7 +110,7 @@ async function completePlan(request,db,session,env){
 
 // Date-scoped digest of overdue and today-due plans; period marks are read in
 // the same D1 batch. No additional ledger access on page load.
-export async function todayPlansRoute(request,db,session,path='/api/plans/today',env){
+export async function todayPlansRoute(request,db,session,path='/api/plans/today',env,options={}){
   if(path==='/api/plans/complete')return completePlan(request,db,session,env)
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
   const date=new URL(request.url).searchParams.get('date')||tokyoToday()
@@ -119,62 +120,44 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
   // Load only the plan sources visible to this user and this date first.
   // Completion marks and settlements are then scoped to those returned IDs:
   // an old household archive must not be scanned on every Today visit.
-  const sourceBatch=await db.batch([
-    db.prepare(`SELECT id,title,due_on AS dueOn,completed_at AS completedAt,
-      ledger_entry_id AS ledgerEntryId FROM shopping_items
-      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND (completed_at IS NULL OR completed_at>=?4)
-        AND due_on IS NOT NULL AND (due_on=?3 OR completed_at>=?4 OR id IN (
-          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='shopping'
-          AND action='postponed' AND postponed_to=?3))
-      ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
-    db.prepare(`SELECT id,title,target_on AS dueOn,status FROM wishes
-      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND status!='cancelled' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
-          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='wish'
-            AND action='postponed' AND postponed_to=?3) OR
-          (status='completed' AND id IN(SELECT plan_id FROM plan_completion_marks
-            WHERE household_id=?1 AND plan_type='wish' AND completed_at>=?4)))
-      ORDER BY target_on,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
-    db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount
-      FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND ((goal_mode='once' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
-          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='goal'
-          AND action='postponed' AND postponed_to=?3) OR id IN (
-          SELECT plan_id FROM plan_completion_marks WHERE household_id=?1 AND
-            plan_type='goal' AND period_key='once' AND completed_at>=?4)))
-          OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))
-      ORDER BY created_at,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
-    db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
-      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
-        AND status IN ('planning','active') AND start_on IS NOT NULL AND
-          (start_on=?3 OR id IN (SELECT source_id FROM today_plan_actions
-            WHERE household_id=?1 AND kind='trip' AND action='postponed' AND postponed_to=?3))
-      ORDER BY start_on,id LIMIT 50`).bind(h,u,date)
-  ])
+  const sources=[
+    {sql:"SELECT id,title,due_on AS dueOn,completed_at AS completedAt,\n      ledger_entry_id AS ledgerEntryId FROM shopping_items\n      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)\n        AND (completed_at IS NULL OR completed_at>=?4)\n        AND due_on IS NOT NULL AND (due_on=?3 OR completed_at>=?4 OR id IN (\n          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='shopping'\n          AND action='postponed' AND postponed_to=?3))",order:"\n      ORDER BY completed_at IS NOT NULL,due_on,id LIMIT 100",bindings:[h,u,date,startOfDayUtc]},
+    {sql:"SELECT id,title,target_on AS dueOn,status FROM wishes\n      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)\n        AND status!='cancelled' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (\n          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='wish'\n            AND action='postponed' AND postponed_to=?3) OR\n          (status='completed' AND id IN(SELECT plan_id FROM plan_completion_marks\n            WHERE household_id=?1 AND plan_type='wish' AND completed_at>=?4)))",order:"\n      ORDER BY target_on,id LIMIT 100",bindings:[h,u,date,startOfDayUtc]},
+    {sql:"SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount\n      FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)\n        AND ((goal_mode='once' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (\n          SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='goal'\n          AND action='postponed' AND postponed_to=?3) OR id IN (\n          SELECT plan_id FROM plan_completion_marks WHERE household_id=?1 AND\n            plan_type='goal' AND period_key='once' AND completed_at>=?4)))\n          OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))",order:"\n      ORDER BY created_at,id LIMIT 100",bindings:[h,u,date,startOfDayUtc]},
+    {sql:"SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips\n      WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)\n        AND status IN ('planning','active') AND start_on IS NOT NULL AND\n          (start_on=?3 OR id IN (SELECT source_id FROM today_plan_actions\n            WHERE household_id=?1 AND kind='trip' AND action='postponed' AND postponed_to=?3))",order:"\n      ORDER BY start_on,id LIMIT 50",bindings:[h,u,date]}
+  ]
+  const sourceBatch=options.fullToday
+    ? await Promise.all(sources.map(async spec=>({
+        results:await readTodayRows(db,spec.sql,spec.bindings)
+      })))
+    : await db.batch(sources.map(spec=>db.prepare(spec.sql+spec.order).bind(...spec.bindings)))
   const actionRows=await actionWindow(db,h,date)
   const goalIds=(sourceBatch[2].results||[]).map(row=>row.id)
   const wishIds=(sourceBatch[1].results||[]).map(row=>row.id)
   // Separate goal and wish lookups let D1 use the covering primary-key
   // indexes (household_id,plan_type,plan_id) instead of scanning the entire
   // household date index for an OR expression.
-  const historical=[]
-  if(goalIds.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
+  // Chunk IN clauses even when the combined Today feed has hundreds of plans.
+  const chunks=(ids,size=60)=>Array.from({length:Math.ceil(ids.length/size)},(_,i)=>
+    ids.slice(i*size,(i+1)*size))
+  const markStatements=[]
+  for(const ids of chunks(goalIds))markStatements.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
     FROM plan_completion_marks WHERE household_id=?1 AND plan_type='goal'
-      AND plan_id IN (${goalIds.map(()=>'?').join(',')})`).bind(h,...goalIds))
-  if(wishIds.length)historical.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
+      AND plan_id IN (${ids.map(()=>'?').join(',')})`).bind(h,...ids))
+  for(const ids of chunks(wishIds))markStatements.push(db.prepare(`SELECT plan_type,plan_id,period_key,completed_at
     FROM plan_completion_marks WHERE household_id=?1 AND plan_type='wish'
-      AND plan_id IN (${wishIds.map(()=>'?').join(',')})
-      AND completed_at>=?${wishIds.length+2}`).bind(h,...wishIds,startOfDayUtc))
-  if(goalIds.length)historical.push(db.prepare(`SELECT goal_id,period_key,status
+      AND plan_id IN (${ids.map(()=>'?').join(',')})
+      AND completed_at>=?${ids.length+2}`).bind(h,...ids,startOfDayUtc))
+  const settlementStatements=[]
+  for(const ids of chunks(goalIds))settlementStatements.push(db.prepare(`SELECT goal_id,period_key,status
     FROM goal_period_settlements WHERE household_id=?1
-      AND goal_id IN (${goalIds.map(()=>'?').join(',')})
-      AND status IN ('met','shortfall')`).bind(h,...goalIds))
-  const pages=historical.length?await db.batch(historical):[]
-  const markCount=Number(!!goalIds.length)+Number(!!wishIds.length)
+      AND goal_id IN (${ids.map(()=>'?').join(',')})
+      AND status IN ('met','shortfall')`).bind(h,...ids))
+  const statements=[...markStatements,...settlementStatements]
+  const pages=statements.length?await db.batch(statements):[]
   const batch=[...sourceBatch,
-    {results:pages.slice(0,markCount).flatMap(page=>page.results||[])},
-    goalIds.length?pages[markCount]:{results:[]}]
+    {results:pages.slice(0,markStatements.length).flatMap(p=>p.results||[])},
+    {results:pages.slice(markStatements.length).flatMap(p=>p.results||[])}]
   const result=[]
   const goalReviews=[]
   const settledByGoal=new Map()
