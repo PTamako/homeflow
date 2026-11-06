@@ -31,6 +31,13 @@ export function dueOn(rule,date) {
     }
     case 'monthly': {
       const [year,month,day]=date.split('-').map(Number)
+      if(c.mode==='weekday'){
+        // Calendar-week occurrences: 1st Tue is days 1-7, 2nd Tue 8-14, etc.
+        // Never invent a 5th occurrence in months that have only four.
+        const weekday=new Date(date+'T00:00:00Z').getUTCDay()
+        return weekday===c.weekday&&Array.isArray(c.weekNumbers)&&
+          c.weekNumbers.includes(Math.floor((day-1)/7)+1)
+      }
       const last=new Date(Date.UTC(year,month,0)).getUTCDate()
       return day===Math.min(Number(c.day),last)
     }
@@ -50,7 +57,15 @@ export function validateRule(r){
   if(r.repeatType==='workday')return true
   if(r.repeatType==='weekly')return Array.isArray(c.weekdays)&&c.weekdays.length>0&&c.weekdays.length<=7&&
     c.weekdays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)
-  if(r.repeatType==='monthly')return Number.isInteger(c.day)&&c.day>=1&&c.day<=31
+  if(r.repeatType==='monthly'){
+    if(c.mode==='weekday')
+      return Number.isInteger(c.weekday)&&c.weekday>=0&&c.weekday<=6&&
+        Array.isArray(c.weekNumbers)&&c.weekNumbers.length>=1&&c.weekNumbers.length<=5&&
+        c.weekNumbers.every(n=>Number.isInteger(n)&&n>=1&&n<=5)&&
+        new Set(c.weekNumbers).size===c.weekNumbers.length
+    return (c.mode===undefined||c.mode==='day')&&
+      Number.isInteger(c.day)&&c.day>=1&&c.day<=31
+  }
   if(r.repeatType==='interval')return Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
   return true
 }
@@ -97,7 +112,12 @@ export function lastScheduledBefore(rule,date){
     d.setUTCDate(d.getUTCDate()+scheduled)
     return d.toISOString().slice(0,10)
   }
-  const max=rule.repeat_type==='monthly'?65:rule.repeat_type==='daily'?1:35
+  // A 5th weekday is absent in some months; search far enough back to find
+  // its most recent genuine occurrence without creating phantom periods.
+  const max=rule.repeat_type==='monthly'?
+    (rule.repeat_config&&typeof rule.repeat_config==='string'&&
+      rule.repeat_config.includes('"weekday"')?400:65):
+    rule.repeat_type==='daily'?1:35
   const d=new Date(date+'T00:00:00Z')
   for(let i=1;i<=max&&i<=age;i++){
     d.setUTCDate(d.getUTCDate()-1)
