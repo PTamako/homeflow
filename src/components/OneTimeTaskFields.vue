@@ -30,10 +30,7 @@ defineExpose({focusTitle})
      placeholder="例如：给豆沙买猫粮" aria-label="任务名称"/>
   </label>
   <div class="once-date">
-   <div class="once-date-heading"><span id="one-time-task-date-label">计划日期（可选）</span>
-    <button v-if="model.dueOn" type="button" class="once-clear"
-      aria-label="清空计划日期" @click="model.dueOn=''">清空</button>
-   </div>
+   <div class="once-date-heading"><span id="one-time-task-date-label">计划日期（可选）</span></div>
    <DateField v-model="model.dueOn" aria-labelledby="one-time-task-date-label"/>
    <small v-if="!model.dueOn" class="once-hint">不选日期将存入「待安排」。</small>
   </div>
@@ -84,7 +81,6 @@ defineExpose({focusTitle})
 }
 .once-date{display:grid;gap:6px;min-inline-size:0}
 .once-date-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#5d7769;font-size:12px}
-.once-clear{border:0;background:transparent;color:#43866a;padding:5px 8px;font-size:12px;font-weight:650}
 .once-hint{color:#849588;font-size:11px;line-height:1.5}
 .once-fields .once-check{display:flex;align-items:center;gap:9px;min-height:35px}
 .once-check input{inline-size:19px;block-size:19px;flex:none;accent-color:#43866a}
