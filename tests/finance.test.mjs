@@ -20,9 +20,13 @@ test('missing internal service binding or preview never expose ledger',async()=>
  assert.equal(canUseLedger({...prod,APP_ENV:'preview'},owner),false)
  assert.equal(canUseLedger({...prod,KAKEBO_LEDGER_API_URL:'http://127.0.0.1/api/homeflow-ledger'},owner),false)
 })
-test('second household login cannot see private real ledger',async()=>{
- const res=await financeRoute(request('/api/finance/status'),prod,'/api/finance/status',member)
- assert.equal(res.status,403)
+test('family members see goal-link health but not the private ledger browser',async()=>{
+ const status=await financeRoute(request('/api/finance/status'),prod,'/api/finance/status',member)
+ assert.equal(status.status,200)
+ assert.deepEqual(await status.json(),{connected:true,readOnly:true,ownerOnly:false})
+ const blocked=await financeRoute(request('/api/finance/candidates?start=2026-11-01&end=2026-11-04'),prod,
+   '/api/finance/candidates',member)
+ assert.equal(blocked.status,403)
 })
 test('invalid search date never makes outgoing call',async()=>{
  const res=await financeRoute(request('/api/finance/candidates?start=2026-01-01&end=2026-08-01'),prod,
