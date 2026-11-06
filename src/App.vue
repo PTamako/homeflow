@@ -224,11 +224,6 @@ const openPetId=ref<string|null>(null)
 const editProfileId=ref<string|null>(null),profileRevision=ref(0)
 const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'},{id:'manage',icon:'settings',label:'管理'}] as const
 function tokyoToday(){return new Date(Date.now()+9*3600000).toISOString().slice(0,10)}
-function tokyoDate(timestamp:string){
- const iso=timestamp.includes('T')?timestamp:timestamp.replace(' ','T')+'Z'
- const n=Date.parse(iso)
- return Number.isFinite(n)?new Date(n+9*3600000).toISOString().slice(0,10):''
-}
 const currentJstDay=ref(tokyoToday())
 const allToday=computed(()=>todayRows.value)
 const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
