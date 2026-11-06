@@ -270,7 +270,11 @@ function recurringLabel(r:Routine){
   if(r.repeat_type==='daily')return '每天'
   if(r.repeat_type==='weekly'&&c.excludeJapaneseHolidays)return '工作日'
   if(r.repeat_type==='weekly')return '每周'+(c.weekdays||[]).map((d:number)=>'日一二三四五六'[d]).join('、')
-  if(r.repeat_type==='monthly')return '每月'+Number(c.day||1)+'日'
+  if(r.repeat_type==='monthly'){
+    if(c.mode==='weekday')return '每月第'+(c.weekNumbers||[]).join('、')+'个周'+'日一二三四五六'[c.weekday]
+    const dates=Array.isArray(c.days)?c.days:[c.day]
+    return '每月'+dates.filter((d:number)=>Number.isInteger(d)).sort((a:number,b:number)=>a-b).join('、')+'日'
+  }
   if(r.repeat_type==='interval')return '每'+Number(c.days||0)+'天'
   return '定期'
 }
