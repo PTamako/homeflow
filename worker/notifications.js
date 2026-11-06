@@ -34,6 +34,15 @@ export async function purgeOldNotifications(db,now=Date.now()){
 }
 export async function notificationsRoute(request,db,path,session){
   const day=jstNotificationDay()
+  // Small, authenticated, account-scoped query for iOS home-screen badge sync.
+  // Also used by the service worker after a Push event; no full inbox scan.
+  if(path==='/api/notifications/badge'){
+    if(request.method!=='GET')return json({error:'method_not_allowed'},405)
+    const summary=await db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
+      WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+        AND read_at IS NULL`).bind(session.household_id,session.user_id,day).first()
+    return json({day,unreadCount:Number(summary?.count||0)})
+  }
   if(path==='/api/notifications/today'&&request.method==='GET'){
     const params=new URL(request.url).searchParams
     const view=params.get('view')||'received'
