@@ -39,7 +39,10 @@ export function nextRoutineDue(rule,date){
     return addDays(anchor,cycles*days)
   }
   const start=date>anchor?date:anchor
-  for(let n=0;n<=65;n++){
+  // When a rule picks only e.g. the fifth Tuesday, some months do not have
+  // an occurrence. A bounded year window covers those sparse selections.
+  const max=rule.repeat_type==='monthly'&&config.mode==='weekday'?400:65
+  for(let n=0;n<=max;n++){
     const candidate=addDays(start,n)
     if(dueOn(rule,candidate))return candidate
   }

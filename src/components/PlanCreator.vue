@@ -18,7 +18,8 @@ const choices=[
 const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
- title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
+ title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
+ monthWeekday:2,monthWeekNumbers:[2,4] as number[],leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
  subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
@@ -30,7 +31,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -57,7 +58,10 @@ async function submit(){
       emit('taskCreated')
     }else{
       const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
-        form.repeatType==='monthly'?{day:Number(form.date.slice(-2))}:
+        form.repeatType==='monthly'?(form.monthlyMode==='weekday'?
+          {mode:'weekday',weekday:Number(form.monthWeekday),
+           weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
+          {day:Number(form.date.slice(-2))}):
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
         repeatConfig:config,anchorDate:form.date})
@@ -122,6 +126,31 @@ async function submit(){
         <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
        </select>
       </label>
+      <template v-if="form.repeatType==='monthly'">
+       <label>每月按什么执行
+        <select v-model="form.monthlyMode" aria-label="每月规则类型">
+         <option value="day">指定日期</option>
+         <option value="weekday">指定第几个星期几</option>
+        </select>
+       </label>
+       <small v-if="form.monthlyMode==='day'">每月 {{ Number(form.date.slice(-2)) }} 日（按起始日期，遇月底自动调整）</small>
+       <template v-else>
+        <label>执行星期
+         <select v-model.number="form.monthWeekday" aria-label="每月执行星期">
+          <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']"
+           :key="i" :value="i">{{ day }}</option>
+         </select>
+        </label>
+        <fieldset class="monthly-week-select">
+         <legend>每月第几个（可多选）</legend>
+         <label v-for="n in [1,2,3,4,5]" :key="n" class="monthly-week-option">
+          <input v-model="form.monthWeekNumbers" type="checkbox" :value="n"/>
+          <span>第 {{ n }} 个</span>
+         </label>
+        </fieldset>
+        <small v-if="!form.monthWeekNumbers.length" class="creator-error">请至少选择一个星期序号</small>
+       </template>
+      </template>
       <template v-if="form.repeatType==='interval'">
        <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
        <label>计算方式<select v-model="form.intervalAnchor">
@@ -191,7 +220,7 @@ async function submit(){
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
      <button type="button" class="creator-cancel" @click="dismiss">取消</button>
-     <button class="creator-save" :disabled="busy">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
+     <button class="creator-save" :disabled="busy||(kind==='routine'&&form.repeatType==='monthly'&&form.monthlyMode==='weekday'&&!form.monthWeekNumbers.length)">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
   </template>
@@ -209,6 +238,10 @@ async function submit(){
 .plan-fields input:not([type="checkbox"]),.plan-fields select{width:100%;max-width:100%;min-width:0;min-height:41px;border-radius:9px;padding:8px 10px;border:1px solid #d9e4db;background:#fff;box-sizing:border-box;color:#304838}
 .plan-fields .plan-checkbox{display:flex;align-items:center;gap:10px}.plan-checkbox input{width:19px;height:19px;flex:none;accent-color:#43866a}
 .plan-checkbox span{min-width:0;color:#314d3e}.plan-checkbox small{display:block;color:#8a9b8e;font-size:11px;line-height:1.45;margin-top:3px}
+.monthly-week-select{display:flex;flex-wrap:wrap;gap:7px;min-width:0;margin:0;padding:10px;border:1px solid #d9e4db;border-radius:10px}
+.monthly-week-select legend{padding:0 5px;color:#5d7769;font-size:12px}
+.plan-fields .monthly-week-option{display:flex;align-items:center;gap:5px;border:1px solid #d9e4db;background:#fff;border-radius:8px;padding:7px 9px}
+.monthly-week-option input[type="checkbox"]{width:17px;height:17px;flex:none;accent-color:#43866a}
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}

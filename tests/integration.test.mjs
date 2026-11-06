@@ -1737,3 +1737,96 @@ test('hiding a Today detail is per-person and per-date, never deletes a plan or 
    'cannot hide a plan the member is not authorized to see')
  sqlite.close()
 })
+
+
+test('monthly nth weekday routine creates two separate Tuesday periods and reminder dates',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ try{
+  const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'nth-tuesday-owner',password:'another-long-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET
+  })
+  assert.equal(registration.status,201)
+  const owner=extractCookie(registration.cookie)
+  const create=await ask('/api/routines','POST',{
+   title:'扔不可燃垃圾',repeatType:'monthly',
+   repeatConfig:{mode:'weekday',weekday:2,weekNumbers:[2,4]},
+   anchorDate:'2026-11-06',visibility:'household',remindEnabled:true
+  },owner)
+  assert.equal(create.status,201,JSON.stringify(create.body))
+  const id=create.body.id
+  const stored=sqlite.prepare('SELECT repeat_type,repeat_config FROM routines WHERE id=?').get(id)
+  assert.equal(stored.repeat_type,'monthly')
+  assert.deepEqual(JSON.parse(stored.repeat_config),{mode:'weekday',weekday:2,weekNumbers:[2,4]})
+  const day=async date=>ask('/api/routines/today?date='+date,'GET',undefined,owner)
+  assert.equal((await day('2026-11-09')).body.items.some(r=>r.id===id),false)
+  const ten=await day('2026-11-10')
+  assert.equal(ten.body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-11-10')
+  const reminder=await ask('/api/reminders?date=2026-11-10','GET',undefined,owner)
+  assert.equal(reminder.status,200,JSON.stringify(reminder.body))
+  assert.ok(reminder.body.items.some(r=>r.kind==='routine'&&r.id===id&&r.dueOn==='2026-11-10'))
+  const missed=await day('2026-11-11')
+  assert.equal(missed.body.items.find(r=>r.id===id)?.carriedFrom,'2026-11-10')
+  const completed=await ask('/api/routines/'+id+'/mark','POST',
+   {date:'2026-11-11',status:'completed'},owner)
+  assert.equal(completed.status,200,JSON.stringify(completed.body))
+  assert.equal((await day('2026-11-12')).body.items.some(r=>r.id===id),false)
+  assert.equal((await day('2026-11-17')).body.items.some(r=>r.id===id),false)
+  const twentyFourth=await day('2026-11-24')
+  assert.equal(twentyFourth.body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-11-24')
+  const nextReminder=await ask('/api/reminders?date=2026-11-24','GET',undefined,owner)
+  assert.ok(nextReminder.body.items.some(r=>r.kind==='routine'&&r.id===id&&r.dueOn==='2026-11-24'))
+  const completedNext=await ask('/api/routines/'+id+'/mark','POST',
+   {date:'2026-11-24',status:'completed'},owner)
+  assert.equal(completedNext.status,200,JSON.stringify(completedNext.body))
+  assert.equal((await day('2026-11-25')).body.items.some(r=>r.id===id),false)
+  assert.equal((await day('2026-12-01')).body.items.some(r=>r.id===id),false)
+  assert.equal((await day('2026-12-08')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-08')
+  assert.equal((await day('2026-12-29')).body.items.find(r=>r.id===id)?.currentPeriodOn,'2026-12-22')
+  const marks=sqlite.prepare('SELECT occurrence_on FROM routine_marks WHERE routine_id=? ORDER BY occurrence_on').all(id)
+  assert.deepEqual(marks.map(r=>r.occurrence_on),['2026-11-10','2026-11-24'])
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)
+ }finally{sqlite.close()}
+})
+
+test('monthly date rules can be edited into nth weekdays and back without losing the plan',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ try{
+  const registration=await ask('/api/auth/bootstrap','POST',{
+   loginName:'nth-edit-owner',password:'another-long-password-1234',
+   displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET
+  })
+  assert.equal(registration.status,201)
+  const owner=extractCookie(registration.cookie)
+  const created=await ask('/api/routines','POST',{
+   title:'每月日期提醒',repeatType:'monthly',repeatConfig:{day:10},
+   anchorDate:'2026-11-01',visibility:'household'
+  },owner)
+  assert.equal(created.status,201,JSON.stringify(created.body))
+  const id=created.body.id
+  const base={title:'扔不可燃垃圾',repeatType:'monthly',
+   anchorDate:'2026-11-01',visibility:'household',remindEnabled:true}
+  const wrong=await ask('/api/routines/'+id,'PATCH',{
+   ...base,repeatConfig:{mode:'weekday',weekday:2,weekNumbers:[2,2]}
+  },owner)
+  assert.equal(wrong.status,400)
+  const switched=await ask('/api/routines/'+id,'PATCH',{
+   ...base,repeatConfig:{mode:'weekday',weekday:2,weekNumbers:[2,4]}
+  },owner)
+  assert.equal(switched.status,200,JSON.stringify(switched.body))
+  let saved=JSON.parse(sqlite.prepare('SELECT repeat_config FROM routines WHERE id=?').get(id).repeat_config)
+  assert.deepEqual([saved.mode,saved.weekday,saved.weekNumbers],['weekday',2,[2,4]])
+  const restored=await ask('/api/routines/'+id,'PATCH',{
+   ...base,repeatConfig:{day:15}
+  },owner)
+  assert.equal(restored.status,200,JSON.stringify(restored.body))
+  saved=JSON.parse(sqlite.prepare('SELECT repeat_config FROM routines WHERE id=?').get(id).repeat_config)
+  assert.equal(saved.day,15)
+  assert.equal(saved.mode,undefined)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)
+ }finally{sqlite.close()}
+})

@@ -40,7 +40,9 @@ function normalized(table,b,s){
       // Keep version metadata exclusively server-owned.
       const config=b.repeatType==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
         repeatType==='weekly'?{weekdays:input.weekdays,excludeJapaneseHolidays:input.excludeJapaneseHolidays===true}:
-        repeatType==='monthly'?{day:input.day}:
+        repeatType==='monthly'?(input.mode==='weekday'?
+          {mode:'weekday',weekday:input.weekday,weekNumbers:input.weekNumbers}:
+          {day:input.day}):
         repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
@@ -404,7 +406,9 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
       const {_history,_effectiveFrom,...oldRuleConfig}=oldConfig
       const comparable=(type,c)=>type==='weekly'?
         {weekdays:c.weekdays,excludeJapaneseHolidays:c.excludeJapaneseHolidays===true}:
-        type==='monthly'?{day:c.day}:
+        type==='monthly'?(c.mode==='weekday'?
+          {mode:'weekday',weekday:c.weekday,weekNumbers:c.weekNumbers}:
+          {day:c.day}):
         type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
       const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
         JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
