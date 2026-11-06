@@ -9,7 +9,6 @@ const kinds={task:{table:'tasks',date:'due_on',owner:'creator_user_id'},
  goal:{table:'goals',date:'target_on',owner:'created_by'},
  trip:{table:'trips',date:'start_on',owner:'created_by'}}
 const jstToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-const key=(kind,id)=>kind+':'+id
 const dateOk=date=>typeof date==='string'&&date.length===10&&validDate(date)
 
 // Read one bounded date window shared by the Today UI and 06:00 notifications.
@@ -92,6 +91,9 @@ async function handleHistory(request,db,session){
  if(raw&&(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(stamp)||
    !/^\w{3,8}:[a-f0-9-]{36}:\d{4}-\d{2}-\d{2}$/i.test(rest)))
    return json({error:'invalid_cursor'},400)
+ const year=url.searchParams.get('year')||'',month=url.searchParams.get('month')||''
+ if((year&&!/^20[0-9]{2}$/.test(year))||(month&&(!year||!/^(0[1-9]|1[0-2])$/.test(month))))
+   return json({error:'invalid_filter'},400)
  const h=session.household_id,u=session.user_id
  // A visible source is required, including for past and soft-deleted items.
  const args=[h,u],parts=[]
@@ -100,16 +102,26 @@ async function handleHistory(request,db,session){
     WHERE s.id=a.source_id AND s.household_id=a.household_id
       AND (s.visibility='household' OR s.${owner}=?2)))`)
  }
+ let rangeSql=''
+ if(year){
+   const start=year+'-'+(month||'01')+'-01'
+   const end=month?(month==='12'?String(Number(year)+1)+'-01-01':
+     year+'-'+String(Number(month)+1).padStart(2,'0')+'-01'):
+     String(Number(year)+1)+'-01-01'
+   rangeSql='AND a.original_on>=?'+(args.length+1)+' AND a.original_on<?'+(args.length+2)
+   args.push(start,end)
+ }
+ const cursorSql=raw?`AND (a.acted_at<?${args.length+1} OR
+   (a.acted_at=?${args.length+2} AND
+   (a.kind||':'||a.source_id||':'||a.original_on)<?${args.length+3}))`:''
  if(raw)args.push(stamp,stamp,rest)
- const cursorSql=raw?`AND (a.acted_at<?3 OR (a.acted_at=?4 AND
-   (a.kind||':'||a.source_id||':'||a.original_on)<?5))`:''
  args.push(limit+1)
  const {results}=await db.prepare(`SELECT a.kind,a.source_id AS id,a.title,
    a.original_on AS originalOn,a.postponed_to AS postponedTo,a.action,
    a.acted_at AS actedAt
    FROM today_plan_actions a WHERE a.household_id=?1
    AND a.action='skipped' AND (${parts.join(' OR ')})
-   ${cursorSql} ORDER BY a.acted_at DESC,
+   ${rangeSql} ${cursorSql} ORDER BY a.acted_at DESC,
      (a.kind||':'||a.source_id||':'||a.original_on) DESC LIMIT ?${args.length}`)
    .bind(...args).all()
  const rows=results||[],items=rows.slice(0,limit),last=items.at(-1)
