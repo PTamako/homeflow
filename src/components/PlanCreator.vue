@@ -18,7 +18,8 @@ const choices=[
 const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
- title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
+ title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
+ monthWeekday:2,monthWeekNumbers:[2,4] as number[],leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
  subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
@@ -57,7 +58,10 @@ async function submit(){
       emit('taskCreated')
     }else{
       const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
-        form.repeatType==='monthly'?{day:Number(form.date.slice(-2))}:
+        form.repeatType==='monthly'?(form.monthlyMode==='weekday'?
+          {mode:'weekday',weekday:Number(form.monthWeekday),
+           weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
+          {day:Number(form.date.slice(-2))}):
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
         repeatConfig:config,anchorDate:form.date})
@@ -122,6 +126,31 @@ async function submit(){
         <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
        </select>
       </label>
+      <template v-if="form.repeatType==='monthly'">
+       <label>每月按什么执行
+        <select v-model="form.monthlyMode" aria-label="每月规则类型">
+         <option value="day">指定日期</option>
+         <option value="weekday">指定第几个星期几</option>
+        </select>
+       </label>
+       <small v-if="form.monthlyMode==='day'">每月 {{ Number(form.date.slice(-2)) }} 日（按起始日期，遇月底自动调整）</small>
+       <template v-else>
+        <label>执行星期
+         <select v-model.number="form.monthWeekday" aria-label="每月执行星期">
+          <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']"
+           :key="i" :value="i">{{ day }}</option>
+         </select>
+        </label>
+        <fieldset class="monthly-week-select">
+         <legend>每月第几个（可多选）</legend>
+         <label v-for="n in [1,2,3,4,5]" :key="n" class="monthly-week-option">
+          <input v-model="form.monthWeekNumbers" type="checkbox" :value="n"/>
+          <span>第 {{ n }} 个</span>
+         </label>
+        </fieldset>
+        <small v-if="!form.monthWeekNumbers.length" class="creator-error">请至少选择一个星期序号</small>
+       </template>
+      </template>
       <template v-if="form.repeatType==='interval'">
        <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
        <label>计算方式<select v-model="form.intervalAnchor">
@@ -191,7 +220,7 @@ async function submit(){
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
      <button type="button" class="creator-cancel" @click="dismiss">取消</button>
-     <button class="creator-save" :disabled="busy">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
+     <button class="creator-save" :disabled="busy||(kind==='routine'&&form.repeatType==='monthly'&&form.monthlyMode==='weekday'&&!form.monthWeekNumbers.length)">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
   </template>
