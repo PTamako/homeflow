@@ -14,7 +14,7 @@ const props=withDefaults(defineProps<{
   editLabel?:string
   deleteLabel?:string
 }>(),{allowEdit:true,allowDelete:true,showTrigger:true,editLabel:'编辑',deleteLabel:'删除'})
-const emit=defineEmits<{edit:[];delete:[]}>()
+const emit=defineEmits<{open:[];edit:[];delete:[]}>()
 const key=computed(()=>props.scope+':'+props.id)
 const opened=computed(()=>activeSwipeId.value===key.value)
 const count=computed(()=>Number(props.allowEdit)+Number(props.allowDelete))
@@ -31,7 +31,12 @@ const showTriggerUi=computed(()=>props.showTrigger&&(!coarsePointer.value||showH
 let touchStart:{x:number;y:number}|null=null
 let axis:'horizontal'|'vertical'|null=null
 let touchedAt=0
-function open(){if(count.value)activeSwipeId.value=key.value}
+function open(){
+ if(!count.value||opened.value)return
+ activeSwipeId.value=key.value
+ // A contextual More menu must close when the user reveals the edit/delete rail.
+ emit('open')
+}
 function close(){if(opened.value)activeSwipeId.value=''}
 function toggle(){
  if(opened.value){close();return}
