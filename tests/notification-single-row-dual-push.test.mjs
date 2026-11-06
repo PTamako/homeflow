@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
-import {findScheduledNotification,saveNotification} from '../worker/notifications.js'
+import {findScheduledNotification,saveNotification,notificationsRoute,jstNotificationDay} from '../worker/notifications.js'
 
 const A='11111111-1111-4111-8111-111111111111'
 const B='22222222-2222-4222-8222-222222222222'
@@ -160,5 +160,39 @@ test('the completing person retains prior read status because self completion is
   const row=sqlite.prepare('SELECT read_at,last_completion_key FROM notification_inbox').get()
   assert.equal(row.read_at,'2026-11-06 00:12:00')
   assert.match(row.last_completion_key,/^complete:routine:/)
+ }finally{sqlite.close()}
+})
+
+test('recipient unread badge returns after a NEW completion even though 06:00 reminder was read',async()=>{
+ const {sqlite,db}=setup()
+ try{
+  const today=jstNotificationDay(),key='scheduled:routine:'+TASK+':'+today+':0'
+  const base={householdId:'house',recipientId:B,kind:'routine',sourceId:TASK,
+    localDay:today,dedupeKey:key}
+  const badge=async who=>{
+   const res=await notificationsRoute(new Request('https://homeflow.invalid/api/notifications/badge'),
+     db,'/api/notifications/badge',{household_id:'house',user_id:who})
+   assert.equal(res.status,200)
+   return (await res.json()).unreadCount
+  }
+  await saveNotification(db,{...base,id:REMINDER,title:'资源垃圾',sentDevices:1,failedDevices:0})
+  sqlite.prepare('UPDATE notification_inbox SET read_at=CURRENT_TIMESTAMP WHERE id=?').run(REMINDER)
+  assert.equal(await badge(B),0,'reading the morning reminder clears the badge')
+  await saveNotification(db,{...base,id:COMPLETION,senderId:A,title:'资源垃圾 · 已完成',
+    message:'已完成 · 家人',sentDevices:1,failedDevices:0,
+    mergeCompletion:true,completionKey:'complete:routine:'+TASK+':2026-11-06T08:43:21Z',
+    unreadOnCompletion:true})
+  assert.equal(await badge(B),1,'new completion is unread for recipient')
+  assert.equal(await badge(A),0,'completion does not create an unread row for actor')
+  const updated=await notificationsRoute(
+    new Request('https://homeflow.invalid/api/notifications/'+REMINDER+'/read',{method:'POST'}),
+    db,'/api/notifications/'+REMINDER+'/read',{household_id:'house',user_id:B})
+  assert.equal(updated.status,200)
+  assert.equal(await badge(B),0,'recipient explicitly reading completion clears badge')
+  await saveNotification(db,{...base,id:COMPLETION,senderId:A,title:'资源垃圾 · 已完成',
+    message:'已完成 · 家人',sentDevices:2,failedDevices:0,
+    mergeCompletion:true,completionKey:'complete:routine:'+TASK+':2026-11-06T08:43:21Z',
+    unreadOnCompletion:true})
+  assert.equal(await badge(B),0,'same completion replay never reopens the badge')
  }finally{sqlite.close()}
 })
