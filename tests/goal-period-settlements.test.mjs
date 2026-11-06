@@ -88,7 +88,7 @@ test('period history is bounded at five and never calls Kakebo on page render',a
  assert.equal(outgoing.length,0)
 })
 test('Today consolidates missing settlement periods into one reminder and no overdue goal rows',async()=>{
- const db={prepare(sql){return {bind(){return this}}},async batch(){return [
+ const db={prepare(sql){return {bind(){return this},all:async()=>({results:[]})}},async batch(){return [
    {results:[]},{results:[]},{results:[goal]},{results:[]},
    {results:[]},{results:[]}
  ]}}
