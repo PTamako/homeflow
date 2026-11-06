@@ -93,9 +93,9 @@ onMounted(()=>{void check()})
    <div v-if="links.length" class="shopping-linked">
      <b><StatusBadge code="linked" /> {{ links.length }} 笔消费</b>
      <div v-for="link in links" :key="link.entryId" class="ledger-entry">
-       <span>{{ link.entry?.date||'原始明细不可用' }} · {{ link.entry?.merchant||('账目 #'+link.entryId) }}
-         <small>{{ link.entry?'¥'+Number(link.entry.amount).toLocaleString('ja-JP'):'需要重新核对' }}
-       </small></span>
+       <span><template v-if="link.entry">{{ link.entry.date }}</template><StatusBadge v-else code="verification_pending" label="原始明细不可用" /> · {{ link.entry?.merchant||('账目 #'+link.entryId) }}
+         <small v-if="link.entry">¥{{ Number(link.entry.amount).toLocaleString('ja-JP') }}</small>
+         <small v-else><StatusBadge code="verification_pending" label="需要重新核对" /></small></span>
        <button type="button" class="ledger-unlink" :disabled="busy" @click="unlink(link.entryId)">解除这一笔</button>
      </div>
      <small v-if="linksNeedReview" class="ledger-error"><StatusBadge code="verification_pending" label="待核对" /> 关联消费已变更，请核对。</small>
