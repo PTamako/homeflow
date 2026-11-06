@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onBeforeUnmount,ref} from 'vue'
+import {computed,onBeforeUnmount,ref,nextTick} from 'vue'
 import {activeSwipeId} from '../swipe-state'
 
 // One open row across the app, including different sections and pages.
@@ -17,15 +17,24 @@ const emit=defineEmits<{edit:[];delete:[]}>()
 const key=computed(()=>props.scope+':'+props.id)
 const opened=computed(()=>activeSwipeId.value===key.value)
 const count=computed(()=>Number(props.allowEdit)+Number(props.allowDelete))
-const actionWidth=computed(()=>count.value*68)
+const actionWidth=computed(()=>count.value*72)
 const movement=ref(0)
 const dragging=ref(false)
+const firstAction=ref<HTMLButtonElement|null>(null)
+const triggerRef=ref<HTMLButtonElement|null>(null)
 let touchStart:{x:number;y:number}|null=null
 let axis:'horizontal'|'vertical'|null=null
 let touchedAt=0
 function open(){if(count.value)activeSwipeId.value=key.value}
 function close(){if(opened.value)activeSwipeId.value=''}
-function toggle(){opened.value?close():open()}
+function toggle(){
+ if(opened.value){close();return}
+ open()
+ // The trigger is visually hidden while open. Move keyboard focus to an action
+ // instead of letting Tab skip to the following row.
+ void nextTick(()=>firstAction.value?.focus())
+}
+function closeFromKeyboard(){close();void nextTick(()=>triggerRef.value?.focus())}
 function start(event:TouchEvent){
   if(!count.value||event.touches.length!==1)return
   touchStart={x:event.touches[0].clientX,y:event.touches[0].clientY}
@@ -73,20 +82,21 @@ onBeforeUnmount(close)
 </script>
 <template>
   <div v-if="count" class="swipe-row" :class="{'is-open':opened,'is-dragging':dragging}"
-    @touchstart.passive="start" @touchmove.passive="move" @touchend="end" @touchcancel="cancel">
+    @touchstart.passive="start" @touchmove.passive="move" @touchend="end" @touchcancel="cancel"
+    @keydown.esc.stop="closeFromKeyboard">
     <div class="swipe-actions" :style="{width:actionWidth+'px'}">
-      <button v-if="allowEdit" type="button" class="edit" :tabindex="opened?0:-1"
+      <button v-if="allowEdit" ref="firstAction" type="button" class="edit" :tabindex="opened?0:-1"
         :aria-label="editLabel" @click.stop="run('edit')">{{ editLabel }}</button>
-      <button v-if="allowDelete" type="button" class="delete" :tabindex="opened?0:-1"
+      <button v-if="allowDelete" :ref="allowEdit?undefined:(element)=>{firstAction=element as HTMLButtonElement|null}" type="button" class="delete" :tabindex="opened?0:-1"
         :aria-label="deleteLabel" @click.stop="run('delete')">{{ deleteLabel }}</button>
     </div>
     <div class="swipe-content" :style="{
       transform:'translateX('+((opened?-actionWidth:0)+movement)+'px)',
-      paddingRight:showTrigger?'25px':'0px'
+      paddingRight:showTrigger?'44px':'0px'
     }" @click.capture="tapContent">
       <slot/>
     </div>
-    <button v-if="showTrigger&&!opened" type="button" class="swipe-trigger"
+    <button v-if="showTrigger&&!opened" ref="triggerRef" type="button" class="swipe-trigger"
       :aria-label="'左滑或点击展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'和':'')+(allowDelete?deleteLabel:'')"
       :aria-expanded="opened" :title="'左滑'+(allowEdit?editLabel:'')+(allowDelete?'/'+deleteLabel:'')"
       @click.stop="toggle">
@@ -109,17 +119,20 @@ onBeforeUnmount(close)
   visibility:hidden}
 .swipe-row.is-open .swipe-actions,.swipe-row.is-dragging .swipe-actions{visibility:visible}
 .swipe-actions button{border:0;border-radius:0;color:#fff;font-size:12px;font-weight:700;
-  min-width:68px;max-width:68px;padding:0 4px}
+  min-width:72px;max-width:72px;padding:0 5px}
 .swipe-actions .edit{background:#558bc9}
 .swipe-actions .delete{background:#d76178}
 .swipe-trigger{position:absolute;z-index:2;right:0;top:8px;
-  height:34px;width:25px;display:grid;place-items:center;background:transparent;
+  height:44px;width:44px;display:grid;place-items:center;background:transparent;
   border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
 .swipe-stripes{display:flex;align-items:center;justify-content:center;gap:3px;width:100%;height:100%}
 .swipe-stripes span{display:block;width:3px;height:19px;border-radius:3px}
 .stripe-edit{background:#558bc9}
 .stripe-delete{background:#d76178}
 .swipe-trigger:active .swipe-stripes{opacity:.75}
+.swipe-actions button:active{filter:brightness(.92)}
+.swipe-trigger:hover{background:#f0f5f1}
+.swipe-trigger .swipe-stripes{pointer-events:none}
 .swipe-trigger:focus-visible,.swipe-actions button:focus-visible{
   outline:2px solid #244f3a;outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){.swipe-content{transition:none}}
