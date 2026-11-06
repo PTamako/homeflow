@@ -39,7 +39,10 @@ export function dueOn(rule,date) {
           c.weekNumbers.includes(Math.floor((day-1)/7)+1)
       }
       const last=new Date(Date.UTC(year,month,0)).getUTCDate()
-      return day===Math.min(Number(c.day),last)
+      // Multiple configured dates may collapse onto the same final calendar day.
+      // Emit that date as one occurrence, not duplicate periods.
+      const selected=Array.isArray(c.days)?c.days:[c.day]
+      return selected.some(chosen=>day===Math.min(chosen,last))
     }
     case 'interval': {
       if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
@@ -56,15 +59,17 @@ export function validateRule(r){
   const c=r.repeatConfig||{}
   if(r.repeatType==='workday')return true
   if(r.repeatType==='weekly')return Array.isArray(c.weekdays)&&c.weekdays.length>0&&c.weekdays.length<=7&&
-    c.weekdays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)
+    c.weekdays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)&&new Set(c.weekdays).size===c.weekdays.length
   if(r.repeatType==='monthly'){
     if(c.mode==='weekday')
       return Number.isInteger(c.weekday)&&c.weekday>=0&&c.weekday<=6&&
         Array.isArray(c.weekNumbers)&&c.weekNumbers.length>=1&&c.weekNumbers.length<=5&&
         c.weekNumbers.every(n=>Number.isInteger(n)&&n>=1&&n<=5)&&
         new Set(c.weekNumbers).size===c.weekNumbers.length
-    return (c.mode===undefined||c.mode==='day')&&
-      Number.isInteger(c.day)&&c.day>=1&&c.day<=31
+    if(c.mode!==undefined&&c.mode!=='day')return false
+    if(Object.hasOwn(c,'days'))return Array.isArray(c.days)&&c.days.length>=1&&c.days.length<=31&&
+      c.days.every(d=>Number.isInteger(d)&&d>=1&&d<=31)&&new Set(c.days).size===c.days.length
+    return Number.isInteger(c.day)&&c.day>=1&&c.day<=31
   }
   if(r.repeatType==='interval')return Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
   return true
