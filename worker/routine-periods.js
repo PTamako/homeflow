@@ -1,6 +1,6 @@
 // A routine rule is a template. The dated occurrence is the unit of work.
 // No cron materialization: untouched old occurrences are derived on reads.
-import {addDays,daysBetween,dueOn,lastScheduledBefore} from './recurrence.js'
+import {addDays,daysBetween,dueOn,lastScheduledBefore,intervalStartsOnAnchor} from './recurrence.js'
 
 export const jstToday=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 export const jstDate=(stamp)=>{
@@ -33,9 +33,10 @@ export function nextRoutineDue(rule,date){
   if(rule.repeat_type==='interval'){
     const days=Number(config.days)
     if(!Number.isInteger(days)||days<1||days>3650)return null
-    if(config.anchor==='completion')return rule.next_due_on||anchor
+    const first=intervalStartsOnAnchor(rule)
+    if(config.anchor==='completion')return rule.next_due_on||(first?anchor:addDays(anchor,days))
     const distance=daysBetween(anchor,date)
-    const cycles=Math.max(0,Math.ceil(distance/days))
+    const cycles=Math.max(first?0:1,Math.ceil(distance/days))
     return addDays(anchor,cycles*days)
   }
   const start=date>anchor?date:anchor
