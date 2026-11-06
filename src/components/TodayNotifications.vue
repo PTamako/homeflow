@@ -73,21 +73,27 @@ async function load(reset=true,focusId=''){
   if(request===generation){loading.value=false;moreBusy.value=false}
  }
 }
-async function markRead(item:Notice){
- if(item.readAt||item.recipientUserId!==props.userId||reading.value)return
+async function changeReadState(item:Notice,markAsRead:boolean){
+ if(item.recipientUserId!==props.userId||reading.value||
+   (markAsRead?!!item.readAt:!item.readAt))return
  reading.value=item.id
+ error.value=''
  try{
-  const r=await fetch('/api/notifications/'+encodeURIComponent(item.id)+'/read',{
+  const endpoint=markAsRead?'read':'unread'
+  const r=await fetch('/api/notifications/'+encodeURIComponent(item.id)+'/'+endpoint,{
    method:'POST',credentials:'same-origin',cache:'no-store'
   })
-  if(!r.ok)throw Error('标记已读失败')
+  if(!r.ok)throw Error(markAsRead?'标记已读失败':'标记未读失败')
   const data=await r.json()
-  item.readAt=new Date().toISOString()
+  item.readAt=markAsRead?new Date().toISOString():null
   unread.value=Math.max(0,Number(data.unreadCount)||0)
+  // One source of truth for Today's red dot and the Home Screen PWA badge.
   emit('unreadChange',unread.value)
  }catch(e){error.value=(e as Error).message}
  finally{reading.value=null}
 }
+async function markRead(item:Notice){await changeReadState(item,true)}
+async function markUnread(item:Notice){await changeReadState(item,false)}
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
  if(item.sourceId&&['task','routine','shopping'].includes(item.kind)){
@@ -168,6 +174,8 @@ defineExpose({refresh:()=>load(true)})
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
+      <button v-if="view==='received'&&item.readAt"
+        type="button" :disabled="!!reading" @click="markUnread(item)">标记未读</button>
       <button v-if="item.sourceId&&['task','routine','shopping'].includes(item.kind)"
         type="button" @click="open(item)">查看计划</button>
      </div>

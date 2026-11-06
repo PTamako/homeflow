@@ -85,11 +85,14 @@ export async function notificationsRoute(request,db,path,session){
       focusItem:focusResult?.results?.[0]||null,
       nextCursor:rows.length>PAGE_SIZE&&last?last.createdAt+'|'+last.id:null})
   }
-  const match=path.match(/^\/api\/notifications\/([0-9a-f-]{36})\/read$/i)
+  const match=path.match(/^\/api\/notifications\/([0-9a-f-]{36})\/(read|unread)$/i)
   if(match&&request.method==='POST'){
     if(!UUID.test(match[1]))return json({error:'invalid_input'},400)
+    const markUnread=match[2].toLowerCase()==='unread'
+    // Both state transitions are limited to today's inbox row for the signed-in
+    // recipient. The sender cannot change another household member's read status.
     const result=await db.prepare(`UPDATE notification_inbox
-      SET read_at=COALESCE(read_at,CURRENT_TIMESTAMP)
+      SET read_at=${markUnread?'NULL':'COALESCE(read_at,CURRENT_TIMESTAMP)'}
       WHERE id=?1 AND household_id=?2 AND recipient_user_id=?3
       AND local_day=?4`)
       .bind(match[1],session.household_id,session.user_id,day).run()
@@ -98,7 +101,7 @@ export async function notificationsRoute(request,db,path,session){
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
         AND read_at IS NULL`)
       .bind(session.household_id,session.user_id,day).first()
-    return json({ok:true,unreadCount:Number(count?.count||0)})
+    return json({ok:true,read:!markUnread,unreadCount:Number(count?.count||0)})
   }
   return json({error:'not_found'},404)
 }
