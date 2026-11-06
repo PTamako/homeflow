@@ -21,10 +21,10 @@ test('Today combines one-off and recurring tasks in one checklist',()=>{
  assert.ok(app.includes("api('/routines/'+r.id+'/mark'"))
  assert.ok(app.includes('toggleTask(row.task)'))
  assert.ok(app.includes('toggleRoutine(row.routine)'))
- assert.ok(app.includes(':allow-edit="false" :allow-delete="true" delete-label="从今天移除"'))
- assert.ok(app.includes('@delete="dismissToday(row)"'))
- assert.ok(app.includes('delete-label="从今天移除"'))
- assert.ok(app.includes("api('/tasks/today/dismiss','POST'"))
+ assert.ok(app.includes(':allow-edit="!row.done&&!row.routine" :allow-delete="!row.done"'))
+ assert.ok(app.includes('edit-label="延期" delete-label="跳过"'))
+ assert.ok(app.includes('@edit="openPostpone(row)" @delete="skipToday(row)"'))
+ assert.ok(!app.includes('delete-label="从今天移除"'))
  assert.ok(app.includes('dismissedTodayKeys.value.includes(row.key)'))
  assert.ok(!app.includes('deleteRoutine(row.routine)'), 'Today must never delete the recurring source')
  assert.ok(!app.includes('deleteTask(row.task)'), 'Today must never delete the one-off source')
@@ -178,23 +178,26 @@ test('Today checklist starts with compact category tabs and preserves item divid
 })
 
 
-test('Today dismissals preserve source plans, history and per-user view semantics',()=>{
+test('legacy Today dismissals retain their history, but swipe actions now skip or postpone',()=>{
  const api=readFileSync(new URL('../worker/tasks.js',import.meta.url),'utf8')
  const migration=readFileSync(new URL('../migrations/0023_today_dismissals.sql',import.meta.url),'utf8')
  assert.match(api,/path==='\/api\/tasks\/today\/dismiss'/)
  assert.match(api,/INSERT OR IGNORE INTO today_dismissals/)
  assert.match(api,/WHERE household_id=\?1 AND user_id=\?2 AND view_on=\?3/)
  assert.match(migration,/PRIMARY KEY \(household_id,user_id,view_on,item_key\)/)
- assert.match(app,/:allow-delete="true" delete-label="从今天移除"/)
- assert.match(app,/原计划和完成记录会保留/)
+ assert.match(app,/:allow-edit="!row.done&&!row.routine" :allow-delete="!row.done"/)
+ assert.match(app,/@edit="openPostpone\(row\)" @delete="skipToday\(row\)"/)
+ assert.doesNotMatch(app,/dismissToday\(row\)|从今天移除|从今日移除/)
 })
 
-test('Today only offers deletion and plan navigation; editing stays in the Plans page',()=>{
+test('Today swipe offers skip or postpone while full editing stays in Plans',()=>{
  const today=app.slice(app.indexOf('<template v-for="row in visibleToday"'),
    app.indexOf('加载更多今日待办（每次 5 条）'))
- assert.match(today,/:allow-edit="false" :allow-delete="true" delete-label="从今天移除"/)
- assert.doesNotMatch(today,/@edit=|task-edit-form|<LifeItemEditor/)
- assert.match(today,/@delete="dismissToday\(row\)"/)
+ assert.match(today,/:allow-edit="!row.done&&!row.routine" :allow-delete="!row.done"/)
+ assert.match(today,/edit-label="延期" delete-label="跳过"/)
+ assert.match(today,/@edit="openPostpone\(row\)" @delete="skipToday\(row\)"/)
+ assert.doesNotMatch(today,/task-edit-form|<LifeItemEditor/)
+ assert.doesNotMatch(today,/<div v-if="!row.done" class="today-decision-actions">/)
  assert.match(today, /row\.task\?openPlans\('task',row\.task\.id,'',row\.done\)/)
  assert.ok(life.includes('@edit="editOnce(t)"'), 'one-time edits remain in Plans')
  assert.ok(life.includes("@edit=\"edit('routines',r)\""), 'recurring edits remain in Plans')
