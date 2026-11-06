@@ -23,8 +23,8 @@ test('Plan navigation uses a single compact filter panel and hides disabled mont
 test('Swipe edit/delete cues remain available but are compact and header-aligned',()=>{
   assert.match(swipe,/\.swipe-trigger\{[^}]*top:8px/)
   assert.match(swipe,/\.swipe-stripes span\{[^}]*height:19px/)
-  assert.match(swipe,/<button v-if="allowEdit" type="button" class="edit"/)
-  assert.match(swipe,/<button v-if="allowDelete" type="button" class="delete"/)
+  assert.match(swipe,/<button v-if="allowEdit" ref="firstAction" type="button" class="edit"/)
+  assert.match(swipe,/<button v-if="allowDelete" ref="deleteAction" type="button" class="delete"/)
 })
 
 test('a historical Today deep link never duplicates a row when switching to active plans',()=>{
