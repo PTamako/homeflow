@@ -78,7 +78,8 @@ test('create/edit plan UI includes date or multi-select nth weekday without a se
   assert.match(s,/monthWeekNumbers:\[2,4\]|monthWeekNumbers:Array.isArray/)
  }
  assert.match(create,/value="day">指定日期/)
- assert.match(edit,/v-model.number="form.monthDay"/)
+ assert.match(create,/v-model="form.monthDays" type="checkbox"/)
+ assert.match(edit,/v-model="form.monthDays" type="checkbox"/)
  assert.match(list,/config.mode==='weekday'/)
  assert.match(list,/weekNumbers\|\|\[\]/)
 })
