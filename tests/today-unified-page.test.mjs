@@ -70,7 +70,7 @@ test('all six source types share one deterministic five-item server cursor',asyn
   const first=await page(db,owner)
   assert.equal(first.status,200)
   assert.equal(first.items.length,5)
-  assert.equal(first.total,738,'260 tasks, 1 private, 1 completed, 255 routines, 110 shopping, 110 wishes, goal, trip')
+  assert.equal(first.total,739,'260 tasks, 1 private, 1 completed, 255 routines, 110 shopping, 110 wishes, goal, trip')
   assert.equal(first.completed,1)
   assert.ok(first.nextCursor)
   assert.deepEqual(new Set(first.categories),
