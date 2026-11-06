@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS today_plan_actions (
   CHECK((action='skipped' AND postponed_to IS NULL) OR
         (action='postponed' AND postponed_to IS NOT NULL AND postponed_to>original_on))
 );
+CREATE INDEX IF NOT EXISTS idx_today_actions_original
+  ON today_plan_actions(household_id,original_on,kind);
 CREATE INDEX IF NOT EXISTS idx_today_actions_target
   ON today_plan_actions(household_id,kind,postponed_to,action);
 CREATE INDEX IF NOT EXISTS idx_today_actions_history
