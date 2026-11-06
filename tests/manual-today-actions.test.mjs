@@ -127,3 +127,37 @@ test('Today actions are explicit in the UI and never archive on reminder/read st
  assert.match(life,/跳过记录/)
  assert.match(life,/skippedActionCursor/)
 })
+
+
+test('skipped history filters by selected plan kind before five-item pagination',async()=>{
+ const x=fixture()
+ const shoppingId='22222222-2222-4222-8222-222222222222'
+ try{
+  x.sqlite.prepare('INSERT INTO wishes(id,household_id,created_by,visibility,title,target_on,status) VALUES(?,?,?,?,?,?,?)')
+   .run(id,'family','owner','household','心愿',today,'wished')
+  x.sqlite.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,due_on) VALUES(?,?,?,?,?,?)')
+   .run(shoppingId,'family','owner','household','购物',today)
+  for(const [kind,itemId] of [['wish',id],['shopping',shoppingId]]){
+   const response=await todayActionRoute(x.req('/api/plans/today-action','POST',
+    {kind,id:itemId,on:today,action:'skipped'}),x.db,'/api/plans/today-action',session)
+   assert.equal(response.status,200,kind)
+  }
+  const history=async suffix=>{
+   const path='/api/plans/action-history?limit=5'+suffix
+   const response=await todayActionRoute(x.req(path),x.db,'/api/plans/action-history',session)
+   return {status:response.status,body:await response.json()}
+  }
+  const all=await history('')
+  assert.deepEqual(new Set(all.body.items.map(row=>row.kind)),new Set(['wish','shopping']))
+  const wish=await history('&kind=wish')
+  assert.deepEqual(wish.body.items.map(row=>row.kind),['wish'])
+  assert.equal(wish.body.nextCursor,null)
+  const shopping=await history('&kind=shopping')
+  assert.deepEqual(shopping.body.items.map(row=>row.kind),['shopping'])
+  const goals=await history('&kind=goal')
+  assert.deepEqual(goals.body.items,[])
+  const bad=await history('&kind=routines')
+  assert.equal(bad.status,400)
+  assert.equal(bad.body.error,'invalid_filter')
+ }finally{x.sqlite.close()}
+})
