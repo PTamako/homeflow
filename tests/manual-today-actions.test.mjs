@@ -194,3 +194,35 @@ test('a skip in a postponed chain prevents future reminders',()=>{
  assert.equal(actionDue('wish',id,a,c,actions),false)
  assert.equal(effectiveReminderDate('wish',id,a,b,c,actions),null)
 })
+
+test('Today reads all 40 chained postponements without the old 32-level cutoff',async()=>{
+ const x=fixture()
+ try{
+  const insert=x.sqlite.prepare(`INSERT INTO today_plan_actions
+    (household_id,kind,source_id,original_on,title,action,postponed_to,acted_by)
+    VALUES(?,?,?,?,?,?,?,?)`)
+  const original=add(today,-40)
+  for(let i=0;i<40;i++)
+   insert.run('family','shopping',id,add(original,i),'长期延期','postponed',add(original,i+1),'owner')
+  const actions=await actionWindow(x.db,'family',today)
+  assert.equal(actions.length,40,'must include every predecessor in the chain')
+  assert.equal(actionDue('shopping',id,original,today,actions),true)
+  assert.equal(actionDue('shopping',id,original,add(today,-1),actions),false)
+ }finally{x.sqlite.close()}
+})
+test('Today reads all 520 same-date actions without the former 500-row truncation',async()=>{
+ const x=fixture()
+ try{
+  const insert=x.sqlite.prepare(`INSERT INTO today_plan_actions
+    (household_id,kind,source_id,original_on,title,action,postponed_to,acted_by)
+    VALUES(?,?,?,?,?,?,?,?)`)
+  for(let i=0;i<520;i++){
+   const sourceId='00000000-0000-4000-8000-'+String(i).padStart(12,'0')
+   insert.run('family','shopping',sourceId,today,'已跳过','skipped',null,'owner')
+  }
+  insert.run('another','shopping',id,today,'其他家庭','skipped',null,'other')
+  const actions=await actionWindow(x.db,'family',today)
+  assert.equal(actions.length,520)
+  assert.ok(actions.every(a=>a.kind==='shopping'&&a.original_on===today))
+ }finally{x.sqlite.close()}
+})

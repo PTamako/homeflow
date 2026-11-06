@@ -16,22 +16,22 @@ const dateOk=date=>typeof date==='string'&&date.length===10&&validDate(date)
 // This correctly handles multiple postponements without a whole-history scan.
 export async function actionWindow(db,household,date,end=date){
  const {results}=await db.prepare(`WITH RECURSIVE chain(
-   kind,source_id,original_on,action,postponed_to,depth
+   kind,source_id,original_on,action,postponed_to
  ) AS (
-   SELECT kind,source_id,original_on,action,postponed_to,0
+   SELECT kind,source_id,original_on,action,postponed_to
    FROM today_plan_actions WHERE household_id=?1
      AND ((original_on>=?2 AND original_on<=?3) OR
           (postponed_to>=?2 AND postponed_to<=?3))
-   UNION ALL
+   UNION
    SELECT prev.kind,prev.source_id,prev.original_on,prev.action,
-          prev.postponed_to,chain.depth+1
+          prev.postponed_to
    FROM today_plan_actions prev JOIN chain
      ON prev.kind=chain.kind AND prev.source_id=chain.source_id
      AND prev.postponed_to=chain.original_on
-   WHERE prev.household_id=?1 AND chain.depth<32
+   WHERE prev.household_id=?1
  )
- SELECT DISTINCT kind,source_id,original_on,action,postponed_to
- FROM chain LIMIT 500`).bind(household,date,end).all()
+ SELECT kind,source_id,original_on,action,postponed_to
+ FROM chain`).bind(household,date,end).all()
  return results||[]
 }
 // Decisions from an old source date remain in history, but are no longer active
@@ -88,7 +88,7 @@ async function handleAction(request,db,session){
  if(!sourceAvailable(kind,row)||!row[config.date])return json({error:'already_resolved'},409)
  const {results:decisions}=await db.prepare(`SELECT original_on,action,postponed_to,kind,source_id
    FROM today_plan_actions WHERE household_id=?1 AND kind=?2 AND source_id=?3
-   ORDER BY original_on DESC LIMIT 500`).bind(h,kind,id).all()
+   ORDER BY original_on DESC`).bind(h,kind,id).all()
  const current=activeActionDate(kind,id,row[config.date],decisions||[])
  if(current!==day)return json({error:'not_today'},409)
  const result=await db.prepare(`INSERT OR IGNORE INTO today_plan_actions
