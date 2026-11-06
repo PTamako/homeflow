@@ -53,17 +53,19 @@ export function candidateGoalPeriods(goals,options,today=tokyoDay()){
 }
 export async function goalPeriodArchiveRoute(request,db,session){
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
-  // Period snapshots contain estimated household cash flow, which is owner-only.
-  if(session.role!=='owner')return json({error:'forbidden'},403)
+  // Shared period history is visible to household members. Estimates remain
+  // restricted to the household owner or the creator of that savings goal.
   const opts=archiveFilter(request.url)
   if(!opts)return json({error:'invalid_filters'},400)
-  const {results:goals}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
+  const {results:goals}=await db.prepare(`SELECT id,title,created_by,goal_mode,start_on,target_on,target_amount
     FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND goal_mode IN ('monthly','yearly')
     AND (visibility='household' OR created_by=?2)
     ORDER BY created_at DESC LIMIT 251`)
     .bind(session.household_id,session.user_id).all()
   // Avoid silently hiding the oldest plan if a household grows unusually large.
   if((goals||[]).length>250)return json({error:'archive_goal_limit_exceeded'},409)
+  const financeVisible=new Set((goals||[]).filter(g=>
+    session.role==='owner'||g.created_by===session.user_id).map(g=>g.id))
   const periods=candidateGoalPeriods(goals||[],opts)
   const shown=periods.slice(0,opts.limit)
   if(!shown.length)return json({items:[],nextCursor:null})
@@ -88,8 +90,8 @@ export async function goalPeriodArchiveRoute(request,db,session){
     return {...period,
       status:record?.status||(record?.legacy_completed_at?'met':'pending'),
       targetAmount:record?.target_amount??period.targetAmount,
-      actualAmount:record?.actual_amount??null,
-      differenceAmount:record?.difference_amount??null,
+      actualAmount:financeVisible.has(period.goalId)?record?.actual_amount??null:null,
+      differenceAmount:financeVisible.has(period.goalId)?record?.difference_amount??null:null,
       settledAt:record?.settled_at||record?.legacy_completed_at||null}
   })
   const last=shown.at(-1)
