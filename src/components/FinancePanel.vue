@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
+import MoneyInput from './MoneyInput.vue'
 import {savingsPeriodDisplay} from '../savings-period-display.mjs'
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
@@ -20,7 +21,7 @@ const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const canModify=computed(()=>props.owner||props.canAdjust===true)
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
-const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
+const adjustment=ref(0),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
 const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
 const currentMarkKey=computed(()=>recurringGoal.value?String(periodKey.value):'once')
@@ -158,7 +159,7 @@ async function loadGoalNet(){
   finally{netBusy.value=false}
 }
 async function refreshSettings(){
-  adjustment.value='0';opening.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
+  adjustment.value=0;opening.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
   if(!available.value||!target.value)return
   const requestedId=target.value,requestedKind=kind.value,requestedKey=periodKey.value
   try{
@@ -167,7 +168,7 @@ async function refreshSettings(){
     const data=await api('/finance/settings?'+params.toString())
     if(requestedId!==target.value||requestedKind!==kind.value||
       (recurringGoal.value&&requestedKey!==periodKey.value))return
-    adjustment.value=String(data.adjustmentAmount||0)
+    adjustment.value=Number(data.adjustmentAmount||0)
     opening.value=recurringGoal.value?0:Number(data.openingAmount||0)
     if(requestedKind==='goal'){
       if(data.periodStart&&data.periodEnd){start.value=data.periodStart;end.value=data.periodEnd}
@@ -178,7 +179,7 @@ async function refreshSettings(){
 async function saveSettings(){
   if(!target.value)return
   const amount=Number(adjustment.value)
-  if(!/^-?\d+$/.test(adjustment.value.trim())||!Number.isSafeInteger(amount)||Math.abs(amount)>100000000000){
+  if(!Number.isSafeInteger(amount)||Math.abs(amount)>100000000000){
     error.value='调整额请输入有效的整数日元';return
   }
   busy.value=true;error.value='';clearToast()
@@ -311,7 +312,7 @@ onMounted(()=>{
           <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
         <label class="adjustment-label">调整额（日元，可为负数）
-          <input v-model="adjustment" type="number" step="1" inputmode="numeric" :disabled="!canModify" />
+          <MoneyInput v-model="adjustment" :min="-100000000000" :max="100000000000" allow-negative :disabled="!canModify" />
         </label>
         <div v-if="recurringGoal" class="fields">
           <div v-if="lockedPeriod" class="locked-period">
