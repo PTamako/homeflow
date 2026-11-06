@@ -409,6 +409,9 @@ function routineLabel(r:Row){
   const config=(()=>{try{return typeof r.repeat_config==='string'?JSON.parse(r.repeat_config):r.repeat_config||{}}catch{return {}}})()
   if(r.repeat_type==='weekly'&&config.excludeJapaneseHolidays)return '工作日'
   if(r.repeat_type==='weekly')return '每周'+(config.weekdays||[]).map((d:number)=>'日一二三四五六'[d]).join('、')
+  if(r.repeat_type==='monthly'&&Array.isArray(config.weeks))
+    return '每月第 '+[...config.weeks].sort((a:number,b:number)=>a-b).join('、')+
+      ' 个周'+'日一二三四五六'[Number(config.weekday)]
   if(r.repeat_type==='monthly')return '每月'+Number(config.day||1)+'日'
   if(r.repeat_type==='interval')return '每'+Number(config.days||0)+'天'+(config.anchor==='completion'?' · 按完成日':'')
   return r.repeat_type==='daily'?'每天':'定期'
