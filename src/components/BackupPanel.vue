@@ -9,15 +9,14 @@ const props=defineProps<{userId:string}>()
 const backupStorageKey='homeflow-last-local-export:'+props.userId
 const lastExportAt=ref('')
 try{lastExportAt.value=localStorage.getItem(backupStorageKey)||''}catch{}
-const backupOld=computed(()=>!lastExportAt.value||
-  !Number.isFinite(Date.parse(lastExportAt.value))||
-  Date.now()-Date.parse(lastExportAt.value)>30*86400000)
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
   'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','reminderSnoozes','reminderPreferences','reminderItemPreferences']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
+const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
+const previewPhotoCount=computed(()=>Object.keys(photos.value).length)
 function bodyOk(snapshot:any):snapshot is Snapshot{
   if(!snapshot||snapshot.format!=='homeflow.portable'||snapshot.schemaVersion!==1||
     !snapshot.records||typeof snapshot.records!=='object')return false
@@ -155,36 +154,91 @@ async function restore(){
 }
 </script>
 <template>
-  <section class="backup">
-    <h2 class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
-    <p>仅备份当前账号及本机照片。</p>
-    <small v-if="lastExportAt">上次备份：{{ lastExportAt.slice(0,10) }}</small>
-    <small v-if="backupOld">本机照片请定期备份。</small>
-    <button :disabled="pending" @click="exportArchive">下载备份</button>
-    <small>恢复仅补充缺失记录，不会覆盖已存在的记录或撤销误编辑。两位家庭成员请各自备份，并保管好本机照片 ZIP。</small>
-    <label class="import-label">恢复备份（ZIP / JSON）
-      <input type="file" accept=".zip,.json,application/zip,application/json"
-        :disabled="pending" @change="chooseArchive(($event.target as HTMLInputElement).files?.[0]||null)"/>
-    </label>
-    <div v-if="preview" class="preview">
-      <b>预览：{{ preview.exportedAt||'未知日期' }}</b>
-      <p v-for="key in order" :key="key" v-show="preview.records[key]?.length">
-        {{ key }}：{{ preview.records[key]?.length||0 }} 条</p>
-      <button :disabled="pending" @click="restore">确认恢复缺失记录与照片</button>
+  <section class="backup" aria-labelledby="backup-title">
+    <h2 id="backup-title" class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
+    <div class="backup-section">
+      <div class="backup-section-head">
+        <h3>下载备份</h3>
+        <small v-if="lastExportAt">上次：{{ lastExportAt.slice(0,10) }}</small>
+      </div>
+      <p class="backup-caption">保存账号记录与本机照片</p>
+      <button type="button" class="backup-download" :disabled="pending" @click="exportArchive">
+        {{ pending?'处理中…':'下载备份' }}
+      </button>
     </div>
+    <div class="backup-section">
+      <h3>恢复备份</h3>
+      <p class="backup-caption">选择 ZIP / JSON 文件，仅补充缺失记录</p>
+      <div class="backup-file-row">
+        <label class="backup-file-picker" :class="{'backup-file-picker-disabled':pending}">
+          选择文件
+          <input class="backup-file-native" type="file"
+            accept=".zip,.json,application/zip,application/json"
+            aria-label="选择 HomeFlow 备份文件"
+            :disabled="pending"
+            @change="chooseArchive(($event.target as HTMLInputElement).files?.[0]||null)" />
+        </label>
+        <span class="backup-file-name" :title="selectedFile?.name||''">
+          {{ selectedFile?.name||'未选择文件' }}
+        </span>
+      </div>
+      <div v-if="preview" class="backup-preview">
+        <p>校验通过：{{ previewRecordCount }} 条记录 · {{ previewPhotoCount }} 张本机照片</p>
+        <button type="button" class="backup-restore" :disabled="pending" @click="restore">确认恢复</button>
+      </div>
+    </div>
+    <details class="backup-notes">
+      <summary>备份与恢复说明</summary>
+      <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
+      <p>备份仅包含当前账号及本机照片；不含密码、未同步任务和云端照片。请妥善保存 ZIP 文件。</p>
+    </details>
     <p v-if="status" class="success" role="status">{{ status }}</p>
-    <PageToast :toast="toast" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <small>恢复不会覆盖原记录；不含密码、未同步任务及云端照片。</small>
+    <PageToast :toast="toast" />
   </section>
 </template>
 <style scoped>
-.backup{background:#fff;border:1px solid #eeeae4;border-radius:18px;padding:20px;margin:16px 0}
-.backup h2{font-size:17px}.backup-title{display:flex;align-items:center;gap:9px}.backup p,.backup small{color:#849187;font-size:12px;line-height:1.7}
-.backup button{background:#468b6e;border:0;color:white;border-radius:10px;padding:10px 14px;font-size:13px}
-.backup button:disabled{opacity:.5}.import-label{display:grid;gap:8px;color:#64756b;font-size:12px;margin-top:18px}
-.import-label input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #e4e7e0;padding:10px;border-radius:10px}
-.preview{background:#edf5ec;padding:12px;border-radius:12px;margin-top:14px}.preview b{font-size:13px}
-.preview p{font-size:11px;margin:3px 0}.preview button{margin-top:10px}
+.backup{display:grid;gap:0;min-width:0;max-width:100%;margin:12px 0;padding:18px;
+  background:#fff;border:1px solid #e2ebe4;border-radius:16px;box-sizing:border-box}
+.backup-title{display:flex;align-items:center;gap:9px;margin:0 0 6px;
+  font-size:17px;line-height:1.4;color:#26392f}
+.backup-section{min-width:0;padding:14px 0 16px}
+.backup-section+.backup-section{border-top:1px solid #e8eee9}
+.backup-section h3{margin:0;font-size:14px;line-height:1.5;color:#26392f}
+.backup-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.backup-section-head small{color:#829187;font-size:11px}
+.backup .backup-caption{margin:3px 0 11px;font-size:12px;line-height:1.5;color:#76867b}
+.backup-download,.backup-restore{display:flex;align-items:center;justify-content:center;
+  min-height:44px;padding:10px 14px;border:0;border-radius:10px;box-sizing:border-box;
+  background:#438669;color:#fff;font-size:13px;font-weight:700;line-height:1.3;
+  touch-action:manipulation}
+.backup-download{width:100%}
+.backup-restore{width:100%;margin-top:10px}
+.backup button:disabled{opacity:.5;cursor:not-allowed}
+.backup-file-row{display:flex;align-items:center;gap:10px;min-width:0}
+.backup-file-picker{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  flex:none;min-width:112px;min-height:44px;padding:10px 13px;
+  box-sizing:border-box;border:1px solid #cbdcd0;border-radius:10px;
+  background:#f4f8f5;color:#357b5c;font-size:13px;font-weight:650;
+  overflow:hidden;cursor:pointer;touch-action:manipulation}
+.backup-file-picker-disabled{opacity:.5;cursor:not-allowed}
+.backup-file-native{position:absolute;inset:0;width:100%!important;height:100%!important;
+  max-width:none!important;min-height:0!important;margin:0!important;padding:0!important;
+  border:0!important;border-radius:0!important;opacity:0;cursor:pointer}
+.backup-file-native:focus-visible{outline:0}
+.backup-file-picker:focus-within{outline:2px solid #43866a;outline-offset:2px}
+.backup-file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:#829187;font-size:12px}
+.backup-preview{margin-top:12px;padding:12px;border:1px solid #dceade;border-radius:11px;background:#f7faf7}
+.backup-preview p{margin:0;font-size:12px;line-height:1.5;color:#446851}
+.backup-notes{border-top:1px solid #e8eee9;padding-top:13px}
+.backup-notes summary{width:fit-content;min-height:44px;display:flex;align-items:center;
+  gap:6px;color:#547664;font-size:12px;font-weight:650;cursor:pointer;list-style:none}
+.backup-notes summary::-webkit-details-marker{display:none}
+.backup-notes summary::after{content:'⌄';font-size:15px;line-height:1}
+.backup-notes[open] summary::after{transform:rotate(180deg)}
+.backup-notes p{margin:5px 0;color:#78887c;font-size:11px;line-height:1.65}
+.backup .error,.backup .success{margin:8px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .backup .error{color:#a94d37}.backup .success{color:#3c8566}
+@media(max-width:380px){.backup{padding:14px}.backup-file-picker{min-width:104px}}
 </style>
