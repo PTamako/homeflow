@@ -5,6 +5,7 @@ import {lifeRoute} from './life.js'
 import {todayPlansRoute} from './plan-today.js'
 import {todayActionRoute} from './today-actions.js'
 import {todayPageRoute} from './today-page.js'
+import {syncStateRoute,bumpHouseholdRevision} from './sync.js'
 import {planSummaryRoute} from './plan-summary.js'
 import {searchRoute} from './search.js'
 import {tripsRoute} from './trips.js'
@@ -21,8 +22,7 @@ import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 
-export default {
-  async fetch(request,env,ctx){
+async function routeRequest(request,env,ctx,state){
     const url=new URL(request.url),path=url.pathname
     if(path==='/api/health'){
       if(request.method!=='GET')return json({error:'method_not_allowed'},405)
@@ -35,6 +35,7 @@ export default {
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
+        state.session=session
         const requiresLogin=!path.startsWith('/api/auth/')
         if(requiresLogin&&!session)return json({error:'not_authenticated'},401)
         if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!sameOrigin(request))
@@ -58,6 +59,7 @@ export default {
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session,onComplete)
         if(path==='/api/search')return searchRoute(request,env.DB,session)
+        if(path==='/api/sync/state')return syncStateRoute(request,env.DB,session)
         if(path==='/api/today/page')return todayPageRoute(request,env.DB,session)
         if(path==='/api/plans/today-action'||path==='/api/plans/action-history')
           return todayActionRoute(request,env.DB,path,session)
@@ -84,6 +86,20 @@ export default {
     if(request.method!=='GET')return json({error:'method_not_allowed'},405)
     return new Response('<!doctype html><html><meta charset="utf-8"><title>HomeFlow</title><body>HomeFlow API</body></html>',
       {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}})
+}
+
+export default {
+  async fetch(request,env,ctx){
+    const state={session:null}
+    const response=await routeRequest(request,env,ctx,state)
+    // Include changes to every authenticated feature (not just Today): family,
+    // plan, shopping, routines, history, reminders and member notification state.
+    // Read-only requests and any rejected mutation never advance the version.
+    if(state.session&&response.ok&&!['GET','HEAD','OPTIONS'].includes(request.method)){
+      try{await bumpHouseholdRevision(env.DB,state.session)}
+      catch{console.warn('homeflow_sync_revision_failed')}
+    }
+    return response
   },
   async scheduled(controller,env,ctx){
     if(!await verifiedDatabase(env))return

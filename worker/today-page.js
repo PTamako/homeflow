@@ -2,9 +2,14 @@ import {json,validDate} from './security.js'
 import {tasksRoute} from './tasks.js'
 import {lifeRoute} from './life.js'
 import {todayPlansRoute} from './plan-today.js'
+import {householdRevision} from './sync.js'
 
 const categories=new Set(['all','task','routine','shopping','wish','goal','trip'])
 const planKinds=new Set(['shopping','wish','goal','trip'])
+// Per-isolate, per-database bounded snapshot. A household version change
+// invalidates the snapshot across accounts; private rows never cross user keys.
+const feedCaches=new WeakMap()
+const CACHE_TTL_MS=90000,CACHE_MAX=12,CACHE_MAX_ROWS=1200
 const dayNow=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const jstStamp=stamp=>{
  const t=Date.parse(stamp?.includes('T')?stamp:stamp?.replace(' ','T')+'Z')
@@ -43,6 +48,14 @@ export async function todayPageRoute(request,db,session){
  if(!validDate(date)||!date||!categories.has(category)||limit!==5||
     (cursor&&(!parts||parts[0]!==date||parts[1]!==category)))
    return json({error:'invalid_input'},400)
+ const revision=await householdRevision(db,session.household_id)
+ let cache=feedCaches.get(db)
+ if(!cache){cache=new Map();feedCaches.set(db,cache)}
+ const key=[session.household_id,session.user_id,date,revision].join('|')
+ const cached=cache.get(key)
+ const fresh=!!cached&&cached.expires>Date.now()
+ let rows=fresh?cached.rows:null
+ if(!fresh){
  const encoded=encodeURIComponent(date)
  const [tasks,routines,plans]=await Promise.all([
   tasksRoute(internalGet('/api/tasks?status=all&today='+encoded),db,'/api/tasks',session,null,
@@ -52,7 +65,7 @@ export async function todayPageRoute(request,db,session){
   todayPlansRoute(internalGet('/api/plans/today?date='+encoded),db,session,'/api/plans/today',
     null,{fullToday:true}).then(body)
  ])
- const rows=[]
+ rows=[]
  for(const task of tasks.tasks||[]){
   const done=!!task.completedAt
   if(done?jstStamp(task.completedAt)!==date:!task.dueOn||task.dueOn>date)continue
@@ -68,6 +81,13 @@ export async function todayPageRoute(request,db,session){
     kind:plan.kind,title:plan.title,done:!!plan.done,plan})
  }
  rows.sort(compareTodayRows)
+ // Prevent unbounded isolate memory and drop oldest entries on expiration.
+ if(rows.length<=CACHE_MAX_ROWS){
+   for(const [k,v] of cache)if(v.expires<=Date.now())cache.delete(k)
+   cache.set(key,{rows,expires:Date.now()+CACHE_TTL_MS})
+   while(cache.size>CACHE_MAX)cache.delete(cache.keys().next().value)
+ }
+ }
  const filtered=category==='all'?rows:rows.filter(row=>row.kind===category)
  const total=filtered.length,completed=filtered.filter(row=>row.done).length
  const pointer=parts?{key:parts[4],done:parts[2]==='1',
