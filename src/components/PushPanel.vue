@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
 import PageToast from './PageToast.vue'
+import StatusBadge from './StatusBadge.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string;members?:Array<{id:string;loginName:string}>}>()
 const otherMembers=computed(()=>(props.members||[]).filter(m=>m.id!==props.userId))
@@ -106,6 +107,7 @@ onMounted(discover)
 <template>
   <section class="push-setting">
     <div class="push-actions">
+      <StatusBadge :code="!available?'unavailable':enabled?'enabled':'disabled'" />
       <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
         @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
       <button v-if="otherMembers.length" type="button" class="push-now"
