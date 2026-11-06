@@ -53,13 +53,19 @@ const todayNotificationsRef=ref<{refresh:()=>Promise<void>|void}|null>(null)
 const notificationToOpen=ref('')
 const notificationOpenRequest=ref(0)
 type BadgeNavigator=Navigator&{setAppBadge?:(count?:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>}
-async function setUnreadNotificationCount(value:number){
+let badgeQueue:Promise<void>=Promise.resolve()
+function setUnreadNotificationCount(value:number){
   unreadNotificationCount.value=Math.max(0,Number(value)||0)
-  try{
-    const badge=navigator as BadgeNavigator
-    if(unreadNotificationCount.value>0)await badge.setAppBadge?.(unreadNotificationCount.value)
-    else await badge.clearAppBadge?.()
-  }catch{/* Some browsers and installed PWAs do not support app icon badges. */}
+  // Older promises must never overwrite a newer badge count.
+  badgeQueue=badgeQueue.catch(()=>{}).then(async()=>{
+    const count=unreadNotificationCount.value
+    try{
+      const badge=navigator as BadgeNavigator
+      if(count>0)await badge.setAppBadge?.(count)
+      else await badge.clearAppBadge?.()
+    }catch{/* iOS installed PWAs need notification/badge permission. */}
+  })
+  return badgeQueue
 }
 async function markNotificationRead(id:string){
   if(!/^[a-f0-9-]{36}$/i.test(id)||!user.value)return
@@ -71,10 +77,12 @@ async function markNotificationRead(id:string){
   }catch{/* Expired or already removed notifications do not affect tasks. */}
 }
 async function refreshNotificationCount(){
-  if(!user.value)return
+  const userId=user.value?.id
+  if(!userId)return
   try{
-    const result=await api('/notifications/today?view=received')
-    if(typeof (result as any).unreadCount==='number')
+    // Exactly one scoped COUNT query instead of downloading an inbox page.
+    const result=await api('/notifications/badge')
+    if(user.value?.id===userId&&typeof (result as any).unreadCount==='number')
       void setUnreadNotificationCount((result as any).unreadCount)
   }catch{}
 }
@@ -150,9 +158,13 @@ function onPushMessage(event:MessageEvent){
      else openIncomingNotification(payload.notificationId)
    }
  }
- if(payload?.type==='homeflow-notification-pushed'&&tab.value==='today'){
-   // The sender records results after the push service accepts the delivery.
-   window.setTimeout(()=>todayNotificationsRef.value?.refresh(),1200)
+ if(payload?.type==='homeflow-notification-pushed'){
+   // Sync in every tab; the Today component is unmounted outside its tab.
+   window.setTimeout(()=>{
+     if(tab.value==='today'&&todayNotificationsRef.value)
+       void todayNotificationsRef.value.refresh()
+     else void refreshNotificationCount()
+   },300)
  }
 }
 function openSearchResult(result:{id:string;kind:string}){
@@ -264,10 +276,26 @@ function recurringLabel(r:Routine){
   if(r.repeat_type==='interval')return '每'+Number(c.days||0)+'天'
   return '定期'
 }
-const pets=computed(()=>profiles.value.filter(p=>p.type==='pet'))
+// Family profiles have no deadline; show the next birthday/adoption anniversary first.
+function upcomingProfileDay(value:string|null|undefined){
+  if(!value||!/^\\d{4}-\\d{2}-\\d{2}$/.test(value))return '9999-12-31'
+  const now=tokyoToday(),monthDay=value.slice(5)
+  for(const y of [Number(now.slice(0,4)),Number(now.slice(0,4))+1]){
+    const date=new Date(Date.UTC(y,Number(monthDay.slice(0,2))-1,Number(monthDay.slice(3))))
+      .toISOString().slice(0,10)
+    if(date>=now)return date
+  }
+  return '9999-12-31'
+}
+function profileUrgency(a:Profile,b:Profile){
+  const dateA=upcomingProfileDay(a.birthday||a.adoptedOn)
+  const dateB=upcomingProfileDay(b.birthday||b.adoptedOn)
+  return dateA.localeCompare(dateB)||a.displayName.localeCompare(b.displayName)||a.id.localeCompare(b.id)
+}
+const pets=computed(()=>profiles.value.filter(p=>p.type==='pet').sort(profileUrgency))
 const isPet=(id:string|null|undefined)=>profiles.value.some(p=>p.id===id&&p.type==='pet')
 const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===id)?.displayName||''
-const people=computed(()=>profiles.value.filter(p=>p.type==='person'))
+const people=computed(()=>profiles.value.filter(p=>p.type==='person').sort(profileUrgency))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
 watch([todayCategory,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
@@ -499,6 +527,7 @@ function onForeground(){
     else if(user.value)void refreshNotificationCount()
   }else if(user.value){
     if(tab.value==='today')todayNotificationsRef.value?.refresh()
+    else void refreshNotificationCount()
   }
 }
 async function toggleTask(t:Task){
@@ -536,12 +565,15 @@ onMounted(async()=>{
     if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
   navigator.serviceWorker?.addEventListener('message',onPushMessage)
+  window.addEventListener('homeflow-badge-refresh',refreshNotificationCount)
+  if(user.value&&tab.value!=='today')void refreshNotificationCount()
   window.addEventListener('online',onOnline)
   document.addEventListener('visibilitychange',onForeground)
   if(user.value&&navigator.onLine)void flushTasks()
 })
 onBeforeUnmount(()=>{
   navigator.serviceWorker?.removeEventListener('message',onPushMessage)
+  window.removeEventListener('homeflow-badge-refresh',refreshNotificationCount)
   window.removeEventListener('online',onOnline)
   document.removeEventListener('visibilitychange',onForeground)
 })

@@ -19,7 +19,7 @@ test('new icon family is used in manifest, Apple touch icon and SW caches',()=>{
  assert.equal(manifest.icons[0].src,'/icon-192.png')
  assert.equal(manifest.icons[1].src,'/icon-512.png')
  assert.equal(manifest.icons[2].src,'/icon.svg')
- assert.match(sw,/homeflow-shell-v4/)
+ assert.match(sw,/homeflow-shell-v5/)
  assert.match(sw,/icon:'\/icon-192.png',badge:'\/icon-192.png'/)
 })
 

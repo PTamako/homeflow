@@ -74,7 +74,11 @@ export async function tripsRoute(request,db,path,session){
     const filters=listFilters(request.url)
     if(filters?.invalid)return json({error:'invalid_input'},400)
     if(filters){
-      const sort='COALESCE(start_on,created_at)'
+      // Active trips follow the nearest departure; completed trips are newest first.
+      const ascending=filters.scope==='active'
+      const sort=ascending?"COALESCE(start_on,'9999-12-31')":
+        filters.scope==='history'?'COALESCE(end_on,start_on,created_at)':
+        'COALESCE(start_on,created_at)'
       const clauses=["household_id=?1","deleted_at IS NULL","(visibility='household' OR created_by=?2)"]
       const args=[h,u]
       // A past end date does not mean the trip was actually completed:
@@ -91,13 +95,14 @@ export async function tripsRoute(request,db,path,session){
       }
       if(filters.cursor){
         const n=args.length+1
-        clauses.push('('+sort+'<?'+n+' OR ('+sort+'=?'+(n+1)+' AND id<?'+(n+2)+'))')
+        clauses.push('('+sort+(ascending?'>':'<')+'?'+n+' OR ('+sort+'=?'+(n+1)+
+          ' AND id'+(ascending?'>':'<')+'?'+(n+2)+'))')
         args.push(filters.cursor.date,filters.cursor.date,filters.cursor.id)
       }
       const sql=`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
         end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,
         import_source_key AS importSourceKey,updated_at AS updatedAt,COALESCE(start_on,created_at) AS sortDate
-        FROM trips WHERE `+clauses.join(' AND ')+' ORDER BY '+sort+' DESC,id DESC LIMIT ?'+(args.length+1)
+        FROM trips WHERE `+clauses.join(' AND ')+' ORDER BY '+sort+(ascending?' ASC,id ASC':' DESC,id DESC')+' LIMIT ?'+(args.length+1)
       const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
       const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
       return json({items,nextCursor:rows.length>filters.limit&&last?last.sortDate+'|'+last.id:null})

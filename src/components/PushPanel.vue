@@ -39,6 +39,8 @@ async function discover(){
       message.value='此设备尚未授权通知，点击「开启推送」进行授权。'
     else if(!subscription)
       message.value='没有找到此设备的推送订阅，请重新开启推送。'
+    else
+      message.value='若图标没有红色数字，请在 iPhone「设置 → 通知 → HomeFlow」开启「标记」。'
   }catch{message.value='暂时无法检测推送状态。'}
 }
 async function enable(){
@@ -55,6 +57,8 @@ async function enable(){
       headers:{'content-type':'application/json'},body:JSON.stringify(data)})
     if(!r.ok)throw Error('服务器尚未接受推送订阅，请重试')
     enabled.value=true
+    // Permission may have just become available: display any existing unread badge.
+    window.dispatchEvent(new Event('homeflow-badge-refresh'))
     notify('已开启推送')
   }catch(e){message.value=(e as Error).message}
   finally{busy.value=false}

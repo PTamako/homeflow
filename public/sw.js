@@ -1,5 +1,5 @@
 // Cache only same-origin static assets; NEVER cache private /api endpoints.
-const CACHE='homeflow-shell-v4'
+const CACHE='homeflow-shell-v5'
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'])))
   self.skipWaiting()
@@ -26,6 +26,27 @@ self.addEventListener('fetch',event=>{
   })))
 })
 
+// iOS installed PWAs can show an exact unread count only when notifications/badges
+// are allowed in system settings. Read only the authenticated current user's count.
+async function syncIconBadge(){
+  try{
+    const response=await fetch('/api/notifications/badge',{credentials:'include',cache:'no-store'})
+    if(response.status===401){
+      await self.navigator.clearAppBadge?.()
+      return
+    }
+    if(!response.ok)throw Error('badge_sync_unavailable')
+    const payload=await response.json()
+    const count=Number(payload.unreadCount)
+    if(!Number.isSafeInteger(count)||count<0)throw Error('invalid_unread_count')
+    if(count===0)await self.navigator.clearAppBadge?.()
+    else await self.navigator.setAppBadge?.(count)
+  }catch{
+    // Even if a brief network outage prevents an exact count, keep a visible
+    // unread indicator; the page corrects the number when reopened.
+    try{await self.navigator.setAppBadge?.()}catch{}
+  }
+}
 self.addEventListener('push',event=>{
   let msg={title:'HomeFlow · 今日提醒',body:'你有新的家庭待办',url:'/',tag:'homeflow-reminder'}
   try{
@@ -44,9 +65,8 @@ self.addEventListener('push',event=>{
       }catch{return '/'}})()}
     })
     if(msg.recordInInbox===true){
-      // iOS installed Home Screen PWAs support badges after push permission.
-      // A dot is enough here; the page will synchronize the exact unread count.
-      try{await self.navigator.setAppBadge?.()}catch{}
+      // Do not replace an exact count with a generic dot on each Push.
+      await syncIconBadge()
       const pages=await self.clients.matchAll({type:'window',includeUncontrolled:true})
       for(const page of pages)page.postMessage({type:'homeflow-notification-pushed'})
     }

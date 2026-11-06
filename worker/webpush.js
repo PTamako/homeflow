@@ -165,7 +165,7 @@ async function sendTaskPush(env,session,body){
   const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+'&notificationId='+notificationId
   const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
   return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
-    title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id,
+    title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id+'-'+notificationId,
     priority:'important',recordInInbox:true
   },'task-'+body.kind+'-'+item.id+':'+notificationId,Date.now(),{
     id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
@@ -186,7 +186,7 @@ async function sendFamilyPush(env,session,body){
   const notificationId=crypto.randomUUID()
   return deliverToHouseholdUser(env,session.household_id,member.user_id,{
     title:'HomeFlow · 家人消息',body:body.message.trim(),
-    url:'/?notificationId='+notificationId,tag:'homeflow-family-message',
+    url:'/?notificationId='+notificationId,tag:'homeflow-family-'+notificationId,
     priority:'normal',recordInInbox:true
   },'family-'+session.user_id+':'+notificationId,Date.now(),{
     id:notificationId,senderId:session.user_id,kind:'family',title:'家人消息',
@@ -209,6 +209,12 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
   }
   const jst=new Date(now+9*3600000).toISOString()
   const day=jst.slice(0,10),minute=jst.slice(11,16)
+  // Ensure background iOS Push can read the new unread count right away.
+  if(meta){
+    try{await saveNotification(db,{...meta,householdId,recipientId:userId,
+      localDay:day,sentDevices:0,failedDevices:0})}
+    catch{return json({error:'notification_inbox_unavailable'},503)}
+  }
   let sent=0,failed=0,already=0
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
@@ -230,8 +236,8 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
     if(result==='gone')await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1 AND user_id=?2')
       .bind(sub.endpoint_hash,userId).run()
   }
-  if(!sent&&!failed)return json({error:'push_rate_limited',already},429)
-  // Save a single logical notification even if the recipient has multiple devices.
+  if(!sent&&!failed&&!meta)return json({error:'push_rate_limited',already},429)
+  // Reconcile one logical inbox record after delivery attempts.
   let recorded=true
   if(meta){
     try{await saveNotification(db,{...meta,householdId,recipientId:userId,
@@ -329,6 +335,12 @@ export async function runPushSchedule(env,now=Date.now()){
       })
     }
   }
+  // Write each scheduled notice before sending to devices, not afterwards.
+  for(const notice of scheduledNotices.values()){
+    await saveNotification(db,{...notice,sentDevices:0,failedDevices:0})
+    inbox++
+  }
+  if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox}
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     if(!remindersCache.has(sub.user_id))continue
@@ -391,11 +403,11 @@ export async function runPushSchedule(env,now=Date.now()){
       }
     }
   }
-  // Exactly one inbox write per logical reminder, independent of Push success.
-  for(const [logicalKey,notice] of scheduledNotices){
-    const totals=deliveryTotals.get(logicalKey)||{sent:0,failed:0}
-    await saveNotification(db,{...notice,sentDevices:totals.sent,failedDevices:totals.failed})
-    inbox++
+  // Only notices with a Push attempt need a second status update.
+  for(const [logicalKey,totals] of deliveryTotals){
+    if(totals.sent||totals.failed)
+      await saveNotification(db,{...scheduledNotices.get(logicalKey),
+        sentDevices:totals.sent,failedDevices:totals.failed})
   }
   return {checked,sent,failed,inbox}
 }

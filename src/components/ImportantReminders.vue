@@ -29,7 +29,9 @@ const againOn=ref('')
 const selectedSnoozeId=ref('')
 const tomorrow=computed(()=>shiftDay(props.todayDate,1))
 const maxSnoozeDate=computed(()=>shiftDay(props.todayDate,365))
-const visibleSnoozes=computed(()=>snoozed.value.slice(0,5))
+const visibleSnoozes=computed(()=>[...snoozed.value]
+  .sort((a,b)=>a.untilOn.localeCompare(b.untilOn)||a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id))
+  .slice(0,5))
 const {toast,notify}=usePageToast()
 let requestId=0
 const visibleReminders=computed(()=>loadedDate.value===props.todayDate
