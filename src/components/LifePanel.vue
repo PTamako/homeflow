@@ -8,6 +8,7 @@ import FinancePanel from './FinancePanel.vue'
 import PlanCreator from './PlanCreator.vue'
 import AppIcon from './AppIcon.vue'
 import StatusBadge from './StatusBadge.vue'
+import {wishTypeLabel} from '../wish-type-display.mjs'
 import LifeItemEditor from './LifeItemEditor.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
@@ -1156,7 +1157,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <SwipeActions :id="w.id" scope="wishes" :allow-edit="canEdit(w)" :allow-delete="canEdit(w)"
               @open="expandedTaskMenu=null" @edit="edit('wishes',w)" @delete="removeItem('wishes',w)">
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
-                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · <StatusBadge :code="w.status" /><template v-if="w.target_on"> · {{ w.target_on }}</template></small>
+                <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ wishTypeLabel(w.wish_type) }} · <StatusBadge :code="w.status" /><template v-if="w.target_on"> · {{ w.target_on }}</template></small>
                   <small v-if="linkedGoal(w)"><StatusBadge code="linked" /> 储值计划：{{ linkedGoal(w)?.title }}</small></div>
                 <div class="wish-row-actions">
                   <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
