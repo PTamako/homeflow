@@ -30,7 +30,8 @@ MIGRATIONS=[
     "0023_today_dismissals.sql",
     "0024_shopping_assignee.sql",
     "0025_daily_notification_inbox.sql",
-    "0026_shopping_any_receipt_complete.sql"
+    "0026_shopping_any_receipt_complete.sql",
+    "0027_wish_reminder_settings.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -74,7 +75,7 @@ added_columns={
   "routines":{"next_due_on","health_record_type","remind_enabled"},
   "pet_health_records":{"source_routine_id","source_occurrence_on","source_task_id"},
   "shopping_items":{"ledger_entry_id","due_on","assigned_to"},
-  "wishes":{"target_on"},
+  "wishes":{"target_on","remind_enabled","remind_advance_days"},
   "goals":{"goal_mode","start_on"},
   "shopping_expense_links":{"purchase_quantity"},
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
