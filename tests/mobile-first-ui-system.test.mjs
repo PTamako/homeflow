@@ -53,7 +53,7 @@ test('mobile lists and buttons use shared semantic hierarchy, never extra edit/d
 
 test('swipe controls have 44px affordance and accessible keyboard focus',()=>{
  assert.match(swipe,/actionWidth=computed\(\(\)=>count\.value\*72\)/)
- assert.match(swipe,/paddingRight:showTrigger\?'44px':'0px'/)
+ assert.match(swipe,/paddingRight:showTriggerUi\?'44px':'0px'/)
  assert.match(swipe,/height:44px;width:44px/)
  assert.match(swipe,/min-width:72px;max-width:72px/)
  assert.match(swipe,/ref="firstAction"/)
@@ -63,8 +63,9 @@ test('swipe controls have 44px affordance and accessible keyboard focus',()=>{
  assert.match(swipe,/@keydown\.esc\.stop="closeFromKeyboard"/)
  assert.match(swipe,/touch-action:pan-y/)
  assert.match(swipe,/\.swipe-actions\{[\s\S]*?visibility:hidden/)
- assert.match(swipe,/class="stripe-edit"/)
- assert.match(swipe,/class="stripe-delete"/)
+ assert.match(swipe,/class="swipe-chevron"/)
+ assert.match(swipe,/showHint=computed/)
+ assert.match(swipe,/@keydown.enter.self="activateRow"/)
 })
 
 test('mobile search behaves as a bounded sheet and daily page retains one swipe-per-task',()=>{
