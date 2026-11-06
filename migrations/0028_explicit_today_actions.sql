@@ -2,9 +2,10 @@
 -- Skips remain as history; postponed items reappear only on selected date.
 CREATE TABLE IF NOT EXISTS today_plan_actions (
   household_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('task','routine','shopping','wish','goal','trip')),
+  kind TEXT NOT NULL CHECK(kind IN ('task','shopping','wish','goal','trip')),
   source_id TEXT NOT NULL,
   original_on TEXT NOT NULL,
+  title TEXT NOT NULL,
   action TEXT NOT NULL CHECK(action IN ('postponed','skipped')),
   postponed_to TEXT,
   acted_by TEXT NOT NULL,
