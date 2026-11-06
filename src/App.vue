@@ -27,7 +27,7 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([]),tasks=ref<Task[]>([])
 function memberName(id:string|null|undefined){
  if(!id)return '未指派'
