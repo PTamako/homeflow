@@ -11,7 +11,7 @@ test('each savings goal places linked wish inside its amount line, not a separat
  assert.ok(start>0&&end>start)
  assert.match(goal,/<small class="goal-amount-line">/)
  assert.match(goal,/<span v-if="\(g\.goal_mode\|\|'once'\)===/)
- assert.match(goal,/<small><StatusBadge :code="g\.start_on/)
+ assert.match(goal,/<div class="goal-row-footer">\s*<StatusBadge :code="g\.start_on/)
  assert.match(goal,/<button v-if="g\.wish_id" type="button" class="goal-wish-link"/)
  assert.match(goal,/<AppIcon name="heart" :size="13" \/>已关联心愿/)
  assert.doesNotMatch(goal,/<small v-if="g\.wish_id">/)
