@@ -1371,7 +1371,8 @@ test('owner can link a shared shopping item created by family member, but cannot
  const hidden=await ask('/api/shopping','POST',{title:'秘密购物',quantity:1,visibility:'private'},partner)
  assert.equal(shared.status,201)
  assert.equal(hidden.status,201)
- assert.equal((await ask('/api/finance/status','GET',undefined,partner)).status,403)
+ assert.equal((await ask('/api/finance/status','GET',undefined,partner)).status,200)
+ assert.equal((await ask('/api/finance/candidates?start=2026-11-01&end=2026-11-04','GET',undefined,partner)).status,403)
  let externalRequests=0
  const old=globalThis.fetch
  globalThis.fetch=async(url,opts)=>{
@@ -1389,6 +1390,19 @@ test('owner can link a shared shopping item created by family member, but cannot
    assert.equal(shown.body.items.some(x=>x.id===hidden.body.id),false)
    assert.equal(shown.body.items.find(x=>x.id===shared.body.id)?.ledger_entry_id,'456')
    assert.ok(shown.body.items.find(x=>x.id===shared.body.id)?.completed_at)
+   // Both members see completed household-shared records regardless of creator.
+   const partnerHistory=await ask('/api/shopping?scope=history&limit=5','GET',undefined,partner)
+   assert.equal(partnerHistory.status,200)
+   assert.ok(partnerHistory.body.items.some(x=>x.id===shared.body.id))
+   const createdByOwner=await ask('/api/shopping','POST',{
+     title:'另一条家庭共享已完成购物',quantity:1,visibility:'household'
+   },owner)
+   assert.equal(createdByOwner.status,201)
+   sqlite.prepare('UPDATE shopping_items SET completed_at=? WHERE id=?')
+     .run(new Date().toISOString(),createdByOwner.body.id)
+   const partnerAfter=await ask('/api/shopping?scope=history&limit=5','GET',undefined,partner)
+   assert.ok(partnerAfter.body.items.some(x=>x.id===createdByOwner.body.id))
+   assert.equal(partnerAfter.body.items.some(x=>x.id===hidden.body.id),false)
    const unlinked=await ask('/api/finance/shopping/'+shared.body.id+'/link','DELETE',undefined,owner)
    assert.equal(unlinked.status,200)
    const restored=await ask('/api/shopping','GET',undefined,owner)

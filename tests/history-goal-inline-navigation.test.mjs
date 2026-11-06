@@ -12,7 +12,7 @@ test('history period detail opens inline and never goes through Today navigation
  assert.match(life,/:initial-period-key="period\.periodKey"/)
  assert.match(life,/:goals="\[historicalGoalDetail\.goal\]"/)
  assert.match(life,/historicalGoalDetail\?\.periodKey===period\.periodKey"/)
- assert.match(life,/v-if="isOwner&&historicalGoalDetail\?\.goal\.id===period\.goalId/)
+ assert.match(life,/v-if="historicalGoalDetail\?\.goal\.id===period\.goalId/)
  assert.match(life,/if\(kind==='goal'&&planScope\.value==='history'&&/)
  assert.match(life,/\['monthly','yearly'\]\.includes\(item\.goal_mode\)\)return/)
 })

@@ -7,7 +7,7 @@ import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
-const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;fixedPeriodKey?:string;initialCompletedPeriods?:string[]}>()
+const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;canAdjust?:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;fixedPeriodKey?:string;initialCompletedPeriods?:string[]}>()
 const emit=defineEmits<{completed:[completed:boolean,periodKey:string]}>()
 const available=ref(false),checked=ref(false),kind=ref<'trip'|'goal'>(props.embeddedKind||'trip'),target=ref(props.embeddedId||'')
 const start=ref(''),end=ref(''),entries=ref<Item[]>([]),links=ref<Item[]>([])
@@ -18,6 +18,7 @@ const visibleLinks=computed(()=>links.value.slice(0,linkedVisibleCount.value))
 const {toast,notify,clear:clearToast}=usePageToast()
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
+const canModify=computed(()=>props.owner||props.canAdjust===true)
 const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
 const adjustment=ref('0'),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
@@ -129,7 +130,7 @@ async function settleRecurringGoal(){
  finally{confirmBusy.value=false}
 }
 async function detect(){
-  if(!props.owner)return
+  if(!props.owner&&props.embeddedKind!=='goal')return
   try{
     const status=await api('/finance/status')
     available.value=!!status.connected;checked.value=true
@@ -275,7 +276,7 @@ onMounted(()=>{
 })
 </script>
 <template>
-  <section v-if="owner" class="finance-card">
+  <section v-if="owner||embeddedKind==='goal'" class="finance-card">
     <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行支出':'储值收支'):'记账本收支' }}</h2>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
@@ -310,7 +311,7 @@ onMounted(()=>{
           <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
         <label class="adjustment-label">调整额（日元，可为负数）
-          <input v-model="adjustment" type="number" step="1" inputmode="numeric" />
+          <input v-model="adjustment" type="number" step="1" inputmode="numeric" :disabled="!canModify" />
         </label>
         <div v-if="recurringGoal" class="fields">
           <div v-if="lockedPeriod" class="locked-period">
@@ -338,13 +339,13 @@ onMounted(()=>{
           <label>结束日期<DateField v-model="end" :min="start||undefined" /></label>
         </div>
         <div class="finance-actions">
-          <button type="button" :disabled="busy" @click="saveSettings">保存{{ recurringGoal?'本期':'' }}调整额{{ kind==='goal'&&!recurringGoal?'和期间':'' }}</button>
+          <button v-if="canModify" type="button" :disabled="busy" @click="saveSettings">保存{{ recurringGoal?'本期':'' }}调整额{{ kind==='goal'&&!recurringGoal?'和期间':'' }}</button>
           <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
             {{ netBusy?'读取中…':'刷新收支差额' }}
           </button>
           <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
         </div>
-        <div v-if="kind==='goal'" class="goal-completion-panel">
+        <div v-if="kind==='goal'&&owner" class="goal-completion-panel">
           <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="已确认达标" /></p>
           <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint"><StatusBadge code="not_started" label="储值计划尚未开始" /></p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"

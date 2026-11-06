@@ -202,7 +202,7 @@ function changePlanScope(value:'active'|'history'){
 }
 // Task history is independently paginated; the dashboard task snapshot is not an archive.
 const oneTimePlans=ref<Row[]>([])
-function linkedGoal(w:Row){return goals.value.find(g=>g.wish_id===w.id)}
+function linkedGoal(w:Row){return w.linkedGoal||goals.value.find(g=>g.wish_id===w.id)}
 function toggleFinance(kind:'goal'|'trip',id:string){
   financeDetail.value=financeDetail.value?.kind===kind&&financeDetail.value.id===id?null:{kind,id}
 }
@@ -317,7 +317,6 @@ function listPath(kind:string,cursor?:string|null){
   return '/'+(kind==='routines'&&planScope.value==='history'?'routines/period-history':kind)+'?'+q.toString()
 }
 async function toggleHistoricalGoalPeriod(period:GoalPeriodArchive){
-  if(!props.isOwner)return
   const key=period.goalId+'|'+period.periodKey
   if(historicalGoalDetail.value?.goal.id===period.goalId&&
       historicalGoalDetail.value.periodKey===period.periodKey){
@@ -536,7 +535,7 @@ async function focusExactPlan(requestId:number){
     }
     if(kind==='goal'){
       goalCompletionMarks.value=Array.isArray(response.completedPeriods)?response.completedPeriods:[]
-      if(props.isOwner)financeDetail.value={kind:'goal',id}
+      financeDetail.value={kind:'goal',id}
     }
     if(kind==='shopping'&&props.isOwner)ledgerPickerId.value=id
     if(kind==='trip'){
@@ -628,12 +627,16 @@ async function fetchMode(){
       const selected=planType.value
       const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
-      const goalArchivePath=props.isOwner&&planScope.value==='history'&&['all','goal'].includes(selected)?
+      const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
         historicalGoalPath():null
       const actionPath=planScope.value==='history'?skippedActionPath():null
-      const pages=await Promise.all([...paths.map(path=>api(path)),
+      // A failing category must not make every completed shared plan disappear.
+      // Display successful household-visible categories and surface a retry hint.
+      const results=await Promise.allSettled([...paths.map(path=>api(path)),
         ...(goalArchivePath?[api(goalArchivePath)]:[]),
         ...(actionPath?[api(actionPath)]:[])])
+      const pages=results.map(result=>result.status==='fulfilled'?result.value:{items:[],nextCursor:null})
+      const failed=results.filter(result=>result.status==='rejected').length
       if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
          paths.some((path,i)=>path!==listPath(kinds[i]))||
          (goalArchivePath!==null&&goalArchivePath!==historicalGoalPath()))return
@@ -646,6 +649,7 @@ async function fetchMode(){
       const actionIndex=kinds.length+(goalArchivePath?1:0)
       skippedTodayActions.value=actionPath?pages[actionIndex].items||[]:[]
       skippedActionCursor.value=actionPath?pages[actionIndex].nextCursor||null:null
+      if(failed)error.value='部分计划记录读取失败，请稍后重试或切换分类查看'
       await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
@@ -1162,7 +1166,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="wish-row-actions">
                   <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
                     type="button" class="life-link" @click="convertWish(w)">计划</button>
-                  <button v-if="canEdit(w)&&(w.status!=='cancelled'||!!linkedGoal(w))"
+                  <button v-if="(canEdit(w)&&w.status!=='cancelled')||!!linkedGoal(w)"
                     type="button" class="routine-more-trigger"
                     :aria-label="'更多操作：'+w.title"
                     :aria-expanded="expandedTaskMenu==='wish:'+w.id"
@@ -1173,16 +1177,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </div>
             </SwipeActions>
-            <div v-if="canEdit(w)&&expandedTaskMenu==='wish:'+w.id"
+            <div v-if="expandedTaskMenu==='wish:'+w.id"
               :id="'wish-actions-'+w.id"
               class="routine-inline-actions plan-action-strip" role="group" :aria-label="'操作：'+w.title"
               @keydown.esc.stop="expandedTaskMenu=null">
-              <button v-if="w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
+              <button v-if="canEdit(w)&&w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
                 type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
                 {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
               <button v-if="linkedGoal(w)" type="button" class="life-link"
                 @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
-              <button v-if="w.status==='completed'" type="button"
+              <button v-if="canEdit(w)&&w.status==='completed'" type="button"
                 class="life-link" :disabled="busy" @click="expandedTaskMenu=null;startPlanMemory('wish',w)">记录心愿回忆</button>
               <small v-if="linkedGoal(w)">储值达标后可完成心愿</small>
             </div>
@@ -1229,7 +1233,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   </small>
                   <small v-else><StatusBadge :code="period.status==='pending'?'verification_pending':period.status" /> · 金额未记录</small>
                 </div>
-                <button v-if="isOwner" type="button" class="life-link"
+                <button type="button" class="life-link"
                   :disabled="historicalGoalDetailLoading===period.goalId+'|'+period.periodKey"
                   @click="toggleHistoricalGoalPeriod(period)">
                   {{ historicalGoalDetailLoading===period.goalId+'|'+period.periodKey?'读取中…':
@@ -1237,10 +1241,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     '收起本期':'查看本期' }}
                 </button>
               </div>
-              <FinancePanel v-if="isOwner&&historicalGoalDetail?.goal.id===period.goalId&&
+              <FinancePanel v-if="historicalGoalDetail?.goal.id===period.goalId&&
                 historicalGoalDetail?.periodKey===period.periodKey"
                 :key="'historical-goal-'+period.goalId+'-'+period.periodKey"
-                :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner"
+                :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner" :can-adjust="canEdit(historicalGoalDetail.goal)"
                 embedded-kind="goal" :embedded-id="period.goalId"
                 :initial-period-key="period.periodKey" :fixed-period-key="period.periodKey"
                 @completed="goalFinished"/>
@@ -1267,7 +1271,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small v-if="g.start_on" class="goal-dates">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
                   <div class="goal-row-footer">
                     <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
-                    <button v-if="isOwner" type="button" class="goal-finance-action"
+                    <button type="button" class="goal-finance-action"
                       :aria-label="'查看“'+g.title+'”的账目与调整额'"
                       @click="toggleFinance('goal',g.id)">
                       账目与调整额 <span aria-hidden="true">›</span>
@@ -1278,8 +1282,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
-            <FinancePanel v-if="isOwner&&financeDetail?.kind==='goal'&&financeDetail.id===g.id"
-              :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner"
+            <FinancePanel v-if="financeDetail?.kind==='goal'&&financeDetail.id===g.id"
+              :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner" :can-adjust="canEdit(g)"
               embedded-kind="goal" :embedded-id="g.id"
               :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
               :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
