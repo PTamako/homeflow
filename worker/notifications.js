@@ -16,7 +16,11 @@ export async function saveNotification(db,item){
     (id,household_id,sender_user_id,recipient_user_id,kind,source_id,title,message,
       delivery_status,sent_devices,failed_devices,local_day,dedupe_key)
     VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
-    ON CONFLICT(recipient_user_id,local_day,dedupe_key) DO UPDATE SET
+    -- The first write reserves the inbox ID before Push is sent. A second write
+    -- with that same ID must update its sent/failed counts even when
+    -- dedupe_key is NULL (family messages and one-off task notifications).
+    -- Catch both primary-key and logical-dedupe conflicts without changing ID.
+    ON CONFLICT DO UPDATE SET
       sender_user_id=CASE WHEN ?14=1 THEN excluded.sender_user_id ELSE notification_inbox.sender_user_id END,
       title=CASE WHEN ?14=1 THEN excluded.title ELSE notification_inbox.title END,
       message=CASE WHEN ?14=1 THEN excluded.message ELSE notification_inbox.message END,
