@@ -53,7 +53,7 @@ export async function notificationsRoute(request,db,path,session){
     if(focus&&(view!=='received'||!UUID.test(focus)))return json({error:'invalid_input'},400)
     const [beforeAt,beforeId]=before?before.split('|'):[null,null]
     const column=view==='sent'?'n.sender_user_id':'n.recipient_user_id'
-    const select=`SELECT n.id,n.kind,n.source_id AS sourceId,n.title,n.message,
+    const select=`SELECT n.id,n.kind,n.source_id AS sourceId,n.dedupe_key AS dedupeKey,n.title,n.message,
        n.delivery_status AS deliveryStatus,n.sent_devices AS sentDevices,
        n.failed_devices AS failedDevices,n.created_at AS createdAt,
        n.read_at AS readAt,n.sender_user_id AS senderUserId,

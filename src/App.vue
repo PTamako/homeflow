@@ -20,7 +20,6 @@ type Task={id:string;title:string;notes:string;visibility:'private'|'household';
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
-type GoalReview={id:string;kind:'goal';title:string;periodKey:string;dueOn:string;pendingCount:number;reviewType:'pending'|'due_today'|'due_soon';targetAmount:number}
 type TodayPlan={id:string;kind:PlanKind;title:string;dueOn:string;done:boolean;overdue:boolean;destination?:string;periodKey?:string;tripEnded?:boolean;ledgerEntryId?:string|null}
 type TodayEntry={key:string;kind:TodayKind;title:string;done:boolean;task?:Task;routine?:Routine;plan?:TodayPlan}
 const todayKindLabels:Record<TodayKind,string>={task:'待办',routine:'定期',shopping:'购物',wish:'心愿',goal:'储值',trip:'旅行'}
@@ -28,7 +27,7 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={hiddenTodayKeys?:string[];goalReviews?:GoalReview[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([]),tasks=ref<Task[]>([])
 function memberName(id:string|null|undefined){
  if(!id)return '未指派'
@@ -39,7 +38,6 @@ const authReady=ref(false)
 const authFailure=ref('')
 const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
 const dismissedTodayKeys=ref<string[]>([])
-const goalReviews=ref<GoalReview[]>([])
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
 const todayVisibleCount=ref(listPageSize)
@@ -464,11 +462,6 @@ async function loadTodayPlans(){
   try{
     const result=await api('/plans/today?date='+encodeURIComponent(date))
     if(date===tokyoToday()&&user.value){
-      goalReviews.value=(result.goalReviews||[]).filter((x:any)=>x.kind==='goal').map((x:any)=>({
-        id:String(x.id),kind:'goal' as const,title:String(x.title),periodKey:String(x.periodKey),
-        dueOn:String(x.dueOn),pendingCount:Number(x.pendingCount)||0,
-        reviewType:x.reviewType as GoalReview['reviewType'],targetAmount:Number(x.targetAmount)||0
-      }))
       todayPlans.value=(result.items||[]).filter(x=>['shopping','wish','goal','trip'].includes(String(x.kind))).
         map((x):TodayPlan=>({
           id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
@@ -638,21 +631,6 @@ onBeforeUnmount(()=>{
           :user-id="user.id" :today-entry-keys="todayEntryKeys" :member-profiles="profiles" @unread-change="setUnreadNotificationCount"
           :focus-notification-id="notificationToOpen" :focus-request="notificationOpenRequest"
           @focus-handled="onNotificationFocused" @open-plan="(kind,id,periodKey,done)=>openPlans(kind,id,periodKey,done)" />
-        <section v-if="goalReviews.length" class="panel goal-review-notices" aria-label="储值重要提醒">
-          <div class="row-between"><b>重要提醒 · 储值计划</b></div>
-          <div v-for="review in goalReviews.slice(0,5)" :key="review.id" class="task-row">
-            <AppIcon name="wallet" :size="20"/>
-            <div class="task-detail">
-              <b>{{ review.title }} · {{ review.pendingCount>1?review.pendingCount+' 期待核验':review.periodKey+(review.pendingCount?' 待核验':' 即将到期') }}</b>
-              <small>{{ review.reviewType==='pending'?'已截止，等待账目核验':review.reviewType==='due_today'?'本期今日截止':'即将到期' }}
-                · {{ review.dueOn }} · 目标 ¥{{ review.targetAmount.toLocaleString('ja-JP') }}</small>
-            </div>
-            <button type="button" class="text-button today-plan-link" @click="openPlans('goal',review.id,review.periodKey)">
-              {{ review.pendingCount?'去核验':'查看' }}
-            </button>
-          </div>
-          <p v-if="goalReviews.length>5" class="hint">还有 {{ goalReviews.length-5 }} 项储值提醒，可在计划中查看。</p>
-        </section>
         <div class="section-title today-task-heading">
           <h2>今日待办</h2>
           <div class="today-task-actions">

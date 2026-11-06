@@ -1,5 +1,5 @@
 import {json,readBody,sha256} from './security.js'
-import {remindersRoute} from './reminders.js'
+import {remindersRoute,reminderDeliveryKey} from './reminders.js'
 import {jstNotificationDay,saveNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
@@ -315,19 +315,19 @@ export async function runPushSchedule(env,now=Date.now()){
     FROM household_members m JOIN users u ON u.id=m.user_id
     WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 20`).all()
   for(const member of members){
-    const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day),
+    const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
     if(!response.ok)continue
     const data=await response.json()
     remindersCache.set(member.user_id,data)
     for(const event of (data.items||[]).slice(0,100)){
-      const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
+      const key=reminderDeliveryKey(event)
       const logicalKey=member.user_id+':'+key
       const notificationId=await scheduledNotificationId(member.user_id,day,logicalKey)
       notificationIds.set(logicalKey,notificationId)
-      const message=event.kind==='anniversary'?'家庭重要日子提醒':
+      const message=event.message||(event.kind==='anniversary'?'家庭重要日子提醒':
         event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
-        event.kind==='routine'?'今天的定期事项':'待办事项到期'
+        event.kind==='routine'?'今天的定期事项':'待办事项到期')
       scheduledNotices.set(logicalKey,{
         id:notificationId,householdId:member.household_id,recipientId:member.user_id,
         kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
@@ -350,7 +350,7 @@ export async function runPushSchedule(env,now=Date.now()){
     if(quietAtHour(data.quietHours,hour))continue
     const events=(data.items||[]).slice(0,20)
     for(const event of events){
-      const key=[event.kind,event.id,event.dueOn,event.daysBefore??0].join(':')
+      const key=reminderDeliveryKey(event)
       const logicalKey=sub.user_id+':'+key
       if(!notificationIds.has(logicalKey))continue
       const notificationId=notificationIds.get(logicalKey)
@@ -372,9 +372,9 @@ export async function runPushSchedule(env,now=Date.now()){
         try{
           const res=await deliver(sub,env,{title:event.title.slice(0,80),
             priority:event.priority||'normal',
-            body:event.kind==='anniversary'?'家庭重要日子提醒':
+            body:event.message||(event.kind==='anniversary'?'家庭重要日子提醒':
               event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
-              event.kind==='routine'?'今天的定期事项':'待办事项到期',
+              event.kind==='routine'?'今天的定期事项':'待办事项到期'),
             url:['task','routine','shopping'].includes(event.kind)
               ?'/?taskType='+event.kind+'&taskId='+encodeURIComponent(event.id)+'&notificationId='+notificationId
               :'/?notificationId='+notificationId,

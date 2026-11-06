@@ -14,7 +14,7 @@ const tasks=[
 function fixture(deliveredKeys=[]){
   const batches=[]
   const db={
-    prepare(sql){return {bind(...args){return {sql,args}}}},
+    prepare(sql){return {bind(...args){return {sql,args,async all(){return {results:[]}}}}}},
     async batch(queries){
       batches.push(queries)
       const rows=Array.from({length:11},()=>({results:[]}))

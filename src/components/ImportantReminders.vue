@@ -5,12 +5,12 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 import {additionalReminders} from '../today-presentation.mjs'
 
-type Reminder={id:string;kind:string;title:string;dueOn:string;daysBefore?:number;priority?:'normal'|'important'}
+type Reminder={id:string;kind:string;title:string;dueOn:string;daysBefore?:number;priority?:'normal'|'important';periodKey?:string;stage?:string;message?:string}
 type ItemPreference={kind:string;id:string;advanceDays:number;priority:'normal'|'important'}
 type Snooze={id:string;kind:string;untilOn:string}
 const shiftDay=(day:string,n:number)=>new Date(Date.parse(day+'T00:00:00Z')+86400000*n).toISOString().slice(0,10)
 const props=withDefaults(defineProps<{todayDate:string;todayEntryKeys:string[];compact?:boolean;mode?:'full'|'list'|'settings'}>(),{compact:false,mode:'full'})
-const emit=defineEmits<{presenceChange:[hasReminders:boolean]}>()
+const emit=defineEmits<{presenceChange:[hasReminders:boolean];openPlan:[kind:string,id:string,periodKey:string,done:boolean]}>()
 const items=ref<Reminder[]>([])
 const lastLoadedAt=ref(0),loadedDate=ref('')
 const loading=ref(false)
@@ -192,8 +192,12 @@ onBeforeUnmount(()=>{requestId++})
         <span v-if="item.priority==='important'" class="reminder-priority">重要</span>
        </div>
        <time class="reminder-date" :datetime="item.dueOn">截止 {{ item.dueOn }}</time>
+       <small v-if="item.kind==='goal'&&item.message" class="reminder-message">{{ item.message }}</small>
       </div>
-      <div class="snooze-actions">
+      <div v-if="item.kind==='goal'" class="snooze-actions">
+       <button type="button" class="snooze-button" @click="emit('openPlan','goal',item.id,item.periodKey||'once',false)">去处理</button>
+      </div>
+      <div v-else class="snooze-actions">
        <button class="snooze-button" type="button" :disabled="snoozing"
         @click="snooze(item)">明天</button>
        <button class="snooze-button" type="button" :disabled="snoozing"
@@ -267,6 +271,7 @@ onBeforeUnmount(()=>{requestId++})
   padding:3px 7px;border-radius:6px;white-space:nowrap}
 .reminder-priority{color:#a25944;background:#fff2e9}
 .reminder-date{font-size:12px;color:#708378;white-space:nowrap}
+.reminder-message{color:#617f6a;font-size:11px;line-height:1.5}
 .snooze-button{font-size:12px;white-space:nowrap;background:#edf4ee;color:#3d7b5d;
   border:1px solid #d8e7da;border-radius:8px;padding:7px 11px;min-height:34px}
 .snooze-button:disabled{opacity:.5}

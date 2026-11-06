@@ -1,6 +1,12 @@
 import {json,validDate,readBody} from './security.js'
 import {daysBetween,dueOn,nextAnniversary} from './recurrence.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
+import {savingsReminders} from './savings-reminders.js'
+
+// Reuse exactly the same identity for Cron records and pending-list de-duplication.
+export const reminderDeliveryKey=event=>[event.kind,event.id,
+  ...(event.kind==='goal'?[event.periodKey,event.stage]:[]),
+  event.dueOn,event.daysBefore??0].join(':')
 const stringDate=d=>typeof d==='string'&&d.length===10&&validDate(d)
 const addDays=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10)
 const validLead=n=>[0,1,3,7].includes(n)
@@ -124,6 +130,7 @@ export async function remindersRoute(request,db,session) {
   const hid=session.household_id,u=session.user_id
   // Pending inbox is a display filter; the 06:00 scheduler must keep the complete list.
   const pendingOnly=url.searchParams.get('pending')==='1'
+  const includeGoals=pendingOnly||url.searchParams.get('goals')==='1'
   const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs,deliveredNotices]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) AND (assigned_to=?2 OR assigned_to IS NULL) LIMIT 200").bind(hid,u),
@@ -235,6 +242,34 @@ export async function remindersRoute(request,db,session) {
         title:trip.title+' · '+target.title,dueOn:target.date})
     }
   }
+  // The normal reminders/settings API keeps its existing query budget.
+  // Only Today's pending tab and the 06:00 scheduled pass include savings.
+  if(includeGoals){
+    const {results:goals=[]}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
+      FROM goals WHERE household_id=?1 AND deleted_at IS NULL
+      AND (visibility='household' OR created_by=?2)
+      AND (start_on IS NULL OR start_on<=?3)
+      AND (goal_mode IN ('monthly','yearly') OR (goal_mode='once' AND target_on=?3))
+      ORDER BY created_at DESC LIMIT 60`).bind(hid,u,date).all()
+    if(goals.length){
+      const ids=goals.map(x=>x.id)
+      const placeholders=ids.map((_,i)=>'?'+(i+2)).join(',')
+      const [settlements,marks]=await db.batch([
+        db.prepare(`SELECT goal_id,period_key,status,difference_amount,settled_at
+          FROM goal_period_settlements WHERE household_id=?1 AND goal_id IN (${placeholders})
+          ORDER BY period_key DESC LIMIT 1000`).bind(hid,...ids),
+        db.prepare(`SELECT plan_id,period_key FROM plan_completion_marks
+          WHERE household_id=?1 AND plan_type='goal' AND plan_id IN (${placeholders})
+          LIMIT 1000`).bind(hid,...ids)
+      ])
+      const goalNotices=savingsReminders(goals,date,
+        settlements.results||[],marks.results||[])
+      // Cron sends on configured dates; the pending UI retains ongoing alerts
+      // without creating a new phone push or unread record every day.
+      announcements.push(...(pendingOnly?goalNotices:
+        goalNotices.filter(event=>event.notifyToday!==false)))
+    }
+  }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
   const deliveredKeys=new Set((deliveredNotices?.results||[]).map(x=>x.dedupe_key))
   const pref=preference.results?.[0]||{}
@@ -245,5 +280,5 @@ export async function remindersRoute(request,db,session) {
     snoozed:(snoozes.results||[]).map(x=>({kind:x.kind,id:x.item_id,untilOn:x.until_on})),
     items:announcements.filter(x=>!suppressed.has(x.kind+':'+x.id)&&
       (!pendingOnly||!deliveredKeys.has('scheduled:'+
-        [x.kind,x.id,x.dueOn,x.daysBefore??0].join(':'))))})
+        reminderDeliveryKey(x))))})
 }

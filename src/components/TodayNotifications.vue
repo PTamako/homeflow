@@ -4,7 +4,7 @@ import AppIcon from './AppIcon.vue'
 import ImportantReminders from './ImportantReminders.vue'
 
 type Notice={
- id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;
+ id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;dedupeKey:string|null;
  title:string;message:string;deliveryStatus:'sent'|'partial'|'failed';
  sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
@@ -34,6 +34,14 @@ function detail(item:Notice){
 }
 // Resolve notification participants from the household's existing linked profiles.
 // Keep login emails out of the UI and avoid extra D1 queries for each notice.
+// The existing inbox kind CHECK stays unchanged. A goal notice is a system
+// notification whose server-generated identity embeds the exact goal/period.
+function savingsTarget(item:Notice){
+ if(item.kind!=='system'||!item.sourceId||!item.dedupeKey)return null
+ const match=/^scheduled:goal:([0-9a-f-]{36}):(once|\\d{4}(?:-\\d{2})?):(due|advance|pending|result):\\d{4}-\\d{2}-\\d{2}:\\d+$/.exec(item.dedupeKey)
+ if(!match||match[1]!==item.sourceId)return null
+ return {id:match[1],periodKey:match[2]}
+}
 function memberDisplayName(userId:string|null){
  if(!userId)return '系统提醒'
  const profile=props.memberProfiles.find(p=>p.memberUserId===userId)
@@ -104,6 +112,9 @@ async function open(item:Notice){
    const period=done&&item.kind==='routine'
      ?item.message.match(/ · (\d{4}-\d{2}-\d{2})$/)?.[1]||'':''
    emit('openPlan',item.kind,item.sourceId,period,done)
+ }else{
+   const goal=savingsTarget(item)
+   if(goal)emit('openPlan','goal',goal.id,goal.periodKey,false)
  }
 }
 async function showIncomingNotification(id:string){
@@ -157,7 +168,8 @@ defineExpose({refresh:()=>load(true)})
    </div>
    <div v-if="view==='pending'" class="notice-reminder-list">
     <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys"
-      compact mode="list" ref="pendingReminders" />
+      compact mode="list" ref="pendingReminders"
+      @open-plan="(kind,id,periodKey,done)=>emit('openPlan',kind,id,periodKey,done)" />
    </div>
    <template v-else>
    <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
@@ -179,8 +191,8 @@ defineExpose({refresh:()=>load(true)})
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
       <button v-if="view==='received'&&item.readAt"
         type="button" :disabled="!!reading" @click="markUnread(item)">标记未读</button>
-      <button v-if="item.sourceId&&['task','routine','shopping'].includes(item.kind)"
-        type="button" @click="open(item)">查看计划</button>
+      <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item))"
+        type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':'查看计划' }}</button>
      </div>
     </div>
    </div>
