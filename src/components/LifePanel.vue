@@ -14,6 +14,7 @@ import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
 import {uniquePlanRows} from '../plan-list-identity.mjs'
 import {sortPlanTasks} from '../plan-task-sort.mjs'
+import {activeSwipeId} from '../swipe-state'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
@@ -61,7 +62,11 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
  }catch(e){error.value=(e as Error).message}
  finally{pushBusyId.value=''}
 }
-function toggleTaskMenu(key:string){expandedTaskMenu.value=expandedTaskMenu.value===key?null:key}
+function toggleTaskMenu(key:string){
+ // A row never exposes both swipe edit/delete and the contextual menu.
+ activeSwipeId.value=''
+ expandedTaskMenu.value=expandedTaskMenu.value===key?null:key
+}
 function toggleReminderEditor(kind:ReminderKind,id:string){
  const old=reminderTarget.value
  reminderTarget.value=old?.kind===kind&&old.id===id?null:{kind,id}
@@ -77,6 +82,8 @@ function planRequestKinds(type:PlanType){
 }
 function selectPlanType(type:PlanType){
  if(type===planType.value)return
+ expandedTaskMenu.value=null
+ activeSwipeId.value=''
  planType.value=type
  if(type==='unscheduled')planScope.value='active'
  reminderTarget.value=null
@@ -1011,7 +1018,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </SwipeActions>
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
-                class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title">
+                class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title"
+                @keydown.esc.stop="expandedTaskMenu=null">
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
                 <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
                   :disabled="!!pushBusyId" @click="openTaskPush('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
@@ -1071,7 +1079,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
             </SwipeActions>
             <div v-if="expandedTaskMenu==='task:'+t.id" :id="'task-actions-'+t.id"
-              class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title">
+              class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title"
+              @keydown.esc.stop="expandedTaskMenu=null">
               <button v-if="planScope==='active'&&t.dueOn" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('task',t.id)">提醒设置</button>
               <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
@@ -1284,7 +1293,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </SwipeActions>
             <div v-if="expandedTaskMenu==='shopping:'+s.id" :id="'shopping-actions-'+s.id"
-              class="routine-inline-actions shopping-inline-actions" role="group" :aria-label="'操作：'+s.title">
+              class="routine-inline-actions shopping-inline-actions" role="group" :aria-label="'操作：'+s.title"
+              @keydown.esc.stop="expandedTaskMenu=null">
               <button v-if="planScope==='active'&&s.due_on" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('shopping',s.id)">提醒设置</button>
               <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
