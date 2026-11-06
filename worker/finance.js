@@ -158,6 +158,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
   if(path==='/api/finance/settings'&&request.method==='PUT'){
     const body=await readBody(request)
     const kind=body?.type,id=body?.targetId,amount=body?.adjustmentAmount
+    if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
     if(!owner&&(kind!=='goal'||item.created_by!==user))
@@ -191,6 +192,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
   }
   if(path==='/api/finance/settings'&&request.method==='GET'){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
+    if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
     if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
