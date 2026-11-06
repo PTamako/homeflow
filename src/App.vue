@@ -557,7 +557,7 @@ async function checkRemoteChanges(){
    if(user.value?.id!==id||tab.value!==currentTab)return
    profiles.value=family.profiles||[]
    members.value=family.members||[]
-   if(['plans','family','memories'].includes(currentTab)){
+   if(['today','plans','family','memories'].includes(currentTab)){
      const panel=lifePanelRef.value
      if(!panel||!(await panel.refreshForSync()))return
    }
