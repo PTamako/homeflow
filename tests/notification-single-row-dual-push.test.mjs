@@ -93,3 +93,28 @@ test('the 06:00 reminder and completion still create separate device Push events
  assert.match(webpush,/recordInInbox:true/)
  assert.match(webpush,/mergeCompletion:!!scheduled/)
 })
+
+test('family Push reconciles actual Apple delivery even with NULL dedupe key',async()=>{
+ const {sqlite,db}=setup()
+ try{
+  const base={id:REMINDER,householdId:'house',senderId:A,recipientId:B,
+    kind:'family',title:'家人消息',message:'辛苦了',localDay:day,
+    sentDevices:0,failedDevices:0}
+  // The inbox row is reserved before the two Apple devices are notified.
+  await saveNotification(db,base)
+  sqlite.prepare('UPDATE notification_inbox SET read_at=? WHERE id=?')
+    .run('2026-11-06 04:27:36',REMINDER)
+  // The same ID is reused after the push service returns 201.
+  // A NULL dedupe key must not make the primary-key conflict fail.
+  await saveNotification(db,{...base,sentDevices:2,failedDevices:0})
+  const rows=sqlite.prepare(`SELECT id,sent_devices,failed_devices,delivery_status,
+    read_at,dedupe_key FROM notification_inbox`).all()
+  assert.equal(rows.length,1)
+  assert.equal(rows[0].id,REMINDER)
+  assert.equal(rows[0].sent_devices,2)
+  assert.equal(rows[0].failed_devices,0)
+  assert.equal(rows[0].delivery_status,'sent')
+  assert.equal(rows[0].read_at,'2026-11-06 04:27:36')
+  assert.equal(rows[0].dedupe_key,null)
+ }finally{sqlite.close()}
+})
