@@ -337,6 +337,21 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       const page=await listPage(db,table,session,filters)
       if(table==='routines'&&filters.scope==='active')
         page.items=await enrichRoutineList(db,page.items)
+      if(table==='wishes'&&page.items.length){
+        // A wish and its linked savings goal can live in opposite status tabs
+        // or on different five-row pages. Resolve associations independently
+        // of the currently loaded goals list, respecting both visibility ACLs.
+        const placeholders=page.items.map((_,i)=>'?'+(i+3)).join(',')
+        const {results:related}=await db.prepare(`SELECT * FROM goals
+          WHERE household_id=?1 AND deleted_at IS NULL
+            AND (visibility='household' OR created_by=?2)
+            AND wish_id IN (${placeholders})
+          ORDER BY created_at DESC LIMIT 150`)
+          .bind(session.household_id,session.user_id,...page.items.map(w=>w.id)).all()
+        const byWish=new Map()
+        for(const goal of related||[])if(!byWish.has(goal.wish_id))byWish.set(goal.wish_id,goal)
+        page.items=page.items.map(w=>({...w,linkedGoal:byWish.get(w.id)||null}))
+      }
       return json(page)
     }
     const items=await view(db,table,session)
