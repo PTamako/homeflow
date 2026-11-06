@@ -512,20 +512,9 @@ async function postponeToday(row:TodayEntry){
      on:date,action:'postponed',to:postponeOn.value})
    postponeKey.value=''
    await reloadToday()
-   notify('已手动顺延至 '+postponeOn.value)
+   notify('已延期至 '+postponeOn.value)
  }catch(e){error.value=(e as Error).message}
  finally{todayActionBusy.value=false}
-}
-// Today's red action hides only this displayed occurrence, never the source plan.
-// One-off overdue tasks may appear again tomorrow; completed marks and pet care stay intact.
-async function dismissToday(row:TodayEntry){
-  if(!confirm('仅从今天移除这条明细？原计划和完成记录会保留；未完成事项明天可能重新出现。'))return
-  try{
-    const date=tokyoToday()
-    await api('/tasks/today/dismiss','POST',{date,itemKey:row.key})
-    if(date===tokyoToday())dismissedTodayKeys.value=[...new Set([...dismissedTodayKeys.value,row.key])]
-    notify('已从今天移除，原计划保留')
-  }catch(e){error.value=(e as Error).message}
 }
 async function toggleRoutine(r:Routine){
   if(routineBusy.value)return
@@ -702,8 +691,9 @@ onBeforeUnmount(()=>{
           <div v-if="!unifiedToday.length" class="empty">{{ todayCategory==='all'?'今天没有待办':'暂无事项' }}</div>
           <template v-for="row in visibleToday" :key="row.key">
             <SwipeActions :id="row.key" scope="today-unified"
-              :allow-edit="false" :allow-delete="true" delete-label="从今天移除"
-              @delete="dismissToday(row)">
+              :allow-edit="!row.done&&!row.routine" :allow-delete="!row.done"
+              edit-label="延期" delete-label="跳过"
+              @edit="openPostpone(row)" @delete="skipToday(row)">
               <div class="task-row today-unified-row">
                 <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
                   :disabled="!!row.routine&&routineBusy"
@@ -742,18 +732,12 @@ onBeforeUnmount(()=>{
                   @click="row.task?openPlans('task',row.task.id,'',row.done):row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
                   {{ row.done?'查看计划':'去处理' }}</button>
               </div>
-              <div v-if="!row.done" class="today-decision-actions">
-                <button v-if="!row.routine" type="button" class="outline" :disabled="todayActionBusy"
-                  @click="openPostpone(row)">顺延</button>
-                <button type="button" class="outline" :disabled="todayActionBusy"
-                  @click="skipToday(row)">跳过</button>
-              </div>
               <form v-if="!row.done&&!row.routine&&postponeKey===row.key"
                 class="today-postpone-form" @submit.prevent="postponeToday(row)">
-                <label>顺延到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
+                <label>延期到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
                 <div class="today-decision-actions">
                   <button type="button" class="outline" @click="postponeKey=''">取消</button>
-                  <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认顺延</button>
+                  <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认延期</button>
                 </div>
               </form>
             </SwipeActions>
