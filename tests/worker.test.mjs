@@ -7,7 +7,9 @@ function environment(name='preview',database='homeflow-preview',migration='0028_
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},
-      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,action_index_ready:1}:null,
+      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
+         required_migration_ready:migration==='0028_explicit_today_actions.sql'?1:0,
+         action_index_ready:1}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -28,7 +30,7 @@ test('health rejects a missing physical Today index even with a current migratio
   const env=environment()
   env.DB.prepare=()=>({first:async()=>({
    database_name:'homeflow-preview',latest_migration:'0028_explicit_today_actions.sql',
-   action_index_ready:0})})
+   required_migration_ready:1,action_index_ready:0})})
   assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
@@ -90,4 +92,12 @@ test('date validation does not accept rolled over dates',()=>{
   assert.equal(validDate('2027-02-29'),false)
   assert.equal(validDate('2027-13-01'),false)
   assert.equal(validDate(null),true)
+})
+
+test('future migration must not break identity health if required schema remains intact',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({
+  database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
+  required_migration_ready:1,action_index_ready:1})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
 })
