@@ -19,7 +19,7 @@ function setup(){
   title TEXT NOT NULL,message TEXT NOT NULL,delivery_status TEXT NOT NULL,
   sent_devices INTEGER NOT NULL DEFAULT 0,failed_devices INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,local_day TEXT NOT NULL,
-  read_at TEXT,dedupe_key TEXT,
+  read_at TEXT,dedupe_key TEXT,last_completion_key TEXT,
   UNIQUE(recipient_user_id,local_day,dedupe_key))`)
  const db={prepare(sql){
   const statement=sqlite.prepare(sql)
@@ -31,7 +31,7 @@ function setup(){
  return {sqlite,db}
 }
 
-test('two distinct Push events occupy one daily inbox record without changing read/unread',async()=>{
+test('newly merged completion reopens already-read reminder without splitting the inbox row',async()=>{
  const {sqlite,db}=setup()
  try{
   const key='scheduled:routine:'+TASK+':'+day+':0'
@@ -50,14 +50,28 @@ test('two distinct Push events occupy one daily inbox record without changing re
   // inbox dedupe key. The original deep link remains valid.
   await saveNotification(db,{...base,id:COMPLETION,senderId:A,
     title:'喂咕噜酱 · 已完成',message:'已完成 · 鸡毛大王 · '+day,
-    sentDevices:1,failedDevices:0,mergeCompletion:true})
+    sentDevices:1,failedDevices:0,mergeCompletion:true,
+    completionKey:'complete:routine:'+TASK+':2026-11-06T08:43:21.000Z',
+    unreadOnCompletion:true})
   const rows=sqlite.prepare('SELECT * FROM notification_inbox').all()
   assert.equal(rows.length,1)
   assert.equal(rows[0].id,REMINDER)
   assert.equal(rows[0].title,'喂咕噜酱 · 已完成')
   assert.equal(rows[0].message,'已完成 · 鸡毛大王 · '+day)
   assert.equal(rows[0].sender_user_id,A)
-  assert.equal(rows[0].read_at,'2026-11-06 00:10:00')
+  assert.equal(rows[0].read_at,null,'a new completion is unread for the recipient')
+  assert.equal(rows[0].last_completion_key,'complete:routine:'+TASK+':2026-11-06T08:43:21.000Z')
+  // The recipient now reads the completion; a retry for that same event
+  // must preserve the new read state rather than producing another red dot.
+  sqlite.prepare('UPDATE notification_inbox SET read_at=? WHERE id=?')
+    .run('2026-11-06 08:44:00',REMINDER)
+  await saveNotification(db,{...base,id:COMPLETION,senderId:A,
+    title:'喂咕噜酱 · 已完成',message:'已完成 · 鸡毛大王 · '+day,
+    sentDevices:2,failedDevices:0,mergeCompletion:true,
+    completionKey:'complete:routine:'+TASK+':2026-11-06T08:43:21.000Z',
+    unreadOnCompletion:true})
+  assert.equal(sqlite.prepare('SELECT read_at FROM notification_inbox').get().read_at,
+    '2026-11-06 08:44:00','same completion reconciliation must not reopen')
   // Cron replay must never revert completion or mark the message read.
   await saveNotification(db,{...base,id:REMINDER,senderId:null,
     title:'喂咕噜酱',message:'今天的定期事项',
@@ -65,6 +79,16 @@ test('two distinct Push events occupy one daily inbox record without changing re
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS c FROM notification_inbox').get().c,1)
   assert.equal(sqlite.prepare('SELECT message FROM notification_inbox').get().message,
     '已完成 · 鸡毛大王 · '+day)
+  assert.equal(sqlite.prepare('SELECT read_at FROM notification_inbox').get().read_at,
+    '2026-11-06 08:44:00','the morning reminder retry must not change completion read state')
+  // A different later completion is genuinely new information, even if
+  // the title/message happens to match the earlier completion.
+  await saveNotification(db,{...base,id:COMPLETION,senderId:A,
+    title:'喂咕噜酱 · 已完成',message:'已完成 · 鸡毛大王 · '+day,
+    sentDevices:1,failedDevices:0,mergeCompletion:true,
+    completionKey:'complete:routine:'+TASK+':2026-11-06T09:30:00.000Z',
+    unreadOnCompletion:true})
+  assert.equal(sqlite.prepare('SELECT read_at FROM notification_inbox').get().read_at,null)
  }finally{sqlite.close()}
 })
 
@@ -91,7 +115,7 @@ test('the 06:00 reminder and completion still create separate device Push events
  assert.match(webpush,/tag:'homeflow-done-'\+event\.kind/)
  assert.match(webpush,/const notificationId=scheduled\?\.id\|\|receiptId/)
  assert.match(webpush,/recordInInbox:true/)
- assert.match(webpush,/mergeCompletion:!!scheduled/)
+ assert.match(webpush,/mergeCompletion:!!scheduled,completionKey,unreadOnCompletion:true/)
 })
 
 test('family Push reconciles actual Apple delivery even with NULL dedupe key',async()=>{
@@ -116,5 +140,25 @@ test('family Push reconciles actual Apple delivery even with NULL dedupe key',as
   assert.equal(rows[0].delivery_status,'sent')
   assert.equal(rows[0].read_at,'2026-11-06 04:27:36')
   assert.equal(rows[0].dedupe_key,null)
+ }finally{sqlite.close()}
+})
+
+test('the completing person retains prior read status because self completion is silent',async()=>{
+ const {sqlite,db}=setup()
+ try{
+  const key='scheduled:routine:'+TASK+':'+day+':0'
+  const base={householdId:'house',recipientId:A,kind:'routine',sourceId:TASK,
+    localDay:day,dedupeKey:key}
+  await saveNotification(db,{...base,id:REMINDER,title:'资源垃圾',
+    sentDevices:1,failedDevices:0})
+  sqlite.prepare('UPDATE notification_inbox SET read_at=? WHERE id=?')
+    .run('2026-11-06 00:12:00',REMINDER)
+  await saveNotification(db,{...base,id:COMPLETION,title:'资源垃圾 · 已完成',
+    sentDevices:0,failedDevices:0,mergeCompletion:true,
+    completionKey:'complete:routine:'+TASK+':2026-11-06T08:43:21Z',
+    unreadOnCompletion:false})
+  const row=sqlite.prepare('SELECT read_at,last_completion_key FROM notification_inbox').get()
+  assert.equal(row.read_at,'2026-11-06 00:12:00')
+  assert.match(row.last_completion_key,/^complete:routine:/)
  }finally{sqlite.close()}
 })

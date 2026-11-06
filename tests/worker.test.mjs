@@ -9,7 +9,7 @@ function environment(name='preview',database='homeflow-preview',migration='0028_
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
          required_migration_ready:migration==='0028_explicit_today_actions.sql'?1:0,
-         action_index_ready:1,sync_table_ready:1,member_sync_ready:1}:null,
+         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -30,7 +30,7 @@ test('health rejects a missing physical Today index even with a current migratio
   const env=environment()
   env.DB.prepare=()=>({first:async()=>({
    database_name:'homeflow-preview',latest_migration:'0028_explicit_today_actions.sql',
-   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1})})
+   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1})})
   assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
@@ -98,6 +98,6 @@ test('future migration must not break identity health if required schema remains
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
-  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1})})
+  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
 })
