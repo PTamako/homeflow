@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import './style.css'
+import './ui-system.css'
 
 // Only the installed HomeFlow PWA locks layout zoom. Ordinary Safari retains
 // pinch-to-zoom and iOS accessibility gestures for readable web content.
