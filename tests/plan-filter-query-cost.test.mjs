@@ -44,3 +44,12 @@ test('Today completion marks are split by plan type to use compound D1 indexes',
  assert.match(source,/const markCount=Number\(!!goalIds.length\)\+Number\(!!wishIds.length\)/)
  assert.doesNotMatch(source,/FROM plan_completion_marks WHERE household_id=\?1 AND \(\$\{where\.join/)
 })
+
+
+test('history filter requests the right route, isolates categories and hides stale rows',()=>{
+ assert.match(source,/return '\/plans\/action-history\?'\+q\.toString\(\)/)
+ assert.doesNotMatch(source,/return '\/api\/plans\/action-history\?'\+q\.toString\(\)/)
+ assert.match(source,/if\(\['shopping','wish','goal','trip'\]\.includes\(planType\.value\)\)q\.set\('kind',planType\.value\)/)
+ assert.match(source,/items\.value=\[\];other\.value=\[\];goals\.value=\[\];trips\.value=\[\]/)
+ assert.match(source,/<p v-if="listLoading" class="life-caption" role="status">正在读取计划…<\/p>/)
+})

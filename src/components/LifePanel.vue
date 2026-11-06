@@ -167,9 +167,10 @@ type SkippedTodayAction={kind:'task'|'shopping'|'wish'|'goal'|'trip';id:string;t
 const skippedTodayActions=ref<SkippedTodayAction[]>([]),skippedActionCursor=ref<string|null>(null),skippedActionBusy=ref(false)
 function skippedActionPath(cursor?:string|null){
  const q=new URLSearchParams({limit:'5'})
+ if(['shopping','wish','goal','trip'].includes(planType.value))q.set('kind',planType.value)
  if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
  if(cursor)q.set('cursor',cursor)
- return '/api/plans/action-history?'+q.toString()
+ return '/plans/action-history?'+q.toString()
 }
 async function loadMoreSkippedActions(){
  if(!skippedActionCursor.value||skippedActionBusy.value)return
@@ -582,6 +583,13 @@ async function fetchMode(){
   error.value=''
   focusError.value=''
   listLoading.value=true
+  if(currentMode==='plans'){
+    // Never show rows or pagination from the previous category/scope on a failed request.
+    items.value=[];other.value=[];goals.value=[];trips.value=[]
+    routines.value=[];oneTimePlans.value=[];listCursors.value={}
+    historicalGoalPeriods.value=[];historicalGoalCursor.value=null
+    skippedTodayActions.value=[];skippedActionCursor.value=null
+  }
   if(currentMode==='memories'){
     items.value=[]
     photos.value={};cloudPhotos.value={};localPhotoBlobs.value={}
@@ -934,7 +942,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
       </div>
       </div>
-      <div class="life-grid">
+      <p v-if="listLoading" class="life-caption" role="status">正在读取计划…</p>
+      <div v-else class="life-grid">
         <section v-if="planScope==='history'&&(skippedTodayActions.length||skippedActionCursor)"
           class="life-card skipped-action-history">
           <h2 class="life-heading"><AppIcon name="archive" :size="20"/> 跳过记录</h2>

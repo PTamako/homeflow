@@ -92,6 +92,8 @@ async function handleHistory(request,db,session){
    !/^\w{3,8}:[a-f0-9-]{36}:\d{4}-\d{2}-\d{2}$/i.test(rest)))
    return json({error:'invalid_cursor'},400)
  const year=url.searchParams.get('year')||'',month=url.searchParams.get('month')||''
+ const kind=url.searchParams.get('kind')||''
+ if(kind&&!Object.hasOwn(kinds,kind))return json({error:'invalid_filter'},400)
  if((year&&!/^20[0-9]{2}$/.test(year))||(month&&(!year||!/^(0[1-9]|1[0-2])$/.test(month))))
    return json({error:'invalid_filter'},400)
  const h=session.household_id,u=session.user_id
@@ -111,6 +113,8 @@ async function handleHistory(request,db,session){
    rangeSql='AND a.original_on>=?'+(args.length+1)+' AND a.original_on<?'+(args.length+2)
    args.push(start,end)
  }
+ const kindSql=kind?`AND a.kind=?${args.length+1}`:''
+ if(kind)args.push(kind)
  const cursorSql=raw?`AND (a.acted_at<?${args.length+1} OR
    (a.acted_at=?${args.length+2} AND
    (a.kind||':'||a.source_id||':'||a.original_on)<?${args.length+3}))`:''
@@ -121,7 +125,7 @@ async function handleHistory(request,db,session){
    a.acted_at AS actedAt
    FROM today_plan_actions a WHERE a.household_id=?1
    AND a.action='skipped' AND (${parts.join(' OR ')})
-   ${rangeSql} ${cursorSql} ORDER BY a.acted_at DESC,
+   ${rangeSql} ${kindSql} ${cursorSql} ORDER BY a.acted_at DESC,
      (a.kind||':'||a.source_id||':'||a.original_on) DESC LIMIT ?${args.length}`)
    .bind(...args).all()
  const rows=results||[],items=rows.slice(0,limit),last=items.at(-1)
