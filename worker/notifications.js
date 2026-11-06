@@ -14,8 +14,8 @@ export async function saveNotification(db,item){
     ?(item.failedDevices>0?'partial':'sent'):'failed'
   await db.prepare(`INSERT INTO notification_inbox
     (id,household_id,sender_user_id,recipient_user_id,kind,source_id,title,message,
-      delivery_status,sent_devices,failed_devices,local_day,dedupe_key)
-    VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+      delivery_status,sent_devices,failed_devices,local_day,dedupe_key,last_completion_key)
+    VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15)
     -- The first write reserves the inbox ID before Push is sent. A second write
     -- with that same ID must update its sent/failed counts even when
     -- dedupe_key is NULL (family messages and one-off task notifications).
@@ -24,7 +24,16 @@ export async function saveNotification(db,item){
       sender_user_id=CASE WHEN ?14=1 THEN excluded.sender_user_id ELSE notification_inbox.sender_user_id END,
       title=CASE WHEN ?14=1 THEN excluded.title ELSE notification_inbox.title END,
       message=CASE WHEN ?14=1 THEN excluded.message ELSE notification_inbox.message END,
-      created_at=CASE WHEN ?14=1 THEN CURRENT_TIMESTAMP ELSE notification_inbox.created_at END,
+      created_at=CASE WHEN ?14=1 AND ?15 IS NOT NULL AND
+        COALESCE(notification_inbox.last_completion_key,'')<>?15
+        THEN CURRENT_TIMESTAMP ELSE notification_inbox.created_at END,
+      -- A NEW completion in the same inbox row is unread for its recipient.
+      -- Reconciliation for the SAME completion key cannot clear read_at again.
+      read_at=CASE WHEN ?14=1 AND ?16=1 AND ?15 IS NOT NULL AND
+        COALESCE(notification_inbox.last_completion_key,'')<>?15
+        THEN NULL ELSE notification_inbox.read_at END,
+      last_completion_key=CASE WHEN ?14=1 AND ?15 IS NOT NULL
+        THEN ?15 ELSE notification_inbox.last_completion_key END,
       delivery_status=CASE WHEN notification_inbox.sent_devices>0 AND excluded.sent_devices=0
         THEN notification_inbox.delivery_status ELSE excluded.delivery_status END,
       sent_devices=MAX(notification_inbox.sent_devices,excluded.sent_devices),
@@ -32,7 +41,8 @@ export async function saveNotification(db,item){
     .bind(item.id,item.householdId,item.senderId||null,item.recipientId,
       item.kind,item.sourceId||null,String(item.title||'').slice(0,90),
       String(item.message||'').slice(0,160),status,
-      item.sentDevices||0,item.failedDevices||0,day,item.dedupeKey||null,item.mergeCompletion?1:0).run()
+      item.sentDevices||0,item.failedDevices||0,day,item.dedupeKey||null,
+      item.mergeCompletion?1:0,item.completionKey||null,item.unreadOnCompletion?1:0).run()
 }
 
 // Find this recipient's scheduled reminder for the same task occurrence. A
