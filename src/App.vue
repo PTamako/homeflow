@@ -36,10 +36,15 @@ function memberName(id:string|null|undefined){
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
 const authFailure=ref('')
-const todayRoutines=ref<Routine[]>([]),todayPlans=ref<TodayPlan[]>([])
+const todayRows=ref<TodayEntry[]>([])
+const todayNextCursor=ref<string|null>(null)
+const todayTotal=ref(0),todayCompleted=ref(0)
+const todayAvailableKinds=ref<TodayKind[]>([])
+const todayEntryKeys=ref<string[]>([])
+const todayMoreBusy=ref(false)
+let todayPageGeneration=0
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
-const todayVisibleCount=ref(listPageSize)
 const pendingVisibleCount=ref(listPageSize)
 const peopleVisibleCount=ref(listPageSize)
 const petsVisibleCount=ref(listPageSize)
@@ -225,42 +230,15 @@ function tokyoDate(timestamp:string){
  return Number.isFinite(n)?new Date(n+9*3600000).toISOString().slice(0,10):''
 }
 const currentJstDay=ref(tokyoToday())
-const visibleTasks=computed(()=>tasks.value.filter(t=>{
- const now=currentJstDay.value
- return t.completedAt?tokyoDate(t.completedAt)===now:
-   !!t.dueOn&&t.dueOn<=now
-}))
-const allToday=computed<TodayEntry[]>(()=>{
-  const standard:TodayEntry[]=visibleTasks.value.map(task=>({
-    key:'task:'+task.id,kind:'task',title:task.title,done:!!task.completedAt,task
-  }))
-  const recurring:TodayEntry[]=todayRoutines.value.map(routine=>({
-    key:'routine:'+routine.id+':'+(routine.occurrenceOn||''),kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine
-  }))
-  // All plan types use one visual list, while retaining each source's own
-  // completion, privacy and recurrence rules.
-  const plans:TodayEntry[]=todayPlans.value.map(plan=>({
-    key:'plan:'+plan.kind+':'+plan.id+(plan.periodKey?':'+plan.periodKey:''),kind:plan.kind,
-    title:plan.title,done:plan.done,plan
-  }))
-  // Sort the merged list as ONE timeline, not by each source's original result order.
-  // Tasks and overdue routine periods retain their original scheduled due dates.
-  const dueOn=(row:TodayEntry)=>row.task?.dueOn||row.routine?.currentPeriodOn||
-    row.routine?.occurrenceOn||row.plan?.dueOn||'9999-12-31'
-  return [...standard,...recurring,...plans]
-    .sort((a,b)=>Number(a.done)-Number(b.done)||
-      dueOn(a).localeCompare(dueOn(b))||a.key.localeCompare(b.key))
-})
-const todayEntryKeys=computed(()=>allToday.value.map(row=>row.key))
+const allToday=computed(()=>todayRows.value)
 const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
-  category.id==='all'||allToday.value.some(row=>row.kind===category.id)))
-const unifiedToday=computed(()=>todayCategory.value==='all'?allToday.value:
-  allToday.value.filter(row=>row.kind===todayCategory.value))
+  category.id==='all'||todayAvailableKinds.value.includes(category.id as TodayKind)))
 watch(visibleTodayCategories,categories=>{
   if(!categories.some(category=>category.id===todayCategory.value))todayCategory.value='all'
 })
-const completedTodayCount=computed(()=>unifiedToday.value.filter(row=>row.done).length)
-const visibleToday=computed(()=>unifiedToday.value.slice(0,todayVisibleCount.value))
+const unifiedToday=computed(()=>allToday.value)
+const completedTodayCount=computed(()=>todayCompleted.value)
+const visibleToday=computed(()=>unifiedToday.value)
 const visiblePendingTasks=computed(()=>pendingTasks.value.slice(0,pendingVisibleCount.value))
 function recurringLabel(r:Routine){
   let c:any={}
@@ -298,7 +276,7 @@ const nameForProfile=(id:string|null|undefined)=>profiles.value.find(p=>p.id===i
 const people=computed(()=>profiles.value.filter(p=>p.type==='person').sort(profileUrgency))
 const visiblePeople=computed(()=>people.value.slice(0,peopleVisibleCount.value))
 const visiblePets=computed(()=>pets.value.slice(0,petsVisibleCount.value))
-watch([todayCategory,currentJstDay],()=>{todayVisibleCount.value=listPageSize})
+watch(todayCategory,()=>{if(user.value&&tab.value==='today')void loadTodayPage(true)})
 function togglePet(id:string){openPetId.value=openPetId.value===id?null:id}
 function canEditProfile(p:Profile){return user.value?.role==='owner'||p.memberUserId===user.value?.id}
 function toggleProfileEdit(id:string){editProfileId.value=editProfileId.value===id?null:id}
@@ -435,7 +413,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRoutines.value=[];todayPlans.value=[];pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];members.value=[];tasks.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];pendingTasks.value=[];await refresh()
 }
 function todayTasksUrl(){
  const date=tokyoToday()
@@ -448,33 +426,36 @@ async function loadTasks(){
    tasks.value=result.tasks||[]
  }
 }
-async function loadTodayRoutines(){
-  if(!user.value)return
-  const date=tokyoToday()
-  try{
-    const result=await api('/routines/today?date='+encodeURIComponent(date))
-    // An old response must not replace the list after midnight in Japan.
-    if(date===tokyoToday()&&user.value)todayRoutines.value=result.items||[]
-  }catch(e){error.value=(e as Error).message}
+async function loadTodayPage(reset=true){
+ if(!user.value||(!reset&&(!todayNextCursor.value||todayMoreBusy.value)))return
+ const date=tokyoToday(),category=todayCategory.value,userId=user.value.id
+ const generation=reset?++todayPageGeneration:todayPageGeneration
+ const cursor=reset?'':todayNextCursor.value||''
+ if(!reset)todayMoreBusy.value=true
+ try{
+   const params=new URLSearchParams({date,category,limit:String(listPageSize)})
+   if(cursor)params.set('cursor',cursor)
+   const data=await api('/today/page?'+params.toString())
+   if(generation!==todayPageGeneration||user.value?.id!==userId||
+      date!==tokyoToday()||category!==todayCategory.value)return
+   const items=(data.items||[]) as TodayEntry[]
+   if(reset)todayRows.value=items
+   else{
+     const seen=new Set(todayRows.value.map(row=>row.key))
+     todayRows.value=[...todayRows.value,...items.filter(row=>!seen.has(row.key))]
+   }
+   todayNextCursor.value=data.nextCursor||null
+   todayTotal.value=Number(data.total)||0
+   todayCompleted.value=Number(data.completed)||0
+   todayAvailableKinds.value=(data.categories||[]) as TodayKind[]
+   todayEntryKeys.value=data.entryKeys||[]
+ }catch(e){
+   if(generation===todayPageGeneration)error.value=(e as Error).message
+ }finally{
+   if(generation===todayPageGeneration)todayMoreBusy.value=false
+ }
 }
-async function loadTodayPlans(){
-  if(!user.value)return
-  const date=tokyoToday()
-  try{
-    const result=await api('/plans/today?date='+encodeURIComponent(date))
-    if(date===tokyoToday()&&user.value){
-      todayPlans.value=(result.items||[]).filter(x=>['shopping','wish','goal','trip'].includes(String(x.kind))).
-        map((x):TodayPlan=>({
-          id:String(x.id),kind:x.kind as PlanKind,title:String(x.title||''),
-          dueOn:String(x.dueOn||''),done:!!x.done,overdue:!!x.overdue,
-          destination:typeof x.destination==='string'?x.destination:undefined,
-          periodKey:typeof x.periodKey==='string'?x.periodKey:undefined,tripEnded:!!x.tripEnded,
-          ledgerEntryId:typeof x.ledgerEntryId==='string'?x.ledgerEntryId:null
-        }))
-    }
-  }catch(e){error.value=(e as Error).message}
-}
-async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
+async function reloadToday(){await Promise.all([loadTasks(),loadTodayPage(true)])}
 const postponeKey=ref(''),postponeOn=ref(''),todayActionBusy=ref(false)
 const tomorrowJst=()=>new Date(Date.parse(tokyoToday()+'T00:00:00Z')+86400000).toISOString().slice(0,10)
 function openPostpone(row:TodayEntry){
@@ -523,7 +504,7 @@ async function toggleRoutine(r:Routine){
   try{
     const status=r.mark?.completed_at?'open':'completed'
     await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),periodOn:r.occurrenceOn||r.currentPeriodOn,recordOn:r.recordOn||undefined,status})
-    await loadTodayRoutines()
+    await loadTodayPage(true)
     notify(status==='completed'?'定期事项已完成':'已撤销完成')
   }catch(e){error.value=(e as Error).message}
   finally{routineBusy.value=false}
@@ -533,7 +514,7 @@ async function flushTasks(){
   try{
     const result=await syncPending(user.value.id)
     pendingTasks.value=await listPending(user.value.id)
-    if(result.synced){syncMessage.value='';await loadTasks();if(tab.value==='today')notify('已同步 '+result.synced+' 项任务')}
+    if(result.synced){syncMessage.value='';await loadTasks();if(tab.value==='today'){await loadTodayPage(true);notify('已同步 '+result.synced+' 项任务')}}
     if(result.conflicts)syncMessage.value='发现 '+result.conflicts+' 项版本冲突，请取消本机草稿并重新编辑'
   }catch(e){syncMessage.value=(e as Error).message}
 }
@@ -557,7 +538,7 @@ function onForeground(){
 }
 async function toggleTask(t:Task){
   try{
-    await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTasks()
+    await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await Promise.all([loadTasks(),loadTodayPage(true)])
     notify(t.completedAt?'已撤销完成':'任务已完成')
   }catch(e){error.value=(e as Error).message}
 }
@@ -574,8 +555,7 @@ watch(tab,value=>{
   clearToast()
   if(value==='today'){
     if(!returningToToday){
-      todayVisibleCount.value=listPageSize
-      pendingVisibleCount.value=listPageSize
+            pendingVisibleCount.value=listPageSize
       todayCategory.value='all'
       if(user.value)void reloadToday()
     }
@@ -666,7 +646,7 @@ onBeforeUnmount(()=>{
         <div class="section-title today-task-heading">
           <h2>今日待办</h2>
           <div class="today-task-actions">
-            <span>{{ completedTodayCount }} / {{ unifiedToday.length }} 完成</span>
+            <span>{{ completedTodayCount }} / {{ todayTotal }} 完成</span>
             <button type="button" class="outline today-add-button" @click="openNewTaskInPlans">＋ 新增待办</button>
           </div>
         </div>
@@ -743,8 +723,9 @@ onBeforeUnmount(()=>{
               </form>
             </SwipeActions>
           </template>
-          <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
-            @click="todayVisibleCount+=listPageSize">加载更多</button>
+          <button v-if="todayNextCursor" type="button" class="outline"
+            :disabled="todayMoreBusy" @click="loadTodayPage(false)">
+            {{ todayMoreBusy?'加载中…':'加载更多' }}</button>
         </section>
       </template>
       <template v-else-if="tab==='family'">
