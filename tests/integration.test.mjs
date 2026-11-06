@@ -389,7 +389,7 @@ test('reminder snooze is per-user, cross-day and preserved in portable backup',a
  const yesterday=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10)
  const task=await ask('/api/tasks','POST',{
    title:'明天再提醒的测试任务',visibility:'household',
-   dueOn:yesterday,notes:'',remindEnabled:true},owner)
+   dueOn:today,notes:'',remindEnabled:true},owner)
  assert.equal(task.status,201,JSON.stringify(task.body))
  const endpoint='/api/reminders?date='
  const initial=await ask(endpoint+today,'GET',undefined,owner)
