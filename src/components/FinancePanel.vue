@@ -318,7 +318,12 @@ onMounted(()=>{
             <strong>{{ goalMode==='monthly'?periodKey.replace('-','年')+'月':periodKey+'年' }}</strong>
           </div>
           <label v-else-if="goalMode==='monthly'">选择月份
-            <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" /></label>
+            <span class="finance-month-picker">
+              <input v-model="periodKey" type="month" :min="goalStartOn.slice(0,7)||undefined" />
+              <button type="button" class="finance-month-reset" :disabled="periodKey===defaultPeriodKey()"
+                aria-label="重置选择月份" @click="periodKey=defaultPeriodKey()">重置</button>
+            </span>
+          </label>
           <label v-else>选择年份
             <input v-model="periodKey" type="number" inputmode="numeric" max="9998"
               :min="Number(goalStartOn.slice(0,4))||1900" step="1"/></label>
@@ -376,6 +381,10 @@ onMounted(()=>{
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0;min-width:0}
 .fields label{font-size:12px;color:#607469;display:grid;gap:5px;min-width:0;max-width:100%}
 .fields select,.fields input{border:1px solid #dce6dc;border-radius:10px;min-width:0;max-width:100%;box-sizing:border-box;width:100%;min-height:41px;padding:8px;background:#fff}
+.finance-month-picker{display:flex;align-items:center;gap:6px;min-inline-size:0;max-inline-size:100%}
+.finance-month-picker input{flex:1 1 auto;min-inline-size:0;width:auto}
+.finance-month-picker .finance-month-reset{flex:0 0 auto;min-height:44px;padding:7px 10px;background:#edf6ef;color:#43866a}
+.finance-month-picker .finance-month-reset:disabled{opacity:.45}
 button{background:#488d6c;color:#fff;border:0;border-radius:9px;padding:9px 12px;font-size:12px}
 button:disabled{opacity:.55}.summary{background:#eaf4ec;border-radius:12px;padding:14px;display:grid;gap:3px;margin:14px 0}
 .summary strong{font-size:22px}.summary span,.summary small{font-size:12px;color:#587564}

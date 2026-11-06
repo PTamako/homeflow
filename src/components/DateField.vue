@@ -18,6 +18,9 @@ const dateText=computed(()=>{
 function update(event:Event){
   emit('update:modelValue',(event.target as HTMLInputElement).value)
 }
+function clearDate(){
+  if(!props.disabled)emit('update:modelValue','')
+}
 </script>
 
 <template>
@@ -32,6 +35,7 @@ function update(event:Event){
     <input
       v-bind="attrs"
       class="date-field__native"
+      :class="{'date-field__native--with-clear':!!modelValue&&!disabled}"
       type="date"
       :value="modelValue ?? ''"
       :min="min"
@@ -41,6 +45,13 @@ function update(event:Event){
       @input="update"
       @change="update"
     />
+    <button v-if="modelValue&&!disabled" class="date-field__clear" type="button"
+      aria-label="清空日期" title="清空日期" @pointerdown.stop @click.stop.prevent="clearDate">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
   </span>
 </template>
 
@@ -91,6 +102,27 @@ function update(event:Event){
   z-index:1;
   font-size:16px;
 }
+.date-field__native--with-clear{inline-size:calc(100% - 44px)}
+.date-field__clear{
+  position:relative;
+  z-index:2;
+  display:grid;
+  place-items:center;
+  flex:0 0 44px;
+  inline-size:44px;
+  block-size:44px;
+  min-block-size:44px;
+  margin:-9px -12px -9px 0;
+  padding:0;
+  border:0;
+  border-radius:0 10px 10px 0;
+  background:transparent;
+  color:#718a7d;
+  cursor:pointer;
+}
+.date-field__clear svg{inline-size:16px;block-size:16px;pointer-events:none}
+.date-field__clear:hover{color:#356e55;background:#f2f7f3}
+.date-field__clear:focus-visible{outline:2px solid #43866a;outline-offset:-3px}
 .date-field:focus-within{outline:2px solid #43866a;outline-offset:1px}
 .date-field:has(.date-field__native:disabled){opacity:.55}
 @media(max-width:720px){.date-field{font-size:16px}}

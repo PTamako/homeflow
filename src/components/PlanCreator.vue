@@ -94,7 +94,7 @@ async function submit(){
 <template>
  <section class="plan-creator">
   <button class="creator-trigger" type="button" :aria-expanded="opened" @click="opened?dismiss():opened=true">
-   <AppIcon name="plus" :size="19"/> {{ opened?'收起新增计划':'＋ 新增计划' }}
+   <AppIcon v-if="!opened" name="plus" :size="19"/> {{ opened?'收起新增计划':'新增计划' }}
   </button>
   <template v-if="opened">
    <h2>选择计划类型</h2>
