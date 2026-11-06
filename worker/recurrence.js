@@ -8,7 +8,7 @@ export function canCompleteEarly(rule,date){
   let c={}
   try{c=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return false}
   return c.anchor==='completion'&&Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
-    &&date<(rule.next_due_on||addDays(rule.anchor_date,c.days))
+    &&date<(rule.next_due_on||rule.anchor_date)
 }
 
 import {isJapaneseWorkday} from './jp-holidays.js'
@@ -46,10 +46,10 @@ export function dueOn(rule,date) {
     }
     case 'interval': {
       if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
-      // anchor_date is the baseline, not a due occurrence. A first dose is
-      // expected after one full interval; later doses follow actual completion.
-      if(c.anchor==='completion')return date>=(rule.next_due_on||addDays(rule.anchor_date,c.days))
-      return age>0&&age%c.days===0
+      // The chosen start date is the first scheduled occurrence.
+      // Completion-anchored intervals continue from the last resolved date.
+      if(c.anchor==='completion')return date>=(rule.next_due_on||rule.anchor_date)
+      return age%c.days===0
     }
     default: return false
   }
@@ -110,9 +110,9 @@ export function lastScheduledBefore(rule,date){
     try{config=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return null}
     if(config.anchor==='completion')return null // next_due_on already carries over.
     const days=Number(config.days)
-    if(!Number.isInteger(days)||days<1||days>3650||age<=days)return null
-    // Only occurrences after the first interval can be carried forward.
-    const scheduled=age-1-((age-1)%days)
+    if(!Number.isInteger(days)||days<1||days>3650||age<1)return null
+    // The anchor itself is the first occurrence, including in period history.
+    const scheduled=Math.floor((age-1)/days)*days
     const d=new Date(rule.anchor_date+'T00:00:00Z')
     d.setUTCDate(d.getUTCDate()+scheduled)
     return d.toISOString().slice(0,10)
