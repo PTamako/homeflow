@@ -1207,7 +1207,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <section v-if="planType==='all'||planType==='shopping'" class="life-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <template v-for="s in visibleShopping" :key="s.id">
-            <div :id="'plan-item-'+s.id" :class="{'focused-plan-entry':isFocused(s)}">
+            <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
             <SwipeActions :id="s.id" scope="shopping" :allow-edit="canEdit(s)" :allow-delete="canEdit(s)"
               @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
@@ -1233,7 +1233,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </SwipeActions>
             <div v-if="expandedTaskMenu==='shopping:'+s.id" :id="'shopping-actions-'+s.id"
-              class="routine-inline-actions" role="group" :aria-label="'操作：'+s.title">
+              class="routine-inline-actions shopping-inline-actions" role="group" :aria-label="'操作：'+s.title">
               <button v-if="planScope==='active'&&s.due_on" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('shopping',s.id)">提醒设置</button>
               <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
@@ -1596,6 +1596,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-check{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
 .shopping-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;flex:none;max-width:53%}
 .shopping-row-actions .routine-more-trigger{flex:none}
+/* Keep shopping rows as one continuous item with a single solid separator. */
+.shopping-plan-entry{min-width:0;border-bottom:1px solid #e5ece6}
+.shopping-plan-entry:last-of-type{border-bottom:0}
+.shopping-plan-entry .shopping-line{border-bottom:0}
+.shopping-plan-entry .shopping-inline-actions{border-top:0;margin:0;padding:0 0 11px}
 @media(max-width:440px){.shopping-row-actions{max-width:49%}.shopping-row-actions .life-link{font-size:11px;padding:7px 8px}}
 .shopping-check input{width:18px;height:18px;flex:none;accent-color:#43866a}
 .shopping-check span{overflow-wrap:anywhere;min-width:0}
