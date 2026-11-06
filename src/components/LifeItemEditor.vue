@@ -217,4 +217,10 @@ async function save(){
 .editor-cancel{background:#fff;color:#65806c;border:1px solid #cadace!important}
 .editor-save{background:#43866a;color:white;font-weight:700}
 .edit-error{color:#af5337;font-size:12px}
+
+.detail-editor .ordinal-weeks{min-width:0;display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:11px;border:1px solid #d9e4db;border-radius:10px}
+.detail-editor .ordinal-weeks legend{font-size:12px;color:#65796e;padding:0 5px}
+.detail-editor .ordinal-week-option{display:flex;align-items:center;gap:5px;min-height:35px;padding:6px 9px;background:#f2f8f3;border-radius:9px;color:#31513f}
+.detail-editor .ordinal-week-option input[type=checkbox]{width:17px;height:17px;min-height:17px;flex:none;accent-color:#43866a}
+.detail-editor .ordinal-weeks small{width:100%;font-size:11px;color:#6f8476}
 </style>
