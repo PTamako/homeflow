@@ -86,6 +86,7 @@ added_columns={
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
   "notification_deliveries":{"attempts"},
   "notification_inbox":{"local_day","read_at","sent_devices","failed_devices","dedupe_key","last_completion_key"},
+  "goal_period_settlements":{"settlement_origin"},
 }
 for table in ("routines","anniversaries","wishes","goals","shopping_items","trips","memories"):
   added_columns.setdefault(table,set()).add("deleted_at")
