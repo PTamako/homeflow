@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import {computed,onBeforeUnmount,ref,nextTick} from 'vue'
+import {computed,onBeforeUnmount,onMounted,ref,nextTick,watch} from 'vue'
 import {activeSwipeId} from '../swipe-state'
+import {swipeHelpLearned,swipeHelpOwner,claimSwipeHelp,releaseSwipeHelp,acknowledgeSwipeHelp} from '../swipe-discovery'
 
 // One open row across the app, including different sections and pages.
 
@@ -23,6 +24,10 @@ const dragging=ref(false)
 const firstAction=ref<HTMLButtonElement|null>(null)
 const deleteAction=ref<HTMLButtonElement|null>(null)
 const triggerRef=ref<HTMLButtonElement|null>(null)
+const rowRef=ref<HTMLDivElement|null>(null)
+const coarsePointer=ref(false)
+const showHint=computed(()=>coarsePointer.value&&swipeHelpOwner.value===key.value&&!swipeHelpLearned.value)
+const showTriggerUi=computed(()=>props.showTrigger&&(!coarsePointer.value||showHint.value))
 let touchStart:{x:number;y:number}|null=null
 let axis:'horizontal'|'vertical'|null=null
 let touchedAt=0
@@ -31,11 +36,16 @@ function close(){if(opened.value)activeSwipeId.value=''}
 function toggle(){
  if(opened.value){close();return}
  open()
- // The trigger is visually hidden while open. Move keyboard focus to an action
- // instead of letting Tab skip to the following row.
+ // The subtle neutral desktop trigger is a keyboard/mouse fallback, not More.
  void nextTick(()=>(firstAction.value||deleteAction.value)?.focus())
 }
-function closeFromKeyboard(){close();void nextTick(()=>triggerRef.value?.focus())}
+function closeFromKeyboard(){close();void nextTick(()=>(triggerRef.value||rowRef.value)?.focus())}
+function activateRow(event:KeyboardEvent){
+ if(event.target!==rowRef.value)return
+ event.preventDefault()
+ toggle()
+}
+function dismissHint(){acknowledgeSwipeHelp()}
 function start(event:TouchEvent){
   if(!count.value||event.touches.length!==1)return
   touchStart={x:event.touches[0].clientX,y:event.touches[0].clientY}
@@ -58,7 +68,10 @@ function end(event:TouchEvent){
   const dx=event.changedTouches[0]?.clientX-touchStart.x||0
   const dy=event.changedTouches[0]?.clientY-touchStart.y||0
   if(axis==='horizontal'&&Math.abs(dx)>36&&Math.abs(dx)>Math.abs(dy)*1.3){
-    dx<0?open():close()
+    if(dx<0){
+      open()
+      acknowledgeSwipeHelp() // A real first swipe completes the one-time tutorial.
+    }else close()
     touchedAt=Date.now()
   }
   touchStart=null;axis=null;movement.value=0;dragging.value=false
@@ -79,11 +92,27 @@ function run(action:'edit'|'delete'){
   if(action==='edit')emit('edit')
   else emit('delete')
 }
-onBeforeUnmount(close)
+onMounted(()=>{
+ coarsePointer.value=window.matchMedia('(hover: none), (pointer: coarse)').matches
+ if(count.value>0&&coarsePointer.value)claimSwipeHelp(key.value)
+})
+watch([count,key],([countNow,newKey],[,previousKey])=>{
+ if(previousKey&&previousKey!==newKey)releaseSwipeHelp(previousKey)
+ if(countNow>0&&coarsePointer.value)claimSwipeHelp(newKey)
+})
+onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
 </script>
 <template>
-  <div v-if="count" class="swipe-row" :class="{'is-open':opened,'is-dragging':dragging}"
+  <div v-if="showHint" class="swipe-discovery" role="note">
+    <span class="swipe-discovery-arrow" aria-hidden="true">←</span>
+    <span>向左滑动明细，可以编辑或删除</span>
+    <button type="button" @click.stop="dismissHint">知道了</button>
+  </div>
+  <div v-if="count" ref="rowRef" class="swipe-row" :class="{'is-open':opened,'is-dragging':dragging}"
+    role="group" :aria-label="'明细操作：向左滑动或按回车展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'、':'')+(allowDelete?deleteLabel:'')"
+    :aria-expanded="opened" :tabindex="coarsePointer?0:-1"
     @touchstart.passive="start" @touchmove.passive="move" @touchend="end" @touchcancel="cancel"
+    @keydown.enter.self="activateRow" @keydown.space.self="activateRow"
     @keydown.esc.stop="closeFromKeyboard">
     <div class="swipe-actions" :style="{width:actionWidth+'px'}">
       <button v-if="allowEdit" ref="firstAction" type="button" class="edit" :tabindex="opened?0:-1"
@@ -93,18 +122,15 @@ onBeforeUnmount(close)
     </div>
     <div class="swipe-content" :style="{
       transform:'translateX('+((opened?-actionWidth:0)+movement)+'px)',
-      paddingRight:showTrigger?'44px':'0px'
+      paddingRight:showTriggerUi?'44px':'0px'
     }" @click.capture="tapContent">
       <slot/>
     </div>
-    <button v-if="showTrigger&&!opened" ref="triggerRef" type="button" class="swipe-trigger"
+    <button v-if="showTriggerUi&&!opened" ref="triggerRef" type="button" class="swipe-trigger"
       :aria-label="'左滑或点击展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'和':'')+(allowDelete?deleteLabel:'')"
       :aria-expanded="opened" :title="'左滑'+(allowEdit?editLabel:'')+(allowDelete?'/'+deleteLabel:'')"
       @click.stop="toggle">
-      <span class="swipe-stripes" aria-hidden="true">
-        <span v-if="allowEdit" class="stripe-edit"></span>
-        <span v-if="allowDelete" class="stripe-delete"></span>
-      </span>
+      <span class="swipe-chevron" aria-hidden="true">‹</span>
     </button>
   </div>
   <slot v-else/>
@@ -126,14 +152,21 @@ onBeforeUnmount(close)
 .swipe-trigger{position:absolute;z-index:2;right:0;top:8px;
   height:44px;width:44px;display:grid;place-items:center;background:transparent;
   border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
-.swipe-stripes{display:flex;align-items:center;justify-content:center;gap:3px;width:100%;height:100%}
-.swipe-stripes span{display:block;width:3px;height:19px;border-radius:3px}
-.stripe-edit{background:#558bc9}
-.stripe-delete{background:#d76178}
-.swipe-trigger:active .swipe-stripes{opacity:.75}
+.swipe-chevron{display:grid;place-items:center;width:26px;height:28px;
+  border-radius:9px;background:#f0f4f0;color:#789182;font-size:25px;line-height:1;font-weight:500}
+.swipe-trigger:active .swipe-chevron{background:#e6eee7}
+.swipe-discovery{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:7px 10px;margin:0 0 5px;border:1px solid #dce9df;
+  border-radius:10px;background:#f2f8f3;color:#557360;
+  font-size:11px;line-height:1.4}
+.swipe-discovery-arrow{font-size:18px;color:#43866a;font-weight:700;flex:none}
+.swipe-discovery button{margin-left:auto;border:0;background:#e4f0e6;color:#397e5f;
+  border-radius:8px;min-height:34px;padding:5px 10px;font-size:11px;font-weight:700}
+.swipe-row:focus-visible{outline:2px solid #43866a;outline-offset:-2px}
+@media(pointer:coarse){.swipe-discovery button{min-height:44px}}
 .swipe-actions button:active{filter:brightness(.92)}
 .swipe-trigger:hover{background:#f0f5f1}
-.swipe-trigger .swipe-stripes{pointer-events:none}
+.swipe-trigger .swipe-chevron{pointer-events:none}
 .swipe-trigger:focus-visible,.swipe-actions button:focus-visible{
   outline:2px solid #244f3a;outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){.swipe-content{transition:none}}

@@ -9,7 +9,7 @@ const task=life.indexOf('<div v-for="t in [entry.item]"',start)
 const routineMarkup=life.slice(start,task)
 const taskMarkup=life.slice(task,life.indexOf('<p v-if="!routines.length',task))
 
-test('all task detail rows use blue/red swipe rails and preserve More only for extras',()=>{
+test('all task detail rows keep swipe edit/delete while More contains extras only',()=>{
  assert.ok(start>0&&task>start)
  for(const [name,markup] of [['routine',routineMarkup],['task',taskMarkup]]){
   assert.doesNotMatch(markup,/:show-trigger="false"/,name+' must show colored swipe rails')
@@ -30,13 +30,13 @@ test('all task detail rows use blue/red swipe rails and preserve More only for e
  assert.match(taskExtras,/通知处理人/)
  assert.match(swipe,/showTrigger\?:boolean/)
  assert.match(swipe,/showTrigger:true/)
- assert.match(swipe,/class="swipe-stripes"/)
- assert.match(swipe,/class="stripe-edit"/)
- assert.match(swipe,/class="stripe-delete"/)
- assert.match(swipe,/\.stripe-edit\{background:#558bc9\}/)
- assert.match(swipe,/\.stripe-delete\{background:#d76178\}/)
+ assert.doesNotMatch(swipe,/swipe-stripes|stripe-edit|stripe-delete/)
+ assert.match(swipe,/\.swipe-actions \.edit\{background:#558bc9\}/)
+ assert.match(swipe,/\.swipe-actions \.delete\{background:#d76178\}/)
+ assert.match(swipe,/class="swipe-chevron"/)
+ assert.match(swipe,/showTriggerUi=computed/)
  assert.doesNotMatch(swipe,/<AppIcon name="ellipsis"/)
- assert.match(swipe,/v-if="showTrigger&&!opened"/)
+ assert.match(swipe,/v-if="showTriggerUi&&!opened"/)
 })
 test('all actions remain reachable: reminders, skip, edit, delete and completion',()=>{
  assert.match(routineMarkup,/toggleReminderEditor\('routine',r\.id\)/)
