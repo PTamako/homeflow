@@ -448,6 +448,7 @@ export async function sendCompletionFeedback(env,session,event){
   const message='已完成 · '+actorName+
     (event.kind==='routine'&&event.periodOn?' · '+event.periodOn:'')
   const localDay=jstNotificationDay()
+  const completionKey='complete:'+event.kind+':'+event.id+':'+event.completedAt
   const reminderScope=recipientId=>({
     householdId:session.household_id,recipientId,kind:event.kind,
     sourceId:event.id,periodOn:event.periodOn,localDay
@@ -460,7 +461,8 @@ export async function sendCompletionFeedback(env,session,event){
       id:crypto.randomUUID(),householdId:session.household_id,
       recipientId:session.user_id,kind:event.kind,sourceId:event.id,
       senderId:null,title,message,localDay,dedupeKey:ownReminder.dedupeKey,
-      mergeCompletion:true,sentDevices:0,failedDevices:0
+      mergeCompletion:true,completionKey,unreadOnCompletion:false,
+      sentDevices:0,failedDevices:0
     })
   }catch{ /* Inbox updates never block a committed completion. */ }
   let sent=0,failed=0
@@ -485,8 +487,8 @@ export async function sendCompletionFeedback(env,session,event){
       },'complete:'+event.kind+':'+event.id+':'+event.completedAt,Date.now(),{
         id:receiptId,senderId:session.user_id,kind:event.kind,
         sourceId:event.id,title,message,
-        dedupeKey:scheduled?.dedupeKey||'complete:'+event.kind+':'+event.id+':'+event.completedAt,
-        mergeCompletion:!!scheduled
+        dedupeKey:scheduled?.dedupeKey||completionKey,
+        mergeCompletion:!!scheduled,completionKey,unreadOnCompletion:true
       })
       const data=await reply.json()
       sent+=Number(data?.sent||0)
