@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref} from 'vue'
 import PageToast from './PageToast.vue'
+import StatusBadge from './StatusBadge.vue'
 import {usePageToast} from '../page-toast'
 
 type DeletedTask={id:string;title:string;deletedAt:string;kind:string}
@@ -85,7 +86,7 @@ async function emptyTrash(){
    <p v-if="loaded&&!busy&&!error&&!rows.length">暂无已删除事项。</p>
    <div v-for="item in rows" :key="item.kind+':'+item.id" class="trash-item">
     <div><strong>{{ item.title }}</strong>
-      <small>{{ kinds[item.kind]||item.kind }} · 删除：{{ item.deletedAt.slice(0,10) }}</small></div>
+      <small>{{ kinds[item.kind]||item.kind }} · <StatusBadge code="deleted" /> · 删除：{{ item.deletedAt.slice(0,10) }}</small></div>
     <button type="button" :disabled="busy" @click="restore(item)">恢复</button>
    </div>
    <button v-if="cursor&&!confirmEmpty" type="button" class="trash-more" :disabled="busy"
