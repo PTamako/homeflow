@@ -2,6 +2,7 @@
 import {nextTick,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import ImportantReminders from './ImportantReminders.vue'
+import {notificationStatus,notificationTitle,notificationMessageRemainder} from '../notification-status.mjs'
 
 type Notice={
  id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;dedupeKey:string|null;
@@ -192,12 +193,23 @@ defineExpose({refresh:()=>load(true)})
    <div v-for="item in notices" :id="'today-notification-'+item.id" :key="item.id"
      :class="['notice-item',{'notice-focused':highlightedId===item.id}]">
     <div class="notice-item-top">
-     <b>{{ item.title }}</b>
+     <div class="notice-item-heading">
+      <b>{{ notificationTitle(item) }}</b>
+      <span v-if="notificationStatus(item)"
+        :class="['notice-task-status','notice-task-status-'+notificationStatus(item)?.tone]">
+       {{ notificationStatus(item)?.label }}
+      </span>
+     </div>
      <span :class="['notice-state',{'notice-state-unread':!item.readAt}]">
       {{ detail(item) }}
      </span>
     </div>
-    <p v-if="item.message">{{ item.message }}</p>
+    <p v-if="item.message">
+     <template v-if="notificationStatus(item)">
+      <strong :class="['notice-message-status','notice-message-status-'+notificationStatus(item)?.tone]">{{ notificationStatus(item)?.label }}</strong>{{ notificationMessageRemainder(item) }}
+     </template>
+     <template v-else>{{ item.message }}</template>
+    </p>
     <div class="notice-bottom">
      <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · {{ deliveryDetail(item) }}</template></small>
      <div class="notice-item-actions">
@@ -233,7 +245,18 @@ defineExpose({refresh:()=>load(true)})
 .notice-item{padding:12px 0;border-top:1px solid #edf1ec;scroll-margin-top:24px}
 .notice-item.notice-focused{background:#f2f8f2;border-radius:9px;padding:12px 9px}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.notice-item-top b{font-size:13px;overflow-wrap:anywhere}
+.notice-item-heading{display:flex;align-items:center;gap:6px;min-width:0;flex:1;flex-wrap:wrap}
+.notice-item-heading b{font-size:13px;overflow-wrap:anywhere}
+.notice-task-status{display:inline-flex;align-items:center;flex:none;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:700;line-height:1.3}
+.notice-task-status-completed{color:#216e4a;background:#e5f4ea}
+.notice-task-status-deferred{color:#276ca5;background:#e8f2fc}
+.notice-task-status-pending{color:#925b15;background:#fff2d8}
+.notice-task-status-skipped{color:#68766d;background:#eef1ee}
+.notice-message-status{font-weight:700}
+.notice-message-status-completed{color:#216e4a}
+.notice-message-status-deferred{color:#276ca5}
+.notice-message-status-pending{color:#925b15}
+.notice-message-status-skipped{color:#68766d}
 .notice-state{white-space:nowrap;color:#7a8e80;font-size:11px}
 .notice-state-unread{color:#b33e44;font-weight:700}
 .notice-item p{font-size:12px;color:#56695d;line-height:1.6;margin:6px 0}
