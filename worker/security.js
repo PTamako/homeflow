@@ -89,8 +89,7 @@ export async function sessionFor(request, db) {
 // are cached. A different binding or environment always forces a new identity read.
 const dbIdentityCache=new WeakMap()
 const DB_IDENTITY_TTL_MS=15000
-// The health gate verifies the current migration and its physical index.
-const EXPECTED_MIGRATION='0028_explicit_today_actions.sql'
+// Require the schema baseline without rejecting compatible future migrations.
 export async function verifiedDatabase(env) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false
@@ -98,12 +97,13 @@ export async function verifiedDatabase(env) {
   if(cached?.name===expected && cached.expiresAt>now)return true
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
-      (SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1) AS latest_migration,
+      (SELECT COUNT(*) FROM d1_migrations
+       WHERE name='0028_explicit_today_actions.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
-      identity.latest_migration===EXPECTED_MIGRATION &&
+      Number(identity.required_migration_ready)===1 &&
       Number(identity.action_index_ready)===1
     if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
     else dbIdentityCache.delete(env.DB)
