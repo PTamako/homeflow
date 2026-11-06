@@ -1251,8 +1251,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <div :id="'plan-item-'+g.id" :class="{'focused-plan-entry':isFocused(g)}">
             <SwipeActions :id="g.id" scope="goals" :allow-edit="canEdit(g)" :allow-delete="canEdit(g)"
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
-              <div class="life-row">
-                <div class="life-details"><b class="detail-name">{{ g.title }}</b>
+              <div class="life-row goal-plan-row">
+                <div class="life-details">
+                  <b class="detail-name">{{ g.title }}</b>
                   <small class="goal-amount-line">
                     <span v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</span>
                     <span v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</span>
@@ -1262,9 +1263,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <AppIcon name="heart" :size="13" />已关联心愿
                     </button>
                   </small>
-                  <small v-if="g.start_on">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
-                  <small><StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" /></small></div>
-                <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('goal',g.id)">账目与调整额</button>
+                  <small v-if="g.start_on" class="goal-dates">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
+                  <div class="goal-row-footer">
+                    <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
+                    <button v-if="isOwner" type="button" class="goal-finance-action"
+                      :aria-label="'查看“'+g.title+'”的账目与调整额'"
+                      @click="toggleFinance('goal',g.id)">
+                      账目与调整额 <span aria-hidden="true">›</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
@@ -1683,15 +1691,32 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-form button{width:100%}
 .life-form .life-cancel{background:#fff;color:#43866a;border:1px solid #9ac2a8}
 .life-details{min-width:0;flex:1}
-.goal-amount-line{display:flex!important;align-items:center;flex-wrap:wrap;column-gap:6px;row-gap:0;min-width:0}
+/* Savings goals use one full-width information column, never a squeezed
+   left column beside a large action card. Tap surfaces stay 44px tall while
+   their visual weight remains light on iPhone. */
+.goal-plan-row{display:block!important;min-width:0;max-width:100%;padding:12px 0!important}
+.goal-plan-row>.life-details{width:100%;min-width:0;max-width:100%}
+.goal-plan-row .detail-name{display:block;margin:0 0 3px;font-size:14px;line-height:1.45}
+.goal-amount-line{display:flex!important;align-items:center;flex-wrap:wrap;gap:0 9px;
+  min-width:0;max-width:100%;line-height:1.5}
 .goal-amount-line>span{min-width:0;overflow-wrap:anywhere}
-.goal-wish-link{display:inline-flex;align-items:center;justify-content:center;gap:4px;
-  flex:none;min-width:0;min-height:32px;padding:4px 7px;border:0;border-radius:8px;
-  background:var(--hf-success-bg);color:var(--hf-success-text);
-  font:inherit;font-size:11px;font-weight:700;line-height:1.3;white-space:nowrap;
+.goal-plan-row .goal-wish-link{display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  flex:none;min-width:0;min-height:44px;padding:0 2px;border:0;border-radius:5px;
+  background:transparent;color:var(--hf-success-text);
+  font:inherit;font-size:11px;font-weight:650;line-height:1.3;white-space:nowrap;
   touch-action:manipulation}
-.goal-wish-link:focus-visible{outline:2px solid #43866a;outline-offset:2px}
-@media(max-width:720px){.goal-wish-link{min-height:44px}}
+.goal-plan-row .goal-dates{margin-top:0;line-height:1.55}
+.goal-row-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-width:0;margin-top:2px}
+.goal-plan-row .goal-finance-action{display:inline-flex;align-items:center;justify-content:flex-end;
+  flex:none;gap:4px;min-height:44px;padding:0 2px;border:0;border-radius:7px;
+  background:transparent;color:var(--ui-brand,#357b5c);
+  font-size:12px;font-weight:700;line-height:1.4;white-space:nowrap;touch-action:manipulation}
+.goal-finance-action span{font-size:19px;font-weight:400;line-height:1}
+.goal-plan-row :is(.goal-wish-link,.goal-finance-action):focus-visible{
+  outline:2px solid #43866a;outline-offset:2px}
+@media(max-width:380px){.goal-amount-line{column-gap:5px}
+ .goal-plan-row .goal-finance-action{font-size:11px}}
 
 .detail-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:5px;flex:none}
 .life-row .detail-actions .life-link{font-size:11px;padding:6px 8px;min-width:0}
