@@ -142,17 +142,16 @@ export async function remindersRoute(request,db,session) {
       AND (r.visibility='household' OR r.created_by=?4)`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM tasks WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND remind_enabled=1
-      AND (due_on BETWEEN ?2 AND ?3 OR id IN(SELECT source_id FROM today_plan_actions
-        WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?2 AND ?3))
-      AND (visibility='household' OR creator_user_id=?4)
-      AND (assignee_user_id=?4 OR assignee_user_id IS NULL)
-      ORDER BY due_on LIMIT 100`).bind(hid,date,addDays(date,7),u),
+      AND due_on<=?2 AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
+        WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?4 AND ?2))
+      AND (visibility='household' OR creator_user_id=?3) AND (assignee_user_id=?3 OR assignee_user_id IS NULL)
+      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u,date),
     db.prepare(`SELECT id,title,due_on FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
-      AND completed_at IS NULL AND due_on IS NOT NULL
-      AND (due_on BETWEEN ?2 AND ?3 OR id IN(SELECT source_id FROM today_plan_actions
-        WHERE household_id=?1 AND kind='shopping' AND action='postponed' AND postponed_to BETWEEN ?2 AND ?3))
-      AND (visibility='household' OR created_by=?4) AND (assigned_to=?4 OR assigned_to IS NULL)
-      ORDER BY due_on LIMIT 100`).bind(hid,date,addDays(date,7),u),
+      AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
+      AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
+        WHERE household_id=?1 AND kind='shopping' AND action='postponed' AND postponed_to BETWEEN ?4 AND ?2))
+      AND (visibility='household' OR created_by=?3) AND (assigned_to=?3 OR assigned_to IS NULL)
+      ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u,date),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')
       AND (visibility='household' OR created_by=?2)
@@ -261,7 +260,7 @@ export async function remindersRoute(request,db,session) {
   // The normal reminders/settings API keeps its existing query budget.
   // Only Today's pending tab and the 06:00 scheduled pass include savings.
   if(includeGoals){
-    const {results:goals=[]}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
+    const {results:sourceGoals=[]}=await db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount
       FROM goals WHERE household_id=?1 AND deleted_at IS NULL
       AND (visibility='household' OR created_by=?2)
       AND (start_on IS NULL OR start_on<=?3)
@@ -269,6 +268,10 @@ export async function remindersRoute(request,db,session) {
           (target_on=?3 OR id IN(SELECT source_id FROM today_plan_actions
             WHERE household_id=?1 AND kind='goal' AND action='postponed' AND postponed_to=?3))))
       ORDER BY created_at DESC LIMIT 60`).bind(hid,u,date).all()
+    const goals=sourceGoals.map(goal=>goal.goal_mode==='once'
+      ?{...goal,target_on:effectiveReminderDate('goal',goal.id,goal.target_on,
+        date,date,activeActions)}
+      :goal)
     if(goals.length){
       const ids=goals.map(x=>x.id)
       const placeholders=ids.map((_,i)=>'?'+(i+2)).join(',')
@@ -280,11 +283,7 @@ export async function remindersRoute(request,db,session) {
           WHERE household_id=?1 AND plan_type='goal' AND plan_id IN (${placeholders})
           LIMIT 1000`).bind(hid,...ids)
       ])
-      const currentGoals=goals.map(goal=>goal.goal_mode==='once'
-        ?{...goal,target_on:effectiveReminderDate('goal',goal.id,goal.target_on,
-          date,date,activeActions)}
-        :goal)
-      const goalNotices=savingsReminders(currentGoals,date,
+      const goalNotices=savingsReminders(goals,date,
         settlements.results||[],marks.results||[])
       // Cron sends on configured dates; the pending UI retains ongoing alerts
       // without creating a new phone push or unread record every day.
@@ -296,7 +295,7 @@ export async function remindersRoute(request,db,session) {
     // A single bounded indexed query, scoped to visible and enabled wishes.
     // Missing dates, completed/cancelled and reminder-disabled wishes never
     // enter the notification inbox.
-    const {results:wishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
+    const {results:sourceWishes=[]}=await db.prepare(`SELECT id,title,target_on,status,remind_enabled,remind_advance_days
       FROM wishes WHERE household_id=?1 AND deleted_at IS NULL
         AND remind_enabled=1 AND (target_on BETWEEN ?3 AND ?4 OR
           id IN(SELECT source_id FROM today_plan_actions WHERE household_id=?1
@@ -304,10 +303,10 @@ export async function remindersRoute(request,db,session) {
         AND status NOT IN ('completed','cancelled')
         AND (visibility='household' OR created_by=?2)
       ORDER BY target_on,id LIMIT 100`).bind(hid,u,date,addDays(date,7)).all()
-    const currentWishes=wishes.map(wish=>({...wish,
+    const wishes=sourceWishes.map(wish=>({...wish,
       target_on:effectiveReminderDate('wish',wish.id,wish.target_on,
         date,future,activeActions)})).filter(wish=>wish.target_on)
-    announcements.push(...wishReminders(currentWishes,date))
+    announcements.push(...wishReminders(wishes,date))
   }
   const suppressed=new Set((snoozes.results||[]).map(x=>x.kind+':'+x.item_id))
   const deliveredKeys=new Set((deliveredNotices?.results||[]).map(x=>x.dedupe_key))
