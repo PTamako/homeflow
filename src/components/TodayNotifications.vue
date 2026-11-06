@@ -55,8 +55,8 @@ function memberDisplayName(userId:string|null){
  const profile=props.memberProfiles.find(p=>p.memberUserId===userId)
  return profile?.displayName?.trim()||'未设置姓名'
 }
-async function load(reset=true,focusId=''){
- if(!props.active)return
+async function load(reset=true,focusId=''):Promise<boolean>{
+ if(!props.active)return false
  const request=++generation,day=props.todayDate
  if(reset){loading.value=true;error.value='';cursor.value=null}
  else moreBusy.value=true
@@ -69,7 +69,7 @@ async function load(reset=true,focusId=''){
   })
   if(!response.ok)throw Error('通知读取失败')
   const data=await response.json()
-  if(request!==generation||day!==props.todayDate)return
+  if(request!==generation||day!==props.todayDate)return false
   if(view.value!=='pending'){
    const items:Notice[]=data.items||[]
    if(reset){
@@ -86,8 +86,10 @@ async function load(reset=true,focusId=''){
   emit('unreadChange',unread.value)
   // Push arriving while the pending tab is open should immediately remove delivered items.
   if(view.value==='pending')await pendingReminders.value?.refresh()
+  return true
  }catch(e){
   if(request===generation)error.value=(e as Error).message
+  return false
  }finally{
   if(request===generation){loading.value=false;moreBusy.value=false}
  }

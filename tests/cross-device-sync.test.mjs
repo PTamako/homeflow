@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
 import {readFileSync} from 'node:fs'
-import {householdRevision,syncStateRoute,bumpHouseholdRevision} from '../worker/sync.js'
+import {householdRevision,syncStateRoute,bumpHouseholdRevision,bumpMemberRevision,personalMutation} from '../worker/sync.js'
 import {todayPageRoute} from '../worker/today-page.js'
 import {backupRoute} from '../worker/backup.js'
 import worker from '../worker/index.js'
@@ -25,7 +25,7 @@ function dbFixture(){
  '0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql',
  '0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql',
  '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
- '0029_household_revisions.sql']
+ '0029_household_revisions.sql','0030_member_revisions.sql']
  for(const m of migrations)sqlite.exec(readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8'))
  const db={
   prepare(sql){const stmt=sqlite.prepare(sql);let args=[]
@@ -111,6 +111,7 @@ test('actual authenticated Worker writes by either family account advance the ot
   sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0029_household_revisions.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0030_member_revisions.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
   for(const name of ['alice','bob']){
    sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
@@ -159,6 +160,7 @@ test('successful 06:00 system notifications advance only affected household revi
   sqlite.exec("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0028_explicit_today_actions.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0029_household_revisions.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0030_member_revisions.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home'),('other','Unchanged')")
   sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('alice','alice','salt','verifier')")
   sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('shared','alice','owner')")
@@ -196,4 +198,40 @@ test('the remote revision is confirmed only after visible page and plans succeed
  assert.ok(page>=0&&panel>page&&acknowledge>panel,'no early acknowledgment')
  assert.match(life,/defineExpose\(\{refreshForSync:\(\)=>fetchMode\(\)\}\)/)
  assert.match(app,/stale_cursor/)
+})
+ 
+test('personal notification and reminder changes never advance the other member household revision',async()=>{
+ const {db,sqlite}=dbFixture()
+ try{
+  assert.equal((await syncStateRoute(new Request('https://example.invalid/api/sync/state'),db,owner)).status,200)
+  await bumpMemberRevision(db,owner)
+  const alice=await (await syncStateRoute(new Request('https://example.invalid/api/sync/state'),db,owner)).json()
+  const bob=await (await syncStateRoute(new Request('https://example.invalid/api/sync/state'),db,member)).json()
+  assert.deepEqual(alice,{revision:0,personalRevision:1})
+  assert.deepEqual(bob,{revision:0,personalRevision:0})
+  await bumpMemberRevision(db,member)
+  assert.deepEqual(await (await syncStateRoute(new Request('https://example.invalid/api/sync/state'),db,member)).json(),
+    {revision:0,personalRevision:1})
+  await bumpHouseholdRevision(db,owner)
+  assert.equal(await rev(db,member),1)
+  for(const path of ['/api/notifications/00000000-0000-4000-8000-000000000001/read',
+    '/api/notifications/00000000-0000-4000-8000-000000000001/unread',
+    '/api/reminders/snooze','/api/reminders/preferences','/api/reminders/item','/api/push/subscriptions'])
+    assert.equal(personalMutation(path),true,path)
+  for(const path of ['/api/tasks','/api/tasks/00000000-0000-4000-8000-000000000001',
+    '/api/plans/today-action','/api/push/send-task','/api/push/send-family'])
+    assert.equal(personalMutation(path),false,path)
+ }finally{sqlite.close()}
+})
+test('client detects member-only changes without reloading the partner plan list',()=>{
+ const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
+ const idx=app.indexOf('async function checkRemoteChanges(){')
+ const segment=app.slice(idx,app.indexOf('function onOnline(){',idx))
+ assert.match(segment,/const sharedDirty=/)
+ assert.match(segment,/const personalDirty=/)
+ assert.match(segment,/if\(sharedDirty\)\{/)
+ assert.match(segment,/if\(personalDirty\)\{/)
+ assert.match(segment,/await api\('\/notifications\/badge'\)/)
+ assert.match(segment,/syncPersonalRevision\.value=personalVersion/)
+ assert.match(app,/<ManagePage :key="user\.id\+':'\+manageRevisionCounter"/)
 })

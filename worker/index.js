@@ -5,7 +5,7 @@ import {lifeRoute} from './life.js'
 import {todayPlansRoute} from './plan-today.js'
 import {todayActionRoute} from './today-actions.js'
 import {todayPageRoute} from './today-page.js'
-import {syncStateRoute,bumpHouseholdRevision} from './sync.js'
+import {syncStateRoute,bumpHouseholdRevision,bumpMemberRevision,personalMutation} from './sync.js'
 import {planSummaryRoute} from './plan-summary.js'
 import {searchRoute} from './search.js'
 import {tripsRoute} from './trips.js'
@@ -96,8 +96,11 @@ export default {
     // plan, shopping, routines, history, reminders and member notification state.
     // Read-only requests and any rejected mutation never advance the version.
     if(state.session&&response.ok&&!['GET','HEAD','OPTIONS'].includes(request.method)){
-      try{await bumpHouseholdRevision(env.DB,state.session)}
-      catch{console.warn('homeflow_sync_revision_failed')}
+      try{
+        if(personalMutation(new URL(request.url).pathname))
+          await bumpMemberRevision(env.DB,state.session)
+        else await bumpHouseholdRevision(env.DB,state.session)
+      }catch{console.warn('homeflow_sync_revision_failed')}
     }
     return response
   },

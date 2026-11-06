@@ -102,12 +102,15 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-       AND name='household_revisions') AS sync_table_ready
+       AND name='household_revisions') AS sync_table_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
+       AND name='member_revisions') AS member_sync_ready
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
       Number(identity.action_index_ready)===1 &&
-      Number(identity.sync_table_ready)===1
+      Number(identity.sync_table_ready)===1 &&
+      Number(identity.member_sync_ready)===1
     if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
     else dbIdentityCache.delete(env.DB)
     return valid

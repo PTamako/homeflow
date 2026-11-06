@@ -27,7 +27,7 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={revision?:number;nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={revision?:number;personalRevision?:number;nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([])
 function memberName(id:string|null|undefined){
  if(!id)return '未指派'
@@ -44,6 +44,8 @@ const todayEntryKeys=ref<string[]>([])
 const todayMoreBusy=ref(false)
 const sharedRefreshCounter=ref(0)
 const syncRevision=ref<number|null>(null)
+const syncPersonalRevision=ref<number|null>(null)
+const manageRevisionCounter=ref(0)
 const lastTodayPageRevision=ref<number|null>(null)
 const lifePanelRef=ref<{refreshForSync:()=>Promise<boolean>}|null>(null)
 let syncBusy=false
@@ -58,7 +60,7 @@ const petsVisibleCount=ref(listPageSize)
 const routineBusy=ref(false)
 const tab=ref<'today'|'family'|'plans'|'memories'|'manage'>('today')
 const unreadNotificationCount=ref(0)
-const todayNotificationsRef=ref<{refresh:()=>Promise<void>|void}|null>(null)
+const todayNotificationsRef=ref<{refresh:()=>Promise<boolean>}|null>(null)
 const notificationToOpen=ref('')
 const notificationOpenRequest=ref(0)
 type BadgeNavigator=Navigator&{setAppBadge?:(count?:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>}
@@ -422,7 +424,7 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];members.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];syncRevision.value=null;lastTodayPageRevision.value=null;todayPageGeneration++;pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];members.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];syncRevision.value=null;syncPersonalRevision.value=null;manageRevisionCounter.value=0;lastTodayPageRevision.value=null;todayPageGeneration++;pendingTasks.value=[];await refresh()
 }
 async function loadTodayPage(reset=true):Promise<boolean>{
  if(!user.value||(!reset&&(!todayNextCursor.value||todayMoreBusy.value)))return false
@@ -544,29 +546,47 @@ async function checkRemoteChanges(){
  try{
    const data=await api('/sync/state')
    if(user.value?.id!==id)return
-   const version=Number((data as any).revision)
-   if(!Number.isSafeInteger(version)||version<0)return
-   // The first Today snapshot has an authoritative revision. Do not
-   // acknowledge an older snapshot just because our first poll succeeded.
-   const prior=syncRevision.value??(tab.value==='today'?lastTodayPageRevision.value:null)
-   if(prior===version){syncRevision.value=version;return}
+   const version=Number(data.revision),personalVersion=Number(data.personalRevision)
+   if(!Number.isSafeInteger(version)||version<0||
+      !Number.isSafeInteger(personalVersion)||personalVersion<0)return
+   const previous=syncRevision.value??(tab.value==='today'?lastTodayPageRevision.value:null)
+   const sharedDirty=previous===null||previous!==version
+   const personalDirty=syncPersonalRevision.value===null||
+     syncPersonalRevision.value!==personalVersion
+   if(!sharedDirty&&!personalDirty)return
    const currentTab=tab.value
-   if(currentTab==='today'&&!(await loadTodayPage(true)))return
-   // Never confirm a remote revision before all visible data has refreshed.
-   const family=await api('/family')
-   if(user.value?.id!==id||tab.value!==currentTab)return
-   profiles.value=family.profiles||[]
-   members.value=family.members||[]
-   if(['today','plans','family','memories'].includes(currentTab)){
-     const panel=lifePanelRef.value
-     if(!panel||!(await panel.refreshForSync()))return
+   if(sharedDirty){
+     if(currentTab==='today'&&!(await loadTodayPage(true)))return
+     const family=await api('/family')
+     if(user.value?.id!==id||tab.value!==currentTab)return
+     profiles.value=family.profiles||[]
+     members.value=family.members||[]
+     if(['today','plans','family','memories'].includes(currentTab)){
+       const panel=lifePanelRef.value
+       if(!panel||!(await panel.refreshForSync()))return
+     }
+     if(user.value?.id!==id||tab.value!==currentTab)return
+     // A failed page/panel request leaves the last confirmed version unchanged.
+     syncRevision.value=version
    }
-   if(user.value?.id!==id||tab.value!==currentTab)return
-   syncRevision.value=version
-   if(currentTab==='today')void todayNotificationsRef.value?.refresh()
-   else void refreshNotificationCount()
+   if(personalDirty){
+     const badge=await api('/notifications/badge')
+     if(user.value?.id!==id||tab.value!==currentTab)return
+     if(typeof (badge as any).unreadCount==='number')
+       void setUnreadNotificationCount((badge as any).unreadCount)
+     if(currentTab==='today'){
+       if(!todayNotificationsRef.value||
+          !(await todayNotificationsRef.value.refresh()))return
+     }
+     if(user.value?.id!==id||tab.value!==currentTab)return
+     // Do not reload the other family member's plans for a read/unread action.
+     if(currentTab==='manage')manageRevisionCounter.value++
+     syncPersonalRevision.value=personalVersion
+   }else if(sharedDirty&&currentTab==='today'){
+     void todayNotificationsRef.value?.refresh()
+   }
  }catch{
-   // Network outages must not log out either family member.
+   // Both version counters remain unacknowledged on a failed visible refresh.
  }finally{syncBusy=false}
 }
 function onOnline(){
@@ -889,7 +909,7 @@ onBeforeUnmount(()=>{
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="() => loadTodayPage(true)"
         @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
-      <ManagePage v-show="tab==='manage'" :active="tab==='manage'"
+      <ManagePage :key="user.id+':'+manageRevisionCounter" v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
         @logout="logout" />
