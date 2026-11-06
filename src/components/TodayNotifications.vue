@@ -28,13 +28,17 @@ function timeOf(value:string|null){
    timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false
  }).format(new Date(n)):''
 }
-function detail(item:Notice){
- if(item.readAt)return (view.value==='sent'?'对方已读 ':'已读 ')+timeOf(item.readAt)
+function readStateLabel(item:Notice){
+ if(item.readAt)return view.value==='sent'?'对方已读':'已读'
  return view.value==='sent'?'对方未读':'未读'
 }
 function deliveryDetail(item:Notice){
  if(item.sentDevices===0)return '仅应用内'
  return item.failedDevices>0?'部分推送成功':'已推送'
+}
+function deliveryTone(item:Notice){
+ if(item.sentDevices===0)return 'app-only'
+ return item.failedDevices>0?'partial':'sent'
 }
 // Resolve notification participants from the household's existing linked profiles.
 // Keep login emails out of the UI and avoid extra D1 queries for each notice.
@@ -200,8 +204,9 @@ defineExpose({refresh:()=>load(true)})
        {{ notificationStatus(item)?.label }}
       </span>
      </div>
-     <span :class="['notice-state',{'notice-state-unread':!item.readAt}]">
-      {{ detail(item) }}
+     <span class="notice-state">
+      <span :class="['notice-state-label',{'notice-state-read':view==='sent'&&!!item.readAt,'notice-state-unread':!item.readAt}]">{{ readStateLabel(item) }}</span>
+      <span v-if="item.readAt" class="notice-state-time">{{ timeOf(item.readAt) }}</span>
      </span>
     </div>
     <p v-if="item.message">
@@ -211,7 +216,7 @@ defineExpose({refresh:()=>load(true)})
      <template v-else>{{ item.message }}</template>
     </p>
     <div class="notice-bottom">
-     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · {{ deliveryDetail(item) }}</template></small>
+     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
@@ -257,11 +262,18 @@ defineExpose({refresh:()=>load(true)})
 .notice-message-status-deferred{color:#276ca5}
 .notice-message-status-pending{color:#925b15}
 .notice-message-status-skipped{color:#68766d}
-.notice-state{white-space:nowrap;color:#7a8e80;font-size:11px}
-.notice-state-unread{color:#b33e44;font-weight:700}
+.notice-state{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:#7a8e80;font-size:11px}
+.notice-state-label{display:inline-block;border-radius:5px;padding:2px 5px}
+.notice-state-read{color:#216e4a;background:#e5f4ea;font-weight:700}
+.notice-state-unread{color:#b33e44;background:#fbe9e9;font-weight:700}
+.notice-state-time{color:#7a8e80;font-weight:400}
 .notice-item p{font-size:12px;color:#56695d;line-height:1.6;margin:6px 0}
 .notice-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
-.notice-bottom small{font-size:11px;color:#89988d}
+.notice-bottom small{font-size:11px;color:#89988d;line-height:1.7}
+.notice-delivery{display:inline-block;border-radius:5px;padding:1px 5px;font-weight:700;white-space:nowrap}
+.notice-delivery-sent{color:#276ca5;background:#e8f2fc}
+.notice-delivery-partial{color:#925b15;background:#fff2d8}
+.notice-delivery-app-only{color:#68766d;background:#eef1ee}
 .notice-item-actions{display:flex;gap:3px}
 .notice-empty{text-align:center;color:#91a097;font-size:12px;padding:20px 0 8px}
 .notice-error{font-size:12px;color:#a24e38}
