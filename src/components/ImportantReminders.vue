@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref,watch,onBeforeUnmount} from 'vue'
 import AppIcon from './AppIcon.vue'
+import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 import {additionalReminders} from '../today-presentation.mjs'
@@ -190,9 +191,10 @@ onBeforeUnmount(()=>{requestId++})
        <div class="reminder-title">
         <strong>{{ item.title }}</strong>
         <span v-if="item.daysBefore" class="reminder-lead">提前 {{ item.daysBefore }} 天</span>
-        <span v-if="item.priority==='important'" class="reminder-priority">重要</span>
+        <StatusBadge v-if="item.priority==='important'" code="important" />
        </div>
        <time class="reminder-date" :datetime="item.dueOn">截止 {{ item.dueOn }}</time>
+       <StatusBadge v-if="item.dueOn<todayDate" code="overdue" />
        <small v-if="item.kind==='goal'&&item.message" class="reminder-message">{{ item.message }}</small>
       </div>
       <div v-if="item.kind==='goal'||item.kind==='wish'" class="snooze-actions">

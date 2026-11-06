@@ -219,3 +219,17 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .today-postpone-form label{display:grid;gap:7px;min-width:0;font-size:12px;color:#54685b}
 .today-postpone-form .today-decision-actions{padding:10px 0 0}
 @media(max-width:720px){.today-postpone-form{margin:0 6px 10px}.today-decision-actions{padding-right:8px}}
+
+
+/* Shared semantic status palette: keep badge meanings consistent in every list.
+   Never use this to represent button actions or infer persistence state. */
+:root{
+  --hf-success-text:#216e4a;--hf-success-bg:#e5f4ea;
+  --hf-info-text:#276ca5;--hf-info-bg:#e8f2fc;
+  --hf-warning-text:#925b15;--hf-warning-bg:#fff2d8;
+  --hf-danger-text:#b33e44;--hf-danger-bg:#fbe9e9;
+  --hf-muted-text:#68766d;--hf-muted-bg:#eef1ee;
+}
+.task-meta .hf-status,.once-task-summary .hf-status,.life-row small .hf-status{
+  vertical-align:middle;margin-inline:1px;
+}

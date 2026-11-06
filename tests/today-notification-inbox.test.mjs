@@ -172,8 +172,8 @@ test('sent notices show recipient read status separately from push delivery stat
  for(const tone of ['sent','partial','app-only']){
    assert.match(ui,new RegExp('\\.notice-delivery-'+tone+'\\{'))
  }
- assert.match(ui,/\.notice-state-read\{color:#216e4a/)
- assert.match(ui,/\.notice-state-unread\{color:#b33e44/)
+ assert.match(ui,/\.notice-state-read\{color:var\(--hf-success-text\)/)
+ assert.match(ui,/\.notice-state-unread\{color:var\(--hf-danger-text\)/)
  assert.match(api,/n\.read_at AS readAt/)
  assert.match(api,/n\.sender_user_id/)
 })
