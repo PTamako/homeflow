@@ -168,7 +168,8 @@ defineExpose({refresh:()=>load(true)})
    </div>
    <div v-if="view==='pending'" class="notice-reminder-list">
     <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys"
-      compact mode="list" ref="pendingReminders" />
+      compact mode="list" ref="pendingReminders"
+      @open-plan="(kind,id,periodKey,done)=>emit('openPlan',kind,id,periodKey,done)" />
    </div>
    <template v-else>
    <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
