@@ -21,5 +21,6 @@ export function additionalReminders(items, todayEntryKeys) {
     if(['shopping','wish','goal','trip'].includes(item.kind))
       return !existing.has('plan:'+item.kind+':'+item.id)
     return true
-  })
+  }).sort((a,b)=>String(a.dueOn||'9999-12-31').localeCompare(String(b.dueOn||'9999-12-31'))||
+    String(a.kind).localeCompare(String(b.kind))||String(a.id).localeCompare(String(b.id)))
 }
