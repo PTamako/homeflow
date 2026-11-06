@@ -132,15 +132,19 @@ export async function todayPlansRoute(request,db,session,path='/api/plans/today'
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND status!='cancelled' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
           SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='wish'
-            AND action='postponed' AND postponed_to=?3))
-      ORDER BY target_on,id LIMIT 100`).bind(h,u,date),
+            AND action='postponed' AND postponed_to=?3) OR
+          (status='completed' AND id IN(SELECT plan_id FROM plan_completion_marks
+            WHERE household_id=?1 AND plan_type='wish' AND completed_at>=?4)))
+      ORDER BY target_on,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,goal_mode,start_on,target_on,target_amount,reserved_amount
       FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND ((goal_mode='once' AND target_on IS NOT NULL AND (target_on=?3 OR id IN (
           SELECT source_id FROM today_plan_actions WHERE household_id=?1 AND kind='goal'
-          AND action='postponed' AND postponed_to=?3)))
+          AND action='postponed' AND postponed_to=?3) OR id IN (
+          SELECT plan_id FROM plan_completion_marks WHERE household_id=?1 AND
+            plan_type='goal' AND period_key='once' AND completed_at>=?4)))
           OR (goal_mode IN ('monthly','yearly') AND start_on<=?3))
-      ORDER BY created_at,id LIMIT 100`).bind(h,u,date),
+      ORDER BY created_at,id LIMIT 100`).bind(h,u,date,startOfDayUtc),
     db.prepare(`SELECT id,title,start_on AS dueOn,end_on AS endOn,destination FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         AND status IN ('planning','active') AND start_on IS NOT NULL AND
