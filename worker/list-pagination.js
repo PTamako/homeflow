@@ -40,9 +40,27 @@ export async function listPage(db,table,session,filters,options={}){
     table==='memories'?'happened_on':
     table==='shopping_items'&&filters.scope==='history'?'completed_at':
     filters.scope==='history'&&['wishes','goals','routines'].includes(table)?'updated_at':'created_at')
-  // SQL identifiers come only from this whitelist, never from a query parameter.
+  // SQL identifiers/expressions are selected server-side, never from request parameters.
   if(!['created_at','completed_at','happened_on','event_on','start_on','event_date','updated_at'].includes(sortColumn))
     throw Error('invalid_sort_column')
+  const ascending=filters.scope==='active'&&
+    ['shopping_items','wishes','goals','anniversaries'].includes(table)
+  const tokyoDate="date('now','+9 hours')"
+  const monthlyEnd="date('now','+9 hours','start of month','+1 month','-1 day')"
+  const yearlyEnd="date('now','+9 hours','start of year','+1 year','-1 day')"
+  const goalDue=`CASE WHEN goal_mode='monthly' THEN
+      CASE WHEN start_on>${tokyoDate} THEN start_on
+        ELSE MIN(COALESCE(target_on,'9999-12-31'),${monthlyEnd}) END
+    WHEN goal_mode='yearly' THEN
+      CASE WHEN start_on>${tokyoDate} THEN start_on
+        ELSE MIN(COALESCE(target_on,'9999-12-31'),${yearlyEnd}) END
+    ELSE COALESCE(target_on,'9999-12-31') END`
+  const orderKey=ascending?table==='shopping_items'?"COALESCE(due_on,'9999-12-31')":
+    table==='wishes'?"COALESCE(target_on,'9999-12-31')":
+    table==='goals'?goalDue:
+    // One-off anniversaries use their event date; recurring future occurrences
+    // are served by the /anniversaries/upcoming endpoint.
+    "COALESCE(event_date,'9999-12-31')":sortColumn
   const clauses=["household_id=?1","deleted_at IS NULL","(visibility='household' OR created_by=?2)"]
   const args=[session.household_id,session.user_id]
   const push=(clause,...vals)=>{
@@ -84,15 +102,19 @@ export async function listPage(db,table,session,filters,options={}){
   const window=monthWindow(filters.year,filters.month)
   if(window)push(sortColumn+'>={0} AND '+sortColumn+'<{1}',window.start,window.end)
   if(filters.cursor)
-    push('('+sortColumn+'<{0} OR ('+sortColumn+'={1} AND id<{2}))',
+    push('('+orderKey+(ascending?'>':'<')+'{0} OR ('+
+      orderKey+'={1} AND id'+(ascending?'>':'<')+'{2}))',
       filters.cursor.date,filters.cursor.date,filters.cursor.id)
-  const sql='SELECT * FROM '+table+' WHERE '+clauses.join(' AND ')+
-    ' ORDER BY '+sortColumn+' DESC,id DESC LIMIT ?'+(args.length+1)
+  const sql='SELECT *'+(ascending?', '+orderKey+' AS urgency_sort_key':'')+
+    ' FROM '+table+' WHERE '+clauses.join(' AND ')+
+    ' ORDER BY '+orderKey+(ascending?' ASC,id ASC':' DESC,id DESC')+
+    ' LIMIT ?'+(args.length+1)
   const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
   const rows=results||[]
   const hasMore=rows.length>filters.limit
   const items=rows.slice(0,filters.limit)
   const last=items[items.length-1]
-  const nextCursor=hasMore&&last?last[sortColumn]+'|'+last.id:null
+  const nextCursor=hasMore&&last?
+    (ascending?last.urgency_sort_key:last[sortColumn])+'|'+last.id:null
   return {items,nextCursor}
 }
