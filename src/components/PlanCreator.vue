@@ -227,4 +227,10 @@ async function submit(){
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}
 @media(max-width:380px){.plan-type-grid{grid-template-columns:minmax(0,1fr)}}
+
+.plan-fields .ordinal-weeks{min-width:0;display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:12px;border:1px solid #d9e4db;border-radius:11px}
+.plan-fields .ordinal-weeks legend{padding:0 5px;color:#5d7769;font-size:12px}
+.plan-fields .ordinal-week-option{display:flex;align-items:center;gap:5px;min-height:35px;padding:6px 9px;background:#f2f8f3;border:1px solid #d7e8da;border-radius:9px;color:#31513f}
+.plan-fields .ordinal-week-option input{width:17px;height:17px;accent-color:#43866a}
+.plan-fields .ordinal-weeks small{width:100%;font-size:11px;color:#6f8476;line-height:1.5}
 </style>
