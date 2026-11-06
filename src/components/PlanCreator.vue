@@ -19,7 +19,7 @@ const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(fal
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',leaveUnscheduled:false,
- intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
+ intervalDays:7,intervalAnchor:'fixed',weekday:2,ordinalWeeks:[2,4] as number[],remindEnabled:true,
  subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',createSavingsGoal:false,
@@ -30,7 +30,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.weekday=2;form.ordinalWeeks=[2,4];form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -56,7 +56,11 @@ async function submit(){
       result=await send('/tasks',oneTimeTaskPayload(onceDraft.value,oncePet.value))
       emit('taskCreated')
     }else{
-      const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
+      if(form.repeatType==='monthly_weekday'&&!form.ordinalWeeks.length)
+        throw Error('请至少选择一个星期序号')
+      const config=form.repeatType==='monthly_weekday'?
+          {weekday:Number(form.weekday),weeks:[...form.ordinalWeeks].sort((a,b)=>a-b)}:
+        form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
         form.repeatType==='monthly'?{day:Number(form.date.slice(-2))}:
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
@@ -106,7 +110,8 @@ async function submit(){
     <template v-if="kind==='routine'">
      <label>执行频率<select v-model="form.repeatType">
        <option value="once">一次性</option><option value="daily">每天</option>
-       <option value="weekly">每周</option><option value="monthly">每月</option>
+       <option value="weekly">每周</option><option value="monthly">每月固定日期</option>
+       <option value="monthly_weekday">每月指定星期（如第 2、4 个周二）</option>
        <option value="workday">工作日（日本祝日除外）</option>
        <option value="interval">自定义间隔</option>
      </select></label>
@@ -117,11 +122,20 @@ async function submit(){
        <option value="">未指派</option>
        <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
       </select></label>
-      <label v-if="form.repeatType==='weekly'">每周执行日
+      <label v-if="form.repeatType==='weekly'||form.repeatType==='monthly_weekday'">
+       {{ form.repeatType==='weekly'?'每周执行日':'星期' }}
        <select v-model.number="form.weekday" aria-label="每周执行星期">
         <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
        </select>
       </label>
+      <fieldset v-if="form.repeatType==='monthly_weekday'" class="ordinal-weeks">
+       <legend>每月第几个星期（可多选）</legend>
+       <label v-for="n in [1,2,3,4,5]" :key="n" class="ordinal-week-option">
+        <input v-model="form.ordinalWeeks" type="checkbox" :value="n"/>
+        <span>第 {{ n }} 个</span>
+       </label>
+       <small>只在选中的星期出现；没有第 5 次的月份不会补到第 4 次。</small>
+      </fieldset>
       <template v-if="form.repeatType==='interval'">
        <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
        <label>计算方式<select v-model="form.intervalAnchor">
