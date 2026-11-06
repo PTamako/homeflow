@@ -72,7 +72,7 @@ test('saving a logical push uses one insert and typed delivery result',async()=>
   kind:'task',sourceId:ID,title:'照顾豆沙',message:'记得喂药',
   sentDevices:1,failedDevices:1,localDay:'2026-11-05'})
  assert.equal(queries.length,1)
- assert.match(queries[0].sql,/ON CONFLICT\(recipient_user_id,local_day,dedupe_key\)/)
+ assert.match(queries[0].sql,/ON CONFLICT DO UPDATE SET/)
  assert.equal(queries[0].args[8],'partial')
  assert.equal(queries[0].args[3],B)
 })
