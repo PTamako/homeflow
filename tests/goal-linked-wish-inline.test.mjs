@@ -24,9 +24,10 @@ test('linked wish affordance resolves the exact wish belonging to this goal',()=
  assert.match(goal,/@edit="edit\('goals',g\)" @delete="removeItem\('goals',g\)"/)
 })
 
-test('linked wish treatment shares one compact line and meets mobile tap target',()=>{
+test('linked wish stays in the amount line with a subtle 44px touch area',()=>{
  assert.match(life,/\.goal-amount-line\{display:flex!important;align-items:center;flex-wrap:wrap/)
- assert.match(life,/\.goal-wish-link\{display:inline-flex;align-items:center/)
- assert.match(life,/background:var\(--hf-success-bg\);color:var\(--hf-success-text\)/)
- assert.match(life,/@media\(max-width:720px\)\{\.goal-wish-link\{min-height:44px\}\}/)
+ assert.match(life,/\.goal-plan-row \.goal-wish-link\{display:inline-flex;align-items:center/)
+ assert.match(life,/background:transparent;color:var\(--hf-success-text\)/)
+ assert.match(life,/min-height:44px;padding:0 2px/)
+ assert.match(goal,/<small class="goal-amount-line">/)
 })
