@@ -1158,20 +1158,33 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div class="life-row" :class="{'detail-completed':w.status==='completed'||w.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ w.title }}</b><small>{{ w.wish_type }} · <StatusBadge :code="w.status" /><template v-if="w.target_on"> · {{ w.target_on }}</template></small>
                   <small v-if="linkedGoal(w)"><StatusBadge code="linked" /> 储值计划：{{ linkedGoal(w)?.title }}</small></div>
-                <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
-                  type="button" class="life-link" @click="convertWish(w)">计划</button>
+                <div class="wish-row-actions">
+                  <button v-if="w.wish_type==='trip'&&w.status!=='completed'"
+                    type="button" class="life-link" @click="convertWish(w)">计划</button>
+                  <button v-if="canEdit(w)&&(w.status!=='cancelled'||!!linkedGoal(w))"
+                    type="button" class="routine-more-trigger"
+                    :aria-label="'更多操作：'+w.title"
+                    :aria-expanded="expandedTaskMenu==='wish:'+w.id"
+                    :aria-controls="'wish-actions-'+w.id"
+                    @click.stop="toggleTaskMenu('wish:'+w.id)">
+                    <AppIcon name="ellipsis" :size="19"/>
+                  </button>
+                </div>
               </div>
             </SwipeActions>
-            <div v-if="canEdit(w)" class="plan-action-strip">
+            <div v-if="canEdit(w)&&expandedTaskMenu==='wish:'+w.id"
+              :id="'wish-actions-'+w.id"
+              class="routine-inline-actions plan-action-strip" role="group" :aria-label="'操作：'+w.title"
+              @keydown.esc.stop="expandedTaskMenu=null">
               <button v-if="w.status!=='cancelled'&&(!linkedGoal(w)||isOwner)"
                 type="button" class="life-link" :disabled="busy" @click="finishWish(w)">
                 {{ w.status==='completed'?'撤销心愿完成':'确认心愿已实现' }}</button>
               <button v-if="linkedGoal(w)" type="button" class="life-link"
                 @click="emit('openPlans','goal',linkedGoal(w)?.id)">查看关联储值</button>
+              <button v-if="w.status==='completed'" type="button"
+                class="life-link" :disabled="busy" @click="expandedTaskMenu=null;startPlanMemory('wish',w)">记录心愿回忆</button>
               <small v-if="linkedGoal(w)">储值达标后可完成心愿</small>
             </div>
-            <button v-if="canEdit(w)&&w.status==='completed'" type="button"
-              class="life-link" :disabled="busy" @click="startPlanMemory('wish',w)">记录心愿回忆</button>
             <form v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id"
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
@@ -1344,12 +1357,26 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · <StatusBadge :code="t.status" /></small></div>
                 <div class="trip-card-actions">
                   <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
-                  <button v-if="isOwner" type="button" class="life-link" @click="toggleFinance('trip',t.id)">费用</button>
+                  <button v-if="isOwner||(canEdit(t)&&t.status==='completed')"
+                    type="button" class="routine-more-trigger"
+                    :aria-label="'更多操作：'+t.title"
+                    :aria-expanded="expandedTaskMenu==='trip:'+t.id"
+                    :aria-controls="'trip-actions-'+t.id"
+                    @click.stop="toggleTaskMenu('trip:'+t.id)">
+                    <AppIcon name="ellipsis" :size="19"/>
+                  </button>
                 </div>
               </div>
             </SwipeActions>
-            <button v-if="canEdit(t)&&t.status==='completed'" type="button"
-              class="life-link" :disabled="busy" @click="startPlanMemory('trip',t)">记录旅行回忆</button>
+            <div v-if="expandedTaskMenu==='trip:'+t.id" :id="'trip-actions-'+t.id"
+              class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title"
+              @keydown.esc.stop="expandedTaskMenu=null">
+              <button v-if="isOwner" type="button" class="life-link"
+                @click="expandedTaskMenu=null;toggleFinance('trip',t.id)">费用与调整额</button>
+              <button v-if="canEdit(t)&&t.status==='completed'" type="button"
+                class="life-link" :disabled="busy"
+                @click="expandedTaskMenu=null;startPlanMemory('trip',t)">记录旅行回忆</button>
+            </div>
             <form v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id"
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
@@ -1573,12 +1600,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
  padding:8px 12px;min-height:36px;flex:none;font-size:12px}
 .plan-filter-tabs button.selected{background:#43866a;color:#fff;border-color:#43866a}
-.trip-card-actions{display:flex;gap:5px;flex:none;flex-wrap:wrap}
+.trip-card-actions,.wish-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none;flex-wrap:wrap}
 .once-edit{background:#f6faf6;border-radius:12px;padding:12px}
 .once-remind{display:flex!important;align-items:center;gap:9px}
 .once-remind input{width:18px!important;min-height:18px!important}
 .once-actions{display:flex;gap:8px}.once-actions button{flex:1}
-@media(max-width:480px){.trip-card-actions{max-width:42%;justify-content:flex-end}
+@media(max-width:480px){.trip-card-actions,.wish-row-actions{max-width:48%;justify-content:flex-end}
  .plan-filter-tabs button{padding:7px 10px}}
 
 .task-list-pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 0 4px;font-size:12px;color:#74897a}
