@@ -474,6 +474,48 @@ async function loadTodayPlans(){
   }catch(e){error.value=(e as Error).message}
 }
 async function reloadToday(){await Promise.all([loadTasks(),loadTodayRoutines(),loadTodayPlans()])}
+const postponeKey=ref(''),postponeOn=ref(''),todayActionBusy=ref(false)
+const tomorrowJst=()=>new Date(Date.parse(tokyoToday()+'T00:00:00Z')+86400000).toISOString().slice(0,10)
+function openPostpone(row:TodayEntry){
+ if(row.routine||row.done)return
+ postponeKey.value=postponeKey.value===row.key?'':row.key
+ postponeOn.value=tomorrowJst()
+}
+async function skipToday(row:TodayEntry){
+ if(row.done||todayActionBusy.value)return
+ if(!confirm('跳过这次事项？会保留历史记录，不会标记为完成。'))return
+ todayActionBusy.value=true
+ try{
+   const date=tokyoToday()
+   if(row.routine){
+     await api('/routines/'+row.routine.id+'/mark','POST',
+       {date,periodOn:row.routine.occurrenceOn||date,status:'skipped'})
+   }else{
+     await api('/plans/today-action','POST',{kind:row.kind,id:row.task?.id||row.plan?.id,
+       on:date,action:'skipped'})
+   }
+   postponeKey.value=''
+   await reloadToday()
+   notify('本期已跳过，历史记录已保留')
+ }catch(e){error.value=(e as Error).message}
+ finally{todayActionBusy.value=false}
+}
+async function postponeToday(row:TodayEntry){
+ if(row.done||row.routine||todayActionBusy.value||postponeKey.value!==row.key)return
+ const date=tokyoToday()
+ if(!postponeOn.value||postponeOn.value<=date){
+   notify('请选择晚于今天的日期');return
+ }
+ todayActionBusy.value=true
+ try{
+   await api('/plans/today-action','POST',{kind:row.kind,id:row.task?.id||row.plan?.id,
+     on:date,action:'postponed',to:postponeOn.value})
+   postponeKey.value=''
+   await reloadToday()
+   notify('已手动顺延至 '+postponeOn.value)
+ }catch(e){error.value=(e as Error).message}
+ finally{todayActionBusy.value=false}
+}
 // Today's red action hides only this displayed occurrence, never the source plan.
 // One-off overdue tasks may appear again tomorrow; completed marks and pet care stay intact.
 async function dismissToday(row:TodayEntry){
@@ -681,14 +723,13 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ memberName(row.task.assigneeUserId) }}</span>
                     </template>
                     <template v-else-if="row.routine">
-                      {{ row.routine.mark?.completed_at?'本期已完成':row.routine.carriedFrom?'逾期未完成':'今天到期' }} · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
+                      {{ row.routine.mark?.completed_at?'本期已完成':'今天到期' }} · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ memberName(row.routine.assigned_to) }}</span>
                     </template>
                     <template v-else-if="row.plan">
-                      {{ row.done?'今天已完成':row.plan.kind==='trip'?(row.plan.tripEnded?'旅行未收尾 · 顺延':'旅行进行中'):
-                         row.plan.overdue?'逾期未完成 · 顺延':'今天到期' }} · {{ row.plan.dueOn }}
+                      {{ row.done?'今天已完成':'今天到期' }} · {{ row.plan.dueOn }}
                       <template v-if="row.plan.kind==='goal'&&row.plan.periodKey&&row.plan.periodKey!=='once'">
                         · {{ row.plan.periodKey }}{{ row.plan.periodKey.length===7?'月':'年' }}目标
                       </template>
@@ -701,6 +742,20 @@ onBeforeUnmount(()=>{
                   @click="row.task?openPlans('task',row.task.id,'',row.done):row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
                   {{ row.done?'查看计划':'去处理' }}</button>
               </div>
+              <div v-if="!row.done" class="today-decision-actions">
+                <button v-if="!row.routine" type="button" class="outline" :disabled="todayActionBusy"
+                  @click="openPostpone(row)">顺延</button>
+                <button type="button" class="outline" :disabled="todayActionBusy"
+                  @click="skipToday(row)">跳过</button>
+              </div>
+              <form v-if="!row.done&&!row.routine&&postponeKey===row.key"
+                class="today-postpone-form" @submit.prevent="postponeToday(row)">
+                <label>顺延到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
+                <div class="today-decision-actions">
+                  <button type="button" class="outline" @click="postponeKey=''">取消</button>
+                  <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认顺延</button>
+                </div>
+              </form>
             </SwipeActions>
           </template>
           <button v-if="unifiedToday.length>visibleToday.length" type="button" class="outline"
