@@ -42,7 +42,7 @@ function normalized(table,b,s){
         repeatType==='weekly'?{weekdays:input.weekdays,excludeJapaneseHolidays:input.excludeJapaneseHolidays===true}:
         repeatType==='monthly'?(input.mode==='weekday'?
           {mode:'weekday',weekday:input.weekday,weekNumbers:input.weekNumbers}:
-          {day:input.day}):
+          Array.isArray(input.days)?{mode:'day',days:input.days}:{day:input.day}):
         repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
@@ -418,7 +418,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
         {weekdays:c.weekdays,excludeJapaneseHolidays:c.excludeJapaneseHolidays===true}:
         type==='monthly'?(c.mode==='weekday'?
           {mode:'weekday',weekday:c.weekday,weekNumbers:c.weekNumbers}:
-          {day:c.day}):
+          {days:[...(Array.isArray(c.days)?c.days:[c.day])].sort((a,b)=>a-b)}):
         type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
       const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
         JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
