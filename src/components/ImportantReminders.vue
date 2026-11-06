@@ -35,7 +35,8 @@ const visibleSnoozes=computed(()=>[...snoozed.value]
 const {toast,notify}=usePageToast()
 let requestId=0
 const visibleReminders=computed(()=>loadedDate.value===props.todayDate
- ? additionalReminders(items.value,props.todayEntryKeys) as Reminder[] : [])
+ ? additionalReminders(items.value,props.mode==='list'?
+     props.todayEntryKeys.filter(key=>!key.startsWith('plan:wish:')):props.todayEntryKeys) as Reminder[] : [])
 const pageSize=5,visibleCount=ref(pageSize)
 const shownReminders=computed(()=>visibleReminders.value.slice(0,visibleCount.value))
 
@@ -194,8 +195,8 @@ onBeforeUnmount(()=>{requestId++})
        <time class="reminder-date" :datetime="item.dueOn">截止 {{ item.dueOn }}</time>
        <small v-if="item.kind==='goal'&&item.message" class="reminder-message">{{ item.message }}</small>
       </div>
-      <div v-if="item.kind==='goal'" class="snooze-actions">
-       <button type="button" class="snooze-button" @click="emit('openPlan','goal',item.id,item.periodKey||'once',false)">去处理</button>
+      <div v-if="item.kind==='goal'||item.kind==='wish'" class="snooze-actions">
+       <button type="button" class="snooze-button" @click="emit('openPlan',item.kind,item.id,item.kind==='goal'?item.periodKey||'once':'',false)">去处理</button>
       </div>
       <div v-else class="snooze-actions">
        <button class="snooze-button" type="button" :disabled="snoozing"

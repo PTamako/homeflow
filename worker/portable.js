@@ -81,9 +81,11 @@ function normalized(key,r,h,u) {
       if(str(r.title,150)===null||!r.title||!['trip','purchase','activity','other'].includes(r.wish_type)||
          !['wished','planning','active','completed','cancelled'].includes(r.status)||
          !amount(r.estimated_amount)||str(r.note||'',2000)===null||!optionalDate(r.target_on))return null
-      return ["INSERT OR IGNORE INTO wishes(id,household_id,created_by,visibility,title,wish_type,status,estimated_amount,currency,note,target_on,deleted_at) "+
-        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'JPY',?9,?10,?11)",
-        [r.id,h,u,v,r.title,r.wish_type,r.status,r.estimated_amount,r.note||'',r.target_on||null,r.deleted_at||null]]
+      const wishLead=[0,1,3,7].includes(r.remind_advance_days)?r.remind_advance_days:0
+      const wishEnabled=r.remind_enabled===1&&!!r.target_on?1:0
+      return ["INSERT OR IGNORE INTO wishes(id,household_id,created_by,visibility,title,wish_type,status,estimated_amount,currency,note,target_on,deleted_at,remind_enabled,remind_advance_days) "+
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'JPY',?9,?10,?11,?12,?13)",
+        [r.id,h,u,v,r.title,r.wish_type,r.status,r.estimated_amount,r.note||'',r.target_on||null,r.deleted_at||null,wishEnabled,wishLead]]
     case 'trips':
       if(!str(r.title,150)||str(r.destination||'',300)===null||(r.start_on&&!date(r.start_on))||
          (r.end_on&&!date(r.end_on))||!amount(r.budget_amount)||

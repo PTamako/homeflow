@@ -23,7 +23,7 @@ const form=reactive({
  intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
  subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
- wishType:'purchase',estimatedAmount:0,targetOn:'',createSavingsGoal:false,
+ wishType:'purchase',estimatedAmount:0,targetOn:'',wishRemindEnabled:false,wishRemindAdvanceDays:0,createSavingsGoal:false,
  targetAmount:100000,reservedAmount:0,destination:'',
  startDate:'',endDate:'',budgetAmount:0
 })
@@ -31,7 +31,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.assignedTo=props.userId||'';form.visibility='household';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.assignedTo=props.userId||'';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -72,6 +72,7 @@ async function submit(){
     if(form.createSavingsGoal&&form.estimatedAmount<=0)throw Error('添加关联储值计划时，请填写大于零的预估金额')
     result=await send('/wishes',{...common,wishType:form.wishType,
       estimatedAmount:form.estimatedAmount,currency:'JPY',targetOn:form.targetOn||null,
+      remindEnabled:!!form.targetOn&&form.wishRemindEnabled,remindAdvanceDays:form.wishRemindAdvanceDays,
       createSavingsGoal:form.createSavingsGoal,goalStartOn:form.goalStartOn})
   }else if(kind.value==='goal'){
     result=await send('/goals',{...common,targetAmount:form.targetAmount,
@@ -190,6 +191,11 @@ async function submit(){
      </select></label>
      <label>预估金额（日元）<input v-model.number="form.estimatedAmount" type="number" min="0" max="100000000000" required/></label>
      <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
+     <label class="plan-checkbox"><input v-model="form.wishRemindEnabled" type="checkbox" :disabled="!form.targetOn"/> 开启提醒</label>
+     <label v-if="form.wishRemindEnabled&&form.targetOn">提醒时间<select v-model.number="form.wishRemindAdvanceDays">
+       <option :value="0">到期当天 06:00</option><option :value="1">提前 1 天</option>
+       <option :value="3">提前 3 天</option><option :value="7">提前 7 天</option>
+     </select></label>
      <label class="plan-checkbox"><input v-model="form.createSavingsGoal" type="checkbox"/>
       <span>同时创建关联的储值计划</span></label>
      <label v-if="form.createSavingsGoal">储值开始日期<DateField v-model="form.goalStartOn" required /></label>

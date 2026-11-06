@@ -36,9 +36,14 @@ function detail(item:Notice){
 // Keep login emails out of the UI and avoid extra D1 queries for each notice.
 // The existing inbox kind CHECK stays unchanged. A goal notice is a system
 // notification whose server-generated identity embeds the exact goal/period.
+function wishTarget(item:Notice){
+ if(item.kind!=='system'||!item.sourceId||!item.dedupeKey)return null
+ const match=/^scheduled:wish:([0-9a-f-]{36}):[0-9]{4}-[0-9]{2}-[0-9]{2}:(?:0|1|3|7)$/.exec(item.dedupeKey)
+ return match&&match[1]===item.sourceId?{id:match[1]}:null
+}
 function savingsTarget(item:Notice){
  if(item.kind!=='system'||!item.sourceId||!item.dedupeKey)return null
- const match=/^scheduled:goal:([0-9a-f-]{36}):(once|\\d{4}(?:-\\d{2})?):(due|advance|pending|result):\\d{4}-\\d{2}-\\d{2}:\\d+$/.exec(item.dedupeKey)
+ const match=/^scheduled:goal:([0-9a-f-]{36}):(once|[0-9]{4}(?:-[0-9]{2})?):(due|advance|pending|result):[0-9]{4}-[0-9]{2}-[0-9]{2}:[0-9]+$/.exec(item.dedupeKey)
  if(!match||match[1]!==item.sourceId)return null
  return {id:match[1],periodKey:match[2]}
 }
@@ -115,6 +120,10 @@ async function open(item:Notice){
  }else{
    const goal=savingsTarget(item)
    if(goal)emit('openPlan','goal',goal.id,goal.periodKey,false)
+   else {
+     const wish=wishTarget(item)
+     if(wish)emit('openPlan','wish',wish.id,'',false)
+   }
  }
 }
 async function showIncomingNotification(id:string){
@@ -191,8 +200,8 @@ defineExpose({refresh:()=>load(true)})
         type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
       <button v-if="view==='received'&&item.readAt"
         type="button" :disabled="!!reading" @click="markUnread(item)">标记未读</button>
-      <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item))"
-        type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':'查看计划' }}</button>
+      <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item))"
+        type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
      </div>
     </div>
    </div>

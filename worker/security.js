@@ -90,7 +90,7 @@ export async function sessionFor(request, db) {
 const dbIdentityCache=new WeakMap()
 const DB_IDENTITY_TTL_MS=15000
 // During migration rollout, both the pre-migration and new verified D1 snapshots are safe.
-const EXPECTED_MIGRATIONS=new Set(['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql'])
+const EXPECTED_MIGRATIONS=new Set(['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql'])
 export async function verifiedDatabase(env) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false

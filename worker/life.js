@@ -10,7 +10,7 @@ import {isJapaneseWorkday} from './jp-holidays.js'
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
   routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
-  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on']},
+  wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on','remind_enabled','remind_advance_days']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id','goal_mode','start_on']},
   shopping_items:{columns:['title','quantity','due_on','assigned_to']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
@@ -55,7 +55,11 @@ function normalized(table,b,s){
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
       if(b.status && !['wished','planning','active','completed','cancelled'].includes(b.status))return null
       if(b.targetOn&&!ymd(b.targetOn))return null
-      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',trim(b.note,2000),b.targetOn||null]
+      if(b.remindEnabled!==undefined&&typeof b.remindEnabled!=='boolean')return null
+      const wishLead=b.remindAdvanceDays??0
+      if(![0,1,3,7].includes(wishLead)||(b.remindEnabled===true&&!b.targetOn))return null
+      return [title,b.wishType,b.status||'wished',b.estimatedAmount||0,b.currency||'JPY',
+        trim(b.note,2000),b.targetOn||null,b.remindEnabled===true?1:0,wishLead]
     case 'goals':
       if(!Number.isSafeInteger(b.targetAmount)||b.targetAmount<=0||b.targetAmount>100000000000||!validMoney(b.reservedAmount??0)||!JPY(b.currency||'JPY')||
         (b.targetOn&&!ymd(b.targetOn))||(b.wishId&&!hexId(b.wishId)))return null
@@ -383,6 +387,11 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
     if(!current)return json({error:'not_found'},404)
     if(current.created_by!==session.user_id)return json({error:'forbidden'},403)
     const b=await readBody(request)
+    if(table==='wishes'&&b){
+      // Legacy clients may omit reminder settings; editing the title must not disable them.
+      b.remindEnabled??=current.remind_enabled===1
+      b.remindAdvanceDays??=current.remind_advance_days??0
+    }
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
     if(table==='wishes'&&b.status==='completed'&&current.status!=='completed')
