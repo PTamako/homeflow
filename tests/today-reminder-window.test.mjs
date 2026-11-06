@@ -58,7 +58,7 @@ test('Today notification hub combines pending reminders and delivery history wit
  assert.doesNotMatch(manage,/>暂无重要提醒</)
  assert.match(important,/mode!=='settings'/)
  assert.match(important,/mode!=='list'/)
- assert.match(important,/additionalReminders\(items.value,props.todayEntryKeys\)/)
+ assert.match(important,/additionalReminders\(items.value,props.mode==='list'/)
  assert.match(important,/watch\(\(\)=>props.todayDate,[\s\S]*?immediate:true/)
 })
 test('management collects invitation, password, push, trash, backup, and logout',()=>{
@@ -110,7 +110,7 @@ test('pending reminders keep dates and actions on separate mobile-friendly rows'
  assert.match(reminders,/class="reminder-title"/)
  assert.match(reminders,/<time class="reminder-date" :datetime="item.dueOn">截止/)
  assert.match(reminders,/<div v-else class="snooze-actions">/)
- assert.match(reminders,/<div v-if="item.kind==='goal'" class="snooze-actions">/)
+ assert.match(reminders,/<div v-if="item.kind==='goal'\|\|item.kind==='wish'" class="snooze-actions">/)
  assert.match(reminders,/\.reminder-item\{display:grid;grid-template-columns:minmax\(0,1fr\)/)
  assert.match(reminders,/\.snooze-actions\{display:flex;gap:7px;flex-wrap:wrap;align-items:center/)
  assert.match(reminders,/\.snooze-calendar\{display:flex;gap:7px;flex:1 0 100%/)
