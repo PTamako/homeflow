@@ -3,12 +3,25 @@ export function addDays(date,days){
   return Number.isFinite(time)&&Number.isInteger(days)?new Date(time+days*86400000).toISOString().slice(0,10):''
 }
 
+// Old interval rules used their anchor as a baseline. Preserve those historical
+// schedules, while a future start selected when creating a legacy rule (or an
+// explicitly opted-in rule) is its first execution date.
+export function intervalStartsOnAnchor(rule){
+  let config={}
+  try{config=typeof rule?.repeat_config==='string'?JSON.parse(rule.repeat_config):rule?.repeat_config||{}}
+  catch{return false}
+  if(config.startOnAnchor===true)return true
+  if(config.startOnAnchor===false)return false
+  const created=String(rule?.created_at||'').slice(0,10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(created)&&rule.anchor_date>created
+}
+
 export function canCompleteEarly(rule,date){
   if(!rule?.enabled||rule.repeat_type!=='interval'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<rule.anchor_date)return false
   let c={}
   try{c=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return false}
   return c.anchor==='completion'&&Number.isInteger(c.days)&&c.days>=1&&c.days<=3650
-    &&date<(rule.next_due_on||rule.anchor_date)
+    &&date<(rule.next_due_on||(intervalStartsOnAnchor(rule)?rule.anchor_date:addDays(rule.anchor_date,c.days)))
 }
 
 import {isJapaneseWorkday} from './jp-holidays.js'
@@ -46,10 +59,11 @@ export function dueOn(rule,date) {
     }
     case 'interval': {
       if(!Number.isInteger(c.days)||c.days<1||c.days>3650)return false
-      // The chosen start date is the first scheduled occurrence.
-      // Completion-anchored intervals continue from the last resolved date.
-      if(c.anchor==='completion')return date>=(rule.next_due_on||rule.anchor_date)
-      return age%c.days===0
+      // New schedules start on their chosen date; keep old baseline-based
+      // intervals stable, especially previously recorded treatment cycles.
+      const first=intervalStartsOnAnchor(rule)
+      if(c.anchor==='completion')return date>=(rule.next_due_on||(first?rule.anchor_date:addDays(rule.anchor_date,c.days)))
+      return (first||age>0)&&age%c.days===0
     }
     default: return false
   }
@@ -110,8 +124,8 @@ export function lastScheduledBefore(rule,date){
     try{config=typeof rule.repeat_config==='string'?JSON.parse(rule.repeat_config):rule.repeat_config||{}}catch{return null}
     if(config.anchor==='completion')return null // next_due_on already carries over.
     const days=Number(config.days)
-    if(!Number.isInteger(days)||days<1||days>3650||age<1)return null
-    // The anchor itself is the first occurrence, including in period history.
+    if(!Number.isInteger(days)||days<1||days>3650||age<=(intervalStartsOnAnchor(rule)?0:days))return null
+    // Start-anchored rules include the first occurrence; legacy rules don't.
     const scheduled=Math.floor((age-1)/days)*days
     const d=new Date(rule.anchor_date+'T00:00:00Z')
     d.setUTCDate(d.getUTCDate()+scheduled)
