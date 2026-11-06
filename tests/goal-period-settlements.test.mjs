@@ -62,6 +62,7 @@ test('shortfall is a real settlement with a signed gap, not an overdue task',asy
  assert.equal(outgoing[0].searchParams.get('start'),'2026-10-01')
  assert.equal(outgoing[0].searchParams.get('end'),'2026-10-31')
  assert.equal(statements.length,2)
+ assert.equal(statements[0].values.at(-2),'scheduled')
  assert.match(statements[0].sql,/goal_period_settlements/)
  assert.match(statements[1].sql,/DELETE FROM plan_completion_marks/)
 })
@@ -77,6 +78,17 @@ test('met goal is settled with over-target difference, and failure never saves a
  assert.equal(result.ok,false)
  assert.equal(failed.statements.length,0)
 })
+test('manual recheck records a reviewed result without changing the shortfall',async()=>{
+ const {env,statements}=fixture(30000)
+ const result=await settleGoalPeriod(env,goal,'2026-10','2026-11-05',true)
+ assert.equal(result.status,'shortfall')
+ assert.equal(result.differenceAmount,28000)
+ assert.equal(result.settlementOrigin,'manual')
+ assert.match(statements[0].sql,/settlement_origin=excluded.settlement_origin/)
+ assert.equal(statements[0].values.at(-2),'manual')
+ assert.equal(statements[1].sql.includes('DELETE FROM plan_completion_marks'),true)
+})
+
 test('period history is bounded at five and never calls Kakebo on page render',async()=>{
  const {env,outgoing}=fixture(1)
  const result=await goalPeriodsRoute(req('/api/goals/'+ID+'/periods?limit=5'),env,

@@ -16,7 +16,9 @@ const validStatus=status=>status==='met'||status==='shortfall'
 // once: due date; monthly: three days before; yearly: seven days before.
 // Outstanding reminders remain visible in "待提醒" every day. Push delivery
 // happens only on the first day after closing and at most weekly thereafter.
-// Confirmed settlement results notify on the *next* JST morning.
+// Scheduled settlement results notify on the *next* JST morning.
+// Manual rechecks have already shown the result to the user and must not
+// create a second reminder or an unnecessary unread notification.
 export function savingsReminders(goals,date,settlements=[],completionMarks=[]){
   const settled=new Map(settlements.map(row=>[key(row.goal_id,row.period_key),row]))
   const marked=new Set(completionMarks.map(row=>key(row.plan_id,row.period_key)))
@@ -60,7 +62,8 @@ export function savingsReminders(goals,date,settlements=[],completionMarks=[]){
     // Only the latest twelve closed periods are relevant to the Today inbox.
     for(const w of closed){
       const result=settled.get(key(goal.id,w.periodKey))
-      if(!validStatus(result?.status)||jstDayOf(result.settled_at)!==yesterday)continue
+      if(!validStatus(result?.status)||result.settlement_origin==='manual'||
+         jstDayOf(result.settled_at)!==yesterday)continue
       const remaining=Number(result.difference_amount||0)
       const status=result.status==='met'?'本期已达标':
         remaining>0?'本期未达标 · 不足 '+yen(remaining):

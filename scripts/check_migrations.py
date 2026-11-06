@@ -35,7 +35,8 @@ MIGRATIONS=[
     "0028_explicit_today_actions.sql",
     "0029_household_revisions.sql",
     "0030_member_revisions.sql",
-    "0031_completion_event_read_state.sql"
+    "0031_completion_event_read_state.sql",
+    "0032_settlement_origin.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -85,6 +86,7 @@ added_columns={
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
   "notification_deliveries":{"attempts"},
   "notification_inbox":{"local_day","read_at","sent_devices","failed_devices","dedupe_key","last_completion_key"},
+  "goal_period_settlements":{"settlement_origin"},
 }
 for table in ("routines","anniversaries","wishes","goals","shopping_items","trips","memories"):
   added_columns.setdefault(table,set()).add("deleted_at")

@@ -62,6 +62,18 @@ test('verified settlement results notify once on the next JST morning, without t
  assert.match(savingsReminders([g],'2026-11-02',[met])[0].message,/已达标/)
 })
 
+test('a manually reviewed monthly result never creates a follow-up push',()=>{
+ const g={...monthly,start_on:'2026-10-01'}
+ const reviewed={goal_id:id,period_key:'2026-10',status:'shortfall',
+   settlement_origin:'manual',difference_amount:13908,settled_at:'2026-11-06T04:16:31.978Z'}
+ assert.deepEqual(savingsReminders([g],'2026-11-07',[reviewed]),[])
+ assert.deepEqual(savingsReminders([g],'2026-11-08',[reviewed]),[])
+ assert.deepEqual(savingsReminders([g],'2026-11-07',[{...reviewed,status:'met'}]),[])
+ const automatic={...reviewed,settlement_origin:'scheduled'}
+ assert.equal(savingsReminders([g],'2026-11-07',[automatic])[0].stage,'result')
+ assert.equal(savingsReminders([g],'2026-11-08',[automatic]).length,0)
+})
+
 test('different savings periods and settlement stages have independent notification keys',()=>{
  const g={kind:'goal',id,dueOn:'2026-11-30',periodKey:'2026-11',
    stage:'advance',daysBefore:3}

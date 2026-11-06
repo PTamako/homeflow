@@ -276,7 +276,7 @@ export async function remindersRoute(request,db,session) {
       const ids=goals.map(x=>x.id)
       const placeholders=ids.map((_,i)=>'?'+(i+2)).join(',')
       const [settlements,marks]=await db.batch([
-        db.prepare(`SELECT goal_id,period_key,status,difference_amount,settled_at
+        db.prepare(`SELECT goal_id,period_key,status,difference_amount,settlement_origin,settled_at
           FROM goal_period_settlements WHERE household_id=?1 AND goal_id IN (${placeholders})
           ORDER BY period_key DESC LIMIT 1000`).bind(hid,...ids),
         db.prepare(`SELECT plan_id,period_key FROM plan_completion_marks

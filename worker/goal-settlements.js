@@ -55,18 +55,22 @@ export async function settleGoalPeriod(env,goal,periodKey,today=tokyoDay(),force
   if(!Number.isSafeInteger(difference))
     return {ok:false,error:'ledger_invalid_response'}
   const settledAt=new Date().toISOString()
+  // A user-triggered recheck is already reviewed; only scheduled settlements
+  // can produce next-morning result notifications.
+  const settlementOrigin=force?'manual':'scheduled'
   const statements=[
     db.prepare(`INSERT INTO goal_period_settlements
       (household_id,goal_id,period_key,period_start,period_end,target_amount,
-       actual_amount,difference_amount,status,settled_at,updated_at)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,CURRENT_TIMESTAMP)
+       actual_amount,difference_amount,status,settlement_origin,settled_at,updated_at)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,CURRENT_TIMESTAMP)
       ON CONFLICT(household_id,goal_id,period_key) DO UPDATE SET
       period_start=excluded.period_start,period_end=excluded.period_end,
       target_amount=excluded.target_amount,actual_amount=excluded.actual_amount,
       difference_amount=excluded.difference_amount,status=excluded.status,
+      settlement_origin=excluded.settlement_origin,
       settled_at=excluded.settled_at,updated_at=CURRENT_TIMESTAMP`)
       .bind(h,goal.id,periodKey,progress.start,progress.end,progress.target,
-        progress.amount,difference,status,settledAt)
+        progress.amount,difference,status,settlementOrigin,settledAt)
   ]
   if(status==='met'){
     statements.push(db.prepare(`INSERT OR IGNORE INTO plan_completion_marks
@@ -81,7 +85,7 @@ export async function settleGoalPeriod(env,goal,periodKey,today=tokyoDay(),force
   await db.batch(statements)
   return {ok:true,status,periodKey,actualAmount:progress.amount,
     targetAmount:progress.target,differenceAmount:difference,
-    periodStart:progress.start,periodEnd:progress.end,settledAt,
+    periodStart:progress.start,periodEnd:progress.end,settledAt,settlementOrigin,
     calculationBasis:'household_net_cashflow_estimate'}
 }
 
