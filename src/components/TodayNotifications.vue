@@ -17,6 +17,7 @@ const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
 const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null)
 const highlightedId=ref('')
+const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
 function timeOf(value:string|null){
  if(!value)return ''
@@ -67,6 +68,8 @@ async function load(reset=true,focusId=''){
   }
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   emit('unreadChange',unread.value)
+  // Push arriving while the pending tab is open should immediately remove delivered items.
+  if(view.value==='pending')await pendingReminders.value?.refresh()
  }catch(e){
   if(request===generation)error.value=(e as Error).message
  }finally{
@@ -154,7 +157,7 @@ defineExpose({refresh:()=>load(true)})
    </div>
    <div v-if="view==='pending'" class="notice-reminder-list">
     <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys"
-      compact mode="list" />
+      compact mode="list" ref="pendingReminders" />
    </div>
    <template v-else>
    <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
