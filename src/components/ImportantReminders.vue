@@ -250,14 +250,14 @@ onBeforeUnmount(()=>{requestId++})
         </div>
       </template>
       <div class="quiet-controls reminder-rule-section">
-       <h3>通用推送时段</h3>
+       <h3>自动提醒的安静时段</h3>
        <label class="quiet-toggle"><input v-model="quietEnabled" type="checkbox"/> 启用推送安静时段</label>
        <div v-if="quietEnabled" class="quiet-hours">
         <label>开始<select v-model="quietStart"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
         <label>结束<select v-model="quietEnd"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
        </div>
        <button class="snooze-button" type="button" :disabled="savingAdvance" @click="saveQuiet">保存安静时段</button>
-       <small>适用于所有手机推送，不影响「今日通知」记录。每日 06:00 推送，安静时段不通知。</small>
+       <small>仅影响每日定时推送，不影响手动通知家人或「今日通知」记录。每日 06:00 推送，安静时段不通知。</small>
       </div>
     </div>
     <div v-if="mode!=='list'&&snoozed.length" class="snoozed-items">
