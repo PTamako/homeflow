@@ -154,3 +154,15 @@ test('received and sent notifications display linked household member names, not
  assert.match(ui,/'来自：'\+memberDisplayName\(item\.senderUserId\)/)
  assert.doesNotMatch(ui,/\+item\.(senderName|recipientName)/)
 })
+
+test('sent notices show recipient read status separately from push delivery status',()=>{
+ const ui=read('src/components/TodayNotifications.vue')
+ const api=read('worker/notifications.js')
+ assert.match(ui,/view\.value==='sent'\?'对方已读 ':'已读 '/)
+ assert.match(ui,/return view\.value==='sent'\?'对方未读':'未读'/)
+ assert.match(ui,/function deliveryDetail\(item:Notice\)/)
+ assert.match(ui,/if\(item\.sentDevices===0\)return '仅应用内'/)
+ assert.match(ui,/<template v-if="view==='sent'"> · \{\{ deliveryDetail\(item\) \}\}<\/template>/)
+ assert.match(api,/n\.read_at AS readAt/)
+ assert.match(api,/n\.sender_user_id/)
+})
