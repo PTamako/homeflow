@@ -1552,10 +1552,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           class="memory" :class="{'focused-plan-entry':isFocused(m)}">
           <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"
             @edit="edit('memories',m)" @delete="removeItem('memories',m)">
-            <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
-          </SwipeActions>
-          <LifeItemEditor v-if="editing?.kind==='memories'&&editing.item.id===m.id"
-            kind="memories" :item="m" @saved="changed" @cancel="editing=null"/>
+            <div class="memory-swipe-body">
+              <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
           <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
             <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
               <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
@@ -1570,6 +1568,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </div>
           </div>
           <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
+            </div>
+          </SwipeActions>
+          <LifeItemEditor v-if="editing?.kind==='memories'&&editing.item.id===m.id"
+            kind="memories" :item="m" @saved="changed" @cancel="editing=null"/>
         </article>
         <button v-if="!listLoading&&listCursors.memories" type="button" class="life-more" :disabled="pageBusy.memories"
           @click="loadMore('memories')">加载更多回忆</button>
@@ -1673,6 +1675,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .trip-item-actions{display:flex;gap:5px;flex:none}
 .trip-item-actions button{border:0;border-radius:7px;background:#edf5ed;color:#43866a;padding:6px 8px;font-size:11px}
 .trip-item-actions .remove{background:#faefeb;color:#ab5d4a}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.memory-swipe-body{min-width:0;width:100%;overflow-wrap:anywhere;padding:0 0 2px}
+.memory-swipe-body .memory-swipe-heading{min-width:0;overflow-wrap:anywhere}
+.memory-swipe-body .memory-swipe-heading time{display:block}
+.memory-swipe-body .memory-swipe-heading h3{margin:7px 0 8px;line-height:1.45}
+.memory :deep(.swipe-row){border-radius:8px}
+.memory :deep(.swipe-content){background:#fff}
+.memory :deep(.swipe-actions){align-items:flex-start;background:#f4f7f4}
+.memory :deep(.swipe-actions button){height:72px;flex:0 0 72px}
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
