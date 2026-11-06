@@ -19,8 +19,8 @@ const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(fal
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
- monthWeekday:2,monthWeekNumbers:[2,4] as number[],leaveUnscheduled:false,
- intervalDays:7,intervalAnchor:'fixed',weekday:new Date(today()+'T00:00:00Z').getUTCDay(),remindEnabled:true,
+ monthWeekday:2,monthWeekNumbers:[2,4] as number[],monthDays:[Number(today().slice(-2))] as number[],leaveUnscheduled:false,
+ intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,
  subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',wishRemindEnabled:false,wishRemindAdvanceDays:0,createSavingsGoal:false,
@@ -31,7 +31,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.assignedTo=props.userId||'';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -57,11 +57,11 @@ async function submit(){
       result=await send('/tasks',oneTimeTaskPayload(onceDraft.value,oncePet.value))
       emit('taskCreated')
     }else{
-      const config=form.repeatType==='weekly'?{weekdays:[Number(form.weekday)]}:
+      const config=form.repeatType==='weekly'?{weekdays:[...form.weekdays].sort((a,b)=>a-b)}:
         form.repeatType==='monthly'?(form.monthlyMode==='weekday'?
           {mode:'weekday',weekday:Number(form.monthWeekday),
            weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
-          {day:Number(form.date.slice(-2))}):
+          {mode:'day',days:[...form.monthDays].sort((a,b)=>a-b)}):
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor}:{}
       result=await send('/routines',{...details,repeatType:form.repeatType,
         repeatConfig:config,anchorDate:form.date})
@@ -122,11 +122,17 @@ async function submit(){
        <option value="">未指派</option>
        <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
       </select></label>
-      <label v-if="form.repeatType==='weekly'">每周执行日
-       <select v-model.number="form.weekday" aria-label="每周执行星期">
-        <option v-for="(day,i) in ['周日','周一','周二','周三','周四','周五','周六']" :key="i" :value="i">{{ day }}</option>
-       </select>
-      </label>
+      <fieldset v-if="form.repeatType==='weekly'" class="day-select-group">
+       <legend>每周执行日（可多选）</legend>
+       <div class="day-select weekday-select">
+        <label v-for="(day,i) in ['日','一','二','三','四','五','六']" :key="i"
+         :class="['day-option',{ 'is-selected':form.weekdays.includes(i) }]">
+         <input v-model="form.weekdays" type="checkbox" :value="i"/>
+         <span>{{ day }}</span>
+        </label>
+       </div>
+       <small v-if="!form.weekdays.length" class="creator-error">请至少选择一个星期</small>
+      </fieldset>
       <template v-if="form.repeatType==='monthly'">
        <label>每月按什么执行
         <select v-model="form.monthlyMode" aria-label="每月规则类型">
@@ -134,7 +140,18 @@ async function submit(){
          <option value="weekday">指定第几个星期几</option>
         </select>
        </label>
-       <small v-if="form.monthlyMode==='day'">每月 {{ Number(form.date.slice(-2)) }} 日（按起始日期，遇月底自动调整）</small>
+       <fieldset v-if="form.monthlyMode==='day'" class="day-select-group">
+        <legend>每月执行日期（可多选）</legend>
+        <div class="day-select month-day-select">
+         <label v-for="n in 31" :key="n"
+          :class="['day-option',{ 'is-selected':form.monthDays.includes(n) }]">
+          <input v-model="form.monthDays" type="checkbox" :value="n"/>
+          <span>{{ n }}</span>
+         </label>
+        </div>
+        <small>月底不存在的日期自动调整为当月最后一天，同一天只执行一次</small>
+        <small v-if="!form.monthDays.length" class="creator-error">请至少选择一个日期</small>
+       </fieldset>
        <template v-else>
         <label>执行星期
          <select v-model.number="form.monthWeekday" aria-label="每月执行星期">
@@ -226,7 +243,7 @@ async function submit(){
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
      <button type="button" class="creator-cancel" @click="dismiss">取消</button>
-     <button class="creator-save" :disabled="busy||(kind==='routine'&&form.repeatType==='monthly'&&form.monthlyMode==='weekday'&&!form.monthWeekNumbers.length)">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
+     <button class="creator-save" :disabled="busy||(kind==='routine'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
   </template>
@@ -248,6 +265,14 @@ async function submit(){
 .monthly-week-select legend{padding:0 5px;color:#5d7769;font-size:12px}
 .plan-fields .monthly-week-option{display:flex;align-items:center;gap:5px;border:1px solid #d9e4db;background:#fff;border-radius:8px;padding:7px 9px}
 .monthly-week-option input[type="checkbox"]{width:17px;height:17px;flex:none;accent-color:#43866a}
+.day-select-group{min-width:0;margin:0;border:0;padding:0;display:grid;gap:7px}
+.day-select-group legend{font-size:12px;color:#5d7769;margin-bottom:6px}
+.day-select-group small{font-size:11px;color:#708778}
+.day-select{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.plan-fields .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:36px;cursor:pointer;border:1px solid #d9e4db;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
+.plan-fields .day-option.is-selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
+.day-option:focus-within{outline:2px solid #7bbda1;outline-offset:2px}
+.day-option input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}
