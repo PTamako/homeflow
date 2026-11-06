@@ -27,7 +27,7 @@ const todayCategories:Array<{id:'all'|TodayKind;label:string}>=[
  {id:'all',label:'全部'},{id:'task',label:'待办'},{id:'routine',label:'定期'},
  {id:'shopping',label:'购物'},{id:'wish',label:'心愿'},{id:'goal',label:'储值'},{id:'trip',label:'旅行'}
 ]
-type Data={nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
+type Data={revision?:number;nextCursor?:string|null;total?:number;completed?:number;categories?:TodayKind[];entryKeys?:string[];hiddenTodayKeys?:string[];ok?:boolean;error?:string;initialized?:boolean;bootstrapAvailable?:boolean;bootstrapIssue?:'missing'|'too_short'|null;user?:User;profiles?:Profile[];members?:Member[];tasks?:Task[];items?:Routine[];invitationCode?:string}
 const user=ref<User|null>(null),profiles=ref<Profile[]>([]),members=ref<Member[]>([])
 function memberName(id:string|null|undefined){
  if(!id)return '未指派'
@@ -44,6 +44,8 @@ const todayEntryKeys=ref<string[]>([])
 const todayMoreBusy=ref(false)
 const sharedRefreshCounter=ref(0)
 const syncRevision=ref<number|null>(null)
+const lastTodayPageRevision=ref<number|null>(null)
+const lifePanelRef=ref<{refreshForSync:()=>Promise<boolean>}|null>(null)
 let syncBusy=false
 let syncInterval:number|undefined
 let lastVisibleRefresh=0
@@ -420,10 +422,11 @@ async function logout(){
   }catch{}
   try{await api('/auth/logout','POST',{})}catch{}
   clearToast()
-  user.value=null;profiles.value=[];members.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];syncRevision.value=null;todayPageGeneration++;pendingTasks.value=[];await refresh()
+  user.value=null;profiles.value=[];members.value=[];todayRows.value=[];todayNextCursor.value=null;todayEntryKeys.value=[];syncRevision.value=null;lastTodayPageRevision.value=null;todayPageGeneration++;pendingTasks.value=[];await refresh()
 }
-async function loadTodayPage(reset=true){
- if(!user.value||(!reset&&(!todayNextCursor.value||todayMoreBusy.value)))return
+async function loadTodayPage(reset=true):Promise<boolean>{
+ if(!user.value||(!reset&&(!todayNextCursor.value||todayMoreBusy.value)))return false
+ if(reset)todayMoreBusy.value=false
  const date=tokyoToday(),category=todayCategory.value,userId=user.value.id
  const generation=reset?++todayPageGeneration:todayPageGeneration
  const cursor=reset?'':todayNextCursor.value||''
@@ -433,7 +436,7 @@ async function loadTodayPage(reset=true){
    if(cursor)params.set('cursor',cursor)
    const data=await api('/today/page?'+params.toString())
    if(generation!==todayPageGeneration||user.value?.id!==userId||
-      date!==tokyoToday()||category!==todayCategory.value)return
+      date!==tokyoToday()||category!==todayCategory.value)return false
    const items=(data.items||[]) as TodayEntry[]
    if(reset)todayRows.value=items
    else{
@@ -444,9 +447,17 @@ async function loadTodayPage(reset=true){
    todayTotal.value=Number(data.total)||0
    todayCompleted.value=Number(data.completed)||0
    todayAvailableKinds.value=(data.categories||[]) as TodayKind[]
-   todayEntryKeys.value=data.entryKeys||[]
+   if(reset)todayEntryKeys.value=data.entryKeys||[]
+   if(reset&&Number.isSafeInteger(data.revision))lastTodayPageRevision.value=data.revision!
+   return true
  }catch(e){
+   if(!reset&&(e as Error).message==='stale_cursor'){
+     // A family member changed the ordering between pages. Start a fresh
+     // versioned snapshot; do not combine an old cursor with newer records.
+     return loadTodayPage(true)
+   }
    if(generation===todayPageGeneration)error.value=(e as Error).message
+   return false
  }finally{
    if(generation===todayPageGeneration)todayMoreBusy.value=false
  }
@@ -535,20 +546,25 @@ async function checkRemoteChanges(){
    if(user.value?.id!==id)return
    const version=Number((data as any).revision)
    if(!Number.isSafeInteger(version)||version<0)return
-   const prior=syncRevision.value
-   syncRevision.value=version
-   if(prior!==null&&prior!==version){
-     sharedRefreshCounter.value++
-     if(tab.value==='today')await loadTodayPage(true)
-     // Member names and pet/family profiles appear in Today as well as Family,
-     // so refresh this small scoped dataset on any remote household change.
-     const family=await api('/family')
-     if(user.value?.id===id){
-       profiles.value=family.profiles||[]
-       members.value=family.members||[]
-     }
-     if(tab.value==='today')void todayNotificationsRef.value?.refresh()
+   // The first Today snapshot has an authoritative revision. Do not
+   // acknowledge an older snapshot just because our first poll succeeded.
+   const prior=syncRevision.value??(tab.value==='today'?lastTodayPageRevision.value:null)
+   if(prior===version){syncRevision.value=version;return}
+   const currentTab=tab.value
+   if(currentTab==='today'&&!(await loadTodayPage(true)))return
+   // Never confirm a remote revision before all visible data has refreshed.
+   const family=await api('/family')
+   if(user.value?.id!==id||tab.value!==currentTab)return
+   profiles.value=family.profiles||[]
+   members.value=family.members||[]
+   if(['plans','family','memories'].includes(currentTab)){
+     const panel=lifePanelRef.value
+     if(!panel||!(await panel.refreshForSync()))return
    }
+   if(user.value?.id!==id||tab.value!==currentTab)return
+   syncRevision.value=version
+   if(currentTab==='today')void todayNotificationsRef.value?.refresh()
+   else void refreshNotificationCount()
  }catch{
    // Network outages must not log out either family member.
  }finally{syncBusy=false}
@@ -866,7 +882,7 @@ onBeforeUnmount(()=>{
       <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>
         </div></section>
-      <LifePanel v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
+      <LifePanel ref="lifePanelRef" v-if="tab==='today'||tab==='family'||tab==='plans'||tab==='memories'" :key="user.id+':'+tab" :mode="tab" :user-id="user.id" :profiles="profiles" :is-owner="user.role==='owner'"
          :members="members" :sync-revision="sharedRefreshCounter" :focus-plan-type="focusPlanType" :focus-plan-id="focusPlanId"
         :focus-plan-period-key="focusPlanPeriodKey" :focus-plan-scope="focusPlanScope"
          :focus-plan-from-today="focusPlanFromToday"
