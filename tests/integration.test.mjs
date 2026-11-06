@@ -736,7 +736,7 @@ test('shopping supports two verified receipts, partial unlink, and source deleti
  sqlite.close()
 })
 
-test('dated shopping, wishes and savings goals carry forward until verified completion',async()=>{
+test('dated shopping, wishes and savings goals require explicit postpone',async()=>{
  const {db,sqlite}=makeDb()
  const {env,amount}=mockedProductionLedger(db,sqlite)
  const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
@@ -768,13 +768,13 @@ test('dated shopping, wishes and savings goals carry forward until verified comp
  for(const created of [shopping,wish,saving,once,trip])assert.equal(created.status,201,JSON.stringify(created.body))
  let rows=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.items
  const get=(kind,id)=>rows.find(x=>x.kind===kind&&x.id===id)
- assert.equal(get('shopping',shopping.body.id).overdue,true)
- assert.equal(get('wish',wish.body.id).overdue,true)
- assert.equal(get('goal',once.body.id).overdue,true)
+ assert.equal(get('shopping',shopping.body.id),undefined)
+ assert.equal(get('wish',wish.body.id),undefined)
+ assert.equal(get('goal',once.body.id),undefined)
  assert.equal(get('goal',saving.body.id),undefined,'closed recurring period is not an overdue Today task')
  const reviews=(await ask('/api/plans/today?date='+today,'GET',undefined,owner)).body.goalReviews
  assert.equal(reviews.find(x=>x.id===saving.body.id).periodKey,lastMonthKey)
- assert.equal(get('trip',trip.body.id).tripEnded,true)
+ assert.equal(get('trip',trip.body.id),undefined)
  assert.equal((await ask('/api/plans/complete','POST',
    {kind:'goal',id:saving.body.id,periodKey:today.slice(0,7),completed:true},owner)).status,409,
    'current monthly goal must not complete before the end of its period')
