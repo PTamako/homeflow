@@ -50,7 +50,10 @@ function values(){
   case 'routines':{
    const prev=config
    const type=form.repeatType
-   const configNext=type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor}:
+   const configNext=type==='interval'?{days:form.repeatDays,anchor:form.repeatAnchor,
+      ...(form.anchorDate!==data.anchor_date||type!==data.repeat_type?
+        {startOnAnchor:true}:
+        typeof config.startOnAnchor==='boolean'?{startOnAnchor:config.startOnAnchor}:{})}:
      type==='workday'?{weekdays:[1,2,3,4,5],excludeJapaneseHolidays:true}:
      type==='weekly'?{weekdays:[...form.weekdays].sort((a,b)=>a-b),
        excludeJapaneseHolidays:false}:
