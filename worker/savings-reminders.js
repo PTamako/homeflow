@@ -14,9 +14,9 @@ const validStatus=status=>status==='met'||status==='shortfall'
 
 // The calendar is the only source for reminder timing:
 // once: due date; monthly: three days before; yearly: seven days before.
-// For already-closed periods: the first following day, then at most weekly
-// while still unverified. Confirmed settlement results are notified on the
-// morning *after* settlement (Cron and manual rechecks behave identically).
+// Outstanding reminders remain visible in "待提醒" every day. Push delivery
+// happens only on the first day after closing and at most weekly thereafter.
+// Confirmed settlement results notify on the *next* JST morning.
 export function savingsReminders(goals,date,settlements=[],completionMarks=[]){
   const settled=new Map(settlements.map(row=>[key(row.goal_id,row.period_key),row]))
   const marked=new Set(completionMarks.map(row=>key(row.plan_id,row.period_key)))
@@ -40,20 +40,19 @@ export function savingsReminders(goals,date,settlements=[],completionMarks=[]){
     const oldest=unresolved.at(-1)
     if(oldest){
       const elapsed=daysBetween(oldest.periodEnd,date)
-      // One reminder after the period closes, then weekly until reconciled.
-      if(elapsed>=1&&(elapsed-1)%7===0){
-        reminders.push({kind:'goal',id:goal.id,title:goal.title,
-          dueOn:oldest.periodEnd,periodKey:oldest.periodKey,stage:'pending',
-          priority:'important',
-          message:oldest.periodKey+' 期已截止，等待账目核验'+
-            (unresolved.length>1?' · '+unresolved.length+' 期待核验':'')})
-      }
+      // Visible until reconciled, but only the first day and every seventh day push.
+      reminders.push({kind:'goal',id:goal.id,title:goal.title,
+        dueOn:oldest.periodEnd,periodKey:oldest.periodKey,stage:'pending',
+        priority:'important',notifyToday:elapsed>=1&&(elapsed-1)%7===0,
+        message:oldest.periodKey+' 期已截止，等待账目核验'+
+          (unresolved.length>1?' · '+unresolved.length+' 期待核验':'')})
     }else if(current&&!current.notStarted){
       const lead=mode==='monthly'?3:7
-      if(daysBetween(date,current.periodEnd)===lead){
+      const remaining=daysBetween(date,current.periodEnd)
+      if(remaining>=0&&remaining<=lead){
         reminders.push({kind:'goal',id:goal.id,title:goal.title,
           dueOn:current.periodEnd,periodKey:currentKey,stage:'advance',
-          daysBefore:lead,
+          daysBefore:remaining,notifyToday:remaining===lead,
           message:currentKey+' 期即将截止 · 目标 '+yen(goal.target_amount)})
       }
     }
