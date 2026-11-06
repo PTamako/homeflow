@@ -4,6 +4,7 @@ import {tasksRoute} from './tasks.js'
 import {lifeRoute} from './life.js'
 import {todayPlansRoute} from './plan-today.js'
 import {todayActionRoute} from './today-actions.js'
+import {todayPageRoute} from './today-page.js'
 import {planSummaryRoute} from './plan-summary.js'
 import {searchRoute} from './search.js'
 import {tripsRoute} from './trips.js'
@@ -57,6 +58,7 @@ export default {
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
           return tasksRoute(request,env.DB,path,session,onComplete)
         if(path==='/api/search')return searchRoute(request,env.DB,session)
+        if(path==='/api/today/page')return todayPageRoute(request,env.DB,session)
         if(path==='/api/plans/today-action'||path==='/api/plans/action-history')
           return todayActionRoute(request,env.DB,path,session)
         if(path==='/api/plans/summary')return planSummaryRoute(request,env.DB,session)
