@@ -2,7 +2,7 @@ import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {BIRTHDAY_PROFILES_SQL,mergeProfileBirthdays} from './birthdays.js'
 import {listFilters,listPage} from './list-pagination.js'
 import {sortPlanTasks,taskUrgencyKey} from '../src/plan-task-sort.mjs'
-import {nextAnniversary,validateRule,addDays} from './recurrence.js'
+import {nextAnniversary,validateRule,addDays,intervalStartsOnAnchor} from './recurrence.js'
 import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstToday,routineVersions} from './routine-periods.js'
 import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
 import {isJapaneseWorkday} from './jp-holidays.js'
@@ -43,7 +43,8 @@ function normalized(table,b,s){
         repeatType==='monthly'?(input.mode==='weekday'?
           {mode:'weekday',weekday:input.weekday,weekNumbers:input.weekNumbers}:
           Array.isArray(input.days)?{mode:'day',days:input.days}:{day:input.day}):
-        repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed'}:{}
+        repeatType==='interval'?{days:input.days,anchor:input.anchor==='completion'?'completion':'fixed',
+          ...(typeof input.startOnAnchor==='boolean'?{startOnAnchor:input.startOnAnchor}:{})}:{}
       if(!ymd(b.anchorDate)||!validateRule({repeatType,repeatConfig:config}))return null
       if(b.assignedTo && !hexId(b.assignedTo))return null
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
@@ -269,9 +270,10 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
             '+'||?3||' days') FROM routine_marks m
             WHERE m.routine_id=?1 AND m.occurrence_on<>?2
               AND (m.completed_at IS NOT NULL OR m.skipped_at IS NOT NULL)),
-          anchor_date),updated_at=?4
+          ?6),updated_at=?4
           WHERE id=?1 AND household_id=?5`)
-          .bind(id,recordOn,config.days,stamp,session.household_id))
+          .bind(id,recordOn,config.days,stamp,session.household_id,
+            intervalStartsOnAnchor(rule)?rule.anchor_date:addDays(rule.anchor_date,config.days)))
       }
     }
     const results=await db.batch(statements)
@@ -421,7 +423,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
         type==='monthly'?(c.mode==='weekday'?
           {mode:'weekday',weekday:c.weekday,weekNumbers:c.weekNumbers}:
           {days:[...(Array.isArray(c.days)?c.days:[c.day])].sort((a,b)=>a-b)}):
-        type==='interval'?{days:c.days,anchor:c.anchor||'fixed'}:{}
+        type==='interval'?{days:c.days,anchor:c.anchor||'fixed',startOnAnchor:c.startOnAnchor}:{}
       const configChanged=JSON.stringify(comparable(vals[1],nextConfig))!==
         JSON.stringify(comparable(current.repeat_type,oldRuleConfig))
       const changed=vals[0]!==current.title||vals[1]!==current.repeat_type||
@@ -449,7 +451,8 @@ export async function lifeRoute(request,db,path,session,onComplete=null){
       if(scheduleChanged){
         resetDue=true
         nextDueValue=vals[1]==='interval'&&nextConfig.anchor==='completion'?
-          vals[3]:null
+          (intervalStartsOnAnchor({...current,anchor_date:vals[3],repeat_config:nextConfig})?
+            vals[3]:addDays(vals[3],Number(nextConfig.days))):null
       }
     }
     const fields=['visibility',...catalog[table].columns,...(resetDue?['next_due_on']:[]),
