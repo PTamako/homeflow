@@ -1371,7 +1371,8 @@ test('owner can link a shared shopping item created by family member, but cannot
  const hidden=await ask('/api/shopping','POST',{title:'秘密购物',quantity:1,visibility:'private'},partner)
  assert.equal(shared.status,201)
  assert.equal(hidden.status,201)
- assert.equal((await ask('/api/finance/status','GET',undefined,partner)).status,403)
+ assert.equal((await ask('/api/finance/status','GET',undefined,partner)).status,200)
+ assert.equal((await ask('/api/finance/candidates?start=2026-11-01&end=2026-11-04','GET',undefined,partner)).status,403)
  let externalRequests=0
  const old=globalThis.fetch
  globalThis.fetch=async(url,opts)=>{
