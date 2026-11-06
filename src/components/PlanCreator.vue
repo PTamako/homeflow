@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
+import MoneyInput from './MoneyInput.vue'
 import OneTimeTaskFields from './OneTimeTaskFields.vue'
 import {newOneTimeTaskDraft,oneTimeTaskPayload} from '../one-time-task'
 import {computed,reactive,ref} from 'vue'
@@ -206,7 +207,7 @@ async function submit(){
       <option value="purchase">想买东西</option><option value="trip">想去旅行</option>
       <option value="activity">想体验</option><option value="other">其他</option>
      </select></label>
-     <label>预估金额（日元）<input v-model.number="form.estimatedAmount" type="number" min="0" max="100000000000" required/></label>
+     <label>预估金额（日元）<MoneyInput v-model="form.estimatedAmount" :min="0" :max="100000000000" required/></label>
      <label>目标日期（可选）<DateField v-model="form.targetOn" /></label>
      <label class="plan-checkbox"><input v-model="form.wishRemindEnabled" type="checkbox" :disabled="!form.targetOn"/> 开启提醒</label>
      <label v-if="form.wishRemindEnabled&&form.targetOn">提醒时间<select v-model.number="form.wishRemindAdvanceDays">
@@ -224,17 +225,17 @@ async function submit(){
        <option value="yearly">每年固定目标</option>
      </select></label>
      <label>{{ form.goalMode==='monthly'?'每月目标金额':form.goalMode==='yearly'?'每年目标金额':'累计目标金额' }}（日元）
-       <input v-model.number="form.targetAmount" type="number" min="1" max="100000000000" required/></label>
+       <MoneyInput v-model="form.targetAmount" :min="1" :max="100000000000" required/></label>
      <label>开始日期<DateField v-model="form.startOn" required /></label>
      <label v-if="form.goalMode==='once'">期初储值额（日元）
-       <input v-model.number="form.reservedAmount" type="number" min="0" max="100000000000" required/></label>
+       <MoneyInput v-model="form.reservedAmount" :min="0" :max="100000000000" required/></label>
      <label>结束／目标日期（可选）<DateField v-model="form.targetOn" :min="form.startOn||undefined" /></label>
     </template>
     <template v-else-if="kind==='trip'">
      <label>目的地<input v-model.trim="form.destination" maxlength="300" placeholder="例如：上海"/></label>
      <label>出发日期（可选）<DateField v-model="form.startDate" /></label>
      <label>结束日期（可选）<DateField v-model="form.endDate" /></label>
-     <label>旅行预算（日元）<input v-model.number="form.budgetAmount" type="number" min="0" max="100000000000"/></label>
+     <label>旅行预算（日元）<MoneyInput v-model="form.budgetAmount" :min="0" :max="100000000000"/></label>
 
     </template>
     <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility" @change="form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
