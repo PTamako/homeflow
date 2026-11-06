@@ -39,7 +39,9 @@ export function nextRoutineDue(rule,date){
     return addDays(anchor,cycles*days)
   }
   const start=date>anchor?date:anchor
-  for(let n=0;n<=65;n++){
+  // A fifth weekday might not exist for several consecutive months.
+  const searchDays=rule.repeat_type==='monthly'&&Array.isArray(config.weeks)?185:65
+  for(let n=0;n<=searchDays;n++){
     const candidate=addDays(start,n)
     if(dueOn(rule,candidate))return candidate
   }
