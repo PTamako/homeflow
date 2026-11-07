@@ -19,7 +19,7 @@ test('new icon family is used in manifest, Apple touch icon and SW caches',()=>{
  assert.equal(manifest.icons[0].src,'/icon-192.png')
  assert.equal(manifest.icons[1].src,'/icon-512.png')
  assert.equal(manifest.icons[2].src,'/icon.svg')
- assert.match(sw,/homeflow-shell-v5/)
+ assert.match(sw,/homeflow-shell-v6/)
  assert.match(sw,/icon:'\/icon-192.png',badge:'\/icon-192.png'/)
 })
 
@@ -35,4 +35,25 @@ test('selected DouSha tail icon replaces all PWA image variants',()=>{
  const svg=read('public/icon.svg').toString()
  assert.match(svg,/data:image\/png;base64,/)
  assert.match(svg,/aria-label="HomeFlow"/)
+})
+
+test('service worker gets fresh icons and manifest while retaining offline copies',()=>{
+ const sw=read('public/sw.js').toString()
+ const headers=read('public/_headers').toString()
+ assert.match(sw,/FRESH_ASSETS\\.has\\(url\\.pathname\\)/)
+ assert.match(sw,/fetch\\(req,\\{cache:'no-store'\\}\\)/)
+ assert.match(sw,/caches\\.match\\(req\\)/)
+ for(const path of ['/manifest.webmanifest','/icon.svg','/icon-192.png',
+   '/icon-512.png','/apple-touch-icon.png']){
+   assert.ok(sw.includes("'"+path+"'"),path)
+   assert.ok(headers.includes(path+'\\n  Cache-Control: no-cache'),path)
+ }
+})
+
+test('running PWA gives a safe refresh action when a worker update activates',()=>{
+ const app=read('src/App.vue').toString()
+ assert.match(app,/controllerchange/)
+ assert.match(app,/getRegistration\\(\\)/)
+ assert.match(app,/updateReady/)
+ assert.match(app,/刷新到最新版本/)
 })
