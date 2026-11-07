@@ -29,6 +29,10 @@ type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';p
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
 const error=ref(''),busy=ref(false),pushBusyId=ref(''),pushTarget=ref(''),pushMessage=ref('')
 const listLoading=ref(false)
+// Keep the current plan list mounted while a refresh is pending, including when
+// an editor closes or another household member triggers a sync.
+const planListReady=ref(false)
+let lastPlanQueryKey=''
 let activeFetch=0
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
@@ -667,13 +671,8 @@ async function fetchMode(){
   error.value=''
   focusError.value=''
   listLoading.value=true
-  if(currentMode==='plans'){
-    // Never show rows or pagination from the previous category/scope on a failed request.
-    items.value=[];other.value=[];goals.value=[];trips.value=[]
-    routines.value=[];oneTimePlans.value=[];listCursors.value={}
-    historicalGoalPeriods.value=[];historicalGoalCursor.value=null
-    skippedTodayActions.value=[];skippedActionCursor.value=null
-  }
+  // Do not clear the plan rows before the request: removing the entire list
+  // collapses document height and makes iOS Safari snap to the page top.
   if(currentMode==='memories'){
     items.value=[]
     photos.value={};cloudPhotos.value={};localPhotoBlobs.value={}
@@ -696,10 +695,11 @@ async function fetchMode(){
       listCursors.value.anniversaries=past?data.nextCursor||null:null
       await focusExactPlan(requestId)
     }else if(props.mode==='plans'){
-      taskPage.value=0
       // Only read the category that the user actually opened. The full view
       // still fetches all six; wishes also need goals for linked funding labels.
       const selected=planType.value
+      const queryKey=[selected,planScope.value,planYear.value,planMonth.value].join('|')
+      const previousTaskPage=queryKey===lastPlanQueryKey?taskPage.value:0
       const kinds=planRequestKinds(selected)
       const paths=kinds.map(kind=>listPath(kind))
       const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
@@ -711,14 +711,38 @@ async function fetchMode(){
         ...(goalArchivePath?[api(goalArchivePath)]:[]),
         ...(actionPath?[api(actionPath)]:[])])
       const pages=results.map(result=>result.status==='fulfilled'?result.value:{items:[],nextCursor:null})
-      const failed=results.filter(result=>result.status==='rejected').length
+      let failed=results.filter(result=>result.status==='rejected').length
+      // A routine/task edit must not silently send the user back to page one.
+      // Restore the required server pages only when the filters are unchanged.
+      if(previousTaskPage>0){
+        const needed=(previousTaskPage+1)*pageLimit
+        const extra=await Promise.allSettled(kinds.map(async(kind,i)=>{
+          if(kind!=='tasks'&&kind!=='routines'||results[i].status!=='fulfilled')return
+          while(pages[i].nextCursor&&(pages[i].items||[]).length<needed){
+            const data=await api(listPath(kind,pages[i].nextCursor))
+            pages[i]={items:[...(pages[i].items||[]),...(data.items||[])],
+              nextCursor:data.nextCursor||null}
+          }
+        }))
+        failed+=extra.filter(result=>result.status==='rejected').length
+      }
       if(requestId!==activeFetch||props.mode!=='plans'||selected!==planType.value||
          paths.some((path,i)=>path!==listPath(kinds[i]))||
          (goalArchivePath!==null&&goalArchivePath!==historicalGoalPath()))return
+      // Replace the data only after the new response is ready; categories not
+      // requested by this filter must not leave stale entries behind.
+      const requested=new Set(kinds)
+      for(const kind of ['wishes','goals','shopping','trips','routines','tasks']){
+        if(!requested.has(kind))assignRows(kind,[])
+      }
+      listCursors.value={}
       kinds.forEach((kind,i)=>{
         assignRows(kind,pages[i].items||[])
         listCursors.value[kind]=pages[i].nextCursor||null
       })
+      taskPage.value=Math.min(previousTaskPage,
+        Math.max(0,Math.ceil(taskRows.value.length/pageLimit)-1))
+      lastPlanQueryKey=queryKey
       historicalGoalPeriods.value=goalArchivePath?pages[kinds.length].items||[]:[]
       historicalGoalCursor.value=goalArchivePath?pages[kinds.length].nextCursor||null:null
       const actionIndex=kinds.length+(goalArchivePath?1:0)
@@ -736,7 +760,12 @@ async function fetchMode(){
       await focusExactPlan(requestId)
     }
   }catch(e){if(requestId===activeFetch)error.value=(e as Error).message;return false}
-  finally{if(requestId===activeFetch)listLoading.value=false}
+  finally{
+    if(requestId===activeFetch){
+      listLoading.value=false
+      if(currentMode==='plans')planListReady.value=true
+    }
+  }
   return requestId===activeFetch
 }
 defineExpose({refreshForSync:()=>fetchMode()})
@@ -1054,8 +1083,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </EditBottomSheet>
       </div>
       </div>
-      <p v-if="listLoading" class="life-caption" role="status">正在读取计划…</p>
-      <div v-else class="life-grid">
+      <p v-if="listLoading&&!planListReady" class="life-caption" role="status">正在读取计划…</p>
+      <div v-if="planListReady" class="life-grid" :aria-busy="listLoading" :inert="listLoading">
         <section v-if="planScope==='history'&&(skippedTodayActions.length||skippedActionCursor)"
           class="life-card skipped-action-history">
           <h2 class="life-heading"><AppIcon name="archive" :size="20"/> 跳过记录</h2>

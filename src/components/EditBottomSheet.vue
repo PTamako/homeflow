@@ -1,6 +1,10 @@
 <script lang="ts">
 let activeSheetLocks=0
 let savedBodyOverflow=''
+let savedBodyPosition=''
+let savedBodyTop=''
+let savedBodyWidth=''
+let savedScrollY=0
 </script>
 <script setup lang="ts">
 import {nextTick,onBeforeUnmount,onMounted,ref,useId} from 'vue'
@@ -42,13 +46,28 @@ onBeforeUnmount(()=>{
 })
 function lockSheetScroll(){
  if(activeSheetLocks++===0){
+  // On iOS PWA, overflow:hidden alone can shift the viewport to the top.
+  // Pin the background at its current position while a sheet is visible.
+  savedScrollY=window.scrollY
   savedBodyOverflow=document.body.style.overflow
+  savedBodyPosition=document.body.style.position
+  savedBodyTop=document.body.style.top
+  savedBodyWidth=document.body.style.width
+  document.body.style.position='fixed'
+  document.body.style.top=-savedScrollY+'px'
+  document.body.style.width='100%'
   document.body.style.overflow='hidden'
  }
 }
 function unlockSheetScroll(){
  activeSheetLocks=Math.max(0,activeSheetLocks-1)
- if(activeSheetLocks===0)document.body.style.overflow=savedBodyOverflow
+ if(activeSheetLocks===0){
+  document.body.style.overflow=savedBodyOverflow
+  document.body.style.position=savedBodyPosition
+  document.body.style.top=savedBodyTop
+  document.body.style.width=savedBodyWidth
+  window.scrollTo(0,savedScrollY)
+ }
 }
 </script>
 
