@@ -177,8 +177,8 @@ async function showIncomingNotification(id:string){
  const version=props.focusNotificationVersion
  const loaded=await load(true,id)
  const focused=loaded?notices.value.find(item=>item.id===id):null
- const versionMatches=version==null||
-   (version==='scheduled'?!(focused?.lastCompletionKey):version===focused?.lastCompletionKey)
+ const versionMatches=(version==null||version==='scheduled')
+   ?!focused?.lastCompletionKey:version===focused?.lastCompletionKey
  if(focused&&versionMatches)await changeReadState(focused,true)
  else if(focused&&!versionMatches)
    error.value='这条通知已有新内容，旧推送不会将新消息标记已读'

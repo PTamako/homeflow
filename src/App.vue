@@ -103,11 +103,11 @@ function setUnreadNotificationCount(value:number){
 }
 async function markNotificationRead(id:string,version:string|null=null){
   if(!/^[a-f0-9-]{36}$/i.test(id)||!user.value)return
-  const expectedCompletionKey=version==='scheduled'?null:
-    version?.startsWith('complete:')?version:undefined
+  // Old Push links have no version token. Treat them as the original reminder,
+  // never as permission to read a newer completion sharing its inbox ID.
+  const expectedCompletionKey=version?.startsWith('complete:')?version:null
   try{
-    const result=await api('/notifications/'+id+'/read','POST',
-      expectedCompletionKey===undefined?undefined:{expectedCompletionKey})
+    const result=await api('/notifications/'+id+'/read','POST',{expectedCompletionKey})
     if(typeof (result as any).unreadCount==='number')
       void setUnreadNotificationCount((result as any).unreadCount)
     todayNotificationsRef.value?.refresh()
