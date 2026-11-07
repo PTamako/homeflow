@@ -301,15 +301,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    </div>
    <div v-if="data" class="points-members">
      <article v-for="item in data.members" :key="item.userId" class="points-member"
-       :class="{'points-member--champion':item.userId===contributionLeaderId||item.userId===walletLeaderId}">
+       :class="{'points-member--champion':item.userId===contributionLeaderId,'points-member--wealthy':item.userId===walletLeaderId}"
+        :aria-label="item.displayName+(item.userId===contributionLeaderId?'，贡献第一':'')+(item.userId===walletLeaderId?'，可用家庭积分第一':'')">
        <div class="points-name">
          <b>{{ item.displayName }}</b>
-         <span v-if="item.userId===contributionLeaderId||item.userId===walletLeaderId"
-           class="points-honors">
+         <span v-if="item.userId===contributionLeaderId" class="points-honors">
            <span v-if="item.userId===contributionLeaderId" class="points-honor"
              role="img" aria-label="贡献第一" title="贡献第一">🏆</span>
-           <span v-if="item.userId===walletLeaderId" class="points-honor"
-             role="img" aria-label="积分第一" title="积分第一">👑</span>
          </span>
          <span v-if="item.userId===userId" class="points-me">我</span>
        </div>
@@ -560,6 +558,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .points-me{flex:none;font-size:10px;color:#739680}
 .points-member--champion{border-color:#d9e7d7;background:#fcfdf8}
+/* Wealthiest household wallet: metallic gold frame, with no extra title badge or
+   icon. Keep the gold treatment separate from the contribution trophy. */
+.points-member--wealthy{
+ border:2px solid transparent;
+ background:
+  linear-gradient(145deg,#fffefa 0%,#fffaf0 60%,#fff3d9 100%) padding-box,
+  linear-gradient(125deg,#b48129 0%,#ffe9a6 26%,#d39e3b 52%,#fff0b8 74%,#a86b1c 100%) border-box;
+ box-shadow:0 0 0 1px #d3ae5a55,0 5px 14px #9b74221c,inset 0 0 0 1px #fff9e7;
+}
+.points-member--wealthy .points-available{
+ background:linear-gradient(100deg,#fff3d0 0%,#ffeed0 55%,#f8e4b1 100%);
+ color:#886321;
+}
+.points-member--wealthy .points-available strong{color:#9a681e}
 .points-honors{display:inline-flex;flex:none;align-items:center;gap:2px;white-space:nowrap}
 .points-honor{display:inline-flex;flex:none;align-items:center;justify-content:center;
  font-size:16px;line-height:1;white-space:nowrap}
