@@ -14,7 +14,8 @@ function validated(body,session) {
   const reminder=body?.remindEnabled===undefined?null:body.remindEnabled
   const bonus=body?.bonusPoints??0
   if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)return null
-  if(bonus>0&&(visibility!=='household'||!assignee||assignee===session.user_id))return null
+  const assignedOther=!!assignee&&assignee!==session.user_id
+  if(assignedOther?(visibility!=='household'||bonus<1):bonus!==0)return null
   if(reminder!==null&&typeof reminder!=='boolean')return null
   if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
