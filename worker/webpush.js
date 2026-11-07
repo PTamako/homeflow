@@ -154,15 +154,33 @@ async function sendTaskPush(env,session,body){
   const due=routine?'t.next_due_on':'t.due_on'
   const status=routine?'t.enabled=1':'t.completed_at IS NULL'
   // Trusted table/column identifiers are selected from the two constants above.
-  const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId
-    FROM ${table} t JOIN household_members m ON m.user_id=${assignee} AND m.household_id=t.household_id
-    WHERE t.id=?1 AND t.household_id=?2 AND ${creator}=?3
-    AND t.visibility='household' AND t.deleted_at IS NULL AND ${status} LIMIT 1`
-  const item=await env.DB.prepare(sql).bind(body.id,session.household_id,session.user_id).first()
+  let item
+  if(routine&&body.periodOn){
+    if(typeof body.periodOn!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.periodOn))
+      return json({error:'invalid_input'},400)
+    item=await env.DB.prepare(`SELECT t.id,t.title,a.occurrence_on AS dueOn,
+       a.assignee_user_id AS recipientId FROM routine_occurrence_assignments a
+       JOIN routines t ON t.id=a.routine_id AND t.household_id=a.household_id
+       JOIN household_members m ON m.user_id=a.assignee_user_id
+         AND m.household_id=a.household_id
+       LEFT JOIN routine_marks rm ON rm.routine_id=a.routine_id
+         AND rm.occurrence_on=a.occurrence_on
+       WHERE a.routine_id=?1 AND a.household_id=?2 AND t.created_by=?3
+         AND a.occurrence_on=?4 AND t.visibility='household' AND t.deleted_at IS NULL
+         AND t.enabled=1 AND rm.completed_at IS NULL AND rm.skipped_at IS NULL LIMIT 1`)
+       .bind(body.id,session.household_id,session.user_id,body.periodOn).first()
+  }else{
+    const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId
+      FROM ${table} t JOIN household_members m ON m.user_id=${assignee} AND m.household_id=t.household_id
+      WHERE t.id=?1 AND t.household_id=?2 AND ${creator}=?3
+      AND t.visibility='household' AND t.deleted_at IS NULL AND ${status} LIMIT 1`
+    item=await env.DB.prepare(sql).bind(body.id,session.household_id,session.user_id).first()
+  }
   if(!item)return json({error:'task_not_shareable'},404)
   if(item.recipientId===session.user_id)return json({error:'recipient_is_self'},409)
   const notificationId=crypto.randomUUID()
-  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+'&notificationId='+notificationId
+  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+
+    (routine&&body.periodOn?'&taskPeriod='+encodeURIComponent(body.periodOn):'')+'&notificationId='+notificationId
   const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
   return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
     title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id+'-'+notificationId,
