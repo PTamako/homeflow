@@ -3,7 +3,7 @@ import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 
-type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;
+type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;availablePoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
 type Level={level:number;title:string;progress:number;nextLevelIn:number}
 type Badge={id:string;label:string;icon:string;unlocked:boolean;target:number;progress:number;rewardPoints:number}
@@ -45,6 +45,9 @@ const poolContributionOpen=ref('')
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
+const contributionLeaderId=computed(()=>data.value?.members[0]?.userId??'')
+const walletLeaderId=computed(()=>data.value?.members.reduce((leader,member)=>
+ !leader||member.availablePoints>leader.availablePoints?member:leader,null as MemberPoints|null)?.userId??'')
 const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??7)-(lottery.value?.used??0)))
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
@@ -256,7 +259,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      aria-controls="points-expanded" @click="openDetails">
      <span class="points-entry-icon" aria-hidden="true"><AppIcon name="gift" :size="21"/></span>
      <span class="points-entry-main"><strong>家庭成长积分</strong>
-       <small v-if="data">Lv.{{ data.ownLevel.level }} · 家庭可用 {{ fmt(points) }} 分</small>
+       <small v-if="data">Lv.{{ data.ownLevel.level }} · 我的可用家庭积分 {{ fmt(points) }} 分</small>
        <small v-else>{{ loading?'正在读取积分…':'积分商店 · 合力兑换 · 成就' }}</small>
      </span>
      <span class="points-entry-right">查看 <AppIcon name="chevron-down" :size="16" class="points-chevron-right"/></span>
@@ -271,7 +274,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入共享榜，也不能兑换家庭奖励。</p>
+           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入贡献榜，也不能兑换家庭奖励。贡献分不包括抽奖中奖和抽奖消耗；抽奖只影响可用家庭积分。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
@@ -291,23 +294,30 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <strong>{{ fmt(myTotal) }} XP</strong>
        <span>{{ data.ownLevel.title }} · Lv.{{ data.ownLevel.level }}</span>
      </div>
-     <div><small>家庭可用积分</small><strong>{{ fmt(points) }}</strong><span>已兑换 {{ fmt(data.spentPoints) }} 分</span></div>
+     <div><small>我的可用家庭积分</small><strong>{{ fmt(points) }}</strong><span>已兑换 {{ fmt(data.spentPoints) }} 分</span></div>
    </div>
    <div v-if="data" class="own-level-line" :aria-label="'再获得'+data.ownLevel.nextLevelIn+'经验升级'">
      <span :style="{width:data.ownLevel.progress+'%'}"></span>
    </div>
    <div v-if="data" class="points-members">
-     <article v-for="(item,index) in data.members" :key="item.userId" class="points-member">
-       <div class="points-name"><b>{{ item.displayName }}</b><span v-if="item.userId===userId">我</span>
-         <small v-if="index===0&&item.monthPoints>0">本月榜首</small></div>
-       <div class="points-score"><strong>{{ fmt(item.monthPoints) }}</strong><span>本月共享分</span></div>
+     <article v-for="item in data.members" :key="item.userId" class="points-member"
+       :class="{'points-member--champion':item.userId===contributionLeaderId||item.userId===walletLeaderId}">
+       <div class="points-name">
+         <b>{{ item.displayName }}</b><span v-if="item.userId===userId">我</span>
+         <div class="points-honors" aria-label="榜首荣誉">
+           <span v-if="item.userId===contributionLeaderId" class="points-honor points-honor--contribution">🏆 贡献第一</span>
+           <span v-if="item.userId===walletLeaderId" class="points-honor points-honor--wallet">👑 积分第一</span>
+         </div>
+       </div>
+       <div class="points-score"><strong>{{ fmt(item.monthPoints) }}</strong><span>本月贡献分</span></div>
+       <div class="points-available"><span>可用家庭积分</span><strong>{{ fmt(item.availablePoints) }}</strong></div>
        <div class="points-level">累计贡献 · Lv.{{ item.level }}</div>
-       <small class="points-details">累计共享 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
+       <small class="points-details">累计贡献 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
      </article>
    </div>
    <details v-if="data" class="points-private">
-     <summary><span>我的积分：共享 {{ fmt(own?.sharedPoints||0) }} 分 · 私人 {{ fmt(data.ownPrivatePoints) }} 分</span><AppIcon name="chevron-down" :size="14" class="points-private-chevron"/></summary>
-     <p class="points-bonus-breakdown">奖励明细（已计入共享）：挑战 +{{ fmt(data.weeklyBonusPoints) }} · 储值 +{{ fmt(data.savingsBonusPoints) }} · 成就 +{{ fmt(data.achievementBonusPoints) }} · 抽奖 {{ data.lotteryNetPoints>0?'+':'' }}{{ fmt(data.lotteryNetPoints||0) }}</p>
+     <summary><span>我的积分：贡献 {{ fmt(own?.sharedPoints||0) }} 分 · 私人 {{ fmt(data.ownPrivatePoints) }} 分</span><AppIcon name="chevron-down" :size="14" class="points-private-chevron"/></summary>
+     <p class="points-bonus-breakdown">积分来源：挑战 +{{ fmt(data.weeklyBonusPoints) }} · 储值 +{{ fmt(data.savingsBonusPoints) }} · 成就 +{{ fmt(data.achievementBonusPoints) }} · 抽奖净额 {{ data.lotteryNetPoints>0?'+':'' }}{{ fmt(data.lotteryNetPoints||0) }}（仅影响可用积分，不计贡献分）</p>
    </details>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>
@@ -541,12 +551,22 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .own-level-line span,.challenge-bar span{display:block;height:100%;background:#61ab7d;border-radius:99px}
 .points-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .points-member{min-width:0;padding:10px;border-radius:11px;background:#f9faf8;border:1px solid #e7eee7}
-.points-name{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.points-name{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}
 .points-name b{font-size:13px;color:#344f3e;overflow-wrap:anywhere}
-.points-name span,.points-name small{font-size:10px;color:#739680}
+.points-name>span{font-size:10px;color:#739680}
+.points-member--champion{border-color:#d9e7d7;background:#fcfdf8}
+.points-honors{display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;min-width:0;margin-top:2px}
+.points-honor{display:inline-flex;align-items:center;gap:3px;padding:4px 7px;border-radius:7px;
+ font-size:11px;font-weight:800;line-height:1.3;white-space:nowrap;box-shadow:0 1px 3px #26392814}
+.points-honor--contribution{color:#886017;background:#fff0c2;border:1px solid #eed28c}
+.points-honor--wallet{color:#27694b;background:#ddefe3;border:1px solid #a9d4bc}
 .points-score{display:flex;align-items:baseline;gap:5px;margin-top:5px}
 .points-score strong{font-size:22px;color:#38815b;font-variant-numeric:tabular-nums}
 .points-score span,.points-level,.points-details{font-size:11px;color:#728574}
+.points-available{display:flex;align-items:baseline;justify-content:space-between;gap:4px;
+ flex-wrap:wrap;margin:8px 0 6px;padding:6px 8px;border-radius:8px;background:#edf5ee;
+ font-size:11px;line-height:1.4;color:#5a7864}
+.points-available strong{color:#347c55;font-size:16px;font-variant-numeric:tabular-nums}
 .points-details{display:block;margin-top:7px}
 .points-private{margin:0;color:#42694c;font-size:12px;line-height:1.6}
 .points-private summary{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;list-style:none}

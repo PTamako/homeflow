@@ -70,7 +70,7 @@ test('seven draws per member per month; replay does not double-charge; private X
  }finally{sqlite.close()}
 })
 
-test('lottery net winnings appear in shared cumulative and monthly leaderboard but never XP',async()=>{
+test('lottery results affect wallets but never contribute to the leaderboard or XP',async()=>{
  const {sqlite,db}=fixture()
  try{
   earn(sqlite,'alice',4)
@@ -86,11 +86,16 @@ test('lottery net winnings appear in shared cumulative and monthly leaderboard b
   assert.equal(after.availablePoints,before.availablePoints+5)
   assert.equal(after.lotteryNetPoints,5,'summary breaks out net lottery points only once')
   assert.equal(before.lotteryNetPoints,0)
-  assert.equal(myself(after).sharedPoints,base.sharedPoints+5)
-  assert.equal(myself(after).monthPoints,base.monthPoints+5)
+  assert.equal(myself(after).sharedPoints,base.sharedPoints,
+   'lifetime contribution stays unchanged by lottery')
+  assert.equal(myself(after).monthPoints,base.monthPoints,
+   'monthly contribution stays unchanged by lottery')
+  assert.equal(myself(after).availablePoints,after.availablePoints,
+   'leaderboard wallet uses the same spendable balance as checkout')
   assert.equal(after.experience,before.experience,'lottery does not generate XP')
   const bobs=(await wallet(db,bob)).members.find(x=>x.userId==='bob')
-  assert.equal(bobs.sharedPoints,0,'no shared ranking credit to partner')
+  assert.equal(bobs.sharedPoints,0,'no ranking contribution from a partner draw')
+  assert.equal(bobs.availablePoints,(await wallet(db,bob)).availablePoints)
  }finally{sqlite.close()}
 })
 
