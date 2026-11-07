@@ -34,7 +34,7 @@ const selectDraw=async(db,h,u,requestId)=>db.prepare(
    WHERE household_id=?1 AND user_id=?2 AND client_request_id=?3`)
   .bind(h,u,requestId).first()
 
-export async function lotteryRoute(request,db,path,session,onDraw=null){
+export async function lotteryRoute(request,db,path,session,onDraw=null,choosePrize=securePrize){
   const h=session.household_id,u=session.user_id,month=jstMonth()
   if(path==='/api/lottery'&&request.method==='GET'){
     const [count,history]=await Promise.all([
@@ -61,7 +61,7 @@ export async function lotteryRoute(request,db,path,session,onDraw=null){
   if(!UUID.test(body?.requestId||''))return json({error:'invalid_input'},400)
   const existing=await selectDraw(db,h,u,body.requestId)
   if(existing){if(onDraw)try{onDraw(existing)}catch{};return json({ok:true,draw:existing,replayed:true})}
-  const prize=securePrize(),id=crypto.randomUUID(),now=new Date().toISOString()
+  const prize=choosePrize(),id=crypto.randomUUID(),now=new Date().toISOString()
   // The wallet, monthly cap and idempotency are verified INSIDE the atomic
   // write, not in a separate request or only in the browser.
   const sql=`INSERT INTO household_lottery_draws
