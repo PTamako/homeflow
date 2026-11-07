@@ -273,6 +273,7 @@ async function loadRecap(){
  try{
   const data=await api('/plans/summary?month='+encodeURIComponent(recapYear.value+'-'+recapMonth.value))
   recap.value=data
+  recapFormOpen.value=false
  }catch(e){recapError.value=(e as Error).message}
  finally{recapBusy.value=false}
 }
@@ -1540,10 +1541,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
            </EditBottomSheet>
         </section>
       </div>
-      <details class="life-card plan-recap">
-        <summary><AppIcon name="clipboard-check" :size="18" /> 月度回顾</summary>
-
-        <div class="plan-recap-controls">
+      <section class="life-card plan-recap">
+       <div class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 月度回顾
+         <button type="button" class="life-filter-trigger" @click="recapFormOpen=true">选择月份</button>
+       </div>
+       <EditBottomSheet v-if="recapFormOpen" title="生成月度回顾" :close-disabled="recapBusy" @close="recapFormOpen=false">
+         <div class="plan-recap-controls">
           <label>年份<select v-model="recapYear" aria-label="回顾年份">
             <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
           </select></label>
@@ -1552,6 +1555,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </select></label>
           <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
         </div>
+         <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
+       </EditBottomSheet>
+       
         <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
         <div v-if="recap" class="plan-recap-results">
           <strong>{{ recap.month }} · 已完成／核验 {{ recap.total }} 次</strong>
@@ -1560,7 +1566,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
           
         </div>
-      </details>
+      
+      </section>
      </template>
 
     <template v-else-if="mode==='memories'">
