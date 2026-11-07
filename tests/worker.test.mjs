@@ -4,13 +4,13 @@ import test from 'node:test'
 import worker from '../worker/index.js'
 import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
 const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
-function environment(name='preview',database='homeflow-preview',migration='0032_settlement_origin.sql'){
+function environment(name='preview',database='homeflow-preview',migration='0033_completion_points.sql'){
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
-         required_migration_ready:migration==='0032_settlement_origin.sql'?1:0,
-         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1}:null,
+         required_migration_ready:migration==='0033_completion_points.sql'?1:0,
+         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -23,7 +23,8 @@ test('health confirms D1 identity',async()=>{
 })
 test('health rejects old migration baselines even if they were accepted during rollout',async()=>{
   for(const migration of ['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql',
-    '0028_explicit_today_actions.sql','0031_completion_event_read_state.sql']){
+    '0028_explicit_today_actions.sql','0031_completion_event_read_state.sql',
+    '0032_settlement_origin.sql']){
     const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview',migration))
     assert.equal(res.status,503,migration)
   }
@@ -31,8 +32,8 @@ test('health rejects old migration baselines even if they were accepted during r
 test('health rejects a missing physical Today index even with a current migration name',async()=>{
   const env=environment()
   env.DB.prepare=()=>({first:async()=>({
-   database_name:'homeflow-preview',latest_migration:'0032_settlement_origin.sql',
-   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1})})
+   database_name:'homeflow-preview',latest_migration:'0033_completion_points.sql',
+   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10})})
   assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
@@ -100,7 +101,7 @@ test('future migration must not break identity health if required schema remains
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
-  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1})})
+  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
 })
 
@@ -109,13 +110,27 @@ test('health refuses a recorded 0032 migration whose provenance column is absent
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',required_migration_ready:1,
   action_index_ready:1,sync_table_ready:1,member_sync_ready:1,
-  completion_read_ready:1,settlement_origin_ready:0})})
+  completion_read_ready:1,settlement_origin_ready:0,points_table_ready:1,points_triggers_ready:10})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 
 test('health requires latest settlement migration and column in one D1 read',()=>{
  const source=readFileSync(new URL('../worker/security.js',import.meta.url),'utf8')
- assert.ok(source.includes("name='0032_settlement_origin.sql'"))
+ assert.ok(source.includes("name='0033_completion_points.sql'"))
  assert.ok(source.includes("pragma_table_info('goal_period_settlements')"))
  assert.ok(source.includes("Number(identity.settlement_origin_ready)===1"))
+})
+
+test('health rejects a point table missing its secure completion triggers',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
+  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,
+  member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
+  points_table_ready:1,points_triggers_ready:9})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
+})
+
+test('new point feature only uses authenticated API routing',async()=>{
+ const res=await worker.fetch(request('/api/points'),environment())
+ assert.equal(res.status,401)
 })

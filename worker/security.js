@@ -98,7 +98,7 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0032_settlement_origin.sql') AS required_migration_ready,
+       WHERE name='0033_completion_points.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
@@ -108,7 +108,15 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM pragma_table_info('notification_inbox')
        WHERE name='last_completion_key') AS completion_read_ready,
       (SELECT COUNT(*) FROM pragma_table_info('goal_period_settlements')
-       WHERE name='settlement_origin') AS settlement_origin_ready
+       WHERE name='settlement_origin') AS settlement_origin_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
+       AND name='completion_points') AS points_table_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
+       ('points_task_completed','points_task_reopened','points_task_visibility',
+        'points_task_permanent_delete','points_routine_completed_insert',
+        'points_routine_completed_update','points_routine_reopened',
+        'points_routine_mark_deleted','points_routine_visibility',
+        'points_routine_permanent_delete')) AS points_triggers_ready
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
@@ -116,7 +124,9 @@ export async function verifiedDatabase(env) {
       Number(identity.sync_table_ready)===1 &&
       Number(identity.member_sync_ready)===1 &&
       Number(identity.completion_read_ready)===1 &&
-      Number(identity.settlement_origin_ready)===1
+      Number(identity.settlement_origin_ready)===1 &&
+      Number(identity.points_table_ready)===1 &&
+      Number(identity.points_triggers_ready)===10
     if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
     else dbIdentityCache.delete(env.DB)
     return valid
