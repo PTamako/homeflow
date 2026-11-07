@@ -1262,13 +1262,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     '收起本期':'查看本期' }}
                 </button>
               </div>
-              <FinancePanel v-if="historicalGoalDetail?.goal.id===period.goalId&&
-                historicalGoalDetail?.periodKey===period.periodKey"
+              <EditBottomSheet v-if="historicalGoalDetail?.goal.id===period.goalId&&historicalGoalDetail?.periodKey===period.periodKey" title="储值计划 · 本期结算详情" @close="historicalGoalDetail=null">
+<FinancePanel
                 :key="'historical-goal-'+period.goalId+'-'+period.periodKey"
                 :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner" :can-adjust="canEdit(historicalGoalDetail.goal)"
                 embedded-kind="goal" :embedded-id="period.goalId"
                 :initial-period-key="period.periodKey" :fixed-period-key="period.periodKey"
                 @completed="goalFinished"/>
+</EditBottomSheet>
             </div>
             <button v-if="historicalGoalCursor" type="button" class="life-more"
               :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多</button>
@@ -1303,12 +1304,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
-            <FinancePanel v-if="financeDetail?.kind==='goal'&&financeDetail.id===g.id"
+            <EditBottomSheet v-if="financeDetail?.kind==='goal'&&financeDetail.id===g.id" title="储值计划 · 账目与调整额" @close="financeDetail=null">
+<FinancePanel
               :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner" :can-adjust="canEdit(g)"
               embedded-kind="goal" :embedded-id="g.id"
               :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
               :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
               @completed="goalFinished"/>
+</EditBottomSheet>
             <button v-if="isFocused(g)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
@@ -1433,9 +1436,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
-            <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
+            <EditBottomSheet v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id" title="旅行 · 费用与调整额" @close="financeDetail=null">
+<FinancePanel
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="trip" :embedded-id="t.id"/>
+</EditBottomSheet>
             <button v-if="isFocused(t)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
