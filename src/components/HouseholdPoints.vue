@@ -341,7 +341,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        </div>
        <div v-if="lotteryLastDraw" class="lottery-result" role="status">
          <AppIcon name="ticket" :size="20"/>
-         <div><b>{{ lotteryLabel(lotteryLastDraw) }}</b><small>本次消耗 5 分，奖励已计入可用积分</small></div>
+         <div><b>{{ lotteryLastDraw.kind==='empty'?'🍀 这次空手而归～下次继续加油！':lotteryLastDraw.kind==='double'?'👑 超级大奖！积分翻倍！':'🎉 恭喜抽中奖励！' }}</b><small>{{ lotteryLastDraw.kind==='empty'?'好运下次见～':'获得 '+fmt(lotteryLastDraw.points)+' 积分，奖励已计入可用积分！' }}</small></div>
        </div>
        <details class="lottery-odds">
          <summary>查看奖池概率与规则</summary>
