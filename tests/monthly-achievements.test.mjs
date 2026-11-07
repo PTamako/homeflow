@@ -134,3 +134,27 @@ test('pet guardian grants 25 points only for ten household pet-care completions'
   assert.equal(data.achievementBonusPoints,5,'undo revokes both pet and weekly challenge badges')
  }finally{db.close()}
 })
+
+test('six earned legacy badges pay exactly 100 effective points, without rewriting history',async()=>{
+ const {db,store}=fixture()
+ try{
+  const stamp='2026-10-10T00:00:00.000Z'
+  const rows=[['first',5,5],['routines',15,10],['challenge',20,15],
+   ['master',35,20],['pet',45,25],['streak',60,25]]
+  const insert=db.prepare(`INSERT INTO monthly_achievement_awards
+   (household_id,user_id,month_on,badge_id,points,awarded_at)
+   VALUES('h','alice','2026-10',?1,?2,?3)`)
+  for(const [badge,oldAmount] of rows)insert.run(badge,oldAmount,stamp)
+  const raw=db.prepare(`SELECT SUM(points) AS total FROM monthly_achievement_awards`).get()
+  assert.equal(raw.total,180,'original immutable badge history is preserved')
+  const credits=db.prepare(`SELECT badge_id,points FROM monthly_achievement_credits ORDER BY badge_id`).all()
+  assert.equal(credits.reduce((sum,row)=>sum+row.points,0),100)
+  for(const [badge,,newAmount] of rows)
+    assert.equal(credits.find(row=>row.badge_id===badge).points,newAmount)
+  const scored=await score(store)
+  assert.equal(scored.achievementBonusPoints,100)
+  assert.equal(scored.availablePoints,100)
+  assert.equal(scored.experience,100)
+  assert.equal(credits.length,6,'no duplicated award rows after migration')
+ }finally{db.close()}
+})
