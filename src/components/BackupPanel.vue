@@ -161,7 +161,7 @@ async function restore(){
         <h3>下载备份</h3>
         <small v-if="lastExportAt">上次：{{ lastExportAt.slice(0,10) }}</small>
       </div>
-      <p class="backup-caption">保存账号记录与本机照片</p>
+      <p class="backup-caption">仅备份当前账号与本机照片；请先同步待办，其他设备需分别备份。</p>
       <button type="button" class="backup-download" :disabled="pending" @click="exportArchive">
         {{ pending?'处理中…':'下载备份' }}
       </button>
