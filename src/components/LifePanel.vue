@@ -1973,24 +1973,29 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 /* Savings goals use one full-width information column, never a squeezed
    left column beside a large action card. Tap surfaces stay 44px tall while
    their visual weight remains light on iPhone. */
-.goal-plan-row{display:block!important;min-width:0;max-width:100%;padding:12px 0!important}
+.goal-plan-row{display:block!important;min-width:0;max-width:100%;padding:8px 0 2px!important}
 .goal-plan-row>.life-details{width:100%;min-width:0;max-width:100%}
 .goal-plan-row .detail-name{display:block;margin:0 0 3px;font-size:14px;line-height:1.45}
 .goal-amount-line{display:flex!important;align-items:center;flex-wrap:wrap;gap:0 9px;
   min-width:0;max-width:100%;line-height:1.5}
 .goal-amount-line>span{min-width:0;overflow-wrap:anywhere}
 .goal-plan-row .goal-wish-link{display:inline-flex;align-items:center;justify-content:center;gap:4px;
-  flex:none;min-width:0;min-height:44px;padding:0 2px;border:0;border-radius:5px;
+  flex:none;min-width:0;min-height:32px;padding:0 2px;border:0;border-radius:5px;position:relative;
   background:transparent;color:var(--hf-success-text);
   font:inherit;font-size:11px;font-weight:650;line-height:1.3;white-space:nowrap;
   touch-action:manipulation}
 .goal-plan-row .goal-dates{margin-top:0;line-height:1.55}
 .goal-row-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;
-  min-width:0;margin-top:2px}
+  min-width:0;margin-top:0}
 .goal-plan-row .goal-finance-action{display:inline-flex;align-items:center;justify-content:flex-end;
-  flex:none;gap:4px;min-height:44px;padding:0 2px;border:0;border-radius:7px;
+  flex:none;gap:4px;min-height:32px;padding:0 2px;border:0;border-radius:7px;position:relative;
   background:transparent;color:var(--ui-brand,#357b5c);
   font-size:12px;font-weight:700;line-height:1.4;white-space:nowrap;touch-action:manipulation}
+/* The invisible extension preserves a 44px tap target without adding an
+   empty-looking 44px control box below the status text. */
+.goal-plan-row :is(.goal-wish-link,.goal-finance-action)::before{
+  content:'';position:absolute;inset:-6px -3px
+}
 .goal-finance-chevron{transform:rotate(-90deg)}
 .goal-plan-row :is(.goal-wish-link,.goal-finance-action):focus-visible{
   outline:2px solid #43866a;outline-offset:2px}

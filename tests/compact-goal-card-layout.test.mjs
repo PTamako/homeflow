@@ -27,16 +27,25 @@ test('wish association stays visually light, full accessibility and per-goal nav
  assert.match(row,/@click="emit\('openPlans','wish',String\(g\.wish_id\)\)"/)
  assert.match(life,/\.goal-plan-row \.goal-wish-link\{display:inline-flex/)
  assert.match(life,/background:transparent;color:var\(--hf-success-text\)/)
- assert.match(life,/min-height:44px;padding:0 2px/)
+ assert.match(life,/min-height:32px;padding:0 2px/)
  assert.doesNotMatch(row,/<small v-if="g\.wish_id">/)
 })
 
 test('savings actions keep mobile-friendly touch targets without large pill buttons',()=>{
  assert.match(life,/\.goal-plan-row \.goal-finance-action\{display:inline-flex/)
- assert.match(life,/min-height:44px;padding:0 2px;border:0;border-radius:7px/)
+ assert.match(life,/min-height:32px;padding:0 2px;border:0;border-radius:7px/)
  assert.match(life,/background:transparent;color:var\(--ui-brand,#357b5c\)/)
  assert.match(life,/@media\(max-width:380px\)/)
  assert.match(row,/:aria-label="'查看“'\+g\.title\+'”的账目与调整额'"/)
  assert.match(row,/<SwipeActions :id="g\.id" scope="goals"/)
  assert.match(row,/@edit="edit\('goals',g\)" @delete="removeItem\('goals',g\)"/)
+})
+
+
+test('goal status footer has compact visual spacing while retaining 44px tappable actions',()=>{
+ assert.match(life,/\.goal-plan-row\{display:block!important;[^}]*padding:8px 0 2px!important\}/)
+ assert.match(life,/\.goal-row-footer\{[^}]*margin-top:0\}/)
+ assert.match(life,/\.goal-plan-row :is\(\.goal-wish-link,\.goal-finance-action\)::before\{[^}]*inset:-6px -3px/)
+ assert.match(life,/\.goal-plan-row \.goal-wish-link\{[^}]*min-height:32px/)
+ assert.match(life,/\.goal-plan-row \.goal-finance-action\{[^}]*min-height:32px/)
 })
