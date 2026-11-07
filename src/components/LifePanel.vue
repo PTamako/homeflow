@@ -490,6 +490,8 @@ async function savePlanMemory(){
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
+const convertWishEdit=ref<{id:string;title:string;destination:string}|null>(null)
+const tripItemEdit=ref<{id:string;title:string;quantity:number|null}|null>(null)
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
@@ -705,22 +707,19 @@ async function addGoal(){
     reservedAmount:0,currency:'JPY',targetOn:goalTarget.value||null,visibility:'household'}))
   if(!error.value)goalTitle.value=''
 }
-async function reserve(g:Row){
-  const value=prompt('为这个累计目标设置多少期初储值额？（不会产生家計簿交易）',String(g.reserved_amount||0))
-  if(value===null)return
-  const amount=Number(value)
-  if(!Number.isSafeInteger(amount)||amount<0){error.value='请输入有效金额';return}
-  await update(()=>api('/goals/'+g.id,'PATCH',{title:g.title,targetAmount:g.target_amount,
-    reservedAmount:amount,currency:g.currency,targetOn:g.target_on,visibility:g.visibility,wishId:g.wish_id}))
-}
 async function addShopping(){
   await update(()=>api('/shopping','POST',{title:shoppingTitle.value,quantity:1,visibility:'household'}))
   if(!error.value)shoppingTitle.value=''
 }
-async function convertWish(w:Row){
-  const destination=prompt('目的地（例如北海道）',w.title)
-  if(!destination)return
-  await update(()=>api('/wishes/'+w.id+'/start-trip','POST',{title:w.title,destination}))
+function convertWish(w:Row){
+ convertWishEdit.value={id:w.id,title:w.title,destination:w.title};error.value=''
+}
+async function submitConvertWish(){
+ const draft=convertWishEdit.value
+ if(!draft||busy.value||!draft.destination.trim())return
+ await update(()=>api('/wishes/'+draft.id+'/start-trip','POST',
+  {title:draft.title,destination:draft.destination.trim()}))
+ if(!error.value)convertWishEdit.value=null
 }
 async function selectTrip(id:string){
   try{const data=await api('/trips/'+id);tripDetail.value=data.trip;tripProgress.value=data.progress||[]}
@@ -735,17 +734,24 @@ async function toggleTrip(id:string){
     notify('旅行事项已更新')
   }catch(e){error.value=(e as Error).message}
 }
-async function editTripItem(item:Row){
-  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
-  const title=prompt('修改明细名称',item.label||item.title)
-  if(title===null)return
-  if(!title.trim()||title.length>150){error.value='名称须为 1～150 个字符';return}
-  try{
-    const payload={title:title.trim(),...(item.quantity?{quantity:item.quantity}:{})}
-    await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'PATCH',payload)
-    await selectTrip(tripDetail.value.id)
-    notify('修改已保存')
-  }catch(e){error.value=(e as Error).message}
+function editTripItem(item:Row){
+ if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
+ tripItemEdit.value={id:String(item.externalId),title:String(item.label||item.title),quantity:Number(item.quantity)||null}
+ error.value=''
+}
+async function saveTripItem(){
+ const draft=tripItemEdit.value,trip=tripDetail.value
+ if(!draft||!trip||busy.value||!draft.title.trim())return
+ busy.value=true;error.value=''
+ try{
+  if(draft.title.trim().length>150)throw Error('名称须为 1～150 个字符')
+  const payload={title:draft.title.trim(),...(draft.quantity?{quantity:draft.quantity}:{})}
+  await api('/trips/'+trip.id+'/items/'+encodeURIComponent(draft.id),'PATCH',payload)
+  await selectTrip(trip.id)
+  tripItemEdit.value=null
+  notify('修改已保存')
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
 }
 async function removeTripItem(item:Row){
   if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||
@@ -1642,6 +1648,20 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           @click="loadMore('memories')">加载更多回忆</button>
       </section>
     </template>
+    <EditBottomSheet v-if="convertWishEdit" title="由心愿创建旅行" :close-disabled="busy" @close="convertWishEdit=null">
+     <form class="life-form" @submit.prevent="submitConvertWish">
+      <label>旅行目的地<input v-model.trim="convertWishEdit.destination" required maxlength="300" placeholder="例如：北海道"/></label>
+      <p v-if="error" role="alert" class="life-error">{{ error }}</p>
+      <button :disabled="busy||!convertWishEdit.destination.trim()" type="submit">确认创建旅行</button>
+     </form>
+    </EditBottomSheet>
+    <EditBottomSheet v-if="tripItemEdit" title="编辑旅行明细" :close-disabled="busy" @close="tripItemEdit=null">
+     <form class="life-form" @submit.prevent="saveTripItem">
+      <label>名称<input v-model.trim="tripItemEdit.title" required maxlength="150"/></label>
+      <p v-if="error" role="alert" class="life-error">{{ error }}</p>
+      <button :disabled="busy||!tripItemEdit.title.trim()" type="submit">保存修改</button>
+     </form>
+    </EditBottomSheet>
   </section>
 </template>
 
