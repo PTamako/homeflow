@@ -4,6 +4,8 @@ import {json,readBody} from './security.js'
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const COST=5
 const MONTHLY_LIMIT=7
+const HISTORY_PAGE_SIZE=5
+const MAX_HISTORY_PAGE=10000
 export const lotteryOdds=[
   {kind:'empty',rate:50,points:0,label:'空手而归'},
   {kind:'five',rate:30,points:5,label:'5 积分'},
@@ -37,9 +39,18 @@ const selectDraw=async(db,h,u,requestId)=>db.prepare(
 export async function lotteryRoute(request,db,path,session,onDraw=null,choosePrize=securePrize){
   const h=session.household_id,u=session.user_id,month=jstMonth()
   if(path==='/api/lottery'&&request.method==='GET'){
-    const [count,history]=await Promise.all([
+    const search=new URL(request.url).searchParams
+    const rawPage=search.get('page')??'1'
+    if(!/^[1-9][0-9]*$/.test(rawPage)||Number(rawPage)>MAX_HISTORY_PAGE)
+      return json({error:'invalid_page'},400)
+    const page=Number(rawPage),offset=(page-1)*HISTORY_PAGE_SIZE,after=historyFloor()
+    // Count only household records from the last 12 months, without loading rows.
+    // The monthly personal limit is unrelated to the historical family list.
+    const [count,historyCount,history]=await Promise.all([
       db.prepare(`SELECT COUNT(*) AS used FROM household_lottery_draws
         WHERE household_id=?1 AND user_id=?2 AND month_on=?3`).bind(h,u,month).first(),
+      db.prepare(`SELECT COUNT(*) AS total FROM household_lottery_draws
+        WHERE household_id=?1 AND created_at>=?2`).bind(h,after).first(),
       db.prepare(`SELECT l.id,l.user_id AS userId,
         COALESCE((SELECT p.display_name FROM family_profiles p
           WHERE p.household_id=l.household_id AND p.member_user_id=l.user_id
@@ -49,11 +60,14 @@ export async function lotteryRoute(request,db,path,session,onDraw=null,choosePri
         l.month_on AS month,l.created_at AS createdAt
         FROM household_lottery_draws l JOIN users u ON u.id=l.user_id
         WHERE l.household_id=?1 AND l.created_at>=?2
-        ORDER BY l.created_at DESC,l.id DESC LIMIT 1000`)
-        .bind(h,historyFloor()).all()
+        ORDER BY l.created_at DESC,l.id DESC LIMIT ?3 OFFSET ?4`)
+        .bind(h,after,HISTORY_PAGE_SIZE,offset).all()
     ])
+    const total=Math.max(0,Number(historyCount?.total)||0)
     return json({month,cost:COST,limit:MONTHLY_LIMIT,used:Number(count?.used||0),
-      odds:lotteryOdds,history:history.results||[]})
+      odds:lotteryOdds,history:history.results||[],
+      historyPage:page,historyPageSize:HISTORY_PAGE_SIZE,
+      historyTotal:total,historyTotalPages:Math.max(1,Math.ceil(total/HISTORY_PAGE_SIZE))})
   }
   if(path!=='/api/lottery/draw')return json({error:'not_found'},404)
   if(request.method!=='POST')return json({error:'method_not_allowed'},405)
