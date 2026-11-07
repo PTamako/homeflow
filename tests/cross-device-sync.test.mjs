@@ -27,7 +27,7 @@ function dbFixture(){
  '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
  '0029_household_revisions.sql','0030_member_revisions.sql',
  '0031_completion_event_read_state.sql','0032_settlement_origin.sql',
- '0033_completion_points.sql','0034_rewards_shop.sql']
+ '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql']
  for(const m of migrations)sqlite.exec(readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8'))
  const db={
   prepare(sql){const stmt=sqlite.prepare(sql);let args=[]
