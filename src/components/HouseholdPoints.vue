@@ -265,7 +265,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </article>
    </div>
    <p v-if="data" class="points-private">我的贡献：共享 {{ own?.sharedPoints||0 }} + 私人 {{ data.ownPrivatePoints }}
-     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务只计成长经验，不可兑换家庭奖励或合力出资</small>
+     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务不进入共享榜，只计成长经验，不可兑换家庭奖励或合力出资</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
