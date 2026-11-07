@@ -223,7 +223,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <h2 id="points-title">家庭成长积分</h2>
          <button type="button" class="points-rule-help" aria-label="查看积分规则"
            aria-controls="points-rule-popover" :aria-expanded="ruleHelpOpen"
-           @click="ruleHelpOpen=!ruleHelpOpen;experienceHelpOpen=false"><span class="points-help-glyph" aria-hidden="true">?</span></button>
+           @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
            <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
