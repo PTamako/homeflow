@@ -624,21 +624,136 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
  .lottery-card{display:grid;gap:12px;border:1px solid #e4ede6;border-radius:13px;padding:12px;background:#fbfdfa}
  .lottery-main{display:flex;align-items:center;gap:12px;min-width:0}
- .lottery-box{flex:0 0 94px;min-height:103px;border-radius:16px;background:#e5f0e7;border:1px solid #d4e6d9;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#4b8669;gap:3px;box-shadow:inset 0 -5px 0 #d5e8db}
- .lottery-box .lottery-slot{width:42px;height:5px;border-radius:9px;background:#99c4ac;margin-bottom:6px}
- .lottery-box span{font-size:10px;font-weight:700;letter-spacing:.12em}
-.lottery-box--rolling{animation:lottery-box-shuffle .46s ease-in-out infinite;transform-origin:50% 90%}
-.lottery-box--rolling :deep(svg){animation:lottery-box-pulse .46s ease-in-out infinite}
-@keyframes lottery-box-shuffle{
- 0%,100%{transform:rotate(0deg) translateY(0)}
- 25%{transform:rotate(-7deg) translateY(-3px)}
- 75%{transform:rotate(7deg) translateY(-3px)}
+ .lottery-box{
+ position:relative;isolation:isolate;overflow:hidden;box-sizing:border-box;
+ flex:0 0 clamp(102px,29vw,122px);height:145px;min-width:0;
+ display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;
+ padding:12px 5px 9px;border-radius:21px;border:1px solid #cae3d5;color:#36795b;
+ background:linear-gradient(145deg,#f4fff8 0%,#e0f3e6 48%,#cdebdc 100%);
+ box-shadow:inset 0 2px 0 #ffffffed,inset 0 -6px 0 #a8d6c05c,0 8px 18px #357d5930
 }
-@keyframes lottery-box-pulse{50%{transform:scale(1.18)}}
+.lottery-box:after{
+ content:'';position:absolute;inset:-35%;z-index:0;pointer-events:none;
+ background:linear-gradient(113deg,transparent 35%,#ffffffa3 49%,transparent 64%);
+ transform:translateX(-85%) rotate(-12deg);animation:lottery-box-glint 5.6s ease-in-out infinite
+}
+.lottery-box-glow{
+ position:absolute;inset:22px 18px 34px;border-radius:50%;z-index:0;
+ background:radial-gradient(circle,#ffefb4c7 0%,#d8f7d6ab 42%,transparent 73%);
+ filter:blur(5px);animation:lottery-box-breathe 3.6s ease-in-out infinite
+}
+.lottery-box-spark{
+ position:absolute;z-index:2;font-size:14px;line-height:1;color:#d6a94f;
+ text-shadow:0 0 7px #fff6c8;pointer-events:none;
+ animation:lottery-box-twinkle 3.1s ease-in-out infinite
+}
+.lottery-box-spark--one{top:13px;left:11px;animation-delay:-.2s}
+.lottery-box-spark--two{top:29px;right:7px;color:#edc86f;font-size:19px;animation-delay:-1.4s}
+.lottery-box-spark--three{top:68px;left:8px;font-size:19px;color:#83cba2;animation-delay:-2.3s}
+.lottery-box-spark--four{top:78px;right:12px;font-size:10px;animation-delay:-.9s}
+.lottery-chest{
+ position:relative;z-index:1;width:74px;height:70px;flex:none;
+ filter:drop-shadow(0 6px 5px #3c8b6960);
+ animation:lottery-chest-float 3.4s ease-in-out infinite
+}
+.lottery-chest-top{
+ position:absolute;z-index:3;left:1px;right:1px;top:17px;height:20px;
+ border-radius:10px 10px 6px 6px;border:1px solid #449a75;
+ background:linear-gradient(100deg,#a0dbba 0%,#5db58e 50%,#429970 100%);
+ box-shadow:inset 0 3px 2px #e4fff690,0 3px 3px #3c786a3d
+}
+.lottery-chest-front{
+ position:absolute;left:6px;right:6px;top:32px;height:34px;
+ border:1px solid #398c67;border-radius:5px 5px 12px 12px;
+ background:linear-gradient(130deg,#b8ebc4 0%,#80cda1 45%,#4fa477 100%);
+ box-shadow:inset 4px 0 6px #e4ffec88,inset -4px -3px 5px #27745244
+}
+.lottery-chest-ribbon{
+ position:absolute;left:calc(50% - 6px);width:12px;top:0;bottom:0;
+ background:linear-gradient(90deg,#d49f43,#fff0b4 45%,#e0af54);box-shadow:1px 0 2px #8d682740
+}
+.lottery-chest-slot{
+ position:absolute;left:calc(50% - 18px);width:36px;height:4px;top:5px;
+ border-radius:9px;border:1px solid #4b946e;background:#286648;
+ box-shadow:inset 0 1px 2px #173c33b0,0 1px 0 #d7f4df
+}
+.lottery-chest-bow{
+ position:absolute;z-index:4;top:-21px;width:26px;height:22px;
+ border:6px solid #f9d992;background:linear-gradient(140deg,#fff8cf,#f2bc63);
+ box-sizing:border-box;box-shadow:0 1px 3px #845e3047
+}
+.lottery-chest-bow--left{left:12px;border-radius:20px 18px 5px 18px;transform:rotate(-28deg)}
+.lottery-chest-bow--right{right:12px;border-radius:18px 20px 18px 5px;transform:rotate(28deg)}
+.lottery-chest-seal{
+ position:absolute;z-index:2;top:9px;left:calc(50% - 9px);
+ display:grid;place-items:center;width:18px;height:18px;
+ border-radius:50%;background:linear-gradient(135deg,#fff8d5,#e9b84b);
+ color:#9a631d;font-size:11px;line-height:1;border:1px solid #c08a30;
+ box-shadow:0 1px 3px #946f2c3b
+}
+.lottery-box-label{
+ position:relative;z-index:2;line-height:1.2;white-space:nowrap;
+ border:1px solid #deb86d;border-radius:99px;
+ padding:3px 10px;background:linear-gradient(120deg,#fff8e4,#f9dfaa);
+ color:#7e632e;box-shadow:0 2px 3px #a4822e20;
+ font-size:11px;font-weight:800;letter-spacing:.08em
+}
+.lottery-box-subtitle{
+ position:relative;z-index:2;color:#638b70;font-size:9px;
+ white-space:nowrap;line-height:1.2;letter-spacing:0
+}
+.lottery-box--rolling{
+ transform-origin:50% 88%;animation:lottery-box-shuffle .46s ease-in-out infinite;
+ box-shadow:inset 0 2px 0 #fff,inset 0 -6px 0 #a8d6c05c,0 0 0 2px #ffe6a780,0 0 24px #eecb7b98
+}
+.lottery-box--rolling .lottery-chest{animation:lottery-chest-roll .46s ease-in-out infinite}
+.lottery-box--rolling:after{animation:lottery-box-glint .7s ease-in-out infinite}
+.lottery-box--jackpot{
+ border-color:#ecc25d;background:linear-gradient(140deg,#fff9dc,#ffdf93 55%,#f6c866);
+ box-shadow:0 0 0 2px #ffdf7caa,0 0 30px #ffcc4abb,inset 0 1px 0 #fff;
+ animation:lottery-box-jackpot 1.05s ease-in-out infinite
+}
+.lottery-box--jackpot .lottery-box-glow{
+ background:radial-gradient(circle,#fff6c4 0%,#f6c95ab8 45%,transparent 76%)
+}
+.lottery-box--jackpot .lottery-chest{
+ filter:drop-shadow(0 0 8px #fff6ad);animation:lottery-chest-jackpot .8s ease-in-out infinite
+}
+.lottery-box--jackpot .lottery-box-spark{color:#ffba2d;text-shadow:0 0 12px #fff}
+@keyframes lottery-box-breathe{0%,100%{opacity:.53;transform:scale(.92)}
+ 50%{opacity:1;transform:scale(1.16)}}
+@keyframes lottery-chest-float{0%,100%{transform:translateY(1px)}
+ 50%{transform:translateY(-4px)}}
+@keyframes lottery-box-twinkle{0%,100%{opacity:.25;transform:scale(.55)}
+ 42%{opacity:1;transform:scale(1.18)}70%{opacity:.48;transform:scale(.9)}}
+@keyframes lottery-box-glint{0%,20%{transform:translateX(-85%) rotate(-12deg)}
+ 52%,100%{transform:translateX(95%) rotate(-12deg)}}
+@keyframes lottery-box-shuffle{0%,100%{transform:rotate(0deg) scale(1)}
+ 25%{transform:rotate(-6deg) translateY(-3px) scale(1.03)}
+ 75%{transform:rotate(6deg) translateY(-3px) scale(1.03)}}
+@keyframes lottery-chest-roll{0%,100%{transform:translateY(0) scale(1)}
+ 50%{transform:translateY(-5px) scale(1.12)}}
+@keyframes lottery-box-jackpot{0%,100%{filter:brightness(1)}50%{filter:brightness(1.12)}}
+@keyframes lottery-chest-jackpot{0%,100%{transform:scale(1)}
+ 50%{transform:scale(1.16) rotate(-5deg)}}
+@media(max-width:360px){
+ .lottery-main{gap:9px}
+ .lottery-box{flex-basis:96px;height:132px;padding:9px 3px}
+ .lottery-chest{width:66px;height:62px;margin-bottom:-4px}
+ .lottery-chest-top{top:15px}
+ .lottery-chest-front{top:30px}
+ .lottery-chest-bow--left{left:9px}
+ .lottery-chest-bow--right{right:9px}
+ .lottery-box-subtitle{font-size:8px}
+ .lottery-box-spark--two{right:3px}
+}
 @media(prefers-reduced-motion:reduce){
- .lottery-box--rolling,.lottery-box--rolling :deep(svg){animation:none}
+ .lottery-box:after,.lottery-box-glow,.lottery-box-spark,
+ .lottery-chest,.lottery-box--rolling,.lottery-box--jackpot{animation:none!important}
+ .lottery-box:after{display:none}
+ .lottery-box-glow{opacity:.75}
 }
- .lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
+.lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
  .lottery-panel>b{font-size:15px;color:#365b43}
  .lottery-panel small{font-size:11px;color:#708977}
  .lottery-spin{justify-self:start;min-height:35px;margin-top:5px}
