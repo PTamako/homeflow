@@ -24,8 +24,8 @@ test('every family member has a manual refresh fallback in Manage',()=>{
 })
 
 test('production lottery history retains compact standalone list',()=>{
-  assert.ok(points.includes('<ul v-else class="lottery-history-list">'))
+  assert.ok(points.includes('<ul v-else class="lottery-history-list" :aria-busy="lotteryPageBusy">'))
   assert.ok(points.includes('class="lottery-history-row"'))
-  assert.ok(points.includes('.lottery-history-list{display:block'))
+  assert.ok(points.includes('.lottery-history-list{display:flex'))
   assert.ok(points.includes('.lottery-history-row{display:flex'))
 })

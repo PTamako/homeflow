@@ -40,6 +40,6 @@ test('visual overlay supports small-screen and reduced-motion users without bloc
  assert.match(visual,/role="status" aria-live="polite"/)
  assert.match(board,/lottery-box--rolling/)
  assert.match(board,/if\(props\.active&&expanded\.value&&view\.value==='lottery'&&props\.userId===drawingUser\)/)
- assert.match(board,/function closeDetails\(\)\{\n clearLotteryResult\(\)/)
+ assert.match(board,/function closeDetails\(\)\{\n resetLotteryPagination\(\)\n clearLotteryResult\(\)/)
  assert.match(board,/onBeforeUnmount\(\(\)=>\{[\s\S]*?clearLotteryResult\(\)/)
 })
