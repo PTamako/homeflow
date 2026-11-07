@@ -43,12 +43,12 @@ const call=async(db,session,path,method='GET',body)=> {
 }
 const balance=async(db,user)=>await (await pointsRoute(
  new Request('https://homeflow.invalid/api/points'),db,user)).json()
-function earn(sqlite,user,quantity=12,visibility='household'){
+function earn(sqlite,user,quantity=12,visibility='household',offset=0){
  const stamp=new Date().toISOString()
  const q=sqlite.prepare(`INSERT INTO completion_points
  (household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at)
  VALUES('h','task',?1,'',?2,?3,10,?4)`)
- for(let i=0;i<quantity;i++)q.run(user+'-'+i,user,visibility,stamp)
+ for(let i=0;i<quantity;i++)q.run(user+'-'+(i+offset),user,visibility,stamp)
 }
 test('migration creates four configurable household presets and strong foreign keys',async()=>{
  const {sqlite,db}=fixture()
@@ -187,7 +187,7 @@ test('private completions grant XP but can neither buy nor cofund household rewa
     assert.equal(pool.status,201)
     assert.equal((await call(db,alice,'/api/rewards/pool/'+pool.body.id+'/contribute','POST',
       {points:10,requestId:id(102)})).status,409)
-    earn(sqlite,'alice',9,'household')
+    earn(sqlite,'alice',9,'household',12)
     const mixed=await balance(db,alice)
     assert.equal(mixed.availablePoints,90)
     assert.equal(mixed.experience,210)
