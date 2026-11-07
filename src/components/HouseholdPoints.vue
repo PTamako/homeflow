@@ -34,6 +34,7 @@ const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
 const poolAmount=ref<Record<string,string>>({})
+const poolContributionOpen=ref('')
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
@@ -188,6 +189,7 @@ async function contributePool(item:GroupOrder){
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/contribute','POST',
   {points:amount,requestId}),'已出资 '+amount+' 分')
+ if(!error.value)poolContributionOpen.value=''
 }
 async function cancelPool(item:GroupOrder){
  if(!window.confirm('取消「'+item.title+'」的合力兑换？\\n未凑齐的订单可以取消，双方已出的积分都会返还。'))return
@@ -339,11 +341,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <span v-for="c in order.contributions" :key="c.userId">{{ c.displayName }}：{{ fmt(c.points) }}分</span>
          </div>
          <div v-if="order.status==='collecting'" class="pool-contribute">
-           <label>我出 <input v-model="poolAmount[order.id]" type="number" inputmode="numeric"
-             min="1" :max="order.points-order.fundedPoints"
-             :placeholder="String(Math.min(Math.ceil(order.points/2),order.points-order.fundedPoints))"/> 分</label>
-           <button type="button" class="redeem-btn" :disabled="busy||points<1" @click="contributePool(order)">出资</button>
+           <button type="button" class="redeem-btn" :disabled="busy||points<1" @click="poolContributionOpen=order.id">出资积分</button>
            <button type="button" class="pool-cancel" :disabled="busy" @click="cancelPool(order)">取消并退分</button>
+           <EditBottomSheet v-if="poolContributionOpen===order.id" :title="'合力出资 · '+order.title" :close-disabled="busy" @close="poolContributionOpen=''">
+             <div class="pool-contribute-sheet">
+               <p>尚需 {{ fmt(Math.max(0,order.points-order.fundedPoints)) }} 分 · 我的可用积分 {{ fmt(points) }} 分</p>
+               <label>我出多少积分
+                 <input v-model="poolAmount[order.id]" type="number" inputmode="numeric" min="1"
+                    :max="order.points-order.fundedPoints"
+                    :placeholder="String(Math.min(Math.ceil(order.points/2),order.points-order.fundedPoints))"/>
+               </label>
+               <p v-if="error" role="alert" class="points-error">{{ error }}</p>
+               <button type="button" class="redeem-btn" :disabled="busy||points<1" @click="contributePool(order)">确认出资</button>
+             </div>
+           </EditBottomSheet>
          </div>
          <button v-else-if="order.status==='requested'" type="button" class="redeem-btn pool-fulfill"
            :disabled="busy" @click="fulfillPool(order)">确认已经兑现</button>
@@ -466,6 +477,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .pool-status span{font-size:10px;color:#87998d}
 .pool-contributors{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:11px;color:#708873}
 .pool-contribute{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pool-contribute-sheet{display:grid;gap:12px}.pool-contribute-sheet p{margin:0;color:#6a816f;font-size:12px}
+.pool-contribute-sheet label{display:grid;gap:6px;font-size:13px;color:#55755d}
+.pool-contribute-sheet input{width:100%;min-height:44px;border:1px solid #d4e4d8;border-radius:9px;padding:9px;font-size:16px}
 .pool-contribute label{display:flex;gap:5px;align-items:center;font-size:12px;color:#55755d}
 .pool-contribute input{width:64px;box-sizing:border-box;border:1px solid #d4e4d8;border-radius:7px;padding:7px;font-size:14px}
 .pool-cancel{background:none;border:0;color:#a17b70;font-size:11px;padding:6px}
