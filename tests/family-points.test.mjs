@@ -2,9 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
-import {pointLevel,pointsRoute,tokyoMonthWindow} from '../worker/points.js'
+import {pointLevel,pointsRoute,tokyoMonthWindow,tokyoWeekWindow,longestStreak} from '../worker/points.js'
 
 const migration=readFileSync(new URL('../migrations/0033_completion_points.sql',import.meta.url),'utf8')
+const rewardsMigration=readFileSync(new URL('../migrations/0034_rewards_shop.sql',import.meta.url),'utf8')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec(`
@@ -12,11 +13,11 @@ function fixture(){
   CREATE TABLE households (id TEXT PRIMARY KEY);
   CREATE TABLE users (id TEXT PRIMARY KEY,login_name TEXT NOT NULL);
   CREATE TABLE household_members (household_id TEXT NOT NULL,user_id TEXT NOT NULL);
-  CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT);
+  CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT,type TEXT NOT NULL DEFAULT 'person',id TEXT);
   CREATE TABLE tasks (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,creator_user_id TEXT,
-    completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT);
+    completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
   CREATE TABLE routines (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,created_by TEXT,
-    visibility TEXT NOT NULL,deleted_at TEXT);
+    visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
   CREATE TABLE routine_marks (routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
     occurrence_on TEXT NOT NULL,completed_at TEXT,completed_by TEXT,skipped_at TEXT,
     PRIMARY KEY(routine_id,occurrence_on));
@@ -25,8 +26,8 @@ function fixture(){
   INSERT INTO household_members VALUES ('family','alice'),('family','bob'),('other','other');
   INSERT INTO family_profiles VALUES ('family','alice','小白',NULL,'2026-11-01');
   INSERT INTO family_profiles VALUES ('family','bob','鸡毛',NULL,'2026-11-01');
-  INSERT INTO tasks VALUES('old','family','alice','2026-11-01T00:00:00Z','alice','household',NULL);
-  INSERT INTO routines VALUES('routine-1','family','alice','household',NULL);
+  INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('old','family','alice','2026-11-01T00:00:00Z','alice','household',NULL);
+  INSERT INTO routines(id,household_id,created_by,visibility,deleted_at) VALUES('routine-1','family','alice','household',NULL);
   INSERT INTO routine_marks VALUES('routine-1','2026-11-01','2026-11-01T00:00:00Z','alice',NULL);
  `)
  const db={prepare(sql){
@@ -48,6 +49,7 @@ test('migration never awards points retroactively and has 10 immutable triggers'
  const {sqlite}=fixture()
  try{
   sqlite.exec(migration)
+  sqlite.exec(rewardsMigration)
   assert.deepEqual(rows(sqlite),[])
   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,10)
  }finally{sqlite.close()}
@@ -57,7 +59,8 @@ test('who finishes gets all 10 points, and retry, reopen, skip and change of com
  const {sqlite}=fixture()
  try{
   sqlite.exec(migration)
-  sqlite.exec("INSERT INTO tasks VALUES('task-1','family','alice',NULL,NULL,'household',NULL)")
+  sqlite.exec(rewardsMigration)
+  sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('task-1','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='task-1'")
   assert.equal(rows(sqlite).length,1)
   assert.equal(rows(sqlite)[0].earner_user_id,'bob')
@@ -78,6 +81,7 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
  const {sqlite}=fixture()
  try{
   sqlite.exec(migration)
+  sqlite.exec(rewardsMigration)
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-07',NULL,NULL,'2026-11-07T01:00:00Z')")
   assert.deepEqual(rows(sqlite),[])
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-08','2026-11-08T03:00:00Z','bob',NULL)")
@@ -100,9 +104,10 @@ test('leaderboard never reveals another member\'s private completions or another
  const {sqlite,db}=fixture()
  try{
   sqlite.exec(migration)
-  sqlite.exec("INSERT INTO tasks VALUES('shared','family','alice',NULL,NULL,'household',NULL)")
+  sqlite.exec(rewardsMigration)
+  sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('shared','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='shared'")
-  sqlite.exec("INSERT INTO tasks VALUES('private','family','bob',NULL,NULL,'private',NULL)")
+  sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('private','family','bob',NULL,NULL,'private',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='private'")
   const a=await get(db,alice),b=await get(db,bob)
   assert.equal(a.members.length,2)
@@ -127,6 +132,7 @@ test('level bands, monthly JST date boundaries and route allow read-only access'
  const {sqlite,db}=fixture()
  try{
   sqlite.exec(migration)
+  sqlite.exec(rewardsMigration)
   const response=await pointsRoute(new Request('https://homeflow.invalid/api/points',{method:'POST'}),db,alice)
   assert.equal(response.status,405)
  }finally{sqlite.close()}
