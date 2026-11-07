@@ -77,7 +77,11 @@ export async function pointsRoute(request,db,session){
       (SELECT COUNT(*) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS weeksWon,
       (SELECT COALESCE(SUM(points_spent),0) FROM reward_redemptions
-        WHERE household_id=?1 AND redeemed_by=?2) AS spent,
+        WHERE household_id=?1 AND redeemed_by=?2) AS directSpent,
+      (SELECT COALESCE(SUM(c.points),0) FROM reward_group_contributions c
+        JOIN reward_group_orders g ON g.id=c.order_id
+        WHERE c.household_id=?1 AND c.user_id=?2
+          AND g.status<>'cancelled') AS groupSpent,
       (SELECT COUNT(*) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
         AND earned_at>=?3 AND earned_at<?4) AS weekDone,
@@ -98,7 +102,7 @@ export async function pointsRoute(request,db,session){
       ORDER BY day DESC LIMIT 92`).bind(h,u).all()
   ])
   const earned=Number(totals?.earned||0),bonus=Number(totals?.bonus||0)
-  const spent=Number(totals?.spent||0),experience=earned+bonus
+  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0),experience=earned+bonus
   const badges=[
     {id:'first',label:'初次出发',icon:'🌱',unlocked:earned>=10},
     {id:'routines',label:'周期达人',icon:'🔁',unlocked:Number(totals?.routineEarned||0)>=50},
