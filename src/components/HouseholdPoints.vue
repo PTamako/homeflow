@@ -465,9 +465,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
      <p v-else class="points-loading">{{ loading?'正在读取抽奖箱…':'暂无抽奖数据' }}</p>
      <div v-if="lottery" class="lottery-history">
-       <b>近一年抽奖明细</b>
-       <div v-if="!lottery.history.length" class="lottery-empty">还没有抽奖记录，试试今天的好运气吧</div>
-       <ul v-else class="lottery-history-list">
+       <div class="lottery-history-heading">
+         <b>近一年抽奖明细</b>
+         <small v-if="lottery.historyTotal">共 {{ lottery.historyTotal }} 条 · 每页 5 条</small>
+       </div>
+       <div v-if="!lottery.historyTotal" class="lottery-empty">还没有抽奖记录，试试今天的好运气吧</div>
+       <ul v-else class="lottery-history-list" :aria-busy="lotteryPageBusy">
          <li v-for="record in lottery.history" :key="record.id" class="lottery-history-row">
            <AppIcon name="ticket" :size="17"/>
            <div class="lottery-history-detail">
@@ -477,6 +480,14 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <span :class="{empty:record.kind==='empty'}">{{ lotteryLabel(record) }}</span>
          </li>
        </ul>
+       <div v-if="lottery.historyTotalPages>1" class="lottery-history-pagination" role="navigation" aria-label="抽奖历史分页">
+         <button type="button" :disabled="lotteryPage<=1||lotteryPageBusy||busy"
+           @click="goToLotteryPage(lotteryPage-1)">上一页</button>
+         <span aria-live="polite">第 {{ lotteryPage }} / {{ lottery.historyTotalPages }} 页</span>
+         <button type="button" :disabled="lotteryPage>=lottery.historyTotalPages||lotteryPageBusy||busy"
+           @click="goToLotteryPage(lotteryPage+1)">下一页</button>
+       </div>
+       <p v-if="lotteryPageError" role="alert" class="lottery-page-error">{{ lotteryPageError }}</p>
      </div>
    </template>
    <template v-if="view==='shop'">
@@ -817,17 +828,33 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
  /* A block list avoids implicit grid tracks stretching draw history items. */
  .lottery-history{display:block;align-self:start;min-width:0;padding-top:4px}
- .lottery-history>b{display:block;font-size:14px;line-height:1.3;color:#426b50;margin:0}
+ .lottery-history-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+ .lottery-history-heading b{font-size:14px;line-height:1.3;color:#426b50}
+ .lottery-history-heading small{flex:none;color:#89988d;font-size:10px;white-space:nowrap}
  .lottery-empty{margin:4px 0 0;padding:12px;font-size:12px;color:#829487;text-align:center}
- .lottery-history-list{display:block;list-style:none;margin:4px 0 0;padding:0;min-width:0}
- .lottery-history-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:42px;
-   margin:0;padding:5px 0;border-bottom:1px solid #e8efe9;color:#5b846b}
+ /* Fixed compact rows prevent an empty prize label from stretching into whitespace. */
+ .lottery-history-list{display:flex;flex-direction:column;gap:0;list-style:none;margin:5px 0 0;padding:0;min-width:0}
+ .lottery-history-row{display:flex;align-items:center;gap:8px;min-width:0;
+  flex:none;box-sizing:border-box;height:54px;min-height:54px;max-height:54px;
+  margin:0;padding:5px 0;border-bottom:1px solid #e8efe9;color:#5b846b}
  .lottery-history-row>.app-icon{flex:0 0 17px}
- .lottery-history-detail{display:flex;flex:1 1 auto;flex-direction:column;justify-content:center;gap:2px;min-width:0}
- .lottery-history-row strong{font-size:12px;line-height:1.25;color:#3f624c}
- .lottery-history-row small{font-size:10px;line-height:1.3;color:#849787}
- .lottery-history-row>span{flex:0 0 auto;margin-left:auto;font-size:11px;line-height:1.3;font-weight:700;color:#407f5c;text-align:right;max-width:42vw;overflow-wrap:anywhere}
+ .lottery-history-detail{display:flex;flex:1 1 auto;flex-direction:column;justify-content:center;gap:3px;
+  min-width:0;overflow:hidden}
+ .lottery-history-detail strong{font-size:12px;line-height:1.25;color:#3f624c;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .lottery-history-detail small{font-size:10px;line-height:1.3;color:#849787;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .lottery-history-row>span{flex:0 0 auto;margin-left:auto;min-width:0;font-size:11px;line-height:1.3;
+  font-weight:700;color:#407f5c;text-align:right;max-width:43%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
+ .lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
+  padding:12px 0 2px;min-height:42px}
+ .lottery-history-pagination button{flex:0 0 auto;min-height:38px;padding:7px 12px;border-radius:9px;
+  border:1px solid #cfe2d3;background:#f5faf5;color:#3e805d;font-size:12px;font-weight:650}
+ .lottery-history-pagination button:disabled{opacity:.42}
+ .lottery-history-pagination span{font-size:11px;color:#768b7c;white-space:nowrap}
+ .lottery-page-error{margin:6px 0 0;font-size:12px;color:#a34b3d;text-align:center}
  .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
