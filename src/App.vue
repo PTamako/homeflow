@@ -19,7 +19,7 @@ import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Member={id:string;loginName:string;role:'owner'|'member'}
-type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
+type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;secondAssigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
@@ -539,6 +539,19 @@ async function postponeToday(row:TodayEntry){
  }catch(e){error.value=(e as Error).message}
  finally{todayActionBusy.value=false}
 }
+function canFinishEntry(row:TodayEntry){
+ if(!user.value)return false
+ if(row.task){
+  const first=row.task.assigneeUserId,second=row.task.secondAssigneeUserId
+  return !first||first===user.value.id||second===user.value.id
+ }
+ if(row.routine){
+  const a=row.routine.currentAssignment||row.routine.nextAssignment
+  const first=a?.assigneeUserId||row.routine.assigned_to
+  return !first||first===user.value.id||a?.secondAssigneeUserId===user.value.id
+ }
+ return true
+}
 async function toggleRoutine(r:Routine){
   if(routineBusy.value)return
   routineBusy.value=true
@@ -808,7 +821,7 @@ onBeforeUnmount(()=>{
               @edit="openPostpone(row)" @delete="skipToday(row)">
               <div class="task-row today-unified-row">
                 <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
-                  :disabled="!!row.routine&&routineBusy"
+                  :disabled="!canFinishEntry(row)||!!row.routine&&routineBusy"
                   :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
                   @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
                 <AppIcon v-else :name="row.plan?.kind==='shopping'?'shopping':
@@ -823,13 +836,13 @@ onBeforeUnmount(()=>{
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
                       <template v-if="nameForProfile(row.task.subjectProfileId)"> · {{ nameForProfile(row.task.subjectProfileId) }}</template>
                       <template v-if="row.task.healthRecordType&&isPet(row.task.subjectProfileId)"> · 完成后记护理</template>
-                      <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ memberName(row.task.assigneeUserId) }}</span>
+                      <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ [row.task.assigneeUserId,row.task.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.routine">
                       <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'本期已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
-                      <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ memberName(row.routine.assigned_to) }}</span>
+                      <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ [row.routine.currentAssignment?.assigneeUserId||row.routine.assigned_to,row.routine.currentAssignment?.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.plan">
                       <StatusBadge :code="row.done?'completed':'pending'" :label="row.done?'今天已完成':'今天到期'" /> · {{ row.plan.dueOn }}
