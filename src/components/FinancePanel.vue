@@ -277,7 +277,7 @@ onMounted(()=>{
 })
 </script>
 <template>
-  <section v-if="owner||embeddedKind==='goal'" class="finance-card">
+  <section v-if="owner||embeddedKind==='goal'" class="finance-card" :class="{embedded:!!embeddedId}">
     <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行支出':'储值收支'):'记账本收支' }}</h2>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
@@ -295,11 +295,10 @@ onMounted(()=>{
         </label>
       </div>
       <template v-if="target">
-        <div v-if="kind==='trip'" class="summary">
-          <span><StatusBadge code="linked" /> 实际支出</span><strong>{{ fmt(total) }}</strong>
-          <small>已关联 {{ links.filter(x=>x.entry).length }} 笔支出</small>
-          <span>手动调整 {{ signed(Number(adjustment)||0) }}</span>
-          <strong>调整后旅行开销 {{ signed(actualWithAdjustment) }}</strong>
+        <div v-if="kind==='trip'" class="summary trip-finance-summary">
+          <div class="trip-finance-stat"><span>已关联支出 · {{ links.filter(x=>x.entry).length }} 笔</span><strong>{{ fmt(total) }}</strong></div>
+          <div class="trip-finance-stat"><span>手动调整</span><b>{{ signed(Number(adjustment)||0) }}</b></div>
+          <div class="trip-finance-stat trip-finance-total"><span>旅行实际开销</span><strong>{{ fmt(actualWithAdjustment) }}</strong></div>
         </div>
         <div v-else class="summary">
           <span>{{ modeLabel }}目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
@@ -344,7 +343,7 @@ onMounted(()=>{
           <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
             {{ netBusy?'读取中…':'刷新收支差额' }}
           </button>
-          <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">查找家計簿支出</button>
+          <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">{{ busy?'查询中…':'选择家計簿账单' }}</button>
         </div>
         <div v-if="kind==='goal'&&owner" class="goal-completion-panel">
           <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="已确认达标" /></p>
@@ -357,6 +356,7 @@ onMounted(()=>{
           <small class="hint">请先保存调整，再核验。</small>
         </div>
         <template v-if="kind==='trip'">
+          <h3 v-if="links.length" class="trip-finance-list-title">已关联 · {{ links.length }} 笔</h3>
           <div v-for="row in visibleLinks" :key="row.linkId" class="line">
             <span><template v-if="row.entry">{{ row.entry.date }}</template><StatusBadge v-else code="deleted" label="原账目已删除" /> · {{ row.entry?.merchant||('明细 #'+row.entryId) }}
               <small v-if="row.entry">{{ fmt(row.entry.amount) }}</small><small v-else><StatusBadge code="verification_pending" label="未找到明细" /></small></span>
@@ -364,6 +364,7 @@ onMounted(()=>{
           </div>
           <button v-if="links.length>visibleLinks.length" type="button" class="more"
             @click="linkedVisibleCount+=linkedPageSize">加载更多</button>
+          <h3 v-if="entries.length" class="trip-finance-list-title">可选择账单 · {{ entries.length }} 笔</h3>
           <div v-for="row in entries" :key="row.id" class="line">
             <span>{{ row.date }} · {{ row.merchant||row.category }}<small>{{ fmt(row.amount) }}</small></span>
             <StatusBadge v-if="links.some(x=>String(x.entryId)===String(row.id))" code="linked" />
@@ -379,6 +380,17 @@ onMounted(()=>{
 </template>
 <style scoped>
 .finance-card{background:#fff;border:1px solid #eceae4;border-radius:18px;padding:18px;margin-top:16px}
+.finance-card.embedded{background:transparent;border:0;border-radius:0;padding:0;margin:0;min-width:0}
+.trip-finance-summary{gap:7px!important;padding:12px!important}
+.trip-finance-stat{display:flex;gap:8px;align-items:center;justify-content:space-between;min-width:0}
+.trip-finance-stat span{flex:1}
+.trip-finance-stat strong{font-size:16px;white-space:nowrap}
+.trip-finance-stat b{font-size:13px;white-space:nowrap}
+.trip-finance-total{border-top:1px solid #d9e8db;padding-top:8px}
+.trip-finance-total strong{font-size:20px}
+.trip-finance-list-title{font-size:12px!important;color:#486f58;font-weight:750;margin:13px 0 4px!important}
+.finance-card .line{min-width:0}
+.finance-card .line button{flex:none;min-height:34px}
 .finance-card h2{font-size:17px;margin:0 0 10px}.hint{font-size:12px;line-height:1.7;color:#839087}
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0;min-width:0}
 .fields label{font-size:12px;color:#607469;display:grid;gap:5px;min-width:0;max-width:100%}
