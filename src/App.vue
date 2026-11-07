@@ -240,14 +240,17 @@ const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=re
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
-const showProfileForm=ref(false)
+const showProfileForm=ref(false),profileSaving=ref(false)
 function closeProfileForm(){
   showProfileForm.value=false
   name.value='';petType.value='pet';birth.value='';adopted.value=''
 }
-function toggleProfileForm(){
-  if(showProfileForm.value)closeProfileForm()
-  else showProfileForm.value=true
+function openProfileForm(type:'person'|'pet'){
+  if(user.value?.role!=='owner')return
+  // The entry point determines the type: no detached profile-creation card.
+  closeProfileForm()
+  petType.value=type
+  showProfileForm.value=true
 }
 const error=ref('')
 const {toast,notify,clear:clearToast}=usePageToast()
@@ -654,13 +657,16 @@ async function toggleTask(t:Task){
   }catch(e){error.value=(e as Error).message}
 }
 async function addProfile(){
+  if(profileSaving.value||!name.value.trim())return
+  profileSaving.value=true
   error.value=''
   try{
     await api('/family/profiles','POST',{displayName:name.value,type:petType.value,
-      birthday:birth.value||null,adoptedOn:adopted.value||null})
+      birthday:birth.value||null,adoptedOn:petType.value==='pet'?adopted.value||null:null})
     await profileSaved()
     closeProfileForm()
   }catch(e){error.value=(e as Error).message}
+  finally{profileSaving.value=false}
 }
 watch(tab,value=>{
   clearToast()
@@ -861,7 +867,14 @@ onBeforeUnmount(()=>{
         <section class="panel">
           <div class="family-section-heading">
             <h2><AppIcon name="users" :size="20" /> 家庭成员</h2>
-            <span class="section-hint">{{ people.length }} 位成员</span>
+            <div class="family-heading-actions">
+              <span class="section-hint">{{ people.length }} 位成员</span>
+              <button v-if="user.role==='owner'" type="button" class="section-add-button"
+                aria-label="添加家庭成员" title="添加家庭成员" :aria-expanded="showProfileForm&&petType==='person'"
+                aria-controls="new-family-profile-form" @click="openProfileForm('person')">
+                <AppIcon name="plus" :size="19" />
+              </button>
+            </div>
           </div>
 
           <div v-if="people.length" class="profiles">
@@ -891,7 +904,14 @@ onBeforeUnmount(()=>{
         <section class="panel">
           <div class="family-section-heading">
             <h2><AppIcon name="paw" :size="20" /> 宠物档案</h2>
-            <span class="section-hint">{{ pets.length }} 只宠物</span>
+            <div class="family-heading-actions">
+              <span class="section-hint">{{ pets.length }} 只宠物</span>
+              <button v-if="user.role==='owner'" type="button" class="section-add-button"
+                aria-label="添加宠物档案" title="添加宠物档案" :aria-expanded="showProfileForm&&petType==='pet'"
+                aria-controls="new-family-profile-form" @click="openProfileForm('pet')">
+                <AppIcon name="plus" :size="19" />
+              </button>
+            </div>
           </div>
                     <div v-for="p in visiblePets" :key="p.id" :id="'profile-'+p.id" class="pet-profile-entry">
             <button type="button" class="pet-profile-trigger" :aria-expanded="openPetId===p.id"
@@ -916,18 +936,13 @@ onBeforeUnmount(()=>{
             @click="petsVisibleCount+=listPageSize">加载更多</button>
           <p v-if="!pets.length" class="empty">暂无宠物档案</p>
         </section>
-        <section v-if="user.role==='owner'" class="panel">
-          <button type="button" class="outline" :aria-expanded="showProfileForm"
-            aria-controls="new-family-profile-form" @click="toggleProfileForm">
-            ＋ 添加家庭或宠物档案
-          </button>
-          <EditBottomSheet v-if="showProfileForm" title="添加家庭或宠物档案" :close-disabled="loading" @close="closeProfileForm">
+        <EditBottomSheet v-if="user.role==='owner'&&showProfileForm"
+          :title="petType==='person'?'添加家庭成员':'添加宠物档案'"
+          :close-disabled="profileSaving" @close="closeProfileForm">
           <form id="new-family-profile-form" class="profile-form" @submit.prevent="addProfile">
             <label class="field-wide">昵称或名字
-              <input v-model="name" required maxlength="60" placeholder="例如：豆沙" />
-            </label>
-            <label>类型
-              <select v-model="petType"><option value="person">家庭成员</option><option value="pet">宠物</option></select>
+              <input v-model="name" required maxlength="60"
+                :placeholder="petType==='pet'?'例如：豆沙':'例如：小白'" />
             </label>
             <label>生日（可选）
               <DateField v-model="birth" />
@@ -937,11 +952,12 @@ onBeforeUnmount(()=>{
             </label>
             <div class="field-wide profile-form-actions">
               <button type="button" class="outline" @click="closeProfileForm">取消</button>
-              <button type="submit" class="primary">添加档案</button>
+              <button type="submit" class="primary" :disabled="profileSaving">
+                {{ petType==='person'?'添加成员':'添加宠物' }}
+              </button>
             </div>
           </form>
-          </EditBottomSheet>
-        </section>
+        </EditBottomSheet>
       </template>
       <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>
         <h2 class="hero-title"><AppIcon :name="tab==='plans'?'plane':'heart'" :size="22" /> {{ tab==='plans'?'把想做的事安排好':'把值得纪念的时刻留下来' }}</h2>

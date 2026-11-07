@@ -8,9 +8,11 @@ const pet=readFileSync(new URL('../src/components/PetHealthPanel.vue',import.met
 
 test('new family and pet profile form is collapsed by default',()=>{
   assert.match(app,/const showProfileForm=ref\(false\)/)
-  assert.match(app,/<EditBottomSheet v-if="showProfileForm"/)
-  assert.match(app,/:aria-expanded="showProfileForm"/)
-  assert.match(app,/@click="toggleProfileForm"/)
+  assert.match(app,/<EditBottomSheet v-if="user.role==='owner'&&showProfileForm"/)
+  assert.match(app,/:aria-expanded="showProfileForm&&petType==='person'"/)
+  assert.match(app,/:aria-expanded="showProfileForm&&petType==='pet'"/)
+  assert.match(app,/@click="openProfileForm\('person'\)"/)
+  assert.match(app,/@click="openProfileForm\('pet'\)"/)
   assert.match(app,/function closeProfileForm\(\)\{[\s\S]*?showProfileForm\.value=false/)
   assert.match(app,/await profileSaved\(\)\s*closeProfileForm\(\)/)
   assert.match(app,/@click="closeProfileForm">取消/)

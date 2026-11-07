@@ -8,7 +8,7 @@ import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
-const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean}>()
+const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean;compact?:boolean}>()
 const emit=defineEmits<{created:[kind:PlanKind,id:string,unscheduled?:boolean];taskCreated:[]}>()
 const choices=[
  {id:'routine',label:'任务／定期计划',icon:'repeat',description:'一次性或循环'},
@@ -94,9 +94,11 @@ async function submit(){
 }
 </script>
 <template>
- <section class="plan-creator">
-  <button class="creator-trigger" type="button" :aria-expanded="opened" @click="opened?dismiss():opened=true">
-   <AppIcon v-if="!opened" name="plus" :size="19"/> {{ opened?'收起新增计划':'新增计划' }}
+ <section :class="['plan-creator',{compact:props.compact}]">
+  <button class="creator-trigger" type="button" :aria-expanded="opened"
+    :aria-label="props.compact?'新增计划':undefined" :title="props.compact?'新增计划':undefined"
+    @click="opened?dismiss():opened=true">
+   <AppIcon name="plus" :size="19"/><span v-if="!props.compact">{{ opened?'收起新增计划':'新增计划' }}</span>
   </button>
   <EditBottomSheet v-if="opened" title="新增计划" :close-disabled="busy" @close="dismiss">
    <h2>选择计划类型</h2>
@@ -253,6 +255,10 @@ async function submit(){
 </template>
 <style scoped>
 .plan-creator{padding:0;border:0;background:transparent;border-radius:0;margin:0 0 16px;display:grid;gap:12px}
+.plan-creator.compact{margin:0;display:block}
+.plan-creator.compact .creator-trigger{width:38px;height:38px;min-height:38px;min-width:38px;display:grid;place-items:center;
+ padding:0;border:1px solid #c9dfcf;border-radius:11px;background:#f3f9f4;color:#3b8364}
+.plan-creator.compact .creator-trigger:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-creator h2{font-size:15px;margin:0}.plan-creator h3{margin:0;font-size:14px;color:#2a4c3a}
 .creator-trigger{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;min-height:44px;background:#43866a;color:white;font-size:14px;font-weight:700}
 .plan-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}

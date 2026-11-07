@@ -883,7 +883,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
     <template v-else-if="mode==='family'">
       <section class="life-card">
-        <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
+        <div class="life-section-heading">
+          <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
+          <button type="button" class="section-add-button" :aria-expanded="showAnniversaryForm"
+            aria-controls="new-anniversary-form" :disabled="busy"
+            aria-label="添加纪念日" title="添加纪念日"
+            @click="showAnniversaryForm=true"><AppIcon name="plus" :size="19" /></button>
+        </div>
 
         <div class="archive-tabs" role="group" aria-label="重要日子筛选">
           <button type="button" :class="{selected:anniversaryView==='upcoming'}"
@@ -922,11 +928,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子</button>
         <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
-        <button type="button" class="life-more" :aria-expanded="showAnniversaryForm"
-          aria-controls="new-anniversary-form" :disabled="busy"
-          @click="showAnniversaryForm?closeAnniversaryForm():showAnniversaryForm=true">
-          ＋ 添加纪念日
-        </button>
         <EditBottomSheet v-if="showAnniversaryForm" title="添加纪念日" :close-disabled="busy" @close="closeAnniversaryForm">
 <form id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><DateField v-model="eventDate" required />
@@ -944,9 +945,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
-      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles" :members="props.members" :user-id="props.userId" :open-on-mount="props.openPlanCreator"
-        @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-view-toolbar" aria-label="计划筛选与状态">
+        <div class="plan-view-heading">
+          <b>计划列表</b>
+          <PlanCreator v-if="planScope==='active'" compact
+            :profiles="props.profiles" :members="props.members" :user-id="props.userId"
+            :open-on-mount="props.openPlanCreator"
+            @created="planCreated" @task-created="emit('tasksChanged')"/>
+        </div>
         <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
           {id:'all',label:'全部'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
@@ -1578,10 +1584,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
     <template v-else-if="mode==='memories'">
       <section class="life-card">
-        <h2 class="life-heading"><AppIcon name="book-heart" :size="21" /> 留下一段美好的回忆</h2>
-        <button type="button" class="life-more" :aria-expanded="showMemoryForm" @click="showMemoryForm=true">＋ 添加回忆</button>
+        <div class="life-section-heading">
+          <h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
+          <button type="button" class="section-add-button" :aria-expanded="showMemoryForm"
+            aria-controls="new-memory-form" :disabled="busy"
+            aria-label="添加回忆" title="添加回忆"
+            @click="showMemoryForm=true"><AppIcon name="plus" :size="19" /></button>
+        </div>
         <EditBottomSheet v-if="showMemoryForm" title="添加回忆" :close-disabled="busy" @close="showMemoryForm=false">
-        <form class="life-form" @submit.prevent="addMemory">
+        <form id="new-memory-form" class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<DateField v-model="memoryDate" required /></label>
           <textarea v-model="memoryStory" maxlength="8000" rows="3" placeholder="写下一段日记……"></textarea>
@@ -1598,8 +1609,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
         </EditBottomSheet>
-      </section>
-      <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
+
         <button type="button" class="life-filter-trigger" @click="memoryFilterOpen=true">筛选日期 · {{ memoryYear||'全部' }}</button>
         <EditBottomSheet v-if="memoryFilterOpen" title="筛选时光轴" @close="memoryFilterOpen=false">
         <div class="archive-date-filters">
@@ -1782,6 +1792,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
 
 /* Shared icon language and responsive form guards */
+.life-section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;margin:0 0 12px}
+.life-section-heading .life-heading{margin:0;flex:1;min-width:0;line-height:1.35}
+.life-section-heading .section-add-button{flex:none}
 .life-heading{display:flex;align-items:center;gap:9px;color:#293f34;min-width:0}
 .life-heading :deep(.app-icon){color:#43866a}
 .memory-visibility{display:inline-flex;align-items:center;gap:5px}
@@ -1869,6 +1882,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:420px){.archive-date-filters{gap:8px}}
 
 /* One compact plan-filter surface, with dates only when history is selected. */
+.plan-view-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;min-height:38px}
+.plan-view-heading>b{font-size:14px;font-weight:750;color:#314b3a}
 .plan-view-toolbar{margin:10px 0 15px;padding:11px 12px 5px;
   background:#fff;border:1px solid #eeebe5;border-radius:16px}
 .plan-view-toolbar .plan-filter-tabs{gap:7px;padding:0 0 10px}
