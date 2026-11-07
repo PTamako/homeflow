@@ -133,9 +133,16 @@ export async function remindersRoute(request,db,session) {
   // Pending inbox is a display filter; the 06:00 scheduler must keep the complete list.
   const pendingOnly=url.searchParams.get('pending')==='1'
   const includeGoals=pendingOnly||url.searchParams.get('goals')==='1'
-  const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs,periodAssignments,deliveredNotices]=await db.batch([
+  const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs,deliveredNotices]=await db.batch([
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
-    db.prepare("SELECT id,title,anchor_date,repeat_type,repeat_config,next_due_on,assigned_to FROM routines WHERE household_id=?1 AND enabled=1 AND deleted_at IS NULL AND remind_enabled=1 AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
+    db.prepare(`SELECT r.id,r.title,r.anchor_date,r.repeat_type,r.repeat_config,
+      r.next_due_on,r.assigned_to,
+      (SELECT json_group_array(json_object('on',a.occurrence_on,'user',a.assignee_user_id))
+       FROM routine_occurrence_assignments a WHERE a.routine_id=r.id AND a.household_id=r.household_id
+        AND a.occurrence_on>=?3 AND a.occurrence_on<=?4) AS occurrence_assignments
+      FROM routines r WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
+        AND r.remind_enabled=1 AND (r.visibility='household' OR r.created_by=?2) LIMIT 200`)
+      .bind(hid,u,date,addDays(date,7)),
     db.prepare(`SELECT m.routine_id,m.occurrence_on,m.completed_at,m.skipped_at FROM routine_marks m
       JOIN routines r ON r.id=m.routine_id WHERE r.household_id=?1 AND r.deleted_at IS NULL
       AND m.occurrence_on>=?2 AND m.occurrence_on<=?3
@@ -165,9 +172,6 @@ export async function remindersRoute(request,db,session) {
       .bind(hid,u,date),
     db.prepare('SELECT advance_days,quiet_start_hour,quiet_end_hour FROM reminder_preferences WHERE household_id=?1 AND user_id=?2').bind(hid,u),
     db.prepare('SELECT kind,item_id,advance_days,priority FROM reminder_item_preferences WHERE household_id=?1 AND user_id=?2 LIMIT 500').bind(hid,u),
-    db.prepare(`SELECT routine_id,occurrence_on,assignee_user_id FROM routine_occurrence_assignments
-      WHERE household_id=?1 AND occurrence_on>=?2 AND occurrence_on<=?3 LIMIT 500`)
-      .bind(hid,date,addDays(date,7)),
     // Query only the current recipient's scheduled notices, using the existing daily index.
     ...(pendingOnly?[db.prepare(`SELECT dedupe_key FROM notification_inbox
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
@@ -193,10 +197,13 @@ export async function remindersRoute(request,db,session) {
     const ahead=daysBetween(date,next)
     if(leads.includes(ahead))announcements.push({kind:'anniversary',id:e.id,title:e.title,dueOn:next,daysBefore:ahead})
   }
-  const assignedByPeriod=new Map((periodAssignments.results||[]).map(x=>[
-    x.routine_id+':'+x.occurrence_on,x.assignee_user_id]))
-  const forRoutineMember=(rule,period)=>(
-    assignedByPeriod.get(rule.id+':'+period)??rule.assigned_to??null)
+  const forRoutineMember=(rule,period)=>{
+    try{
+      const found=JSON.parse(rule.occurrence_assignments||'[]')
+        .find(x=>x.on===period)
+      return found?.user??rule.assigned_to??null
+    }catch{return rule.assigned_to??null}
+  }
   const completed=new Set((marks.results||[]).filter(x=>x.completed_at||x.skipped_at)
     .map(x=>x.routine_id+':'+x.occurrence_on))
   for(const r of rules.results||[]){
