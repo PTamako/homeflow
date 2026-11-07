@@ -55,8 +55,12 @@ function checkServiceWorkerUpdate(){
   void navigator.serviceWorker.getRegistration().then(reg=>reg?.update()).catch(()=>{})
 }
 function refreshToLatest(){
-  if(!window.confirm('刷新到最新版本？尚未保存的输入内容会丢失。'))return
-  window.location.reload()
+  if(!window.confirm('从网络刷新到最新版 HomeFlow？尚未保存的输入内容会丢失。'))return
+  // An installed iOS PWA may resume an old JS snapshot. A unique navigation
+  // URL re-requests the HTML shell instead of just resuming that snapshot.
+  const target=new URL(window.location.href)
+  target.searchParams.set('_hf_refresh',String(Date.now()))
+  window.location.replace(target.pathname+target.search+target.hash)
 }
 const todayRows=ref<TodayEntry[]>([])
 const todayNextCursor=ref<string|null>(null)
@@ -994,7 +998,7 @@ onBeforeUnmount(()=>{
       <ManagePage :key="user.id+':'+manageRevisionCounter" v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
-        @logout="logout" />
+        @logout="logout" @refresh-app="refreshToLatest" />
     </main>
     <PageToast :toast="toast" />
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
