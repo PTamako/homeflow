@@ -13,7 +13,11 @@ type Reward={id:string;title:string;description:string;icon:string;points:number
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
 type Redemption={id:string;rewardId:string;redeemedBy:string;redeemedByName:string;
  title:string;icon:string;points:number;status:string;createdAt:string;fulfilledAt:string|null}
-type Shop={rewards:Reward[];redemptions:Redemption[]}
+type Contribution={userId:string;displayName:string;points:number}
+type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:string;
+ points:number;fundedPoints:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
+ createdAt:string;fundedAt:string|null;contributions:Contribution[]}
+type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
@@ -21,11 +25,13 @@ const view=ref<'shop'|'achievements'>('shop')
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
+const poolAmount=ref<Record<string,string>>({})
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
+const recentGroupOrders=computed(()=>shop.value?.groupOrders||[])
 let generation=0
 async function fetchJSON(path:string,method='GET',body?:unknown){
  const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
@@ -34,6 +40,9 @@ async function fetchJSON(path:string,method='GET',body?:unknown){
  if(!response.ok)throw Error(({
    invalid_reward:'请检查名称、价格及库存',
    reward_unavailable_or_insufficient:'积分不足、商品已售罄或已经下架',
+   pool_closed_or_insufficient:'本单已结束、金额超过剩余需求，或你的可用积分不足',
+   pool_not_cancellable:'只有未凑齐积分的合力兑换可以取消',
+   pool_not_funded:'积分尚未凑齐，暂不能兑现',
    not_authenticated:'请重新登录',
    origin_forbidden:'请从 HomeFlow 应用内操作'
   } as Record<string,string>)[result.error]||result.error||'操作失败')
@@ -101,6 +110,33 @@ async function redeem(item:Reward){
  await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId}),
   '兑换成功！已添加到待兑现记录')
 }
+async function startPool(item:Reward){
+ if(!window.confirm('创建「'+item.title+'」的合力兑换？\\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
+ const requestId=crypto.randomUUID()
+ await mutate(()=>fetchJSON('/rewards/pool','POST',{rewardId:item.id,requestId}),
+  '合力兑换已创建，请在下方选择出资金额')
+}
+async function contributePool(item:GroupOrder){
+ const amount=Number(poolAmount.value[item.id]??Math.ceil(item.points/2))
+ const remaining=Math.max(0,item.points-item.fundedPoints)
+ if(!Number.isSafeInteger(amount)||amount<1||amount>remaining){
+   error.value='本次出资请填写 1～'+remaining+' 的整数';return
+ }
+ if(amount>points.value){error.value='当前可用积分不足';return}
+ if(!window.confirm('确认出资 '+amount+' 分给「'+item.title+'」？\\n只扣你的可用积分，未凑齐时仍可取消并返还。'))return
+ const requestId=crypto.randomUUID()
+ await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/contribute','POST',
+  {points:amount,requestId}),'已出资 '+amount+' 分')
+}
+async function cancelPool(item:GroupOrder){
+ if(!window.confirm('取消「'+item.title+'」的合力兑换？\\n未凑齐的订单可以取消，双方已出的积分都会返还。'))return
+ await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/cancel','POST'),
+  '合力兑换已取消，积分已返还')
+}
+async function fulfillPool(item:GroupOrder){
+ if(!window.confirm('确认「'+item.title+'」已由家人兑现吗？'))return
+ await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/fulfill','POST'),'已确认兑现')
+}
 async function fulfill(item:Redemption){
  if(!window.confirm('确认「'+item.title+'」已经兑现了吗？'))return
  await mutate(()=>fetchJSON('/rewards/redemptions/'+item.id,'PATCH',{status:'fulfilled'}),
@@ -164,6 +200,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div class="reward-actions">
            <button type="button" class="redeem-btn" :disabled="busy||points<item.points||(item.stock!==null&&item.redeemedCount>=item.stock)"
              @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
+           <button type="button" class="link-btn" :disabled="busy||(item.stock!==null&&item.redeemedCount>=item.stock)"
+              @click="startPool(item)">合力</button>
            <button type="button" class="link-btn" :disabled="busy" @click="editReward(item)">编辑</button>
            <button type="button" class="link-btn" :disabled="busy" @click="toggleActive(item)">下架</button>
          </div>
@@ -191,6 +229,31 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <label class="checkbox-line"><input v-model="formActive" type="checkbox"/> 上架</label>
        <button type="submit" class="save-btn" :disabled="busy">{{ busy?'保存中…':'保存奖励' }}</button>
      </form>
+     <div v-if="recentGroupOrders.length" class="pool-section">
+       <b>🤝 合力兑换</b>
+       <article v-for="order in recentGroupOrders" :key="order.id" class="pooled-order">
+         <div class="pool-heading"><strong>{{ order.icon }} {{ order.title }}</strong>
+           <small>{{ order.status==='collecting'?'凑分中':order.status==='requested'?'待兑现':order.status==='fulfilled'?'已兑现':'已取消' }}</small>
+         </div>
+         <div class="pool-status"><b>{{ order.status==='cancelled'?'已返还':fmt(order.fundedPoints)+' / '+fmt(order.points)+' 分' }}</b>
+           <span>{{ dateText(order.createdAt) }}</span></div>
+         <div v-if="order.status!=='cancelled'" class="challenge-bar">
+           <span :style="{width:Math.min(100,order.fundedPoints/order.points*100)+'%'}"></span>
+         </div>
+         <div v-if="order.contributions.length" class="pool-contributors">
+           <span v-for="c in order.contributions" :key="c.userId">{{ c.displayName }}：{{ fmt(c.points) }}分</span>
+         </div>
+         <div v-if="order.status==='collecting'" class="pool-contribute">
+           <label>我出 <input v-model="poolAmount[order.id]" type="number" inputmode="numeric"
+             min="1" :max="order.points-order.fundedPoints"
+             :placeholder="String(Math.min(Math.ceil(order.points/2),order.points-order.fundedPoints))"/> 分</label>
+           <button type="button" class="redeem-btn" :disabled="busy||points<1" @click="contributePool(order)">出资</button>
+           <button type="button" class="pool-cancel" :disabled="busy" @click="cancelPool(order)">取消并退分</button>
+         </div>
+         <button v-else-if="order.status==='requested'" type="button" class="redeem-btn pool-fulfill"
+           :disabled="busy" @click="fulfillPool(order)">确认已经兑现</button>
+       </article>
+     </div>
      <div v-if="shop?.redemptions.length" class="history-section">
        <b>兑换记录</b>
        <div v-for="record in shop.redemptions" :key="record.id" class="history-row">
@@ -200,7 +263,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <button v-if="record.status==='requested'" type="button" :disabled="busy" @click="fulfill(record)">确认兑现</button>
        </div>
      </div>
-     <p class="points-hint">奖励由家庭成员共同约定，兑换仅记积分，不会产生付款或家计簿明细。兑换记录不能直接退款。</p>
+     <p class="points-hint">“合力”允许双方自由分摊积分，例如各出150分兑换300分大餐。未凑齐可取消并返还全部出资；凑齐后进入待兑现，不能自动退款。积分兑换不产生真正付款或家计簿明细。</p>
    </template>
    <p v-if="!data&&loading" class="points-loading">正在读取积分与奖励…</p>
    <p v-if="error" role="alert" class="points-error">{{ error }}
@@ -255,6 +318,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .redeem-btn,.save-btn{border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
 .redeem-btn:disabled,.save-btn:disabled{opacity:.45}
 .link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:3px}
+.pool-section{display:grid;gap:8px;padding-top:9px;border-top:1px solid #ecf0ea}
+.pool-section>b{font-size:14px;color:#426b50}
+.pooled-order{border:1px solid #dceadf;border-radius:11px;padding:11px;display:grid;gap:8px;background:#fafdfb;min-width:0}
+.pool-heading,.pool-status{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pool-heading strong{font-size:13px;min-width:0;overflow-wrap:anywhere}
+.pool-heading small{font-size:11px;color:#5d8a70;white-space:nowrap}
+.pool-status b{font-size:12px;color:#3f8560}
+.pool-status span{font-size:10px;color:#87998d}
+.pool-contributors{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:11px;color:#708873}
+.pool-contribute{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pool-contribute label{display:flex;gap:5px;align-items:center;font-size:12px;color:#55755d}
+.pool-contribute input{width:64px;box-sizing:border-box;border:1px solid #d4e4d8;border-radius:7px;padding:7px;font-size:14px}
+.pool-cancel{background:none;border:0;color:#a17b70;font-size:11px;padding:6px}
+.pool-fulfill{justify-self:start}
 .hidden-rewards summary{font-size:12px;color:#758c7c;cursor:pointer}
 .archived-row{display:flex;align-items:center;gap:5px;padding:7px 0;font-size:12px}
 .archived-row span{flex:1}
