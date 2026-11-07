@@ -766,7 +766,7 @@ async function importTrip(){
   if(change==='update'&&!confirm('会更新原旅行内容，但不会删除已完成事项。确定更新吗？'))return
   await update(()=>api('/trips/import','POST',{payload:preview.value?.payload,
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
-  if(!error.value){paste.value='';preview.value=null}
+  if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
 }
 async function removeCloudPhoto(id:string){
   if(!confirm('删除这张云端照片吗？本机原图不会删除。'))return
@@ -884,7 +884,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:anniversaryView==='past'}"
             :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
         </div>
-        <button type="button" class="life-filter-trigger" @click="anniversaryFilterOpen=true">筛选日期 · {{ anniversaryYear||'全部' }}</button>
+        <button v-if="anniversaryView==='past'" type="button" class="life-filter-trigger" @click="anniversaryFilterOpen=true">筛选日期 · {{ anniversaryYear||'全部' }}</button>
         <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="anniversaryFilterOpen=false">
         <div class="archive-date-filters">
           <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
@@ -955,7 +955,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
             @click="changePlanScope('history')">已完成／历史</button>
         </div>
-        <button type="button" class="life-filter-trigger" @click="planFilterOpen=true">筛选日期 · {{ planYear||'全部' }}</button>
+        <button v-if="planScope==='history'" type="button" class="life-filter-trigger" @click="planFilterOpen=true">筛选日期 · {{ planYear||'全部' }}</button>
         <EditBottomSheet v-if="planScope==='history'&&planFilterOpen" title="筛选历史计划" @close="planFilterOpen=false">
         <div class="archive-date-filters">
           <label>年份
@@ -1523,7 +1523,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </template>
             <p v-else class="life-caption">暂无行程</p>
           </div>
-          <details class="trip-import"><summary>导入行程</summary>
+          <button type="button" class="life-filter-trigger" @click="tripImportOpen=true">导入行程</button>
+           <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
+           <div class="trip-import">
             <label>导入到哪个旅行项目？
               <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
             </label>
@@ -1534,7 +1536,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <p>{{ preview.summary.days }} 天 / {{ preview.summary.itineraryItems }} 项行程 / {{ preview.summary.tasks }} 项准备任务</p>
               <button :disabled="busy" @click="importTrip">确认导入</button>
             </div>
-          </details>
+          <p v-if="error" class="life-error" role="alert">{{ error }}</p></div>
+           </EditBottomSheet>
         </section>
       </div>
       <details class="life-card plan-recap">
