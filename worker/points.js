@@ -51,16 +51,19 @@ export async function pointsRoute(request,db,session){
         u.login_name) AS displayName,
       COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0) AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND j.earned_at>=?2 AND j.earned_at<?3),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
-      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0) AS routinePoints
+      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0)
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.kind='routine' AND j.visibility='household'),0) AS routinePoints
     FROM household_members m JOIN users u ON u.id=m.user_id
     LEFT JOIN completion_points cp ON cp.household_id=m.household_id
       AND cp.earner_user_id=m.user_id
@@ -83,15 +86,18 @@ export async function pointsRoute(request,db,session){
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2)
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2) AS earned,
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2)
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2) AS earned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
           AND visibility='household')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household') AS householdEarned,
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household') AS householdEarned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
-      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
+      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
       (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
