@@ -55,7 +55,7 @@ function checkServiceWorkerUpdate(){
   void navigator.serviceWorker.getRegistration().then(reg=>reg?.update()).catch(()=>{})
 }
 function refreshToLatest(){
-  if(!window.confirm('从网络刷新到最新版 HomeFlow？尚未保存的输入内容会丢失。'))return
+  if(!window.confirm('刷新到最新版本？将从网络重新加载，尚未保存的输入内容会丢失。'))return
   // An installed iOS PWA may resume an old JS snapshot. A unique navigation
   // URL re-requests the HTML shell instead of just resuming that snapshot.
   const target=new URL(window.location.href)
