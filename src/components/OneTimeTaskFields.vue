@@ -15,11 +15,14 @@ function subjectChanged(){
   model.value.healthRecordType=linkedPet.value?'other':''
 }
 function assigneeChanged(){
- if(model.value.assigneeUserId&&model.value.assigneeUserId!==props.userId)model.value.visibility='household'
+ if(!model.value.assigneeUserId||model.value.secondAssigneeUserId===model.value.assigneeUserId)
+   model.value.secondAssigneeUserId=''
+ if((model.value.assigneeUserId&&model.value.assigneeUserId!==props.userId)||
+    (model.value.secondAssigneeUserId&&model.value.secondAssigneeUserId!==props.userId))model.value.visibility='household'
  else model.value.bonusPoints=0
 }
 function visibilityChanged(){
- if(model.value.visibility==='private'&&model.value.assigneeUserId!==props.userId){model.value.assigneeUserId=props.userId||'';model.value.bonusPoints=0}
+ if(model.value.visibility==='private'&&model.value.assigneeUserId!==props.userId){model.value.assigneeUserId=props.userId||'';model.value.secondAssigneeUserId='';model.value.bonusPoints=0}
 }
 function focusTitle(){titleInput.value?.focus()}
 defineExpose({focusTitle})
@@ -64,7 +67,15 @@ defineExpose({focusTitle})
     <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
    </select>
   </label>
-  <label v-if="model.assigneeUserId&&model.assigneeUserId!==userId&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
+  <label v-if="model.visibility==='household'&&model.assigneeUserId">共同处理人（可选）
+   <select v-model="model.secondAssigneeUserId" aria-label="选择第二位处理人" @change="assigneeChanged">
+    <option value="">仅一人负责</option>
+    <option v-for="member in (members||[])" :key="member.id" :value="member.id"
+      :disabled="member.id===model.assigneeUserId">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
+   </select>
+   <small v-if="model.secondAssigneeUserId">两人任意一人完成即可，基础积分与额外奖励均各分一半。</small>
+  </label>
+  <label v-if="model.assigneeUserId&&((model.assigneeUserId!==userId)||model.secondAssigneeUserId&&model.secondAssigneeUserId!==userId)&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
    <input v-model.number="model.bonusPoints" type="number" inputmode="numeric" min="1" max="10000" step="1" required placeholder="必须填写正整数" aria-label="一次性任务额外奖励积分"/>
    <small>完成后转给指定处理人；撤销完成退回预留状态，删除任务解除预留。基础完成奖励另有 5 分。</small>
   </label>

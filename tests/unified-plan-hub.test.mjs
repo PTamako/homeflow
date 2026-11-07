@@ -62,7 +62,7 @@ test('reminder-disabled one-off task persists and still has a due date',async()=
  assert.equal(r.status,201)
  assert.equal(db.calls.length,1)
  assert.match(db.calls[0].sql,/remind_enabled/)
- assert.equal(db.calls[0].values.at(-1),0)
+ assert.equal(db.calls[0].values.at(-3),0)
 })
 test('ordinary trip can be created without an import JSON',async()=>{
  const db=recordDb()

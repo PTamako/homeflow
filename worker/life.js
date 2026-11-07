@@ -211,15 +211,17 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       return bad()
     const early=body.early===true&&body.status==='completed'&&actual===jstToday()&&
       earlyOn===periodOn
-    const assignment=await db.prepare(`SELECT assignee_user_id,bonus_points
+    const assignment=await db.prepare(`SELECT assignee_user_id,second_assignee_user_id,bonus_points
       FROM routine_occurrence_assignments WHERE household_id=?1 AND routine_id=?2
       AND occurrence_on=?3`).bind(session.household_id,id,periodOn).first()
     const effectiveAssignee=assignment?.assignee_user_id||rule.assigned_to
-    if(effectiveAssignee&&effectiveAssignee!==session.user_id&&
-      rule.created_by!==session.user_id)return json({error:'forbidden'},403)
-    // The creator can skip an assigned occurrence but cannot claim the assignee's bounty.
-    if(body.status==='completed'&&assignment?.assignee_user_id&&
-      assignment.assignee_user_id!==session.user_id)return json({error:'assigned_to_other_member'},403)
+    const secondary=assignment?.second_assignee_user_id||null
+    const canComplete=!effectiveAssignee||session.user_id===effectiveAssignee||
+      session.user_id===secondary
+    if(body.status==='completed'&&!canComplete)
+      return json({error:'assigned_to_other_member'},403)
+    if(body.status!=='completed'&&!canComplete&&rule.created_by!==session.user_id)
+      return json({error:'forbidden'},403)
     const existing=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
       WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,recordOn).first()
     if(recordOn!==periodOn){
@@ -306,7 +308,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     const results=await db.batch(statements)
     if(body.status==='completed'&&Number(results?.[0]?.meta?.changes||0)>0)
       onComplete?.({kind:'routine',id:rule.id,title:rule.title,
-        creatorId:rule.created_by,assigneeId:effectiveAssignee,
+        creatorId:rule.created_by,assigneeId:effectiveAssignee,secondAssigneeId:secondary,
         visibility:rule.visibility,completedAt:stamp,periodOn})
     return json({ok:true,periodOn,completedOn:body.status==='completed'?actual:null})
   }

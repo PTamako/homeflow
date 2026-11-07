@@ -137,7 +137,7 @@ export async function remindersRoute(request,db,session) {
     db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT r.id,r.title,r.anchor_date,r.repeat_type,r.repeat_config,
       r.next_due_on,r.assigned_to,
-      (SELECT json_group_array(json_object('on',a.occurrence_on,'user',a.assignee_user_id))
+      (SELECT json_group_array(json_object('on',a.occurrence_on,'user',a.assignee_user_id,'user2',a.second_assignee_user_id))
        FROM routine_occurrence_assignments a WHERE a.routine_id=r.id AND a.household_id=r.household_id
         AND a.occurrence_on>=?3 AND a.occurrence_on<=?4) AS occurrence_assignments
       FROM routines r WHERE r.household_id=?1 AND r.enabled=1 AND r.deleted_at IS NULL
@@ -151,7 +151,7 @@ export async function remindersRoute(request,db,session) {
       AND completed_at IS NULL AND remind_enabled=1
       AND due_on<=?3 AND (due_on>=?2 OR id IN(SELECT source_id FROM today_plan_actions
         WHERE household_id=?1 AND kind='task' AND action='postponed' AND postponed_to BETWEEN ?2 AND ?3))
-      AND (visibility='household' OR creator_user_id=?4) AND (assignee_user_id=?4 OR assignee_user_id IS NULL)
+      AND (visibility='household' OR creator_user_id=?4) AND (assignee_user_id=?4 OR second_assignee_user_id=?4 OR assignee_user_id IS NULL)
       ORDER BY due_on LIMIT 100`).bind(hid,date,addDays(date,7),u),
     db.prepare(`SELECT id,title,due_on FROM shopping_items WHERE household_id=?1 AND deleted_at IS NULL
       AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
@@ -201,8 +201,8 @@ export async function remindersRoute(request,db,session) {
     try{
       const found=JSON.parse(rule.occurrence_assignments||'[]')
         .find(x=>x.on===period)
-      return found?.user??rule.assigned_to??null
-    }catch{return rule.assigned_to??null}
+      return found?([found.user,found.user2].filter(Boolean)):[rule.assigned_to].filter(Boolean)
+    }catch{return [rule.assigned_to].filter(Boolean)}
   }
   const completed=new Set((marks.results||[]).filter(x=>x.completed_at||x.skipped_at)
     .map(x=>x.routine_id+':'+x.occurrence_on))
@@ -211,12 +211,12 @@ export async function remindersRoute(request,db,session) {
       const opts=forItem('routine',r.id)
       if(dueOn(r,date)){
         if(!completed.has(r.id+':'+date)&&
-          (!forRoutineMember(r,date)||forRoutineMember(r,date)===u))
+          (!forRoutineMember(r,date).length||forRoutineMember(r,date).includes(u)))
           announcements.push({kind:'routine',id:r.id,title:r.title,dueOn:date,priority:opts.priority})
       }else if(opts.days>0&&dueOn(r,addDays(date,opts.days))&&
         !completed.has(r.id+':'+addDays(date,opts.days))&&
-        (!forRoutineMember(r,addDays(date,opts.days))||
-          forRoutineMember(r,addDays(date,opts.days))===u)){
+        (!forRoutineMember(r,addDays(date,opts.days)).length||
+          forRoutineMember(r,addDays(date,opts.days)).includes(u))){
         announcements.push({kind:'routine',id:r.id,title:r.title,
           dueOn:addDays(date,opts.days),daysBefore:opts.days,priority:opts.priority})
       }

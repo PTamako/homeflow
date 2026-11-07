@@ -9,22 +9,30 @@ function validated(body,session) {
   const visibility=body?.visibility
   const dueOn=body?.dueOn??null
   const assignee=body?.assigneeUserId||null
+  const second=body?.secondAssigneeUserId||null
   const subject=body?.subjectProfileId||null
   const care=body?.healthRecordType
   const reminder=body?.remindEnabled===undefined?null:body.remindEnabled
   const bonus=body?.bonusPoints??0
   if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)return null
-  const assignedOther=!!assignee&&assignee!==session.user_id
+  const assignedOther=!!assignee&&assignee!==session.user_id||!!second&&second!==session.user_id
   if(assignedOther?(visibility!=='household'||bonus<1):bonus!==0)return null
   if(reminder!==null&&typeof reminder!=='boolean')return null
   if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
     !validDate(dueOn)|| (visibility==='private' && assignee && assignee!==session.user_id)) return null
   if(assignee && (typeof assignee!=='string'||assignee.length>60))return null
+  if(second&&(!assignee||typeof second!=='string'||second.length>60||second===assignee||
+     visibility!=='household'))return null
   if(subject && (typeof subject!=='string'||subject.length>60))return null
-  return {title,notes,visibility,dueOn:dueOn||null,assignee,subject,care,reminder,bonus}
+  return {title,notes,visibility,dueOn:dueOn||null,assignee,second,subject,care,reminder,bonus}
 }
 async function validateRefs(db,session,data) {
+  if(data.second){
+    const second=await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
+      .bind(session.household_id,data.second).first()
+    if(!second)return false
+  }
   if(data.assignee){
     const a=await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
       .bind(session.household_id,data.assignee).first()
@@ -143,6 +151,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       }
       const sql=`SELECT id,title,notes,visibility,due_on AS dueOn,
         creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
+        second_assignee_user_id AS secondAssigneeUserId,
         bonus_points AS bonusPoints,
         subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
         completed_at AS completedAt,remind_enabled AS remindEnabled,
@@ -164,6 +173,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     const todayStart=today?new Date(today+'T00:00:00+09:00').toISOString():null
     const sourceSql=`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
+        second_assignee_user_id AS secondAssigneeUserId,
         bonus_points AS bonusPoints,
       subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
       completed_at AS completedAt,
@@ -208,10 +218,10 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     if(reqId && (typeof reqId!=='string'||!/^[0-9a-f-]{36}$/.test(reqId)))return json({error:'invalid_request_id'},400)
     const id=crypto.randomUUID()
     const result=await db.prepare(`INSERT OR IGNORE INTO tasks
-      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type,remind_enabled,bonus_points)
-      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13
+      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type,remind_enabled,bonus_points,second_assignee_user_id)
+      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14
       WHERE (?13=0 OR ?13<=${householdWalletSql('?2','?3')})`)
-      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care,data.reminder===false?0:1,data.bonus).run()
+      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care,data.reminder===false?0:1,data.bonus,data.second).run()
     if(!result.meta?.changes && reqId){
       const found=await db.prepare('SELECT id FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND client_request_id=?3')
         .bind(household,who,reqId).first()
@@ -230,6 +240,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     return json({task:{id:task.id,title:task.title,notes:task.notes,
       dueOn:task.due_on,visibility:task.visibility,
       creatorUserId:task.creator_user_id,assigneeUserId:task.assignee_user_id,
+      secondAssigneeUserId:task.second_assignee_user_id,
       subjectProfileId:task.subject_profile_id,healthRecordType:task.health_record_type,
       completedAt:task.completed_at,bonusPoints:task.bonus_points,remindEnabled:task.remind_enabled,
       updatedAt:task.updated_at}})
@@ -237,20 +248,24 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
   if(request.method==='PATCH'){
     const b=await readBody(request)
     if(!b)return json({error:'invalid_input'},400)
-    // Completing a shared task is allowed to both members. Editing belongs to creator.
+    // Only named assignees may complete; unassigned shared work belongs to the clicker.
     if(Object.prototype.hasOwnProperty.call(b,'completed')){
       if(typeof b.completed!=='boolean')return json({error:'invalid_input'},400)
       // Only a state transition creates or archives a record. Replays and
       // multi-device taps are idempotent, and writes share one D1 transaction.
-      if(task.assignee_user_id&&task.assignee_user_id!==who&&task.creator_user_id!==who)
+      if(task.assignee_user_id&&who!==task.assignee_user_id&&
+        who!==task.second_assignee_user_id&&
+        (b.completed||who!==task.creator_user_id))
         return json({error:'forbidden'},403)
       if(Boolean(task.completed_at)===b.completed)return json({ok:true,unchanged:true})
       const stamp=iso(),date=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
       const update=db.prepare(`UPDATE tasks SET completed_at=?1,completed_by=?2,updated_at=?3
         WHERE id=?4 AND household_id=?5 AND deleted_at IS NULL
           AND (visibility='household' OR creator_user_id=?2)
+          AND (?6=0 OR assignee_user_id IS NULL OR
+            ?2 IN (assignee_user_id,second_assignee_user_id))
           AND ${b.completed?'completed_at IS NULL':'completed_at IS NOT NULL'}`)
-        .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household)
+        .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household,b.completed?1:0)
       let changed=0
       if(b.completed && task.subject_profile_id && task.health_record_type){
         const care=db.prepare(`INSERT INTO pet_health_records
@@ -277,12 +292,14 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       if(!changed)return json({ok:true,unchanged:true})
       if(b.completed)onComplete?.({kind:'task',id:task.id,title:task.title,
         creatorId:task.creator_user_id,assigneeId:task.assignee_user_id,
+        secondAssigneeId:task.second_assignee_user_id,
         visibility:task.visibility,completedAt:stamp})
       return json({ok:true})
     }
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)
     const data=validated({...b,bonusPoints:b.bonusPoints??task.bonus_points},session)
     if(task.completed_at && (data?.bonus!==task.bonus_points||data?.assignee!==task.assignee_user_id||
+      data?.second!==task.second_assignee_user_id||
       (task.bonus_points>0&&data?.visibility!==task.visibility)))
       return json({error:'completed_task_reward_locked'},409)
     if(data && data.care===undefined && data.subject===task.subject_profile_id)
@@ -292,15 +309,16 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       return json({error:'task_edit_conflict',currentUpdatedAt:task.updated_at},409)
     const result=await db.prepare(`UPDATE tasks SET title=?1,notes=?2,visibility=?3,
       due_on=?4,assignee_user_id=?5,subject_profile_id=?6,
+      second_assignee_user_id=?15,
       health_record_type=?7,remind_enabled=COALESCE(?8,remind_enabled),
       bonus_points=?9,updated_at=?10
       WHERE id=?11 AND household_id=?12 AND creator_user_id=?13 AND deleted_at IS NULL
         AND updated_at=?14
         AND (?9=0 OR ?9<=${householdWalletSql('?12','?13')} +
           CASE WHEN completed_at IS NULL AND visibility='household'
-              AND assignee_user_id IS NOT NULL AND assignee_user_id<>creator_user_id
+              AND assignee_user_id IS NOT NULL AND (assignee_user_id<>creator_user_id OR second_assignee_user_id<>creator_user_id)
             THEN bonus_points ELSE 0 END)`)
-      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,data.reminder===null?null:data.reminder?1:0,data.bonus,iso(),task.id,household,who,task.updated_at).run()
+      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,data.reminder===null?null:data.reminder?1:0,data.bonus,iso(),task.id,household,who,task.updated_at,data.second).run()
     if(!result.meta?.changes)return json({error:'task_edit_conflict'},409)
     return json({ok:true})
   }
