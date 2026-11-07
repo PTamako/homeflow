@@ -10,6 +10,7 @@ import AppIcon from './AppIcon.vue'
 import StatusBadge from './StatusBadge.vue'
 import {wishTypeLabel} from '../wish-type-display.mjs'
 import LifeItemEditor from './LifeItemEditor.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
@@ -1113,9 +1114,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </form>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
-            <form v-if="onceEditing?.id===t.id" class="detail-editor once-task-editor"
+            <EditBottomSheet v-if="onceEditing?.id===t.id" title="编辑任务" :close-disabled="busy" @close="onceEditing=null">
+            <form class="detail-editor once-task-editor"
               @submit.prevent="saveOnce" aria-label="编辑一次性任务">
-              <b class="once-editor-title">编辑任务</b>
               <label class="once-edit-field">
                 <span>任务名称</span>
                 <input v-model="onceTitle" maxlength="150" required aria-label="任务名称" />
@@ -1152,6 +1153,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit">保存修改</button>
               </div>
             </form>
+            </EditBottomSheet>
           </div>
           </template>
           </template>
