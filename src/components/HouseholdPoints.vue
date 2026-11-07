@@ -150,6 +150,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    lotteryHelpOpen.value=false
    shop.value=null
    lottery.value=null
+   resetLotteryPagination()
    clearLotteryResult()
  }
 },{immediate:true})
@@ -158,6 +159,7 @@ watch(()=>props.userId,()=>{
  data.value=null
  shop.value=null
  lottery.value=null
+ resetLotteryPagination()
  clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
@@ -186,6 +188,7 @@ onMounted(()=>{
 onBeforeUnmount(()=>{
  document.removeEventListener('pointerdown',dismissRulesOutside)
  document.removeEventListener('keydown',dismissRulesKey)
+ resetLotteryPagination()
  clearLotteryResult()
 })
 function openDetails(){
@@ -194,6 +197,7 @@ function openDetails(){
  void refresh()
 }
 function closeDetails(){
+ resetLotteryPagination()
  clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
@@ -216,6 +220,7 @@ function editReward(reward:Reward){
 function openCreate(){resetForm();formOpen.value=true}
 function selectView(next:'shop'|'achievements'|'lottery'){
  if(view.value===next)return
+ resetLotteryPagination()
  clearLotteryResult()
  lotteryHelpOpen.value=false
  view.value=next
@@ -230,8 +235,10 @@ async function drawLottery(){
  const drawingUser=props.userId
  try{
    const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
-   if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser)
+   if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser){
+     resetLotteryPagination()
      showLotteryResult(result.draw)
+   }
    await refresh()
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
