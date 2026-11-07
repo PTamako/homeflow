@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
 import {reactive,ref} from 'vue'
-import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 type Profile={
   id:string;type:'person'|'pet';displayName:string;birthday:string|null;
@@ -46,7 +45,6 @@ async function save(){
 <template>
   <EditBottomSheet :title="'编辑'+(profile.type==='pet'?'宠物':'家庭成员')+'资料'" :close-disabled="busy" @close="emit('close')">
   <form class="profile-editor" @submit.prevent="save">
-    <h3><AppIcon name="users" :size="18" /> 编辑{{ profile.type==='pet'?'宠物':'家庭成员' }}资料</h3>
     <div class="profile-editor-grid">
       <label class="wide">昵称或名字
         <input v-model="form.displayName" required maxlength="60" placeholder="姓名或昵称"/>
