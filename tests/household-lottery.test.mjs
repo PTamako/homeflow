@@ -74,8 +74,9 @@ test('lottery net winnings appear in shared cumulative and monthly leaderboard b
  const {sqlite,db}=fixture()
  try{
   earn(sqlite,'alice',4)
+  const awardedTask=sqlite.prepare("SELECT source_id FROM completion_points WHERE household_id='h' AND earner_user_id='alice' LIMIT 1").get().source_id
   sqlite.prepare("INSERT INTO completion_point_adjustments(household_id,kind,source_id,occurrence_on,earner_user_id,visibility,delta,earned_at) VALUES('h','task',?1,'','alice','household',-5,?2)")
-   .run(crypto.randomUUID(),new Date().toISOString())
+   .run(awardedTask,new Date().toISOString())
   const before=await wallet(db,alice)
   const myself=result=>result.members.find(m=>m.userId==='alice')
   const base=myself(before)
