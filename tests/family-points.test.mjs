@@ -7,6 +7,7 @@ import {pointLevel,pointsRoute,tokyoMonthWindow,tokyoWeekWindow,longestStreak} f
 const migration=readFileSync(new URL('../migrations/0033_completion_points.sql',import.meta.url),'utf8')
 const rewardsMigration=readFileSync(new URL('../migrations/0034_rewards_shop.sql',import.meta.url),'utf8')
 const householdRewardsMigration=readFileSync(new URL('../migrations/0035_household_rewards_only.sql',import.meta.url),'utf8')
+const scoringMigration=readFileSync(new URL('../migrations/0036_plan_scoring.sql',import.meta.url),'utf8')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec(`
@@ -16,7 +17,10 @@ function fixture(){
   CREATE TABLE household_members (household_id TEXT NOT NULL,user_id TEXT NOT NULL);
   CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT,type TEXT NOT NULL DEFAULT 'person',id TEXT);
   CREATE TABLE tasks (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,creator_user_id TEXT,
-    completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
+    completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
+    assignee_user_id TEXT);
+  CREATE TABLE shopping_items(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
+    completed_at TEXT,completed_by TEXT,deleted_at TEXT);
   CREATE TABLE routines (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,created_by TEXT,
     visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
   CREATE TABLE routine_marks (routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -52,8 +56,9 @@ test('migration never awards points retroactively and has 10 immutable triggers'
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   assert.deepEqual(rows(sqlite),[])
-  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,10)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,17)
  }finally{sqlite.close()}
 })
 
@@ -63,6 +68,7 @@ test('who finishes gets all 10 points, and retry, reopen, skip and change of com
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('task-1','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='task-1'")
   assert.equal(rows(sqlite).length,1)
@@ -86,6 +92,7 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-07',NULL,NULL,'2026-11-07T01:00:00Z')")
   assert.deepEqual(rows(sqlite),[])
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-08','2026-11-08T03:00:00Z','bob',NULL)")
@@ -104,12 +111,46 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
  }finally{sqlite.close()}
 })
 
+test('new plan scoring is 2/5/10, reserved bonus transfers only on actual completion',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration)
+  const task=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at,subject_profile_id) VALUES(?1,'family','alice',NULL,NULL,'household',NULL,NULL)")
+  task.run('open')
+  sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='open'")
+  assert.equal((await get(db,alice)).earnedPoints,10,'unassigned one-off earns ten')
+  task.run('self')
+  sqlite.exec("UPDATE tasks SET assignee_user_id='alice',completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='self'")
+  assert.equal((await get(db,alice)).earnedPoints,15,'self assigned earns five')
+  sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-10','2026-11-10T03:00:00Z','alice',NULL)")
+  assert.equal((await get(db,alice)).earnedPoints,20,'routine occurrence earns five')
+  sqlite.exec("INSERT INTO shopping_items(id,household_id,visibility) VALUES('shop','family','household')")
+  sqlite.exec("UPDATE shopping_items SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='shop'")
+  assert.equal((await get(db,alice)).earnedPoints,22,'verified shopping is two')
+  sqlite.exec("UPDATE shopping_items SET completed_at=NULL,completed_by=NULL WHERE id='shop'")
+  assert.equal((await get(db,alice)).earnedPoints,20,'unlink last receipt revokes shopping points')
+  task.run('reward')
+  sqlite.exec("UPDATE tasks SET assignee_user_id='bob',bonus_points=10 WHERE id='reward'")
+  assert.equal((await get(db,alice)).availablePoints,10,'ten creator points held while task is pending')
+  sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='reward'")
+  assert.equal((await get(db,bob)).earnedPoints,5,'assignee gets base five')
+  assert.equal((await get(db,bob)).availablePoints,15,'assignee also receives ten from creator')
+  assert.equal((await get(db,alice)).availablePoints,10,'transfer does not mint extra points')
+  sqlite.exec("UPDATE tasks SET completed_at=NULL,completed_by=NULL WHERE id='reward'")
+  assert.equal((await get(db,bob)).availablePoints,0,'undo revokes both base and transferred points')
+  assert.equal((await get(db,alice)).availablePoints,10,'creator pledge remains reserved until cancellation')
+  sqlite.exec("UPDATE tasks SET deleted_at='2026-11-07T03:00:00Z' WHERE id='reward'")
+  assert.equal((await get(db,alice)).availablePoints,20,'deleted task releases reserved bonus')
+ }finally{sqlite.close()}
+})
+
 test('pet guardian badge needs ten linked pet-care completions and relocks on undo',async()=>{
  const {sqlite,db}=fixture()
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   sqlite.exec("INSERT INTO family_profiles(id,household_id,type,display_name,created_at) VALUES('pet-1','family','pet','豆沙','2026-11-07')")
   const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at,subject_profile_id) VALUES(?1,'family','alice',NULL,NULL,'household',NULL,'pet-1')")
   const complete=sqlite.prepare("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id=?1")
@@ -133,6 +174,7 @@ test('leaderboard never reveals another member\'s private completions or another
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('shared','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='shared'")
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('private','family','bob',NULL,NULL,'private',NULL)")
@@ -162,6 +204,7 @@ test('level bands, monthly JST date boundaries and route allow read-only access'
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration)
   const response=await pointsRoute(new Request('https://homeflow.invalid/api/points',{method:'POST'}),db,alice)
   assert.equal(response.status,405)
  }finally{sqlite.close()}
@@ -174,7 +217,7 @@ test('Family tab mounts a compact points panel and the server owns all awarding'
  assert.match(app,/<HouseholdPoints :active="tab==='family'"/)
  assert.match(index,/if\(path==='\/api\/points'\)return pointsRoute/)
  assert.match(board,/私人任务不进入共享榜/)
- assert.match(board,/周期任务每期都计分/)
+ assert.match(board,/周期任务每期 \+5/)
  assert.match(migration,/NEW\.completed_by/)
  assert.doesNotMatch(migration,/NEW\.created_by.*points/)
 })
@@ -203,7 +246,7 @@ test('point rules are hidden behind an accessible title help popover on mobile',
  assert.match(source,/:aria-expanded="ruleHelpOpen"/)
  assert.match(source,/@click="ruleHelpOpen=!ruleHelpOpen"/)
  assert.match(source,/v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip"/)
- assert.match(source,/普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。/)
+ assert.match(source,/购物计划完成 \+2；周期任务每期 \+5；一次性任务指定处理人 \+5、未指定 \+10；储值和心愿不计分。/)
  assert.doesNotMatch(source,/<p class="points-hint">普通待办和周期任务每期都计分/)
  assert.match(source,/document\.addEventListener\('pointerdown',dismissRulesOutside\)/)
  assert.match(source,/document\.removeEventListener\('pointerdown',dismissRulesOutside\)/)

@@ -98,7 +98,7 @@ const focusedItemId=computed(()=>props.focusPlanScope===planScope.value?(props.f
 const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
   (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
-const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceVisibility=ref<'private'|'household'>('private')
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceBonus=ref(0),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 const showMemoryForm=ref(false)
@@ -219,7 +219,7 @@ async function planCreated(kind:PlanType,id:string,unscheduled=false){
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
-  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceVisibility.value=t.visibility
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceBonus.value=Number(t.bonusPoints||0);onceVisibility.value=t.visibility
 }
 async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
   await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
@@ -230,13 +230,14 @@ async function saveOnce(){
   if(!t)return
   await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:onceVisibility.value,
     dueOn:onceDate.value||null,assigneeUserId:onceAssignee.value||null,
+    bonusPoints:onceAssignee.value&&onceAssignee.value!==props.userId?onceBonus.value:0,
     subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
     remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
   if(!error.value)onceEditing.value=null
 }
 async function scheduleUnplanned(t:Row){
  await onceChange(t,{title:t.title,notes:t.notes||'',visibility:t.visibility,dueOn:today(),
-   assigneeUserId:t.assigneeUserId||null,subjectProfileId:t.subjectProfileId||null,
+   assigneeUserId:t.assigneeUserId||null,bonusPoints:Number(t.bonusPoints||0),subjectProfileId:t.subjectProfileId||null,
    healthRecordType:t.healthRecordType||null,remindEnabled:t.remindEnabled!==false,
    expectedUpdatedAt:t.updatedAt})
 }
@@ -1170,6 +1171,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     {{ memberName(member.id) }}
                   </option>
                 </select>
+              </label>
+              <label v-if="onceAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
+                <span>额外奖励（由发布人积分预留）</span>
+                <input v-model.number="onceBonus" type="number" min="0" max="10000" step="1" aria-label="额外奖励积分"/>
               </label>
               <label class="once-edit-field">
                 <span>可见范围</span>

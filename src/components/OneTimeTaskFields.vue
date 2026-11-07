@@ -16,9 +16,10 @@ function subjectChanged(){
 }
 function assigneeChanged(){
  if(model.value.assigneeUserId&&model.value.assigneeUserId!==props.userId)model.value.visibility='household'
+ else model.value.bonusPoints=0
 }
 function visibilityChanged(){
- if(model.value.visibility==='private'&&model.value.assigneeUserId!==props.userId)model.value.assigneeUserId=props.userId||''
+ if(model.value.visibility==='private'&&model.value.assigneeUserId!==props.userId){model.value.assigneeUserId=props.userId||'';model.value.bonusPoints=0}
 }
 function focusTitle(){titleInput.value?.focus()}
 defineExpose({focusTitle})
@@ -62,6 +63,10 @@ defineExpose({focusTitle})
     <option value="">未指派</option>
     <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
    </select>
+  </label>
+  <label v-if="model.assigneeUserId&&model.assigneeUserId!==userId&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
+   <input v-model.number="model.bonusPoints" type="number" min="0" max="10000" step="1" placeholder="0" aria-label="一次性任务额外奖励积分"/>
+   <small>完成后转给指定处理人；撤销完成退回预留状态，删除任务解除预留。基础完成奖励另有 5 分。</small>
   </label>
   <label>可见范围
    <select v-model="model.visibility" aria-label="可见范围" @change="visibilityChanged">
