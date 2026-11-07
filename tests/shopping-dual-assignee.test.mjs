@@ -9,9 +9,9 @@ import {pointsRoute} from '../worker/points.js'
 const script=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const migrations=[...script.slice(script.indexOf('MIGRATIONS=['),script.indexOf(']\nfiles='))
  .matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(x=>x[1])
-const alice={household_id:'house',user_id:'alice',role:'owner'}
-const bob={household_id:'house',user_id:'bob',role:'member'}
-const charlie={household_id:'house',user_id:'charlie',role:'member'}
+const alice={household_id:'house',user_id:'11111111-1111-4111-8111-111111111111',role:'owner'}
+const bob={household_id:'house',user_id:'22222222-2222-4222-8222-222222222222',role:'member'}
+const charlie={household_id:'house',user_id:'33333333-3333-4333-8333-333333333333',role:'member'}
 const url=(path)=>'https://homeflow.invalid/api'+path
 const request=(path,method='GET',payload)=>new Request(url(path),{method,
  ...(payload===undefined?{}:{headers:{'content-type':'application/json'},
@@ -24,10 +24,10 @@ function fixture(){
  sqlite.exec(`
   INSERT INTO households(id,display_name) VALUES('house','Family');
   INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES
-   ('alice','alice','salt','verifier'),('bob','bob','salt','verifier'),
-   ('charlie','charlie','salt','verifier');
+   ('${alice.user_id}','alice','salt','verifier'),('${bob.user_id}','bob','salt','verifier'),
+   ('${charlie.user_id}','charlie','salt','verifier');
   INSERT INTO household_members(household_id,user_id,role)
-   VALUES('house','alice','owner'),('house','bob','member'),('house','charlie','member');
+   VALUES('house','${alice.user_id}','owner'),('house','${bob.user_id}','member'),('house','${charlie.user_id}','member');
  `)
  const db={
   prepare(sql){const st=sqlite.prepare(sql);let args=[];return {
@@ -62,7 +62,7 @@ async function make(db,first=null,second=null){
 test('shared shopping: two assignees, only either one may confirm verified receipt, 2 is split 1+1',async()=>{
  const {sqlite,db,env}=fixture()
  try{
-  const id=await make(db,'bob','charlie')
+  const id=await make(db,bob.user_id,charlie.user_id)
   const linked=await link(env,alice,id)
   assert.equal(linked.status,200)
   assert.equal((await linked.json()).awaitingAssignee,true)
@@ -84,7 +84,7 @@ test('shared shopping: two assignees, only either one may confirm verified recei
 test('single assignee can confirm but unassigned verified shopping credits actual linker',async()=>{
  const {sqlite,db,env}=fixture()
  try{
-  const assigned=await make(db,'bob',null)
+  const assigned=await make(db,bob.user_id,null)
   assert.equal((await link(env,alice,assigned)).status,200)
   assert.equal((await shop(db,charlie,'/'+assigned+'/confirm','POST')).status,403)
   assert.equal((await shop(db,bob,'/'+assigned+'/confirm','POST')).status,200)
@@ -99,18 +99,18 @@ test('shopping assignees are valid household members, distinct and reassignable 
  try{
   const created=await shop(db,alice,'','POST',{
    title:'非法指派',quantity:1,visibility:'household',
-   assignedTo:'bob',secondAssigneeUserId:'bob'})
+   assignedTo:bob.user_id,secondAssigneeUserId:bob.user_id})
   assert.equal(created.status,400)
-  const id=await make(db,'bob','charlie')
+  const id=await make(db,bob.user_id,charlie.user_id)
   assert.equal((await link(env,alice,id)).status,200)
   const updated=await shop(db,alice,'/'+id,'PATCH',{title:'买猫粮',quantity:1,
-   visibility:'household',assignedTo:'alice',secondAssigneeUserId:'bob'})
+   visibility:'household',assignedTo:alice.user_id,secondAssigneeUserId:bob.user_id})
   assert.equal(updated.status,200)
   assert.equal((await shop(db,alice,'/'+id+'/confirm','POST')).status,200)
   assert.equal((await points(db,alice)).earnedPoints,1)
   assert.equal((await points(db,bob)).earnedPoints,1)
   const locked=await shop(db,alice,'/'+id,'PATCH',{title:'买猫粮',quantity:1,
-   visibility:'household',assignedTo:'alice',secondAssigneeUserId:'charlie'})
+   visibility:'household',assignedTo:alice.user_id,secondAssigneeUserId:charlie.user_id})
   assert.equal(locked.status,409)
  }finally{sqlite.close()}
 })
