@@ -2,6 +2,7 @@
 import DateField from './DateField.vue'
 import {reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 type Profile={
   id:string;type:'person'|'pet';displayName:string;birthday:string|null;
   relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string
@@ -43,6 +44,7 @@ async function save(){
 }
 </script>
 <template>
+  <EditBottomSheet :title="'编辑'+(profile.type==='pet'?'宠物':'家庭成员')+'资料'" :close-disabled="busy" @close="emit('close')">
   <form class="profile-editor" @submit.prevent="save">
     <h3><AppIcon name="users" :size="18" /> 编辑{{ profile.type==='pet'?'宠物':'家庭成员' }}资料</h3>
     <div class="profile-editor-grid">
@@ -71,9 +73,10 @@ async function save(){
       <button class="primary" :disabled="busy">{{ busy?'保存中…':'保存修改' }}</button>
     </div>
   </form>
+  </EditBottomSheet>
 </template>
 <style scoped>
-.profile-editor{margin-top:12px;background:#f6faf6;border:1px solid #dbe8dd;border-radius:14px;padding:16px;min-width:0;max-width:100%}
+.profile-editor{margin:0;background:transparent;border:0;border-radius:0;padding:0;min-width:0;max-width:100%}
 .profile-editor h3{font-size:15px;display:flex;align-items:center;gap:8px;margin:0 0 8px}
 .profile-editor-hint{font-size:12px;line-height:1.7;color:#769182;margin:0 0 14px}
 .profile-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
