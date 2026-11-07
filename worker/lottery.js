@@ -17,7 +17,7 @@ export const lotteryOdds=[
 // Each possible 32-bit value has the same probability of being selected.
 export function lotteryPrize(roll){
   if(typeof roll!=='number'||roll<0||roll>=1)return null
-  const p=roll*100
+  let p=roll*100
   return lotteryOdds.find(item=>(p-=item.rate)<0)||lotteryOdds.at(-1)
 }
 const securePrize=()=>lotteryPrize(crypto.getRandomValues(new Uint32Array(1))[0]/4294967296)
