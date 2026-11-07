@@ -34,6 +34,9 @@ const ruleHelpOpen=ref(false)
 const rulesAnchor=ref<HTMLElement|null>(null)
 const experienceHelpOpen=ref(false)
 const experienceAnchor=ref<HTMLElement|null>(null)
+const lotteryHelpOpen=ref(false)
+const lotteryRulesAnchor=ref<HTMLElement|null>(null)
+const lotteryOddsOpen=ref(false)
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
@@ -91,6 +94,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    expanded.value=false
    ruleHelpOpen.value=false
    experienceHelpOpen.value=false
+   lotteryHelpOpen.value=false
    shop.value=null
    lottery.value=null
    lotteryLastDraw.value=null
@@ -105,17 +109,21 @@ watch(()=>props.userId,()=>{
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
+ lotteryHelpOpen.value=false
 })
 function dismissRulesOutside(event:PointerEvent){
  if(ruleHelpOpen.value&&!rulesAnchor.value?.contains(event.target as Node))
    ruleHelpOpen.value=false
  if(experienceHelpOpen.value&&!experienceAnchor.value?.contains(event.target as Node))
    experienceHelpOpen.value=false
+ if(lotteryHelpOpen.value&&!lotteryRulesAnchor.value?.contains(event.target as Node))
+   lotteryHelpOpen.value=false
 }
 function dismissRulesKey(event:KeyboardEvent){
  if(event.key==='Escape'){
    ruleHelpOpen.value=false
    experienceHelpOpen.value=false
+   lotteryHelpOpen.value=false
  }
 }
 onMounted(()=>{
@@ -135,6 +143,7 @@ function closeDetails(){
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
+ lotteryHelpOpen.value=false
  generation++
  view.value='shop'
  resetForm()
@@ -152,6 +161,7 @@ function editReward(reward:Reward){
 function openCreate(){resetForm();formOpen.value=true}
 function selectView(next:'shop'|'achievements'|'lottery'){
  if(view.value===next)return
+ lotteryHelpOpen.value=false
  view.value=next
  if(next==='lottery'||next==='shop'&&!shop.value)void refresh()
 }
@@ -344,13 +354,28 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <AppIcon name="ticket" :size="20"/>
          <div><b>{{ lotteryLastDraw.kind==='empty'?'🍀 这次空手而归～下次继续加油！':lotteryLastDraw.kind==='double'?'👑 超级大奖！积分翻倍！':'🎉 恭喜抽中奖励！' }}</b><small>{{ lotteryLastDraw.kind==='empty'?'好运下次见～':'获得 '+fmt(lotteryLastDraw.points)+' 积分，奖励已计入可用积分！' }}</small></div>
        </div>
-       <details class="lottery-odds">
-         <summary>查看奖池概率与规则</summary>
-         <div class="lottery-odds-grid">
+       <div ref="lotteryRulesAnchor" class="lottery-odds">
+         <div class="lottery-odds-heading">
+           <button type="button" class="lottery-odds-toggle" :aria-expanded="lotteryOddsOpen"
+             aria-controls="lottery-odds-grid" @click="lotteryOddsOpen=!lotteryOddsOpen">
+             <AppIcon name="chevron-down" :size="13" :class="{'lottery-odds-chevron-open':lotteryOddsOpen}"/>
+             查看奖池概率与规则
+           </button>
+           <button type="button" class="points-rule-help" aria-label="查看抽奖规则说明"
+             aria-controls="lottery-rule-popover" :aria-expanded="lotteryHelpOpen"
+             @click="lotteryHelpOpen=!lotteryHelpOpen;ruleHelpOpen=false;experienceHelpOpen=false">
+             <span class="points-help-glyph" aria-hidden="true">?</span>
+           </button>
+         </div>
+         <div v-show="lotteryOddsOpen" id="lottery-odds-grid" class="lottery-odds-grid">
            <div v-for="odd in lottery.odds" :key="odd.kind"><span>{{ odd.label }}</span><b>{{ odd.rate }}%</b></div>
          </div>
-         <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。翻倍奖励以扣除本次 5 分后的家庭可用积分为基数；私人积分不参与。抽奖结果自动发送到家庭成员的今日消息并推送。</p>
-       </details>
+         <div v-if="lotteryHelpOpen" id="lottery-rule-popover" role="tooltip"
+           class="points-rule-popover lottery-rule-popover">
+           <b>抽奖规则</b>
+           <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。翻倍奖励以扣除本次 5 分后的家庭可用积分为基数；私人积分不参与。抽奖结果自动发送到家庭成员的今日消息并推送。</p>
+         </div>
+       </div>
      </div>
      <p v-else class="points-loading">{{ loading?'正在读取抽奖箱…':'暂无抽奖数据' }}</p>
      <div v-if="lottery" class="lottery-history">
@@ -545,10 +570,16 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-result{display:flex;align-items:center;gap:9px;border-radius:10px;background:#eef7ef;padding:10px;color:#3b7656}
  .lottery-result>div{display:grid;gap:4px}
  .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
- .lottery-odds summary{cursor:pointer;font-size:12px;color:#4a8265}
+ .lottery-odds{position:relative;min-width:0}
+ .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:26px}
+ .lottery-odds-toggle{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:0;
+   border:0;background:none;color:#4a8265;font-size:12px;text-align:left;cursor:pointer}
+ .lottery-odds-toggle:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+ .lottery-odds-toggle :deep(svg){transform:rotate(-90deg);transition:transform .2s}
+ .lottery-odds-toggle :deep(svg.lottery-odds-chevron-open){transform:rotate(0)}
+ .lottery-rule-popover{top:calc(26px + 9px)}
  .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
- .lottery-odds p{margin:9px 0 0;font-size:11px;line-height:1.65;color:#6c8574}
  /* A block list avoids implicit grid tracks stretching draw history items. */
  .lottery-history{display:block;align-self:start;min-width:0;padding-top:4px}
  .lottery-history>b{display:block;font-size:14px;line-height:1.3;color:#426b50;margin:0}
