@@ -15,7 +15,7 @@ function recordDb(){
  return {calls,batches,prepare(sql){
   const q={sql,values:[],bind(...values){this.values=values;return this},
     async run(){calls.push({sql,values:this.values});return {meta:{changes:1}}},
-    async first(){return null},async all(){return {results:[]}}}
+    async first(){return null},async all(){return {results:sql.includes('FROM household_members')?[{userId:'u-1'}]:[]}}}
   return q
  },async batch(statements){
   const items=statements.map(s=>({sql:s.sql,values:s.values}))
@@ -73,7 +73,8 @@ test('ordinary trip can be created without an import JSON',async()=>{
  assert.equal(r.status,201)
  assert.equal(db.calls.length,1)
  assert.match(db.calls[0].sql,/INSERT INTO trips/)
- assert.equal(db.calls[0].values.at(-1),180000)
+ assert.equal(db.calls[0].values.at(-2),180000)
+ assert.deepEqual(JSON.parse(db.calls[0].values.at(-1)),['u-1'])
 })
 test('Today shows date-matched plans without calling external ledger',async()=>{
  const db=recordDb()

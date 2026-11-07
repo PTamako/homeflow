@@ -23,6 +23,7 @@ function fixture(){
   CREATE TABLE households (id TEXT PRIMARY KEY);
   CREATE TABLE users (id TEXT PRIMARY KEY,login_name TEXT NOT NULL);
   CREATE TABLE household_members (household_id TEXT NOT NULL,user_id TEXT NOT NULL);
+  CREATE VIEW trip_completion_rewards AS SELECT NULL AS household_id,NULL AS user_id,NULL AS visibility,0 AS points,NULL AS awarded_at WHERE 0;
   CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT,type TEXT NOT NULL DEFAULT 'person',id TEXT);
   CREATE TABLE tasks (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,creator_user_id TEXT,
     completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
@@ -328,7 +329,7 @@ test('point rules are hidden behind an accessible title help popover on mobile',
  assert.match(source,/:aria-expanded="ruleHelpOpen"/)
  assert.match(source,/@click="ruleHelpOpen=!ruleHelpOpen"/)
  assert.match(source,/v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip"/)
- assert.match(source,/购物计划完成 \+2；周期任务每期 \+5；一次性任务指定处理人 \+5、未指定 \+10；储值目标每期经核验达标，家庭每位成员 \+50；心愿不计分。/)
+ assert.match(source,/购物计划完成 \+2；周期任务每期 \+5；一次性任务指定处理人 \+5、未指定 \+10；储值目标每期经核验达标，家庭每位成员 \+50；旅行结束并确认完成后，每位参与人每天 \+10（含出发与结束当天）；心愿不计分。/)
  assert.doesNotMatch(source,/<p class="points-hint">普通待办和周期任务每期都计分/)
  assert.match(source,/document\.addEventListener\('pointerdown',dismissRulesOutside\)/)
  assert.match(source,/document\.removeEventListener\('pointerdown',dismissRulesOutside\)/)

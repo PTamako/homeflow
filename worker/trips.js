@@ -6,6 +6,23 @@ const dateOk=x=>typeof x==='string'&&x!==''&&validDate(x)
 const amountOk=x=>Number.isSafeInteger(x)&&x>=0&&x<=100000000000
 const list=(x,max)=>Array.isArray(x)&&x.length<=max
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x)
+const todayJst=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+const readParticipants=row=>JSON.parse(row.participant_user_ids||row.participantJson||'[]')
+const exposeTrip=row=>{
+  const {participantJson,...rest}=row
+  return {...rest,participants:JSON.parse(participantJson||'[]')}
+}
+// JSON import participants are external aliases, not authenticated family IDs.
+async function selectedParticipants(db,h,u,visibility,ids){
+  const {results}=await db.prepare('SELECT user_id AS userId FROM household_members WHERE household_id=?1 ORDER BY user_id').bind(h).all()
+  const members=(results||[]).map(x=>x.userId)
+  const chosen=ids===undefined?(visibility==='household'?members:[u]):ids
+  if(!Array.isArray(chosen)||!chosen.length||chosen.length>20||
+     chosen.some(x=>typeof x!=='string'||!members.includes(x))||
+     new Set(chosen).size!==chosen.length)return null
+  if(visibility==='private'&&(chosen.length!==1||chosen[0]!==u))return null
+  return chosen
+}
 function validatedTripPayload(p){
   if(!object(p)||p.format!=='homeflow.trip'||p.schemaVersion!==1||!idOk(p.importSourceId)||!object(p.trip))return 'invalid_header'
   const t=p.trip
@@ -101,17 +118,19 @@ export async function tripsRoute(request,db,path,session){
       }
       const sql=`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
         end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,
+        participant_user_ids AS participantJson,
         import_source_key AS importSourceKey,updated_at AS updatedAt,COALESCE(start_on,created_at) AS sortDate
         FROM trips WHERE `+clauses.join(' AND ')+' ORDER BY '+sort+(ascending?' ASC,id ASC':' DESC,id DESC')+' LIMIT ?'+(args.length+1)
       const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
       const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
-      return json({items,nextCursor:rows.length>filters.limit&&last?last.sortDate+'|'+last.id:null})
+      return json({items:items.map(exposeTrip),nextCursor:rows.length>filters.limit&&last?last.sortDate+'|'+last.id:null})
     }
     const {results}=await db.prepare(`SELECT id,wish_id AS wishId,title,destination,start_on AS startOn,
-        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,import_source_key AS importSourceKey,updated_at AS updatedAt
+        end_on AS endOn,budget_amount AS budgetAmount,currency,status,visibility,created_by AS createdBy,
+        participant_user_ids AS participantJson,import_source_key AS importSourceKey,updated_at AS updatedAt
         FROM trips WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2)
         ORDER BY COALESCE(start_on,created_at) DESC LIMIT 150`).bind(h,u).all()
-    return json({items:results||[]})
+    return json({items:(results||[]).map(exposeTrip)})
   }
   if(path==='/api/trips'&&request.method==='POST'){
     // A regular trip can be created from the plan hub without requiring a
@@ -124,11 +143,13 @@ export async function tripsRoute(request,db,path,session){
     const visibility=['private','household'].includes(b?.visibility)?b.visibility:'household'
     if(!title||(start&&!dateOk(start))||(end&&!dateOk(end))||
        (start&&end&&start>end)||!amountOk(budget))return json({error:'invalid_input'},400)
+    const participants=await selectedParticipants(db,h,u,visibility,b?.participants)
+    if(!participants)return json({error:'invalid_participants'},400)
     const newId=crypto.randomUUID()
     await db.prepare(`INSERT INTO trips
-      (id,household_id,created_by,visibility,title,destination,start_on,end_on,budget_amount,currency,status)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'JPY','planning')`)
-      .bind(newId,h,u,visibility,title,destination,start,end,budget).run()
+      (id,household_id,created_by,visibility,title,destination,start_on,end_on,budget_amount,currency,status,participant_user_ids)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'JPY','planning',?10)`)
+      .bind(newId,h,u,visibility,title,destination,start,end,budget,JSON.stringify(participants)).run()
     return json({ok:true,id:newId},201)
   }
   if(path==='/api/trips/import'&&request.method==='POST'){
@@ -143,12 +164,12 @@ export async function tripsRoute(request,db,path,session){
     const issue=validatedTripPayload(payload)
     if(issue)return json({error:issue},400)
     const hash=await sha256(JSON.stringify(payload))
-    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
+    const matching=await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at,participant_user_ids FROM trips
       WHERE household_id=?1 AND import_source_key=?2`).bind(h,payload.importSourceId).first()
     // A trip created from a wish can be populated by an imported plan without losing wish_id.
     const targetId=body.targetTripId||null
     if(targetId&&!/^[0-9a-f-]{36}$/.test(targetId))return json({error:'invalid_input'},400)
-    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at FROM trips
+    const target=targetId?await db.prepare(`SELECT id,created_by,visibility,import_hash,deleted_at,participant_user_ids FROM trips
       WHERE household_id=?1 AND id=?2`).bind(h,targetId).first():null
     if(targetId&&!target)return json({error:'not_found'},404)
     if(matching?.deleted_at||target?.deleted_at)return json({error:'restore_trashed_trip_first'},409)
@@ -170,12 +191,15 @@ export async function tripsRoute(request,db,path,session){
         data.budget.amount,data.currency,JSON.stringify(payload),hash,payload.importSourceId,iso(),current.id,h,u).run()
       return json({ok:true,id:current.id,updated:true,preservedProgress:true})
     }
+    const visibility=body.visibility==='household'?'household':'private'
+    const participants=await selectedParticipants(db,h,u,visibility,body.participants)
+    if(!participants)return json({error:'invalid_participants'},400)
     const id=crypto.randomUUID()
     await db.prepare(`INSERT INTO trips(id,household_id,created_by,visibility,title,destination,
-      start_on,end_on,timezone,budget_amount,currency,import_source_key,import_hash,plan_json)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)`)
-    .bind(id,h,u,body.visibility==='household'?'household':'private',data.title,data.destination,
-      data.startDate,data.endDate,data.timeZone,data.budget.amount,data.currency,payload.importSourceId,hash,JSON.stringify(payload)).run()
+      start_on,end_on,timezone,budget_amount,currency,import_source_key,import_hash,plan_json,participant_user_ids)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)`)
+    .bind(id,h,u,visibility,data.title,data.destination,
+      data.startDate,data.endDate,data.timeZone,data.budget.amount,data.currency,payload.importSourceId,hash,JSON.stringify(payload),JSON.stringify(participants)).run()
     return json({ok:true,id,created:true},201)
   }
   const convert=path.match(/^\/api\/wishes\/([0-9a-f-]{36})\/start-trip$/)
@@ -191,12 +215,14 @@ export async function tripsRoute(request,db,path,session){
     const title=shortText(body?.title||wish.title,150)
     const start=body?.startDate||null,end=body?.endDate||null
     if(!title||!dest||(start&&!dateOk(start))||(end&&!dateOk(end))||(start&&end&&start>end))return json({error:'invalid_input'},400)
+    const participants=await selectedParticipants(db,h,u,wish.visibility,body?.participants)
+    if(!participants)return json({error:'invalid_participants'},400)
     const id=crypto.randomUUID()
     try{
       await db.batch([
-        db.prepare(`INSERT INTO trips(id,household_id,created_by,visibility,wish_id,title,destination,start_on,end_on,budget_amount,currency)
-          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)`)
-          .bind(id,h,u,wish.visibility,wish.id,title,dest,start,end,wish.estimated_amount,wish.currency),
+        db.prepare(`INSERT INTO trips(id,household_id,created_by,visibility,wish_id,title,destination,start_on,end_on,budget_amount,currency,participant_user_ids)
+          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)`)
+          .bind(id,h,u,wish.visibility,wish.id,title,dest,start,end,wish.estimated_amount,wish.currency,JSON.stringify(participants)),
         db.prepare(`UPDATE wishes SET status='planning',updated_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4`)
           .bind(iso(),wish.id,h,u)
       ])
@@ -232,7 +258,7 @@ export async function tripsRoute(request,db,path,session){
       const {results}=await db.prepare('SELECT item_id AS itemId,completed_at AS completedAt FROM trip_progress WHERE trip_id=?1').bind(id).all()
       return json({trip:{id:trip.id,title:trip.title,destination:trip.destination,startOn:trip.start_on,
         endOn:trip.end_on,budgetAmount:trip.budget_amount,currency:trip.currency,status:trip.status,
-        visibility:trip.visibility,createdBy:trip.created_by,plan},progress:allowed?(results||[]).filter(r=>allowed.has(r.itemId)):[]})
+        visibility:trip.visibility,createdBy:trip.created_by,participants:readParticipants(trip),plan},progress:allowed?(results||[]).filter(r=>allowed.has(r.itemId)):[]})
     }
     if(bpath[3]==='items'&&bpath[4]&&['PATCH','DELETE'].includes(request.method)){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
@@ -282,10 +308,15 @@ export async function tripsRoute(request,db,path,session){
       const start=b.startDate===undefined?trip.start_on:(b.startDate||null)
       const end=b.endDate===undefined?trip.end_on:(b.endDate||null)
       const budget=b.budgetAmount===undefined?trip.budget_amount:b.budgetAmount
+      const participants=b.participants===undefined?readParticipants(trip):
+        await selectedParticipants(db,h,u,trip.visibility,b.participants)
+      if(!participants)return json({error:'invalid_participants'},400)
       if(!title||(b.destination!==undefined&&typeof b.destination!=='string')||
          (start&&!dateOk(start))||(end&&!dateOk(end))||(start&&end&&start>end)||
          !Number.isSafeInteger(budget)||budget<0||budget>100000000000)
         return json({error:'invalid_input'},400)
+      if(b.status==='completed'&&(!start||!end))return json({error:'trip_dates_required_for_completion'},400)
+      if(b.status==='completed'&&end>todayJst())return json({error:'trip_not_finished'},400)
       let plan=trip.plan_json,hash=trip.import_hash
       if(plan){
         try{
@@ -298,10 +329,11 @@ export async function tripsRoute(request,db,path,session){
         }catch{return json({error:'invalid_saved_plan'},409)}
       }
       const timestamp=iso()
+      const rewardedAt=b.status==='completed'?(trip.status==='completed'?trip.trip_rewarded_at:timestamp):null
       const updated=await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
-        status=?6,plan_json=?7,import_hash=?8,updated_at=?9
+        status=?6,plan_json=?7,import_hash=?8,updated_at=?9,participant_user_ids=?14,trip_rewarded_at=?15
         WHERE id=?10 AND household_id=?11 AND created_by=?12 AND updated_at=?13`)
-        .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u,trip.updated_at).run()
+        .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u,trip.updated_at,JSON.stringify(participants),rewardedAt).run()
       if(!updated.meta?.changes)return json({error:'trip_edit_conflict'},409)
       if(trip.wish_id&&b.status==='completed'){
         // Completing a trip never bypasses a linked savings requirement.

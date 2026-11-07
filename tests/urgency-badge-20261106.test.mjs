@@ -22,7 +22,7 @@ function fixture(){
    id TEXT PRIMARY KEY, household_id TEXT,created_by TEXT,visibility TEXT,
    deleted_at TEXT,created_at TEXT,start_on TEXT,end_on TEXT,
    title TEXT,destination TEXT,budget_amount INTEGER,currency TEXT,status TEXT,
-   wish_id TEXT,import_source_key TEXT,updated_at TEXT);
+   wish_id TEXT,import_source_key TEXT,updated_at TEXT,participant_user_ids TEXT NOT NULL DEFAULT '[]');
  CREATE TABLE goals(
    id TEXT PRIMARY KEY,household_id TEXT,created_by TEXT,visibility TEXT,
    deleted_at TEXT,created_at TEXT,start_on TEXT,target_on TEXT,

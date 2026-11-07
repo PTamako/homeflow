@@ -27,13 +27,22 @@ const form=reactive({
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',wishRemindEnabled:false,wishRemindAdvanceDays:0,createSavingsGoal:false,
  targetAmount:100000,reservedAmount:0,destination:'',
- startDate:'',endDate:'',budgetAmount:0
+ startDate:'',endDate:'',budgetAmount:0,
+ tripParticipants:props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
 })
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.shoppingSecond='';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.shoppingSecond='';form.visibility='household';form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean);form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function onVisibilityChange(){
+ if(form.visibility==='private'){
+  if(form.assignedTo!==props.userId)form.assignedTo=props.userId||''
+  form.tripParticipants=props.userId?[props.userId]:[]
+ }else if(kind.value==='trip'&&!form.tripParticipants.length){
+  form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
+ }
+}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -84,7 +93,7 @@ async function submit(){
   }else{
     result=await send('/trips',{...common,destination:form.destination,
       startDate:form.startDate||null,endDate:form.endDate||null,
-      budgetAmount:form.budgetAmount})
+      budgetAmount:form.budgetAmount,participants:form.visibility==='private'?[props.userId]:form.tripParticipants})
   }
   const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&!onceDraft.value.dueOn
   emit('created',kind.value,String(result.id||''),savedUnscheduled)
@@ -246,9 +255,16 @@ async function submit(){
      <label>出发日期（可选）<DateField v-model="form.startDate" /></label>
      <label>结束日期（可选）<DateField v-model="form.endDate" /></label>
      <label>旅行预算（日元）<MoneyInput v-model="form.budgetAmount" :min="0" :max="100000000000"/></label>
+     <fieldset class="trip-participants-field"><legend>参与人</legend>
+      <label v-for="member in props.members||[]" :key="member.id" class="trip-participant-option">
+       <input v-model="form.tripParticipants" type="checkbox" :value="member.id" :disabled="form.visibility==='private'" />
+       <span>{{ props.profiles.find(p=>p.memberUserId===member.id&&p.type==='person')?.displayName||member.loginName }}</span>
+      </label>
+     </fieldset>
+     <small class="trip-scoring-note">旅行结束并确认完成后，每位参与人每天获得 10 家庭积分（首尾日期都计入）。</small>
 
     </template>
-    <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility" @change="form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
+    <label v-if="kind!=='routine'||form.repeatType!=='once'">可见范围<select v-model="form.visibility" @change="onVisibilityChange">
      <option value="household">家庭共享</option><option value="private">仅自己</option>
     </select></label>
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
@@ -288,6 +304,11 @@ async function submit(){
 .plan-fields .day-option.is-selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
 .day-option:focus-within{outline:2px solid #7bbda1;outline-offset:2px}
 .day-option input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.trip-participants-field{display:flex;flex-wrap:wrap;gap:9px;margin:0;padding:10px;border:1px solid #d9e4db;border-radius:10px;min-width:0}
+.trip-participants-field legend{font-size:12px;color:#5d7769;padding:0 5px}
+.plan-fields .trip-participant-option{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #e0e9e1;border-radius:9px;background:#fff}
+.trip-participant-option input{width:18px;height:18px;flex:none;accent-color:#43866a}
+.trip-scoring-note{font-size:11px;color:#718778;line-height:1.5}
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}

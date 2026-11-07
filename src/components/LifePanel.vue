@@ -608,6 +608,18 @@ const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;upl
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 const convertWishEdit=ref<{id:string;title:string;destination:string}|null>(null)
 const tripItemEdit=ref<{id:string;title:string;quantity:number|null}|null>(null)
+function tripParticipantNames(item:Row){
+ const ids=Array.isArray(item.participants)?item.participants as string[]:[]
+ return ids.map(id=>props.profiles.find(p=>p.memberUserId===id&&p.type==='person')?.displayName||
+   props.members?.find(m=>m.id===id)?.loginName||'家庭成员').join('、')||'未指定'
+}
+function tripDays(item:Row){
+ const start=String(item.startOn||item.start_on||''),end=String(item.endOn||item.end_on||'')
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end))return 0
+ const days=Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000)+1
+ return Math.max(0,days)
+}
+function tripRewardPerPerson(item:Row){return tripDays(item)*10}
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
@@ -1659,7 +1671,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @open="expandedTaskMenu=null" @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
-                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · <StatusBadge :code="t.status" /></small></div>
+                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · 参与 {{ tripParticipantNames(t) }} · <StatusBadge :code="t.status" /></small></div>
                 <div class="trip-card-actions">
                   <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
                   <button v-if="isOwner" type="button" class="life-link trip-finance-trigger"
@@ -1701,7 +1713,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </form>
 </EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
-              kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
+              kind="trips" :item="t" :profiles="props.profiles" :members="props.members" :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
             <EditBottomSheet v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id" title="旅行 · 费用与调整额" @close="financeDetail=null">
 <FinancePanel
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
@@ -1717,6 +1729,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <div class="trip-detail-header">
               <h3>{{ tripDetail.title }}</h3>
               <button type="button" class="trip-detail-close" @click="tripDetail=null" aria-label="收起行程">×</button>
+            </div>
+            <div class="trip-participant-summary">
+              <span>参与人：{{ tripParticipantNames(tripDetail) }}</span>
+              <span v-if="tripRewardPerPerson(tripDetail)">每人 {{ tripDetail.status==='completed'?'已获得':'结束后可获得' }} {{ tripRewardPerPerson(tripDetail) }} 分</span>
             </div>
             <div class="trip-progress">
               <span>行程完成 {{ tripItineraryCompleted }} / {{ tripItineraryItems.length }}</span>
@@ -1787,7 +1803,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </template>
             <p v-else class="life-caption">暂无行程</p>
-            <button v-if="tripDetail.status!=='completed'&&tripDetail.createdBy===props.userId"
+            <button v-if="!['completed','cancelled'].includes(tripDetail.status)&&tripDetail.createdBy===props.userId"
               type="button" class="trip-finish-action" :disabled="busy" @click="completeTrip">
               <AppIcon name="check" :size="17"/> 完成整趟旅行
             </button>
@@ -2210,6 +2226,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </style>
 
 <style scoped>
+.trip-participant-summary{display:flex;flex-wrap:wrap;gap:4px 12px;padding:3px 0 10px;font-size:12px;color:#526d5c;line-height:1.45}
+.trip-participant-summary>span{min-width:0;overflow-wrap:anywhere}
 .task-push-form{display:grid;gap:10px;padding:12px 10px;margin:6px 0 10px;border:1px solid #d9e9dc;border-radius:12px;background:#f8fbf8;min-width:0}
 .task-push-form label{display:grid;gap:6px;font-size:12px;color:#425b4b;font-weight:650;min-width:0}
 .task-push-form textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #ccdcd0;border-radius:9px;padding:10px;font:inherit;font-size:14px;resize:vertical;background:#fff;color:#263b2e}
