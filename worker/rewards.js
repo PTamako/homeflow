@@ -1,3 +1,4 @@
+import {householdWalletSql} from './points-wallet.js'
 import {iso,json,readBody,shortText} from './security.js'
 
 const icons=new Set(['🎁','🍦','🎬','🍖','🛋️','🐱','☕','🌸','🎮','🎟️','🧹','🎉'])
@@ -130,15 +131,7 @@ export async function rewardsRoute(request,db,path,session){
           (SELECT COALESCE(SUM(c.points),0) FROM reward_group_contributions c
             WHERE c.order_id=g.id)
         AND ?3<=(
-          COALESCE((SELECT SUM(points) FROM completion_points c
-            WHERE c.household_id=?7 AND c.earner_user_id=?2 AND c.visibility='household'),0)
-          +COALESCE((SELECT SUM(points) FROM weekly_challenge_awards w
-            WHERE w.household_id=?7 AND w.user_id=?2),0)
-          -COALESCE((SELECT SUM(points_spent) FROM reward_redemptions r
-            WHERE r.household_id=?7 AND r.redeemed_by=?2),0)
-          -COALESCE((SELECT SUM(c.points) FROM reward_group_contributions c
-            JOIN reward_group_orders g2 ON g2.id=c.order_id
-            WHERE c.household_id=?7 AND c.user_id=?2 AND g2.status<>'cancelled'),0)
+          ${householdWalletSql('?7','?2')}
         )
         AND NOT EXISTS (SELECT 1 FROM reward_group_contributions c WHERE
           c.household_id=?7 AND c.user_id=?2 AND c.client_request_id=?4)`
@@ -217,15 +210,7 @@ export async function rewardsRoute(request,db,path,session){
         AND NOT EXISTS (SELECT 1 FROM reward_redemptions x WHERE
           x.household_id=?6 AND x.redeemed_by=?2 AND x.client_request_id=?3)
         AND r.points<=(
-          COALESCE((SELECT SUM(points) FROM completion_points c WHERE
-            c.household_id=?6 AND c.earner_user_id=?2 AND c.visibility='household'),0)
-          +COALESCE((SELECT SUM(points) FROM weekly_challenge_awards w WHERE
-            w.household_id=?6 AND w.user_id=?2),0)
-          -COALESCE((SELECT SUM(points_spent) FROM reward_redemptions x WHERE
-            x.household_id=?6 AND x.redeemed_by=?2),0)
-          -COALESCE((SELECT SUM(c.points) FROM reward_group_contributions c
-            JOIN reward_group_orders g ON g.id=c.order_id
-            WHERE c.household_id=?6 AND c.user_id=?2 AND g.status<>'cancelled'),0)
+          ${householdWalletSql('?6','?2')}
         )`
     try{
       const result=await db.prepare(sql).bind(id,u,b.requestId,iso(),b.rewardId,h).run()
