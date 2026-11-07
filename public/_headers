@@ -13,3 +13,16 @@
   Cache-Control: no-store
 /vapid-setup.js
   Cache-Control: no-store
+
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+/icon.svg
+  Cache-Control: no-cache
+/icon-192.png
+  Cache-Control: no-cache
+/icon-512.png
+  Cache-Control: no-cache
+/apple-touch-icon.png
+  Cache-Control: no-cache
