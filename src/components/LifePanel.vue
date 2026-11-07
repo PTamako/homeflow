@@ -1116,7 +1116,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <b class="detail-name" :class="{'routine-struck':r.status==='completed'}">{{ r.title }}</b>
                 <StatusBadge class="plan-task-status routine-state" :code="r.status" :label="r.status==='missed'?'未完成':undefined" />
               </div>
-              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
+              <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template></small>
+              <small class="once-task-identity routine-meta">
+                <span>发起人：{{ memberName(r.created_by) }}</span>
+                <span>处理人：{{ memberName(r.assigned_to) }}</span>
+              </small>
               <div class="plan-task-footer">
                 <span class="plan-task-next">{{ r.periodOn }} 期<template v-if="r.completedOn"> · 实际 {{ r.completedOn }}</template></span>
                 <button v-if="r.status!=='missed'" type="button" class="routine-text-action" :disabled="busy"
@@ -1148,7 +1152,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       </button>
                     </div>
                   </div>
-                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ assignedMembers(r.currentAssignment||r.nextAssignment,r.assigned_to).map(memberName).join('、')||'未指派' }}<template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template><template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
+                  <small class="once-task-identity routine-meta">
+                    <span>发起人：{{ memberName(r.created_by) }}</span>
+                    <span>处理人：{{ assignedMembers(r.currentAssignment||r.nextAssignment,r.assigned_to).map(memberName).join('、')||'未指派' }}</span>
+                  </small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
