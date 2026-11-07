@@ -2,6 +2,7 @@
 import {ref} from 'vue'
 import PageToast from './PageToast.vue'
 import StatusBadge from './StatusBadge.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {usePageToast} from '../page-toast'
 
 type DeletedTask={id:string;title:string;deletedAt:string;kind:string}
@@ -92,13 +93,15 @@ async function emptyTrash(){
    <button v-if="cursor&&!confirmEmpty" type="button" class="trash-more" :disabled="busy"
      @click="fetchTrash(true)">加载更多（5条）</button>
    <template v-if="loaded&&!error&&rows.length">
-    <div v-if="confirmEmpty" class="trash-confirm" role="group" aria-label="确认永久清空">
+    <EditBottomSheet v-if="confirmEmpty" title="确认永久清空" :close-disabled="busy" @close="confirmEmpty=false">
+    <div class="trash-confirm" role="group" aria-label="确认永久清空">
       <p>清空后无法恢复，部分历史也可能删除。含照片或关联的记录会保留。</p>
       <div class="trash-actions">
        <button type="button" class="trash-cancel" :disabled="busy" @click="confirmEmpty=false">取消</button>
        <button type="button" class="trash-danger" :disabled="busy" @click="emptyTrash">确认永久清空</button>
       </div>
     </div>
+    </EditBottomSheet>
     <button v-else type="button" class="trash-clear" :disabled="busy" @click="confirmEmpty=true">
       清空回收箱
     </button>
