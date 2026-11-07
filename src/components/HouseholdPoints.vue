@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue'
+import AppIcon from './AppIcon.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 
 type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
@@ -209,7 +211,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  <section class="points-board panel" :class="{'points-board--collapsed':!expanded}" aria-label="家庭成长积分">
    <button v-if="!expanded" type="button" class="points-entry" :aria-expanded="expanded"
      aria-controls="points-expanded" @click="openDetails">
-     <span class="points-entry-icon" aria-hidden="true">🎁</span>
+     <span class="points-entry-icon" aria-hidden="true"><AppIcon name="gift" :size="21"/></span>
      <span class="points-entry-main"><strong>家庭成长积分</strong>
        <small v-if="data">Lv.{{ data.ownLevel.level }} · 可用 {{ fmt(points) }} 分</small>
        <small v-else>{{ loading?'正在读取积分…':'积分商店 · 合力兑换 · 成就' }}</small>
@@ -264,8 +266,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务不进入共享榜</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
-     <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'">🎁 积分商店</button>
-     <button type="button" :class="{chosen:view==='achievements'}" @click="view='achievements'">🏅 成就挑战</button>
+     <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
+     <button type="button" :class="{chosen:view==='achievements'}" @click="view='achievements'"><AppIcon name="award" :size="16"/> 成就挑战</button>
    </div>
    <template v-if="view==='achievements'&&data">
      <div class="challenge-card">
@@ -293,7 +295,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
          <div class="reward-actions">
            <button type="button" class="link-btn" :disabled="busy||(item.stock!==null&&item.redeemedCount>=item.stock)"
-             @click="startPool(item)">🤝 合力</button>
+             @click="startPool(item)"><AppIcon name="handshake" :size="15"/> 合力</button>
            <button type="button" class="link-btn" :disabled="busy" @click="editReward(item)">编辑</button>
            <button type="button" class="link-btn" :disabled="busy" @click="toggleActive(item)">下架</button>
          </div>
@@ -307,7 +309,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <button type="button" :disabled="busy" @click="toggleActive(item)">上架</button>
        </div>
      </details>
-     <form v-if="formOpen" class="reward-form" @submit.prevent="saveReward">
+     <EditBottomSheet v-if="formOpen" :title="editId?'编辑奖励':'新增奖励'" :close-disabled="busy" @close="resetForm">
+     <form class="reward-form" @submit.prevent="saveReward">
        <div class="form-heading"><b>{{ editId?'编辑奖励':'新增奖励' }}</b><button type="button" @click="resetForm">取消</button></div>
        <label>奖励名称<input v-model="formTitle" type="text" maxlength="60" placeholder="例如：周末奶茶任选" required/></label>
        <label>简介<input v-model="formDescription" type="text" maxlength="150" placeholder="兑换后怎么兑现"/></label>
@@ -321,8 +324,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <label class="checkbox-line"><input v-model="formActive" type="checkbox"/> 上架</label>
        <button type="submit" class="save-btn" :disabled="busy">{{ busy?'保存中…':'保存奖励' }}</button>
      </form>
+     </EditBottomSheet>
      <div v-if="recentGroupOrders.length" class="pool-section">
-       <b>🤝 合力兑换</b>
+       <b class="pool-title"><AppIcon name="handshake" :size="17"/> 合力兑换</b>
        <article v-for="order in recentGroupOrders" :key="order.id" class="pooled-order">
          <div class="pool-heading"><strong>{{ order.icon }} {{ order.title }}</strong>
            <small>{{ order.status==='collecting'?'凑分中':order.status==='requested'?'待兑现':order.status==='fulfilled'?'已兑现':'已取消' }}</small>
@@ -355,7 +359,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <button v-if="record.status==='requested'" type="button" :disabled="busy" @click="fulfill(record)">确认兑现</button>
        </div>
      </div>
-     <p class="points-hint">“合力”允许双方自由分摊积分，例如各出150分兑换300分大餐。未凑齐可取消并返还全部出资；凑齐后进入待兑现，不能自动退款。积分兑换不产生真正付款或家计簿明细。</p>
    </template>
    <p v-if="!data&&loading" class="points-loading">正在读取积分与奖励…</p>
    <p v-if="error" role="alert" class="points-error">{{ error }}
@@ -426,7 +429,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-private{margin:0;color:#42694c;font-size:12px;line-height:1.6}
 .points-private small{color:#758c7b}
 .points-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:4px;border-radius:11px;background:#f2f5f0}
-.points-tabs button{border:0;border-radius:8px;background:transparent;padding:9px 5px;font-size:13px;color:#657b6b}
+.points-tabs button{border:0;border-radius:8px;background:transparent;padding:9px 5px;font-size:13px;color:#657b6b;display:flex;justify-content:center;align-items:center;gap:5px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
 .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
@@ -451,9 +454,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
   align-items:center;min-width:0;flex-wrap:wrap}
 .redeem-btn,.save-btn{border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
 .redeem-btn:disabled,.save-btn:disabled{opacity:.45}
-.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:6px 5px;min-height:28px}
+.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:6px 5px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pool-section{display:grid;gap:8px;padding-top:9px;border-top:1px solid #ecf0ea}
-.pool-section>b{font-size:14px;color:#426b50}
+.pool-section>b{font-size:14px;color:#426b50}.pool-title{display:flex;align-items:center;gap:6px}
 .pooled-order{border:1px solid #dceadf;border-radius:11px;padding:11px;display:grid;gap:8px;background:#fafdfb;min-width:0}
 .pool-heading,.pool-status{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .pool-heading strong{font-size:13px;min-width:0;overflow-wrap:anywhere}
@@ -470,7 +473,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .archived-row{display:flex;align-items:center;gap:5px;padding:7px 0;font-size:12px}
 .archived-row span{flex:1}
 .archived-row button,.form-heading button{background:none;border:0;color:#478466;font-size:12px;padding:4px}
-.reward-form{display:grid;gap:9px;padding:12px;border-radius:12px;border:1px solid #dce9dc;background:#fafcf9;min-width:0}
+.reward-form{display:grid;gap:12px;padding:0;border:0;background:transparent;min-width:0}
 .reward-form label{display:grid;gap:4px;font-size:12px;color:#54735a;min-width:0}
 .reward-form input:not([type=checkbox]),.reward-form select{width:100%;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #d4e0d4;background:#fff;border-radius:8px;padding:9px;font-size:14px;color:#314f3b}
 .form-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
