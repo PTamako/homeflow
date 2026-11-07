@@ -12,7 +12,7 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
 const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
-const emit=defineEmits<{logout:[]}>()
+const emit=defineEmits<{logout:[];refreshApp:[]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminderRulesOpen=ref(false)
 const pushStatus=ref<'enabled'|'disabled'|'unavailable'|null>(null)
@@ -79,12 +79,18 @@ async function generateInvite(){
    </section>
    <BackupPanel v-if="active" :user-id="userId"/>
    <section class="panel">
-     <button type="button" class="management-logout" @click="emit('logout')">退出登录</button>
+     <div class="management-app-actions">
+       <button type="button" class="management-refresh" @click="emit('refreshApp')">刷新到最新版</button>
+       <button type="button" class="management-logout" @click="emit('logout')">退出登录</button>
+     </div>
    </section>
    <PageToast :toast="toast"/>
  </div>
 </template>
 <style scoped>
+.management-app-actions{display:flex;align-items:center;gap:8px}
+.management-app-actions>button{flex:1 1 0;min-width:0;min-height:44px;font-size:12px}
+.management-refresh{border:1px solid #cbded1;border-radius:11px;background:#edf6f0;color:#397b5a;font-weight:700;padding:9px 12px}
 .management-family-invites{border-top:1px solid #edf0eb;margin-top:15px;padding-top:12px}
 .management-family-invites h3{font-size:13px;margin:0 0 6px}
 .management-invite-code{display:grid;gap:6px;margin-top:8px}
