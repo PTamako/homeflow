@@ -945,9 +945,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" @click="emit('backToToday')">返回今天</button>
       </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
-      <PlanCreator v-if="planScope==='active'" :profiles="props.profiles" :members="props.members" :user-id="props.userId" :open-on-mount="props.openPlanCreator"
-        @created="planCreated" @task-created="emit('tasksChanged')"/>
       <div class="plan-view-toolbar" aria-label="计划筛选与状态">
+        <div class="plan-view-heading">
+          <b>计划列表</b>
+          <PlanCreator v-if="planScope==='active'" compact
+            :profiles="props.profiles" :members="props.members" :user-id="props.userId"
+            :open-on-mount="props.openPlanCreator"
+            @created="planCreated" @task-created="emit('tasksChanged')"/>
+        </div>
         <div class="plan-filter-tabs" role="group" aria-label="按计划类型筛选">
         <button v-for="tab in [
           {id:'all',label:'全部'},{id:'unscheduled',label:'待安排'},{id:'shopping',label:'购物'},
@@ -1877,6 +1882,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 @media(max-width:420px){.archive-date-filters{gap:8px}}
 
 /* One compact plan-filter surface, with dates only when history is selected. */
+.plan-view-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;min-height:38px}
+.plan-view-heading>b{font-size:14px;font-weight:750;color:#314b3a}
 .plan-view-toolbar{margin:10px 0 15px;padding:11px 12px 5px;
   background:#fff;border:1px solid #eeebe5;border-radius:16px}
 .plan-view-toolbar .plan-filter-tabs{gap:7px;padding:0 0 10px}
