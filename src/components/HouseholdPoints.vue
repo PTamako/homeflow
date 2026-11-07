@@ -6,10 +6,10 @@ import EditBottomSheet from './EditBottomSheet.vue'
 type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
 type Level={level:number;title:string;progress:number;nextLevelIn:number}
-type Badge={id:string;label:string;icon:string;unlocked:boolean}
+type Badge={id:string;label:string;icon:string;unlocked:boolean;target:number;progress:number;rewardPoints:number}
 type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
  ownPrivatePoints:number;ownPrivateMonthPoints:number;experience:number;
- earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;spentPoints:number;availablePoints:number;
+ earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;achievementBonusPoints:number;spentPoints:number;availablePoints:number;
  ownLevel:Level;badges:Badge[];challenge:{weekOn:string;completed:number;target:number;bonus:number;achieved:boolean}}
 type Reward={id:string;title:string;description:string;icon:string;points:number;
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
@@ -244,7 +244,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="experienceHelpOpen=!experienceHelpOpen;ruleHelpOpen=false"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="experienceHelpOpen" id="experience-rule-popover" role="tooltip" class="points-rule-popover">
            <b>成长经验与积分</b>
-           <p>成长经验包含任务积分、每周挑战及达标储值奖励，不会因兑换减少；撤销完成或核验失效会收回对应奖励。</p>
+           <p>成长经验包含任务、每周挑战、储值达标及月度成就奖励；兑换不减少 XP，撤销完成或达标失效会收回相应奖励。</p>
          </div>
        </span>
        <strong>{{ fmt(myTotal) }} XP</strong>
@@ -258,14 +258,14 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <div v-if="data" class="points-members">
      <article v-for="(item,index) in data.members" :key="item.userId" class="points-member">
        <div class="points-name"><b>{{ item.displayName }}</b><span v-if="item.userId===userId">我</span>
-         <small v-if="index===0&&item.sharedPoints>0">家庭榜首</small></div>
-       <div class="points-score"><strong>{{ fmt(item.sharedPoints) }}</strong><span>共享分</span></div>
-       <div class="points-level">家庭贡献 · Lv.{{ item.level }}</div>
-       <small class="points-details">本月 +{{ item.monthPoints }} · 周期 {{ item.routinePoints }}</small>
+         <small v-if="index===0&&item.monthPoints>0">本月榜首</small></div>
+       <div class="points-score"><strong>{{ fmt(item.monthPoints) }}</strong><span>本月共享分</span></div>
+       <div class="points-level">累计贡献 · Lv.{{ item.level }}</div>
+       <small class="points-details">累计共享 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
      </article>
    </div>
    <p v-if="data" class="points-private">我的贡献：共享 {{ own?.sharedPoints||0 }} + 私人 {{ data.ownPrivatePoints }}
-     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }} · 储值达标奖励 {{ data.savingsBonusPoints }}；私人任务不进入共享榜，只计成长经验，不可兑换家庭奖励或合力出资</small>
+     <small> · 每周挑战 +{{ data.weeklyBonusPoints }} · 储值达标 +{{ data.savingsBonusPoints }} · 月度成就 +{{ data.achievementBonusPoints }}；私人任务不参与家庭积分兑换</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
@@ -277,9 +277,16 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <div class="challenge-bar"><span :style="{width:Math.min(100,data.challenge.completed/data.challenge.target*100)+'%'}"></span></div>
        <small>{{ data.challenge.achieved?'本周已达成，自动获得 +30 积分':'本周完成 10 次家庭共享任务，自动奖励 30 分' }}</small>
      </div>
+     <div class="monthly-achievement-heading">
+       <b>{{ data.month.replace('-', ' 年 ') }} 月度成就</b>
+       <small>每月 1 日重置进度 · 奖励积分与 XP 保留</small>
+     </div>
      <div class="badges-grid">
        <div v-for="badge in data.badges" :key="badge.id" class="achievement" :class="{locked:!badge.unlocked}">
-         <span>{{ badge.icon }}</span><b>{{ badge.label }}</b><small>{{ badge.unlocked?'已解锁':'待解锁' }}</small>
+         <span>{{ badge.icon }}</span>
+         <b>{{ badge.label }}</b>
+         <small>{{ Math.min(badge.progress,badge.target) }}/{{ badge.target }} · 奖励 +{{ badge.rewardPoints }} 分</small>
+         <small>{{ badge.unlocked?'本月已领取':'进行中' }}</small>
        </div>
      </div>
    </template>
@@ -446,7 +453,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
-.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.monthly-achievement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:3px 0 8px;color:#43674e;font-size:12px}.monthly-achievement-heading small{font-size:11px;color:#71867a}.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .achievement{display:grid;justify-items:center;gap:4px;padding:10px 4px;border-radius:10px;background:#f4f9f3;min-width:0;text-align:center}
 .achievement.locked{filter:grayscale(1);opacity:.55}
 .achievement span{font-size:22px}.achievement b{font-size:11px}.achievement small{font-size:10px;color:#6f8a76}
