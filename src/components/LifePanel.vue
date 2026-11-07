@@ -663,10 +663,7 @@ async function focusExactPlan(requestId:number){
     const item=kind==='trip'?response.trip:kind==='task'?response.task:response.item
     if(!item?.id)throw Error('找不到对应搜索结果')
     if(kind==='goal'&&planScope.value==='history'&&
-        ['monthly','yearly'].includes(item.goal_mode)){
-      settleFocus()
-      return
-    }
+        ['monthly','yearly'].includes(item.goal_mode))return settleFocus()
     const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
       kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
     // Active plans have one row per plan ID; historical routine occurrences are distinct by period.
