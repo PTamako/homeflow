@@ -1,5 +1,7 @@
 // Cache only same-origin static assets; NEVER cache private /api endpoints.
-const CACHE='homeflow-shell-v5'
+const CACHE='homeflow-shell-v6'
+const FRESH_ASSETS=new Set(['/icon.svg','/icon-192.png','/icon-512.png',
+  '/apple-touch-icon.png','/manifest.webmanifest'])
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'])))
   self.skipWaiting()
@@ -11,6 +13,14 @@ self.addEventListener('activate',event=>{
 self.addEventListener('fetch',event=>{
   const req=event.request,url=new URL(req.url)
   if(req.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/vapid-'))return
+  if(FRESH_ASSETS.has(url.pathname)){
+    // Network-first for changed icon assets; fall back to offline copies.
+    event.respondWith(fetch(req,{cache:'no-store'}).then(res=>{
+      if(res.ok){const clone=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,clone)))}
+      return res
+    }).catch(()=>caches.match(req).then(saved=>saved||Response.error())))
+    return
+  }
   if(req.mode==='navigate'){
     event.respondWith(fetch(req,{cache:'no-store'}).then(response=>{
       if(response.ok){const clone=response.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,clone)))}
@@ -19,7 +29,7 @@ self.addEventListener('fetch',event=>{
     return
   }
   event.respondWith(caches.match(req).then(found=>found||fetch(req).then(res=>{
-    if(res.ok && (url.pathname.startsWith('/assets/') || ['/icon.svg','/icon-192.png','/icon-512.png','/apple-touch-icon.png','/manifest.webmanifest'].includes(url.pathname))){
+    if(res.ok && url.pathname.startsWith('/assets/')){
       const clone=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,clone)))
     }
     return res

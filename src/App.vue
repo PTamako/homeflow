@@ -37,6 +37,25 @@ function memberName(id:string|null|undefined){
 // Distinguish session loading from signed-out state.
 const authReady=ref(false)
 const authFailure=ref('')
+const updateReady=ref(false)
+let hadServiceWorkerController=false
+let lastServiceWorkerCheck=0
+function onServiceWorkerChanged(){
+  if(hadServiceWorkerController)updateReady.value=true
+  hadServiceWorkerController=true
+}
+function checkServiceWorkerUpdate(){
+  if(!('serviceWorker' in navigator)||!navigator.onLine||document.visibilityState!=='visible')return
+  const now=Date.now()
+  // A single conditional check per visible 10-minute window, not per sync tick.
+  if(now-lastServiceWorkerCheck<10*60*1000)return
+  lastServiceWorkerCheck=now
+  void navigator.serviceWorker.getRegistration().then(reg=>reg?.update()).catch(()=>{})
+}
+function refreshToLatest(){
+  if(!window.confirm('刷新到最新版本？尚未保存的输入内容会丢失。'))return
+  window.location.reload()
+}
 const todayRows=ref<TodayEntry[]>([])
 const todayNextCursor=ref<string|null>(null)
 const todayTotal=ref(0),todayCompleted=ref(0)
@@ -605,6 +624,7 @@ function onOnline(){
 }
 function onForeground(){
  if(document.visibilityState!=='visible'||!user.value)return
+ checkServiceWorkerUpdate()
  const now=Date.now()
  if(now-lastVisibleRefresh<1800)return
  lastVisibleRefresh=now
@@ -658,6 +678,9 @@ onMounted(async()=>{
     await refresh()
     if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
+  hadServiceWorkerController=!!navigator.serviceWorker?.controller
+  navigator.serviceWorker?.addEventListener('controllerchange',onServiceWorkerChanged)
+  checkServiceWorkerUpdate()
   navigator.serviceWorker?.addEventListener('message',onPushMessage)
   window.addEventListener('homeflow-badge-refresh',refreshNotificationCount)
   if(user.value&&tab.value!=='today')void refreshNotificationCount()
@@ -669,6 +692,7 @@ onMounted(async()=>{
   window.addEventListener('focus',onForeground)
 })
 onBeforeUnmount(()=>{
+  navigator.serviceWorker?.removeEventListener('controllerchange',onServiceWorkerChanged)
   navigator.serviceWorker?.removeEventListener('message',onPushMessage)
   window.removeEventListener('homeflow-badge-refresh',refreshNotificationCount)
   window.removeEventListener('online',onOnline)
@@ -683,6 +707,11 @@ onBeforeUnmount(()=>{
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <GlobalSearch v-if="authReady&&user" @select="openSearchResult"/>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
+    <aside v-if="updateReady" class="app-update-banner" role="status">
+      <span>HomeFlow 有新版本，刷新后即可使用。</span>
+      <button type="button" @click="refreshToLatest">刷新</button>
+      <button type="button" class="app-update-later" @click="updateReady=false">稍后</button>
+    </aside>
     <main v-if="!authReady" class="auth-content" aria-live="polite">
       <section class="panel" role="status"><h2>正在打开我们的小家…</h2></section>
     </main>
@@ -932,3 +961,13 @@ onBeforeUnmount(()=>{
     </nav>
   </div>
 </template>
+
+<style scoped>
+.app-update-banner{position:sticky;top:0;z-index:40;display:flex;align-items:center;
+  flex-wrap:wrap;gap:8px;padding:9px 14px;background:#f3f8f4;
+  border-bottom:1px solid #d8e6dc;color:#365845;font-size:12px;line-height:1.4}
+.app-update-banner span{flex:1;min-width:135px}
+.app-update-banner button{min-height:36px;border:0;border-radius:8px;
+  padding:6px 12px;background:#438669;color:#fff;font-weight:700;font-size:12px}
+.app-update-banner .app-update-later{background:transparent;color:#547664}
+</style>

@@ -53,3 +53,8 @@ test('backup and restore logic continues to preserve local photos and portable c
  assert.match(backup,/unzipSync\(raw,/)
  assert.match(backup,/PageToast :toast="toast"/)
 })
+
+test('export entry warns about unsynced tasks and device-local pictures',()=>{
+ assert.match(template,/仅备份当前账号与本机照片/)
+ assert.match(template,/请先同步待办，其他设备需分别备份/)
+})

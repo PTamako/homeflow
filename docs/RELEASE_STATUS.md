@@ -1,3 +1,5 @@
+> **当前基线（2026-11-07 只读复核）**：Production / Preview 各自独立 D1 均登记 **33/33** 条迁移，最新为 `0032_settlement_origin.sql`，外键完整性异常均为 0，`idx_today_actions_original` 存在。Production 有 2 条家庭成员关系和 4 条 Push 订阅。旧的 20/23/24/27/29 条数字是下文相应日期的历史快照，不代表现状。自动化 CI 与部署不等于真实 iPhone/iPad 验收；双账号实机私密隔离、离线恢复、ZIP 隔离恢复、锁屏 Push/Badge、真实家計簿关联仍待设备主人确认。R2 尚未开启，不擅自创建收费资源。
+
 > 2026-11-06 整改复核：Production 缺少的 `idx_today_actions_original` 已安全补建并用只读 EXPLAIN 验证；Preview/Production 均登记 29/29 条迁移。新增 CI 后的健康检查将同时核对末项迁移及实际索引。继续保留双账号/iOS/ZIP 手工验收项。\n\n> 2026-11-06 复核：生产与 Preview D1 均记录 27 条迁移，最新为 `0026_shopping_any_receipt_complete.sql`。生产已有 2 条 household_members 关系，双账号真实设备操作仍需验收。以下较早的 20/23/24 条迁移计数是历史节点，不代表当前状态。
 
 # HomeFlow · 交付状态（2026-11-05）
