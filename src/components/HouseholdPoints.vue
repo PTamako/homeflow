@@ -299,8 +299,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <small> · 每周挑战 +{{ data.weeklyBonusPoints }} · 储值达标 +{{ data.savingsBonusPoints }} · 月度成就 +{{ data.achievementBonusPoints }}；私人任务不参与家庭积分兑换</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
-     <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
-     <button type="button" :class="{chosen:view==='achievements'}" @click="view='achievements'"><AppIcon name="award" :size="16"/> 成就挑战</button>
+     <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>
+     <button type="button" :class="{chosen:view==='achievements'}" @click="selectView('achievements')"><AppIcon name="award" :size="16"/> 成就挑战</button>
+     <button type="button" :class="{chosen:view==='lottery'}" @click="selectView('lottery')"><AppIcon name="ticket" :size="16"/> 抽奖</button>
    </div>
    <template v-if="view==='achievements'&&data">
      <div class="challenge-card">
@@ -318,6 +319,48 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <b>{{ badge.label }}</b>
          <small>{{ Math.min(badge.progress,badge.target) }}/{{ badge.target }} · 奖励 +{{ badge.rewardPoints }} 分</small>
          <small>{{ badge.unlocked?'本月已领取':'进行中' }}</small>
+       </div>
+     </div>
+   </template>
+   <template v-if="view==='lottery'">
+     <div v-if="lottery" class="lottery-card">
+       <div class="lottery-main">
+         <div class="lottery-box" aria-hidden="true">
+           <div class="lottery-slot"></div>
+           <AppIcon name="gift" :size="46"/>
+           <span>好运箱</span>
+         </div>
+         <div class="lottery-panel">
+           <b>家庭幸运抽奖</b>
+           <small>每次消耗 5 家庭积分</small>
+           <small>本月已抽 {{ lottery.used }}/{{ lottery.limit }} 次 · 剩余 {{ lotteryRemaining }} 次</small>
+           <button type="button" class="redeem-btn lottery-spin"
+             :disabled="busy||lotteryRemaining===0||points<5"
+             @click="drawLottery">{{ busy?'正在抽奖…':lotteryRemaining===0?'本月机会已用完':points<5?'积分不足':'抽一次 · 5 分' }}</button>
+         </div>
+       </div>
+       <div v-if="lotteryLastDraw" class="lottery-result" role="status">
+         <AppIcon name="ticket" :size="20"/>
+         <div><b>{{ lotteryLabel(lotteryLastDraw) }}</b><small>本次消耗 5 分，奖励已计入可用积分</small></div>
+       </div>
+       <details class="lottery-odds">
+         <summary>查看奖池概率与规则</summary>
+         <div class="lottery-odds-grid">
+           <div v-for="odd in lottery.odds" :key="odd.kind"><span>{{ odd.label }}</span><b>{{ odd.rate }}%</b></div>
+         </div>
+         <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。翻倍奖励以扣除本次 5 分后的家庭可用积分为基数；私人积分不参与。抽奖结果自动发送到家庭成员的今日消息并推送。</p>
+       </details>
+     </div>
+     <p v-else class="points-loading">{{ loading?'正在读取抽奖箱…':'暂无抽奖数据' }}</p>
+     <div v-if="lottery" class="lottery-history">
+       <b>近一年抽奖明细</b>
+       <div v-if="!lottery.history.length" class="lottery-empty">还没有抽奖记录，试试今天的好运气吧</div>
+       <div v-for="record in lottery.history" :key="record.id" class="lottery-history-row">
+         <AppIcon name="ticket" :size="17"/>
+         <div><strong>{{ record.displayName||'家庭成员' }}</strong>
+           <small>{{ new Date(record.createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }} · 消耗 {{ record.cost }} 分</small>
+         </div>
+         <span :class="{empty:record.kind==='empty'}">{{ lotteryLabel(record) }}</span>
        </div>
      </div>
    </template>
