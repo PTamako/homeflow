@@ -20,10 +20,14 @@ type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:st
  points:number;fundedPoints:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
 type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
+type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
+type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];odds:{kind:string;rate:number;label:string}[]}
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
-const view=ref<'shop'|'achievements'>('shop')
+const view=ref<'shop'|'achievements'|'lottery'>('shop')
+const lottery=ref<Lottery|null>(null)
+const lotteryLastDraw=ref<LotteryDraw|null>(null)
 // Default to a compact family overview entry, not an open reward catalog.
 const expanded=ref(false)
 const ruleHelpOpen=ref(false)
@@ -38,6 +42,7 @@ const poolContributionOpen=ref('')
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
+const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??7)-(lottery.value?.used??0)))
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
 const recentGroupOrders=computed(()=>shop.value?.groupOrders||[])
@@ -52,6 +57,7 @@ async function fetchJSON(path:string,method='GET',body?:unknown){
    pool_closed_or_insufficient:'本单已结束、金额超过剩余需求，或你的可用积分不足',
    pool_not_cancellable:'只有未凑齐积分的合力兑换可以取消',
    pool_not_funded:'积分尚未凑齐，暂不能兑现',
+   lottery_unavailable:'积分不足、当月次数已用完或抽奖状态已更新，请刷新重试',
    not_authenticated:'请重新登录',
    origin_forbidden:'请从 HomeFlow 应用内操作'
   } as Record<string,string>)[result.error]||result.error||'操作失败')
@@ -67,10 +73,13 @@ async function refresh(){
      if(current!==generation||!props.active)return
      data.value=pointsResult as Summary
    }else{
-     const [pointsResult,shopResult]=await Promise.all([
-       fetchJSON('/points'),fetchJSON('/rewards')])
-     if(current!==generation||!props.active||!expanded.value)return
-     data.value=pointsResult as Summary;shop.value=shopResult as Shop
+     const selectedView=view.value
+     const [pointsResult,secondary]=await Promise.all([
+       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery':'/rewards')])
+     if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
+     data.value=pointsResult as Summary
+     if(selectedView==='lottery')lottery.value=secondary as Lottery
+     else shop.value=secondary as Shop
    }
  }catch(e){if(current===generation)error.value=(e as Error).message}
  finally{if(current===generation)loading.value=false}
@@ -83,12 +92,16 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    ruleHelpOpen.value=false
    experienceHelpOpen.value=false
    shop.value=null
+   lottery.value=null
+   lotteryLastDraw.value=null
  }
 },{immediate:true})
 watch(()=>props.userId,()=>{
  generation++
  data.value=null
  shop.value=null
+ lottery.value=null
+ lotteryLastDraw.value=null
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
@@ -137,6 +150,24 @@ function editReward(reward:Reward){
  formActive.value=reward.active;formOpen.value=true
 }
 function openCreate(){resetForm();formOpen.value=true}
+function selectView(next:'shop'|'achievements'|'lottery'){
+ if(view.value===next)return
+ view.value=next
+ if(next==='lottery'||next==='shop'&&!shop.value)void refresh()
+}
+const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
+ draw.kind==='double'?'积分翻倍 +'+fmt(draw.points):'+'+fmt(draw.points)+' 积分'
+async function drawLottery(){
+ if(busy.value||!lottery.value||lotteryRemaining.value<1||points.value<5)return
+ busy.value=true;error.value='';lotteryLastDraw.value=null
+ const requestId=crypto.randomUUID()
+ try{
+   const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
+   lotteryLastDraw.value=result.draw
+   await refresh()
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
+}
 async function mutate(work:()=>Promise<unknown>,success:string){
  if(busy.value)return
  busy.value=true;error.value=''
