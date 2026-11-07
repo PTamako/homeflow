@@ -1,5 +1,5 @@
 import {onScopeDispose,ref} from 'vue'
-export type ToastKind='success'|'warning'
+export type ToastKind='success'|'warning'|'error'
 export type PageToast={message:string;kind:ToastKind}
 /** Each page owns its toast. No global event bus and no persistence across navigation. */
 export function usePageToast(){

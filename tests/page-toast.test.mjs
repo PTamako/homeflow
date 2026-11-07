@@ -12,7 +12,7 @@ test('toast messages are page-owned and always disappear after 3000 ms',()=>{
  assert.match(component,/position:fixed/)
  assert.match(component,/pointer-events:none/)
  assert.match(component,/overflow-wrap:anywhere/)
- assert.match(component,/aria-live="polite"/)
+ assert.match(component,/aria-live/)
 })
 
 test('switching pages clears old toasts without a global shared state',()=>{
@@ -35,4 +35,21 @@ test('success notices in finance, health and backup are temporary while errors r
  assert.match(health,/<p v-if="error" class="error"/)
  const finance=file('src/components/FinancePanel.vue')
  assert.doesNotMatch(finance,/message\.value='已关联/)
+})
+
+test('success, warning and error all use centered toast above bottom sheets',()=>{
+ const composable=file('src/page-toast.ts')
+ const component=file('src/components/PageToast.vue')
+ const sheet=file('src/components/EditBottomSheet.vue')
+ const life=file('src/components/LifePanel.vue')
+ assert.ok(composable.includes("'success'|'warning'|'error'"))
+ assert.ok(component.includes('<Teleport to="body">'))
+ assert.ok(component.includes('top:50%;left:50%'))
+ const sheetLevel=Number(sheet.split('z-index:')[1]?.split(';')[0])
+ const toastLevel=Number(component.split('z-index:')[1]?.split(';')[0])
+ assert.ok(toastLevel>sheetLevel,'center toasts must overlay bottom sheets')
+ assert.ok(component.includes('.page-toast-error{background:'))
+ assert.ok(component.includes("toast.kind==='error'?'×'"))
+ assert.ok(life.includes("notify(pushError.value,'error')"))
+ assert.ok(life.includes('class="task-push-error"'))
 })

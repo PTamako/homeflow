@@ -174,6 +174,7 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
   }else notify('已通知处理人（'+data.sent+' 台设备）')
  }catch(e){
   pushError.value=(e as Error).message||'通知发送失败，请重试'
+  notify(pushError.value,'error')
  }finally{pushBusyId.value=''}
 }
 function toggleTaskMenu(key:string){
