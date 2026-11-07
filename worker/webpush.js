@@ -412,8 +412,8 @@ export async function runPushSchedule(env,now=Date.now()){
               event.daysBefore?'提前 '+event.daysBefore+' 天提醒':
               event.kind==='routine'?'今天的定期事项':'待办事项到期'),
             url:['task','routine','shopping'].includes(event.kind)
-              ?'/?taskType='+event.kind+'&taskId='+encodeURIComponent(event.id)+'&notificationId='+notificationId
-              :'/?notificationId='+notificationId,
+              ?'/?taskType='+event.kind+'&taskId='+encodeURIComponent(event.id)+'&notificationId='+notificationId+'&notificationVersion=scheduled'
+              :'/?notificationId='+notificationId+'&notificationVersion=scheduled',
             tag:key,recordInInbox:true})
           status=res.status
           result=res.ok?'sent':res.status===404||res.status===410?'gone':'failed'
@@ -508,7 +508,7 @@ export async function sendCompletionFeedback(env,session,event){
     try{scheduled=await findScheduledNotification(db,reminderScope(recipientId))}catch{}
     const notificationId=scheduled?.id||receiptId
     const params=new URLSearchParams({taskType:event.kind,taskId:event.id,
-      taskDone:'1',notificationId})
+      taskDone:'1',notificationId,notificationVersion:completionKey})
     if(event.kind==='routine'&&/^\d{4}-\d{2}-\d{2}$/.test(event.periodOn||''))
       params.set('taskPeriod',event.periodOn)
     try{
