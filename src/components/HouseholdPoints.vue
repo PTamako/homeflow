@@ -303,11 +303,15 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <article v-for="item in data.members" :key="item.userId" class="points-member"
        :class="{'points-member--champion':item.userId===contributionLeaderId||item.userId===walletLeaderId}">
        <div class="points-name">
-         <b>{{ item.displayName }}</b><span v-if="item.userId===userId">我</span>
-         <div class="points-honors" aria-label="榜首荣誉">
-           <span v-if="item.userId===contributionLeaderId" class="points-honor points-honor--contribution">🏆 贡献第一</span>
-           <span v-if="item.userId===walletLeaderId" class="points-honor points-honor--wallet">👑 积分第一</span>
-         </div>
+         <b>{{ item.displayName }}</b>
+         <span v-if="item.userId===contributionLeaderId||item.userId===walletLeaderId"
+           class="points-honors">
+           <span v-if="item.userId===contributionLeaderId" class="points-honor"
+             role="img" aria-label="贡献第一" title="贡献第一">🏆</span>
+           <span v-if="item.userId===walletLeaderId" class="points-honor"
+             role="img" aria-label="积分第一" title="积分第一">👑</span>
+         </span>
+         <span v-if="item.userId===userId" class="points-me">我</span>
        </div>
        <div class="points-score"><strong>{{ fmt(item.monthPoints) }}</strong><span>本月贡献分</span></div>
        <div class="points-available"><span>可用家庭积分</span><strong>{{ fmt(item.availablePoints) }}</strong></div>
@@ -551,15 +555,14 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .own-level-line span,.challenge-bar span{display:block;height:100%;background:#61ab7d;border-radius:99px}
 .points-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .points-member{min-width:0;padding:10px;border-radius:11px;background:#f9faf8;border:1px solid #e7eee7}
-.points-name{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0}
-.points-name b{font-size:13px;color:#344f3e;overflow-wrap:anywhere}
-.points-name>span{font-size:10px;color:#739680}
+.points-name{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0}
+.points-name b{font-size:13px;color:#344f3e;min-width:0;flex:0 1 auto;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.points-me{flex:none;font-size:10px;color:#739680}
 .points-member--champion{border-color:#d9e7d7;background:#fcfdf8}
-.points-honors{display:flex;flex-wrap:wrap;align-items:center;gap:4px;width:100%;min-width:0;margin-top:2px}
-.points-honor{display:inline-flex;align-items:center;gap:3px;padding:4px 7px;border-radius:7px;
- font-size:11px;font-weight:800;line-height:1.3;white-space:nowrap;box-shadow:0 1px 3px #26392814}
-.points-honor--contribution{color:#886017;background:#fff0c2;border:1px solid #eed28c}
-.points-honor--wallet{color:#27694b;background:#ddefe3;border:1px solid #a9d4bc}
+.points-honors{display:inline-flex;flex:none;align-items:center;gap:2px;white-space:nowrap}
+.points-honor{display:inline-flex;flex:none;align-items:center;justify-content:center;
+ font-size:16px;line-height:1;white-space:nowrap}
 .points-score{display:flex;align-items:baseline;gap:5px;margin-top:5px}
 .points-score strong{font-size:22px;color:#38815b;font-variant-numeric:tabular-nums}
 .points-score span,.points-level,.points-details{font-size:11px;color:#728574}
