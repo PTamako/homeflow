@@ -22,6 +22,7 @@ import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 import {pointsRoute} from './points.js'
+import {rewardsRoute} from './rewards.js'
 
 async function routeRequest(request,env,ctx,state){
     const url=new URL(request.url),path=url.pathname
@@ -62,6 +63,7 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/search')return searchRoute(request,env.DB,session)
         if(path==='/api/sync/state')return syncStateRoute(request,env.DB,session)
         if(path==='/api/points')return pointsRoute(request,env.DB,session)
+        if(path==='/api/rewards'||path.startsWith('/api/rewards/'))return rewardsRoute(request,env.DB,path,session)
         if(path==='/api/today/page')return todayPageRoute(request,env.DB,session)
         if(path==='/api/plans/today-action'||path==='/api/plans/action-history')
           return todayActionRoute(request,env.DB,path,session)

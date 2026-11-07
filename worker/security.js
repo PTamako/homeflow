@@ -98,7 +98,7 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0033_completion_points.sql') AS required_migration_ready,
+       WHERE name='0034_rewards_shop.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
@@ -116,7 +116,13 @@ export async function verifiedDatabase(env) {
         'points_task_permanent_delete','points_routine_completed_insert',
         'points_routine_completed_update','points_routine_reopened',
         'points_routine_mark_deleted','points_routine_visibility',
-        'points_routine_permanent_delete')) AS points_triggers_ready
+        'points_routine_permanent_delete')) AS points_triggers_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
+       ('reward_items','reward_redemptions','weekly_challenge_awards',
+        'reward_group_orders','reward_group_contributions')) AS rewards_tables_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
+       ('rewards_weekly_points_earned','rewards_weekly_points_revoked',
+        'rewards_seed_new_household','rewards_group_funded')) AS rewards_triggers_ready
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
@@ -126,7 +132,9 @@ export async function verifiedDatabase(env) {
       Number(identity.completion_read_ready)===1 &&
       Number(identity.settlement_origin_ready)===1 &&
       Number(identity.points_table_ready)===1 &&
-      Number(identity.points_triggers_ready)===10
+      Number(identity.points_triggers_ready)===10 &&
+      Number(identity.rewards_tables_ready)===5 &&
+      Number(identity.rewards_triggers_ready)===4
     if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
     else dbIdentityCache.delete(env.DB)
     return valid
