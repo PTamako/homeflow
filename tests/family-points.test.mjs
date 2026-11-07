@@ -28,7 +28,7 @@ function fixture(){
     completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
     assignee_user_id TEXT,due_on TEXT);
   CREATE TABLE shopping_items(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
-    completed_at TEXT,completed_by TEXT,deleted_at TEXT,assigned_to TEXT);
+    completed_at TEXT,completed_by TEXT,deleted_at TEXT,assigned_to TEXT,due_on TEXT);
   CREATE TABLE goals(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
     goal_mode TEXT NOT NULL DEFAULT 'once',created_by TEXT NOT NULL,deleted_at TEXT);
   CREATE TABLE plan_completion_marks(household_id TEXT NOT NULL,plan_type TEXT NOT NULL,
