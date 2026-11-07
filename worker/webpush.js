@@ -184,7 +184,7 @@ async function sendTaskPush(env,session,body){
     .filter(id=>id&&id!==session.user_id)
   if(!targets.length)return json({error:'recipient_is_self'},409)
   const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
-  const deliveries=await Promise.all(targets.map(async recipientId=>{
+  const sendTo=async recipientId=>{
     const notificationId=crypto.randomUUID()
     const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+
       (routine&&body.periodOn?'&taskPeriod='+encodeURIComponent(body.periodOn):'')+'&notificationId='+notificationId
@@ -196,9 +196,15 @@ async function sendTaskPush(env,session,body){
       id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
       title:String(item.title),message:content
     })
-    return {recipientId,status:response.status}
-  }))
-  return json({ok:true,recipients:deliveries})
+    return response
+  }
+  if(targets.length===1)return sendTo(targets[0])
+  const responses=await Promise.all(targets.map(sendTo))
+  return json({ok:responses.every(r=>r.ok),
+    inAppOnly:responses.every(r=>r.status===200),
+    recipients:await Promise.all(responses.map(async(r,i)=>({
+      userId:targets[i],status:r.status
+    })))})
 }
 
 // Family messages and task notifications share the same verified recipient scope.
