@@ -92,3 +92,53 @@ BEGIN
   INSERT OR IGNORE INTO reward_items(id,household_id,title,description,icon,points,builtin)
     VALUES(NEW.id||':rest',NEW.id,'一次家务休息券','商量好哪次家务由另一位代劳','🛋️',500,1);
 END;
+
+-- Two-member pooled redemption: one stable price snapshot, each member pays only
+-- from their own balance, never from an unapproved transfer.
+CREATE TABLE IF NOT EXISTS reward_group_orders (
+  id TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  reward_id TEXT NOT NULL REFERENCES reward_items(id),
+  created_by TEXT NOT NULL REFERENCES users(id),
+  client_request_id TEXT NOT NULL,
+  title_snapshot TEXT NOT NULL,
+  icon_snapshot TEXT NOT NULL,
+  points_required INTEGER NOT NULL CHECK(points_required BETWEEN 10 AND 10000),
+  status TEXT NOT NULL DEFAULT 'collecting'
+    CHECK(status IN ('collecting','requested','fulfilled','cancelled')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  funded_at TEXT,
+  fulfilled_at TEXT,
+  fulfilled_by TEXT REFERENCES users(id),
+  cancelled_at TEXT,
+  UNIQUE(household_id,created_by,client_request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reward_group_household
+  ON reward_group_orders(household_id,status,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reward_group_reward
+  ON reward_group_orders(reward_id,status);
+
+CREATE TABLE IF NOT EXISTS reward_group_contributions (
+  id TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  order_id TEXT NOT NULL REFERENCES reward_group_orders(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  points INTEGER NOT NULL CHECK(points BETWEEN 1 AND 10000),
+  client_request_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(household_id,user_id,client_request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reward_group_contributions_order
+  ON reward_group_contributions(household_id,order_id,user_id);
+
+-- This trigger runs inside the contribution INSERT transaction, so an order
+-- becomes redeemable only after the exact amount has been jointly funded.
+CREATE TRIGGER IF NOT EXISTS rewards_group_funded
+AFTER INSERT ON reward_group_contributions
+BEGIN
+  UPDATE reward_group_orders
+  SET status='requested',funded_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+  WHERE id=NEW.order_id AND household_id=NEW.household_id AND status='collecting'
+    AND (SELECT COALESCE(SUM(c.points),0) FROM reward_group_contributions c
+      WHERE c.order_id=NEW.order_id)=points_required;
+END;
