@@ -9,7 +9,7 @@ type Level={level:number;title:string;progress:number;nextLevelIn:number}
 type Badge={id:string;label:string;icon:string;unlocked:boolean}
 type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
  ownPrivatePoints:number;ownPrivateMonthPoints:number;experience:number;
- earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;spentPoints:number;availablePoints:number;
+ earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;spentPoints:number;availablePoints:number;
  ownLevel:Level;badges:Badge[];challenge:{weekOn:string;completed:number;target:number;bonus:number;achieved:boolean}}
 type Reward={id:string;title:string;description:string;icon:string;points:number;
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
@@ -230,7 +230,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值和心愿不计分。指定他人可由发布人预留额外奖励。跳过无分、撤销扣回，私人积分不可兑换家庭奖励。</p>
+           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；心愿不计分。指定他人可由发布人预留额外奖励。跳过无分、撤销扣回，私人积分不可兑换家庭奖励。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
@@ -244,7 +244,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="experienceHelpOpen=!experienceHelpOpen;ruleHelpOpen=false"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="experienceHelpOpen" id="experience-rule-popover" role="tooltip" class="points-rule-popover">
            <b>成长经验与积分</b>
-           <p>成长经验包含任务积分与挑战奖励，不会因兑换而减少；撤销任务会收回对应积分和未满足条件的奖励。</p>
+           <p>成长经验包含任务积分、每周挑战及达标储值奖励，不会因兑换减少；撤销完成或核验失效会收回对应奖励。</p>
          </div>
        </span>
        <strong>{{ fmt(myTotal) }} XP</strong>
@@ -265,7 +265,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </article>
    </div>
    <p v-if="data" class="points-private">我的贡献：共享 {{ own?.sharedPoints||0 }} + 私人 {{ data.ownPrivatePoints }}
-     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务不进入共享榜，只计成长经验，不可兑换家庭奖励或合力出资</small>
+     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }} · 储值达标奖励 {{ data.savingsBonusPoints }}；私人任务不进入共享榜，只计成长经验，不可兑换家庭奖励或合力出资</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>

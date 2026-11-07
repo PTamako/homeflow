@@ -51,11 +51,11 @@ export async function pointsRoute(request,db,session){
         u.login_name) AS displayName,
       COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0) AS sharedPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0) AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0) AS monthPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0) AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0) AS routinePoints
@@ -90,6 +90,7 @@ export async function pointsRoute(request,db,session){
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
+      (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
@@ -122,7 +123,8 @@ export async function pointsRoute(request,db,session){
       ORDER BY day DESC LIMIT 92`).bind(h,u).all()
   ])
   const earned=Number(totals?.earned||0),bonus=Number(totals?.bonus||0)
-  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0),experience=earned+bonus
+  const savingsBonus=Number(totals?.savingsBonus||0)
+  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0),experience=earned+bonus+savingsBonus
   const badges=[
     {id:'first',label:'初次出发',icon:'🌱',unlocked:earned>=2},
     {id:'routines',label:'周期达人',icon:'🔁',unlocked:Number(totals?.routineDone||0)>=5},
@@ -134,7 +136,7 @@ export async function pointsRoute(request,db,session){
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
-    pointRules:{shopping:2,routine:5,goal:0,wish:0,onceUnassigned:10,onceAssigned:5},
+    pointRules:{shopping:2,routine:5,goal:0,goalPeriodMet:50,wish:0,onceUnassigned:10,onceAssigned:5},
     members:(members.results||[]).map(row=>({
       userId:row.userId,displayName:row.displayName,
       sharedPoints:Number(row.sharedPoints)||0,
@@ -144,7 +146,8 @@ export async function pointsRoute(request,db,session){
     })),
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
-    experience,earnedPoints:earned,weeklyBonusPoints:bonus,spentPoints:spent,
+    experience,earnedPoints:earned,weeklyBonusPoints:bonus,
+    savingsBonusPoints:savingsBonus,spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
     householdEarnedPoints:Number(totals?.householdEarned||0),
     ownLevel:pointLevel(experience),badges,
