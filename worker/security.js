@@ -98,7 +98,8 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0041_household_lottery.sql') AS required_migration_ready,
+       WHERE name='0041_dual_assignees.sql') AS required_migration_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
@@ -113,6 +114,9 @@ export async function verifiedDatabase(env) {
        AND name='routine_occurrence_assignments') AS routine_assignments_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_routine_assignment_due') AS routine_assignment_index_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='dual_completion_splits') AS joint_credits_ready,
+      (SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='second_assignee_user_id') AS second_assignee_ready,
+      (SELECT COUNT(*) FROM pragma_table_info('routine_occurrence_assignments') WHERE name='second_assignee_user_id') AS routine_second_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view'
        AND name='monthly_achievement_credits') AS achievement_credits_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='monthly_achievement_awards') AS monthly_awards_ready,
@@ -137,6 +141,10 @@ export async function verifiedDatabase(env) {
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
+      Number(identity.lottery_migration_ready)===1 &&
+      Number(identity.joint_credits_ready)===1 &&
+      Number(identity.second_assignee_ready)===1 &&
+      Number(identity.routine_second_ready)===1 &&
       Number(identity.action_index_ready)===1 &&
       Number(identity.sync_table_ready)===1 &&
       Number(identity.member_sync_ready)===1 &&
