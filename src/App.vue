@@ -998,7 +998,7 @@ onBeforeUnmount(()=>{
       <ManagePage :key="user.id+':'+manageRevisionCounter" v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
-        @logout="logout" @refresh-app="refreshToLatest" />
+        @logout="logout" />
     </main>
     <PageToast :toast="toast" />
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
