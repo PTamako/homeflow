@@ -23,6 +23,8 @@ import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 import {pointsRoute} from './points.js'
 import {rewardsRoute} from './rewards.js'
+import {lotteryRoute} from './lottery.js'
+import {sendLotteryDrawNotification} from './webpush.js'
 
 async function routeRequest(request,env,ctx,state){
     const url=new URL(request.url),path=url.pathname
@@ -63,6 +65,16 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/search')return searchRoute(request,env.DB,session)
         if(path==='/api/sync/state')return syncStateRoute(request,env.DB,session)
         if(path==='/api/points')return pointsRoute(request,env.DB,session)
+        if(path==='/api/lottery'||path==='/api/lottery/draw'){
+          const onDraw=draw=>{
+            const job=sendLotteryDrawNotification(env,session,draw)
+              .then(()=>bumpHouseholdRevision(env.DB,session))
+              .catch(()=>console.warn('homeflow_lottery_push_failed'))
+            if(typeof ctx?.waitUntil==='function')ctx.waitUntil(job)
+            else void job
+          }
+          return lotteryRoute(request,env.DB,path,session,onDraw)
+        }
         if(path==='/api/rewards'||path.startsWith('/api/rewards/'))return rewardsRoute(request,env.DB,path,session)
         if(path==='/api/today/page')return todayPageRoute(request,env.DB,session)
         if(path==='/api/plans/today-action'||path==='/api/plans/action-history')

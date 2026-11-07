@@ -44,7 +44,8 @@ MIGRATIONS=[
     "0037_goal_rewards.sql",
     "0038_routine_occurrence_assignments.sql",
     "0039_monthly_achievements.sql",
-    "0040_monthly_achievement_credits.sql"
+    "0040_monthly_achievement_credits.sql",
+    "0041_household_lottery.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -61,7 +62,7 @@ tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='tab
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
           "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox","today_plan_actions","household_revisions","member_revisions","completion_points","reward_items","reward_redemptions",
           "weekly_challenge_awards","reward_group_orders","reward_group_contributions",
-          "completion_point_adjustments","shopping_completion_points","goal_completion_rewards","routine_occurrence_assignments","monthly_achievement_awards"}
+          "completion_point_adjustments","shopping_completion_points","goal_completion_rewards","routine_occurrence_assignments","monthly_achievement_awards","household_lottery_draws"}
 assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
@@ -79,7 +80,7 @@ secondary_indexes={
   "idx_goal_settlements_goal_period","idx_completion_points_member","idx_reward_items_household",
   "idx_reward_redemptions_user","idx_reward_redemptions_stock",
   "idx_weekly_challenge_member","idx_reward_group_household",
-  "idx_reward_group_reward","idx_reward_group_contributions_order","idx_point_adjustments_user","idx_shopping_points_user","idx_goal_rewards_member","idx_routine_assignment_due","idx_routine_assignment_user","idx_monthly_achievements_member","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
+  "idx_reward_group_reward","idx_reward_group_contributions_order","idx_point_adjustments_user","idx_shopping_points_user","idx_goal_rewards_member","idx_routine_assignment_due","idx_routine_assignment_user","idx_monthly_achievements_member","idx_lottery_member_month","idx_lottery_household_history","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"

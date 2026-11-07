@@ -20,10 +20,14 @@ type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:st
  points:number;fundedPoints:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
 type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
+type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
+type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];odds:{kind:string;rate:number;label:string}[]}
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
-const view=ref<'shop'|'achievements'>('shop')
+const view=ref<'shop'|'achievements'|'lottery'>('shop')
+const lottery=ref<Lottery|null>(null)
+const lotteryLastDraw=ref<LotteryDraw|null>(null)
 // Default to a compact family overview entry, not an open reward catalog.
 const expanded=ref(false)
 const ruleHelpOpen=ref(false)
@@ -38,6 +42,7 @@ const poolContributionOpen=ref('')
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
+const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??7)-(lottery.value?.used??0)))
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
 const recentGroupOrders=computed(()=>shop.value?.groupOrders||[])
@@ -52,6 +57,7 @@ async function fetchJSON(path:string,method='GET',body?:unknown){
    pool_closed_or_insufficient:'本单已结束、金额超过剩余需求，或你的可用积分不足',
    pool_not_cancellable:'只有未凑齐积分的合力兑换可以取消',
    pool_not_funded:'积分尚未凑齐，暂不能兑现',
+   lottery_unavailable:'积分不足、当月次数已用完或抽奖状态已更新，请刷新重试',
    not_authenticated:'请重新登录',
    origin_forbidden:'请从 HomeFlow 应用内操作'
   } as Record<string,string>)[result.error]||result.error||'操作失败')
@@ -67,10 +73,13 @@ async function refresh(){
      if(current!==generation||!props.active)return
      data.value=pointsResult as Summary
    }else{
-     const [pointsResult,shopResult]=await Promise.all([
-       fetchJSON('/points'),fetchJSON('/rewards')])
-     if(current!==generation||!props.active||!expanded.value)return
-     data.value=pointsResult as Summary;shop.value=shopResult as Shop
+     const selectedView=view.value
+     const [pointsResult,secondary]=await Promise.all([
+       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery':'/rewards')])
+     if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
+     data.value=pointsResult as Summary
+     if(selectedView==='lottery')lottery.value=secondary as Lottery
+     else shop.value=secondary as Shop
    }
  }catch(e){if(current===generation)error.value=(e as Error).message}
  finally{if(current===generation)loading.value=false}
@@ -83,12 +92,16 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    ruleHelpOpen.value=false
    experienceHelpOpen.value=false
    shop.value=null
+   lottery.value=null
+   lotteryLastDraw.value=null
  }
 },{immediate:true})
 watch(()=>props.userId,()=>{
  generation++
  data.value=null
  shop.value=null
+ lottery.value=null
+ lotteryLastDraw.value=null
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
@@ -137,6 +150,24 @@ function editReward(reward:Reward){
  formActive.value=reward.active;formOpen.value=true
 }
 function openCreate(){resetForm();formOpen.value=true}
+function selectView(next:'shop'|'achievements'|'lottery'){
+ if(view.value===next)return
+ view.value=next
+ if(next==='lottery'||next==='shop'&&!shop.value)void refresh()
+}
+const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
+ draw.kind==='double'?'积分翻倍 +'+fmt(draw.points):'+'+fmt(draw.points)+' 积分'
+async function drawLottery(){
+ if(busy.value||!lottery.value||lotteryRemaining.value<1||points.value<5)return
+ busy.value=true;error.value='';lotteryLastDraw.value=null
+ const requestId=crypto.randomUUID()
+ try{
+   const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
+   lotteryLastDraw.value=result.draw
+   await refresh()
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
+}
 async function mutate(work:()=>Promise<unknown>,success:string){
  if(busy.value)return
  busy.value=true;error.value=''
@@ -268,8 +299,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <small> · 每周挑战 +{{ data.weeklyBonusPoints }} · 储值达标 +{{ data.savingsBonusPoints }} · 月度成就 +{{ data.achievementBonusPoints }}；私人任务不参与家庭积分兑换</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
-     <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
-     <button type="button" :class="{chosen:view==='achievements'}" @click="view='achievements'"><AppIcon name="award" :size="16"/> 成就挑战</button>
+     <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>
+     <button type="button" :class="{chosen:view==='achievements'}" @click="selectView('achievements')"><AppIcon name="award" :size="16"/> 成就挑战</button>
+     <button type="button" :class="{chosen:view==='lottery'}" @click="selectView('lottery')"><AppIcon name="ticket" :size="16"/> 抽奖</button>
    </div>
    <template v-if="view==='achievements'&&data">
      <div class="challenge-card">
@@ -287,6 +319,48 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <b>{{ badge.label }}</b>
          <small>{{ Math.min(badge.progress,badge.target) }}/{{ badge.target }} · 奖励 +{{ badge.rewardPoints }} 分</small>
          <small>{{ badge.unlocked?'本月已领取':'进行中' }}</small>
+       </div>
+     </div>
+   </template>
+   <template v-if="view==='lottery'">
+     <div v-if="lottery" class="lottery-card">
+       <div class="lottery-main">
+         <div class="lottery-box" aria-hidden="true">
+           <div class="lottery-slot"></div>
+           <AppIcon name="gift" :size="46"/>
+           <span>好运箱</span>
+         </div>
+         <div class="lottery-panel">
+           <b>家庭幸运抽奖</b>
+           <small>每次消耗 5 家庭积分</small>
+           <small>本月已抽 {{ lottery.used }}/{{ lottery.limit }} 次 · 剩余 {{ lotteryRemaining }} 次</small>
+           <button type="button" class="redeem-btn lottery-spin"
+             :disabled="busy||lotteryRemaining===0||points<5"
+             @click="drawLottery">{{ busy?'正在抽奖…':lotteryRemaining===0?'本月机会已用完':points<5?'积分不足':'抽一次 · 5 分' }}</button>
+         </div>
+       </div>
+       <div v-if="lotteryLastDraw" class="lottery-result" role="status">
+         <AppIcon name="ticket" :size="20"/>
+         <div><b>{{ lotteryLabel(lotteryLastDraw) }}</b><small>本次消耗 5 分，奖励已计入可用积分</small></div>
+       </div>
+       <details class="lottery-odds">
+         <summary>查看奖池概率与规则</summary>
+         <div class="lottery-odds-grid">
+           <div v-for="odd in lottery.odds" :key="odd.kind"><span>{{ odd.label }}</span><b>{{ odd.rate }}%</b></div>
+         </div>
+         <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。翻倍奖励以扣除本次 5 分后的家庭可用积分为基数；私人积分不参与。抽奖结果自动发送到家庭成员的今日消息并推送。</p>
+       </details>
+     </div>
+     <p v-else class="points-loading">{{ loading?'正在读取抽奖箱…':'暂无抽奖数据' }}</p>
+     <div v-if="lottery" class="lottery-history">
+       <b>近一年抽奖明细</b>
+       <div v-if="!lottery.history.length" class="lottery-empty">还没有抽奖记录，试试今天的好运气吧</div>
+       <div v-for="record in lottery.history" :key="record.id" class="lottery-history-row">
+         <AppIcon name="ticket" :size="17"/>
+         <div><strong>{{ record.displayName||'家庭成员' }}</strong>
+           <small>{{ new Date(record.createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }} · 消耗 {{ record.cost }} 分</small>
+         </div>
+         <span :class="{empty:record.kind==='empty'}">{{ lotteryLabel(record) }}</span>
        </div>
      </div>
    </template>
@@ -447,10 +521,36 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-details{display:block;margin-top:7px}
 .points-private{margin:0;color:#42694c;font-size:12px;line-height:1.6}
 .points-private small{color:#758c7b}
-.points-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:4px;border-radius:11px;background:#f2f5f0}
-.points-tabs button{border:0;border-radius:8px;background:transparent;padding:9px 5px;font-size:13px;color:#657b6b;display:flex;justify-content:center;align-items:center;gap:5px}
+.points-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
+.points-tabs button{min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
-.challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
+ .lottery-card{display:grid;gap:12px;border:1px solid #e4ede6;border-radius:13px;padding:12px;background:#fbfdfa}
+ .lottery-main{display:flex;align-items:center;gap:12px;min-width:0}
+ .lottery-box{flex:0 0 94px;min-height:103px;border-radius:16px;background:#e5f0e7;border:1px solid #d4e6d9;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#4b8669;gap:3px;box-shadow:inset 0 -5px 0 #d5e8db}
+ .lottery-box .lottery-slot{width:42px;height:5px;border-radius:9px;background:#99c4ac;margin-bottom:6px}
+ .lottery-box span{font-size:10px;font-weight:700;letter-spacing:.12em}
+ .lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
+ .lottery-panel>b{font-size:15px;color:#365b43}
+ .lottery-panel small{font-size:11px;color:#708977}
+ .lottery-spin{justify-self:start;min-height:35px;margin-top:5px}
+ .lottery-spin:disabled{opacity:.55}
+ .lottery-result{display:flex;align-items:center;gap:9px;border-radius:10px;background:#eef7ef;padding:10px;color:#3b7656}
+ .lottery-result>div{display:grid;gap:4px}
+ .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
+ .lottery-odds summary{cursor:pointer;font-size:12px;color:#4a8265}
+ .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+ .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
+ .lottery-odds p{margin:9px 0 0;font-size:11px;line-height:1.65;color:#6c8574}
+ .lottery-history{display:grid;gap:8px;padding-top:8px}
+ .lottery-history>b{font-size:14px;color:#426b50}
+ .lottery-empty{padding:12px;font-size:12px;color:#829487;text-align:center}
+ .lottery-history-row{display:flex;align-items:center;gap:9px;min-width:0;border-bottom:1px solid #e8efe9;padding:8px 0;color:#5b846b}
+ .lottery-history-row>div{display:grid;gap:3px;flex:1;min-width:0}
+ .lottery-history-row strong{font-size:12px;color:#3f624c}
+ .lottery-history-row small{font-size:10px;color:#849787}
+ .lottery-history-row>span{font-size:11px;font-weight:700;color:#407f5c;text-align:right;max-width:42%}
+ .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
+ .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
 .monthly-achievement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:3px 0 8px;color:#43674e;font-size:12px}.monthly-achievement-heading small{font-size:11px;color:#71867a}.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
