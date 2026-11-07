@@ -95,10 +95,12 @@ self.addEventListener('notificationclick',event=>{
             kind:target.searchParams.get('taskType'),id:target.searchParams.get('taskId'),
             completed:target.searchParams.get('taskDone')==='1',
             periodKey:target.searchParams.get('taskPeriod'),
-            notificationId:target.searchParams.get('notificationId')})
+            notificationId:target.searchParams.get('notificationId'),
+            notificationVersion:target.searchParams.get('notificationVersion')})
         }else if(target.searchParams.has('notificationId')){
           client.postMessage({type:'homeflow-open-notification',
-            id:target.searchParams.get('notificationId')})
+            id:target.searchParams.get('notificationId'),
+            notificationVersion:target.searchParams.get('notificationVersion')})
         }
         await client.focus();return
       }

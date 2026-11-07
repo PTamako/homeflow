@@ -7,12 +7,12 @@ import {notificationStatus,notificationTitle,notificationMessageRemainder} from 
 type Notice={
  id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;dedupeKey:string|null;
  title:string;message:string;deliveryStatus:'sent'|'partial'|'failed';
- sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;
+ sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;lastCompletionKey?:string|null;
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
 }
 const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntryKeys:string[];
  memberProfiles:Array<{memberUserId:string|null;displayName:string}>;
- focusNotificationId:string;focusRequest:number}>()
+ focusNotificationId:string;focusNotificationVersion?:string|null;focusRequest:number}>()
 const emit=defineEmits<{unreadChange:[number];openPlan:[string,string,string,boolean];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
@@ -20,6 +20,8 @@ const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|nu
 const highlightedId=ref('')
 const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
+// Capture the row touched before any live-refresh can move a different row beneath the finger.
+let pressedReadId:string|null=null
 function timeOf(value:string|null){
  if(!value)return ''
  const iso=value.includes('T')?value:value.replace(' ','T')+'Z'
@@ -102,24 +104,54 @@ async function load(reset=true,focusId=''):Promise<boolean>{
 async function changeReadState(item:Notice,markAsRead:boolean){
  if(item.recipientUserId!==props.userId||reading.value||
    (markAsRead?!!item.readAt:!item.readAt))return
- reading.value=item.id
+ // Capture identity and revision BEFORE awaiting a network request. Do not
+ // mutate an old Vue row reference after a background refresh replaces it.
+ const id=item.id,revision=item.lastCompletionKey??null
+ const account=props.userId
+ reading.value=id
  error.value=''
  try{
   const endpoint=markAsRead?'read':'unread'
-  const r=await fetch('/api/notifications/'+encodeURIComponent(item.id)+'/'+endpoint,{
-   method:'POST',credentials:'same-origin',cache:'no-store'
+  const r=await fetch('/api/notifications/'+encodeURIComponent(id)+'/'+endpoint,{
+   method:'POST',credentials:'same-origin',cache:'no-store',
+   headers:{'content-type':'application/json'},
+   body:JSON.stringify({expectedCompletionKey:revision})
   })
+  if(r.status===409){
+   await load(true)
+   error.value='这条通知刚刚更新，请确认最新内容后再标记'
+   return
+  }
   if(!r.ok)throw Error(markAsRead?'标记已读失败':'标记未读失败')
   const data=await r.json()
-  item.readAt=markAsRead?new Date().toISOString():null
+  if(data.notificationId!==id||data.read!==markAsRead)
+   throw Error('通知身份校验失败，请刷新重试')
+  if(account!==props.userId)return
+  // Invalidate any stale list fetch begun before this write was acknowledged.
+  generation++
+  loading.value=false
+  moreBusy.value=false
+  const updatedAt=markAsRead?new Date().toISOString():null
+  const visible=notices.value.find(row=>row.id===id)
+  if(visible&&visible.lastCompletionKey===revision)
+   notices.value=notices.value.map(row=>row.id===id?{...row,readAt:updatedAt}:row)
+  else void load(true)
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   // One source of truth for Today's red dot and the Home Screen PWA badge.
   emit('unreadChange',unread.value)
  }catch(e){error.value=(e as Error).message}
- finally{reading.value=null}
+ finally{if(reading.value===id)reading.value=null}
 }
-async function markRead(item:Notice){await changeReadState(item,true)}
-async function markUnread(item:Notice){await changeReadState(item,false)}
+async function readClicked(item:Notice,markAsRead:boolean){
+ const touchedId=pressedReadId
+ pressedReadId=null
+ // If a live refresh rearranged items between touch-down and click, don't
+ // accidentally treat the newly positioned row as the user's selection.
+ if(touchedId&&touchedId!==item.id){void load(true);return}
+ await changeReadState(item,markAsRead)
+}
+async function markRead(item:Notice){await readClicked(item,true)}
+async function markUnread(item:Notice){await readClicked(item,false)}
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
  if(item.sourceId&&['task','routine','shopping'].includes(item.kind)){
@@ -140,18 +172,16 @@ async function showIncomingNotification(id:string){
  if(!props.active||!/^[a-f0-9-]{36}$/i.test(id))return
  expanded.value=true
  view.value='received'
- let readFailed=false
- try{
-  const response=await fetch('/api/notifications/'+encodeURIComponent(id)+'/read',{
-   method:'POST',credentials:'same-origin',cache:'no-store'
-  })
-  if(!response.ok)throw Error('自动标记已读失败')
-  const result=await response.json()
-  unread.value=Math.max(0,Number(result.unreadCount)||0)
-  emit('unreadChange',unread.value)
- }catch{readFailed=true}
- await load(true,id)
- if(readFailed)error.value='自动标记已读失败，请手动标记'
+ // Load the actual scoped row first; never auto-read an unseen replacement
+ // simply because a historical Push still points to the same inbox ID.
+ const version=props.focusNotificationVersion
+ const loaded=await load(true,id)
+ const focused=loaded?notices.value.find(item=>item.id===id):null
+ const versionMatches=version==null||
+   (version==='scheduled'?!(focused?.lastCompletionKey):version===focused?.lastCompletionKey)
+ if(focused&&versionMatches)await changeReadState(focused,true)
+ else if(focused&&!versionMatches)
+   error.value='这条通知已有新内容，旧推送不会将新消息标记已读'
  emit('focusHandled',id)
  await nextTick()
  document.getElementById('today-notification-'+id)?.scrollIntoView({block:'center',behavior:'smooth'})
@@ -219,9 +249,9 @@ defineExpose({refresh:()=>load(true)})
      <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
-        type="button" :disabled="!!reading" @click="markRead(item)">标记已读</button>
+        type="button" :disabled="!!reading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
       <button v-if="view==='received'&&item.readAt"
-        type="button" :disabled="!!reading" @click="markUnread(item)">标记未读</button>
+        type="button" :disabled="!!reading" @pointerdown="pressedReadId=item.id" @click="markUnread(item)">标记未读</button>
       <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item))"
         type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
      </div>
