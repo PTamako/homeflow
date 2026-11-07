@@ -1,4 +1,5 @@
 import {householdWalletSql} from './points-wallet.js'
+import {contributionAssignmentDeltaSql,contributionWeeklySql} from './contribution.js'
 import {json} from './security.js'
 
 const DEFAULT_POINTS=5
@@ -38,7 +39,9 @@ export function tokyoMonthWindow(now=Date.now()){
   return {month,begin,end}
 }
 
-// Read-only aggregation; creators/assignees cannot earn points by merely assigning a task.
+// Read-only aggregation. All actually earned household credits (except lottery)
+// count toward contribution, including +/- funded task bounties and weekly bonuses.
+// A pending assignment reserves wallet funds but does NOT change contribution.
 // The triggers award the logged-in completer, one row per task or routine occurrence.
 export async function pointsRoute(request,db,session){
   if(request.method!=='GET')return json({error:'method_not_allowed'},405)
@@ -55,6 +58,8 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0)
+      +${contributionWeeklySql('m.household_id','m.user_id')}
+      +${contributionAssignmentDeltaSql('m.household_id','m.user_id')}
       AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
@@ -63,6 +68,8 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND j.earned_at>=?2 AND j.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0)
+      +${contributionWeeklySql('m.household_id','m.user_id','?2','?3')}
+      +${contributionAssignmentDeltaSql('m.household_id','m.user_id','?2','?3')}
       AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
@@ -185,7 +192,7 @@ export async function pointsRoute(request,db,session){
     savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,
     lotteryNetPoints:Number(totals?.lotteryNetPoints||0),spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
-    householdEarnedPoints:Number(totals?.householdEarned||0),
+    householdEarnedPoints:Number((members.results||[]).find(row=>row.userId===u)?.sharedPoints||0),
     ownLevel:pointLevel(experience),badges,
     challenge:{weekOn:week.weekOn,completed:Number(totals?.weekDone||0),
       target:10,bonus:30,achieved:Number(totals?.weekDone||0)>=10}
