@@ -14,7 +14,7 @@ const catalog={
   routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
   wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on','remind_enabled','remind_advance_days']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id','goal_mode','start_on']},
-  shopping_items:{columns:['title','quantity','due_on','assigned_to']},
+  shopping_items:{columns:['title','quantity','due_on','assigned_to','second_assignee_user_id']},
   memories:{columns:['title','story','happened_on','linked_type','linked_id']},
 }
 const plural={anniversaries:'anniversaries',routines:'routines',wishes:'wishes',goals:'goals',shopping:'shopping_items',memories:'memories'}
@@ -72,11 +72,14 @@ function normalized(table,b,s){
          (startOn&&b.targetOn&&startOn>b.targetOn))return null
       return [title,b.targetAmount,b.reservedAmount||0,b.currency||'JPY',
         b.targetOn||null,b.wishId||null,goalMode,startOn]
-    case 'shopping_items':
+    case 'shopping_items': {
       if(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>9999)return null
       if(b.dueOn&&!ymd(b.dueOn))return null
-      if(b.assignedTo&&!hexId(b.assignedTo))return null
-      return [title,b.quantity,b.dueOn||null,b.assignedTo||null]
+      const first=b.assignedTo||null,second=b.secondAssigneeUserId||null
+      if((first&&!hexId(first))||(second&&(!first||!hexId(second)||second===first)))return null
+      if(second&&visibilityOf(b,s)!=='household')return null
+      return [title,b.quantity,b.dueOn||null,first,second]
+    }
     case 'memories':
       if(!ymd(b.happenedOn))return null
       if(b.linkedType&&!['trip','wish','profile','anniversary'].includes(b.linkedType))return null
@@ -99,10 +102,13 @@ async function validLinks(db,table,data,session,requestedVisibility='private'){
       if(!profile || (data[6]&&profile.type!=='pet'))return false
     }else if(data[6])return false
   }
-  if(table==='shopping_items'&&data[3]){
-    if(requestedVisibility==='private'&&data[3]!==session.user_id)return false
-    return !!await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
-      .bind(hid,data[3]).first()
+  if(table==='shopping_items'){
+    if(requestedVisibility==='private'&&
+      (data[4]||data[3]&&data[3]!==session.user_id))return false
+    for(const userId of [data[3],data[4]].filter(Boolean)){
+      if(!await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
+        .bind(hid,userId).first())return false
+    }
   }
   if(table==='goals'&&data[5]){
     const wish=await db.prepare('SELECT created_by,visibility FROM wishes WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL').bind(data[5],hid).first()
@@ -312,6 +318,28 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
         visibility:rule.visibility,completedAt:stamp,periodOn})
     return json({ok:true,periodOn,completedOn:body.status==='completed'?actual:null})
   }
+  if(id&&parts[3]==='confirm'&&table==='shopping_items'&&request.method==='POST'){
+    const item=await getObject(db,table,id,session)
+    if(!item)return json({error:'not_found'},404)
+    if(item.completed_at)return json({ok:true,unchanged:true})
+    if(item.assigned_to&&session.user_id!==item.assigned_to&&
+       session.user_id!==item.second_assignee_user_id)
+      return json({error:'assigned_to_other_member'},403)
+    // A confirmed Kakebo expense link is mandatory; this never fabricates a purchase.
+    const stamp=iso()
+    const done=await db.prepare(`UPDATE shopping_items SET
+      completed_at=?1,completed_by=?2
+      WHERE id=?3 AND household_id=?4 AND deleted_at IS NULL AND completed_at IS NULL
+        AND (assigned_to IS NULL OR ?2 IN (assigned_to,second_assignee_user_id))
+        AND EXISTS(SELECT 1 FROM shopping_expense_links
+          WHERE shopping_id=?3 AND household_id=?4)`)
+      .bind(stamp,session.user_id,id,session.household_id).run()
+    if(!Number(done.meta?.changes))return json({error:'verified_receipt_required'},409)
+    onComplete?.({kind:'shopping',id,title:item.title,creatorId:item.created_by,
+      assigneeId:item.assigned_to,secondAssigneeId:item.second_assignee_user_id,
+      visibility:item.visibility,completedAt:stamp})
+    return json({ok:true,completed:true})
+  }
   if(id&&parts[3]==='toggle'&&table==='shopping_items'&&request.method==='POST'){
     const item=await getObject(db,table,id,session)
     if(!item)return json({error:'not_found'},404)
@@ -445,6 +473,9 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     }
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='shopping_items'&&current.completed_at&&
+       (vals[3]!==current.assigned_to||vals[4]!==current.second_assignee_user_id))
+      return json({error:'completed_assignment_locked'},409)
     if(table==='routines'&&vals[4]&&vals[4]!==session.user_id&&
       vals[4]!==current.assigned_to)
       return json({error:'assign_recurring_occurrence_instead'},400)
@@ -454,7 +485,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     // without updated_at. No migrations or additional D1 reads required.
     const revisioned=['routines','anniversaries','wishes','goals'].includes(table)
     const snapshotColumns=table==='shopping_items'?
-      ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to']:
+      ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to','second_assignee_user_id']:
       table==='memories'?['title','story','happened_on','visibility','linked_type','linked_id']:[]
     if(revisioned&&b.expectedUpdatedAt&&b.expectedUpdatedAt!==current.updated_at)
       return json({error:'plan_edit_conflict',currentUpdatedAt:current.updated_at},409)
