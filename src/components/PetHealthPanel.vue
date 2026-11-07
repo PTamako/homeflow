@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
-import {computed,nextTick,onMounted,ref,watch} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
@@ -11,7 +12,6 @@ const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref('')
 const editingId=ref<string|null>(null)
 const showHealthForm=ref(false)
-const healthFormEl=ref<HTMLFormElement|null>(null)
 const {toast,notify}=usePageToast()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
@@ -66,7 +66,6 @@ function editRecord(r:Health){
   editingId.value=r.id;kind.value=r.recordType;eventDate.value=r.eventOn
   nextDate.value=r.nextDueOn||'';weight.value=r.weightGrams;note.value=r.note||''
   error.value='';showHealthForm.value=true
-  void nextTick(()=>healthFormEl.value?.scrollIntoView({behavior:'smooth',block:'nearest'}))
 }
 function cancelEditing(){
   editingId.value=null;kind.value='deworm';eventDate.value=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -129,8 +128,8 @@ watch(year,value=>{if(!value)month.value=''})
       :aria-controls="'pet-health-form-'+petId" :disabled="busy" @click="toggleHealthForm">
       {{ showHealthForm?'收起表单':'＋ 添加护理记录' }}
     </button>
-    <form v-if="showHealthForm" :id="'pet-health-form-'+petId" ref="healthFormEl"
-      class="pet-form" @submit.prevent="create">
+    <EditBottomSheet v-if="showHealthForm" :title="editingId?'编辑护理记录':'添加护理记录'" :close-disabled="busy" @close="cancelEditing">
+    <form :id="'pet-health-form-'+petId" class="pet-form" @submit.prevent="create">
       <label>记录类型<select v-model="kind"><option v-for="(label,value) in names" :key="value" :value="value">{{ label }}</option></select></label>
       <label>完成日期<DateField v-model="eventDate" required /></label>
       <label v-if="kind==='weight'">体重（克）<input v-model.number="weight" required type="number" min="1" max="99999" placeholder="例如 5500"/></label>
@@ -141,6 +140,7 @@ watch(year,value=>{if(!value)month.value=''})
         <button :disabled="busy">{{ busy?'保存中…':editingId?'保存修改':'＋ 保存健康记录' }}</button>
       </div>
     </form>
+    </EditBottomSheet>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <PageToast :toast="toast" />
     <div class="pet-history-filter">
@@ -175,7 +175,7 @@ watch(year,value=>{if(!value)month.value=''})
 .weight-trend b{font-size:13px;color:#3b7655}
 .weight-trend small{color:#819187;font-size:11px}
 .weight-trend svg{display:block;width:100%;height:86px}.pet-title{display:flex;align-items:center;gap:9px}.sub{color:#819187;font-size:12px;line-height:1.7}
-.pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:14px 0;min-width:0}
+.pet-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:0;min-width:0}
 .pet-form label{display:grid;gap:5px;font-size:12px;color:#64796b;min-width:0;max-width:100%}
 .pet-form input,.pet-form select{width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:42px;border:1px solid #dce6dc;border-radius:10px;padding:9px;font-size:13px;background:white}
 .pet-form .full{grid-column:1/-1}

@@ -10,6 +10,7 @@ import AppIcon from './AppIcon.vue'
 import StatusBadge from './StatusBadge.vue'
 import {wishTypeLabel} from '../wish-type-display.mjs'
 import LifeItemEditor from './LifeItemEditor.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
@@ -1113,9 +1114,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </form>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
-            <form v-if="onceEditing?.id===t.id" class="detail-editor once-task-editor"
+            <EditBottomSheet v-if="onceEditing?.id===t.id" title="编辑任务" :close-disabled="busy" @close="onceEditing=null">
+            <form class="detail-editor once-task-editor"
               @submit.prevent="saveOnce" aria-label="编辑一次性任务">
-              <b class="once-editor-title">编辑任务</b>
               <label class="once-edit-field">
                 <span>任务名称</span>
                 <input v-model="onceTitle" maxlength="150" required aria-label="任务名称" />
@@ -1152,6 +1153,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit">保存修改</button>
               </div>
             </form>
+            </EditBottomSheet>
           </div>
           </template>
           </template>
@@ -1834,11 +1836,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
    not reach it. Keep every field in its own bounded mobile row. */
 .once-task-identity{display:flex!important;flex-wrap:wrap;column-gap:12px;row-gap:3px}
 .once-task-identity span{min-width:0;max-width:100%;overflow-wrap:anywhere}
-.plan-tasks-card .once-task-editor{
+.once-task-editor{
   display:grid;grid-template-columns:minmax(0,1fr);gap:12px;
   width:100%;max-width:100%;min-width:0;box-sizing:border-box;
-  margin:12px 0 4px;padding:15px;border:1px solid #dbe7dd;
-  border-radius:13px;background:#f8faf8
+  margin:0;padding:0;border:0;
+  border-radius:0;background:transparent
 }
 .once-task-editor .once-editor-title{
   display:block;font-size:14px;font-weight:700;line-height:1.5;
@@ -1889,7 +1891,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   outline:2px solid #43866a;outline-offset:2px
 }
 @media(max-width:480px){
-  .plan-tasks-card .once-task-editor{padding:12px;gap:11px}
+  .once-task-editor{padding:12px;gap:11px}
   .once-task-editor .once-edit-actions{gap:8px}
 }
 </style>
