@@ -32,7 +32,8 @@ const form=reactive({
  targetOn:String(data.target_on||''),happenedOn:String(data.happened_on||''),
  story:String(data.story||''),destination:String(data.destination||''),
  startOn:String(data.startOn||data.start_on||''),
- endOn:String(data.endOn||data.end_on||''),budgetAmount:Number(data.budgetAmount||data.budget_amount||0)
+ endOn:String(data.endOn||data.end_on||''),budgetAmount:Number(data.budgetAmount||data.budget_amount||0),
+ tripParticipants:Array.isArray(data.participants)?[...data.participants] as string[]:[String(data.createdBy||data.created_by||'')].filter(Boolean)
 })
 const routineSubjectIsPet=computed(()=>props.profiles?.some(p=>p.id===form.subjectProfileId&&p.type==='pet')||false)
 watch(()=>form.subjectProfileId,(id,previous)=>{
@@ -80,7 +81,7 @@ function values(){
      linkedType:data.linked_type||null,linkedId:data.linked_id||null}
   case 'trips':
    return {...common,destination:form.destination,startDate:form.startOn||null,
-     endDate:form.endOn||null,budgetAmount:form.budgetAmount,status:form.status}
+     endDate:form.endOn||null,budgetAmount:form.budgetAmount,status:form.status,participants:form.tripParticipants}
  }
 }
 async function save(){
@@ -250,6 +251,13 @@ async function save(){
    <label>开始日期<DateField v-model="form.startOn" /></label>
    <label>结束日期<DateField v-model="form.endOn" /></label>
    <label>预算（¥）<MoneyInput v-model="form.budgetAmount" :min="0"/></label>
+   <fieldset class="trip-participants-field"><legend>参与人</legend>
+    <label v-for="member in members||[]" :key="member.id" class="trip-participant-option">
+     <input v-model="form.tripParticipants" type="checkbox" :value="member.id" :disabled="form.visibility==='private'"/>
+     <span>{{ profiles?.find(p=>p.memberUserId===member.id&&p.type==='person')?.displayName||member.loginName }}</span>
+    </label>
+   </fieldset>
+   <small class="trip-scoring-note">旅行结束后确认完成，每位参与人每天 +10 分。修改参与人或日期会同步调整积分。</small>
    <label>状态<select v-model="form.status"><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
   </template>
   <label v-if="kind!=='shopping'&&kind!=='trips'">可见范围
@@ -265,6 +273,11 @@ async function save(){
 </template>
 <style scoped>
 .detail-editor{margin:0;padding:0;border:0;background:transparent;display:grid;gap:12px;min-width:0}
+.trip-participants-field{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:10px;border:1px solid #d4e0d6;border-radius:10px;min-width:0}
+.trip-participants-field legend{font-size:12px;color:#65796e;padding:0 5px}
+.detail-editor .trip-participant-option{display:flex;flex-direction:row;align-items:center;gap:7px;min-height:36px;padding:6px 9px;border:1px solid #e0e9e1;border-radius:8px;background:#fff}
+.trip-participant-option input{width:18px;height:18px;flex:none;accent-color:#43866a}
+.trip-scoring-note{font-size:11px;color:#718778;line-height:1.45}
 .detail-editor-title{font-size:14px}
 .detail-editor label{font-size:12px;color:#65796e;display:grid;gap:5px;min-width:0}
 .detail-editor :is(input,select,textarea){width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #d4e0d6;border-radius:9px;background:#fff;min-height:40px;padding:9px;color:#273e30}
