@@ -242,8 +242,8 @@ function openSearchResult(result:{id:string;kind:string}){
  }
 }
 function navigateTab(value:typeof tab.value){
-  planFocusHoldHeight.value=0
   openPlanCreatorOnNavigate.value=false
+  planFocusHoldHeight.value=0
   if(value==='plans'){
     focusPlanId.value=''
     focusPlanPeriodKey.value=''
