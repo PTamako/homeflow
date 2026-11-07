@@ -1716,7 +1716,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <div v-if="tripDetail" class="trip-detail">
             <div class="trip-detail-header">
               <h3>{{ tripDetail.title }}</h3>
-              <button type="button" class="trip-detail-close" @click="tripDetail=null" aria-label="收起行程"><AppIcon name="x" :size="16"/></button>
+              <button type="button" class="trip-detail-close" @click="tripDetail=null" aria-label="收起行程">×</button>
             </div>
             <div class="trip-progress">
               <span>行程完成 {{ tripItineraryCompleted }} / {{ tripItineraryItems.length }}</span>
@@ -1789,7 +1789,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <p v-else class="life-caption">暂无行程</p>
             <button v-if="tripDetail.status!=='completed'&&tripDetail.createdBy===props.userId"
               type="button" class="trip-finish-action" :disabled="busy" @click="completeTrip">
-              <AppIcon name="check-circle" :size="17"/> 完成整趟旅行
+              <AppIcon name="check" :size="17"/> 完成整趟旅行
             </button>
           </div>
            <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
