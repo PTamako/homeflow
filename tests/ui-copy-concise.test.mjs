@@ -51,8 +51,8 @@ test('shopping records do not repeat fixed point split explanations',()=>{
 test('personal points are compact while bonus details remain expandable',()=>{
   const source=template('src/components/HouseholdPoints.vue')
   assert.match(source,/<details v-if="data" class="points-private">/)
-  assert.match(source,/我的积分：共享/)
-  assert.match(source,/奖励明细（已计入共享）/)
+  assert.match(source,/我的积分：贡献/)
+  assert.match(source,/抽奖净额/)
   assert.doesNotMatch(source,/以上来源已包含在累计共享中/)
   assert.doesNotMatch(source,/私人任务积分不可兑换家庭奖励/)
 })
