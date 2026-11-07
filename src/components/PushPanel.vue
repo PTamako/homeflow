@@ -9,6 +9,7 @@ const otherMembers=computed(()=>(props.members||[]).filter(m=>m.id!==props.userI
 const available=ref(false),configured=ref(false),enabled=ref(false),busy=ref(false),message=ref('')
 const familyFormOpen=ref(false),recipientId=ref(''),familyMessage=ref('')
 const familyBusy=ref(false),familyError=ref('')
+const testingPush=ref(false),testPushResult=ref('')
 watch(otherMembers,members=>{
   if(members.length===1){recipientId.value=members[0].id;return}
   if(!members.some(m=>m.id===recipientId.value))recipientId.value=''
@@ -89,6 +90,22 @@ async function sendFamily(){
  }catch(e){familyError.value=(e as Error).message}
  finally{familyBusy.value=false}
 }
+// A real server-to-Apple test, scoped to the signed-in person's subscriptions.
+ // Does not consume points, create lottery draws, or message the household.
+async function testOwnPush(){
+ if(testingPush.value||!enabled.value)return
+ testingPush.value=true;testPushResult.value=''
+ try{
+  const response=await fetch('/api/push/send-now',{method:'POST',
+    credentials:'same-origin',cache:'no-store'})
+  const result=await response.json().catch(()=>({}))
+  if(!response.ok)throw Error(result.error==='push_rate_limited'?'同一分钟已测试过，请稍后再试':
+    result.error==='push_not_subscribed'?'服务器没有找到推送订阅，请重新开启推送':
+    '推送服务测试失败，请稍后重试')
+  testPushResult.value='推送服务已受理 '+Number(result.sent||0)+' 个设备请求。请查看本机锁屏/通知中心；这不代表系统已显示横幅。'
+ }catch(e){testPushResult.value=(e as Error).message}
+ finally{testingPush.value=false}
+}
 async function disable(){
   busy.value=true;message.value=''
   try{
@@ -111,6 +128,8 @@ onMounted(discover)
       <StatusBadge :code="!available?'unavailable':enabled?'enabled':'disabled'" />
       <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
         @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
+      <button v-if="enabled" type="button" class="push-now" :disabled="testingPush||busy"
+        @click="testOwnPush">{{ testingPush?'测试中…':'测试本机推送' }}</button>
       <button v-if="otherMembers.length" type="button" class="push-now"
         :aria-expanded="familyFormOpen" @click="familyFormOpen=!familyFormOpen">
         通知家人
@@ -135,6 +154,11 @@ onMounted(discover)
     </form>
     </EditBottomSheet>
     <small v-if="message" role="status">{{ message }}</small>
+    <small v-if="testPushResult" role="status">{{ testPushResult }}</small>
+    <details class="push-troubleshoot">
+      <summary>手机没收到通知？</summary>
+      <p>请用接收人的 iPhone 主屏幕版 HomeFlow 点击「测试本机推送」。若服务端显示已受理，却没有弹窗，请查看 iOS「设置 → 通知 → HomeFlow」里的允许通知、横幅、锁屏、通知中心；再检查专注模式和定时摘要。需要时关闭推送后重新开启，刷新设备订阅。</p>
+    </details>
     <PageToast :toast="toast" />
   </section>
 </template>
@@ -154,4 +178,7 @@ onMounted(discover)
  font:inherit;font-size:16px;color:#263c31;background:#fff;border:1px solid #d9e4db;
  border-radius:10px;padding:10px
 }
+.push-troubleshoot{font-size:12px;color:#6c8173}
+.push-troubleshoot summary{cursor:pointer;color:#48785e}
+.push-troubleshoot p{margin:7px 0 0;line-height:1.6}
 </style>
