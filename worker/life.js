@@ -379,6 +379,8 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='routines'&&vals[4]&&vals[4]!==session.user_id)
+      return json({error:'assign_recurring_occurrence_instead'},400)
     if(table==='wishes'&&b.status==='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     const spec=catalog[table].columns
@@ -441,6 +443,9 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     }
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='routines'&&vals[4]&&vals[4]!==session.user_id&&
+      vals[4]!==current.assigned_to)
+      return json({error:'assign_recurring_occurrence_instead'},400)
     if(table==='wishes'&&b.status==='completed'&&current.status!=='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     // Updated-at CAS where supported, column snapshot CAS on original tables
