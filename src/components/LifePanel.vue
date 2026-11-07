@@ -912,12 +912,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           @click="showAnniversaryForm?closeAnniversaryForm():showAnniversaryForm=true">
           {{ showAnniversaryForm?'收起表单':'＋ 添加纪念日' }}
         </button>
-        <form v-if="showAnniversaryForm" id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
+        <EditBottomSheet v-if="showAnniversaryForm" title="添加纪念日" :close-disabled="busy" @close="closeAnniversaryForm">
+<form id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><DateField v-model="eventDate" required />
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
           <button :disabled="busy">添加纪念日</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="closeAnniversaryForm">取消</button>
         </form>
+</EditBottomSheet>
       </section>
     </template>
 
@@ -1037,7 +1039,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
-              <form v-if="pushTarget==='routine:'+r.id" class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
+              <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
                 <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
                   <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
                 </label>
@@ -1046,6 +1049,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
                 </div>
               </form>
+</EditBottomSheet>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -1103,7 +1107,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
                 :disabled="!!pushBusyId" @click="openTaskPush('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
-            <form v-if="pushTarget==='task:'+t.id" class="task-push-form" @submit.prevent="notifyHandler('task',t)">
+            <EditBottomSheet v-if="pushTarget==='task:'+t.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form" @submit.prevent="notifyHandler('task',t)">
               <label>给 {{ memberName(t.assigneeUserId) }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：下班顺路买一下，记得买原来的牌子"/>
               </label>
@@ -1112,6 +1117,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
               </div>
             </form>
+</EditBottomSheet>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <EditBottomSheet v-if="onceEditing?.id===t.id" title="编辑任务" :close-disabled="busy" @close="onceEditing=null">
@@ -1203,7 +1209,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 class="life-link" :disabled="busy" @click="expandedTaskMenu=null;startPlanMemory('wish',w)">记录心愿回忆</button>
               <small v-if="linkedGoal(w)">储值达标后可完成心愿</small>
             </div>
-            <form v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id"
+            <EditBottomSheet v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id" title="记录心愿回忆" :close-disabled="busy" @close="planMemoryDraft=null">
+<form
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
@@ -1219,6 +1226,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
+</EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
             <button v-if="isFocused(w)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
@@ -1345,7 +1353,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
                 type="button" :disabled="!!pushBusyId" @click="openTaskPush('shopping',s)">通知处理人</button>
             </div>
-            <form v-if="pushTarget==='shopping:'+s.id" class="task-push-form"
+            <EditBottomSheet v-if="pushTarget==='shopping:'+s.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form"
               @submit.prevent="notifyHandler('shopping',s)">
               <label>给 {{ memberName(s.assigned_to) }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2"
@@ -1356,6 +1365,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===s.id?'发送中…':'发送购物通知' }}</button>
               </div>
             </form>
+</EditBottomSheet>
             <ReminderItemEditor v-if="reminderTarget?.kind==='shopping'&&reminderTarget.id===s.id"
               kind="shopping" :item-id="s.id" @close="reminderTarget=null"/>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
@@ -1403,7 +1413,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 class="life-link" :disabled="busy"
                 @click="expandedTaskMenu=null;startPlanMemory('trip',t)">记录旅行回忆</button>
             </div>
-            <form v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id"
+            <EditBottomSheet v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id" title="记录旅行回忆" :close-disabled="busy" @close="planMemoryDraft=null">
+<form
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
@@ -1419,6 +1430,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
+</EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
             <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
