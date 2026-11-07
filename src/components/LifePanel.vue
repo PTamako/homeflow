@@ -15,6 +15,7 @@ import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
 import {uniquePlanRows} from '../plan-list-identity.mjs'
+import {parseRoutineAssignmentBonus} from '../routine-assignment-validation.mjs'
 import {sortPlanTasks} from '../plan-task-sort.mjs'
 import {activeSwipeId} from '../swipe-state'
 import PageToast from './PageToast.vue'
@@ -40,7 +41,7 @@ type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
 const routineAssignTarget=ref<{id:string;title:string;periodOn:string}|null>(null)
-const routineAssignMember=ref(''),routineAssignSecond=ref(''),routineAssignBonus=ref<string>(''),routineAssignBusy=ref(false),routineAssignError=ref('')
+const routineAssignMember=ref(''),routineAssignSecond=ref(''),routineAssignBonus=ref<string|number>(''),routineAssignBusy=ref(false),routineAssignError=ref('')
 function assignedMembers(a:Row|null|undefined,primary:string|null|undefined){
  const first=a?.assigneeUserId||primary||''
  const second=a?.secondAssigneeUserId||''
@@ -93,10 +94,13 @@ async function saveRoutineAssignment(){
  // Validate explicitly: iOS native required validation can silently block submit in a sheet.
  const other=!!((routineAssignMember.value&&routineAssignMember.value!==props.userId)||
    (routineAssignSecond.value&&routineAssignSecond.value!==props.userId))
- const bonus=other?Number(routineAssignBonus.value):0
- if(other&&(!routineAssignBonus.value.trim()||!Number.isSafeInteger(bonus)||bonus<1||bonus>10000)){
+ // Vue v-model on an input[type=number] produces a number at runtime.
+ // Calling .trim() on that number used to throw before the request began.
+ const parsedBonus=parseRoutineAssignmentBonus(routineAssignBonus.value,other)
+ if(!parsedBonus.valid){
   routineAssignError.value='指定其他家人时，请填写 1～10000 的额外奖励积分';return
  }
+ const bonus=parsedBonus.bonus
  if(routineAssignSecond.value&&routineAssignSecond.value===routineAssignMember.value){
   routineAssignError.value='两位处理人不能相同';return
  }
@@ -1238,7 +1242,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <p v-if="routineAssignError" role="alert" class="routine-assignment-error">{{ routineAssignError }}</p>
                   <div class="task-push-actions routine-assignment-actions">
                     <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
-                    <button type="submit" :disabled="routineAssignBusy">{{ routineAssignBusy?'保存中…':'保存指派' }}</button>
+                    <button type="button" :disabled="routineAssignBusy" :aria-busy="routineAssignBusy"
+                      @click.stop="saveRoutineAssignment">{{ routineAssignBusy?'保存中…':'保存指派' }}</button>
                   </div>
                 </form>
               </EditBottomSheet>
