@@ -159,7 +159,8 @@ async function sendTaskPush(env,session,body){
     if(typeof body.periodOn!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.periodOn))
       return json({error:'invalid_input'},400)
     item=await env.DB.prepare(`SELECT t.id,t.title,a.occurrence_on AS dueOn,
-       a.assignee_user_id AS recipientId FROM routine_occurrence_assignments a
+       a.assignee_user_id AS recipientId,
+       a.second_assignee_user_id AS secondRecipientId FROM routine_occurrence_assignments a
        JOIN routines t ON t.id=a.routine_id AND t.household_id=a.household_id
        JOIN household_members m ON m.user_id=a.assignee_user_id
          AND m.household_id=a.household_id
@@ -170,25 +171,34 @@ async function sendTaskPush(env,session,body){
          AND t.enabled=1 AND rm.completed_at IS NULL AND rm.skipped_at IS NULL LIMIT 1`)
        .bind(body.id,session.household_id,session.user_id,body.periodOn).first()
   }else{
-    const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId
+    const secondary=routine?'NULL':shopping?'NULL':'t.second_assignee_user_id'
+    const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId,
+      ${secondary} AS secondRecipientId
       FROM ${table} t JOIN household_members m ON m.user_id=${assignee} AND m.household_id=t.household_id
       WHERE t.id=?1 AND t.household_id=?2 AND ${creator}=?3
       AND t.visibility='household' AND t.deleted_at IS NULL AND ${status} LIMIT 1`
     item=await env.DB.prepare(sql).bind(body.id,session.household_id,session.user_id).first()
   }
   if(!item)return json({error:'task_not_shareable'},404)
-  if(item.recipientId===session.user_id)return json({error:'recipient_is_self'},409)
-  const notificationId=crypto.randomUUID()
-  const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+
-    (routine&&body.periodOn?'&taskPeriod='+encodeURIComponent(body.periodOn):'')+'&notificationId='+notificationId
+  const targets=[...new Set([item.recipientId,item.secondRecipientId])]
+    .filter(id=>id&&id!==session.user_id)
+  if(!targets.length)return json({error:'recipient_is_self'},409)
   const content=(item.dueOn?'截止 '+item.dueOn+' · ':'')+(note||'请查看并处理这项任务')
-  return deliverToHouseholdUser(env,session.household_id,item.recipientId,{
-    title:String(item.title).slice(0,80),body:content,url,tag:'homeflow-task-'+body.kind+'-'+item.id+'-'+notificationId,
-    priority:'important',recordInInbox:true
-  },'task-'+body.kind+'-'+item.id+':'+notificationId,Date.now(),{
-    id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
-    title:String(item.title),message:content
-  })
+  const deliveries=await Promise.all(targets.map(async recipientId=>{
+    const notificationId=crypto.randomUUID()
+    const url='/?taskType='+body.kind+'&taskId='+encodeURIComponent(item.id)+
+      (routine&&body.periodOn?'&taskPeriod='+encodeURIComponent(body.periodOn):'')+'&notificationId='+notificationId
+    const response=await deliverToHouseholdUser(env,session.household_id,recipientId,{
+      title:String(item.title).slice(0,80),body:content,url,
+      tag:'homeflow-task-'+body.kind+'-'+item.id+'-'+notificationId,
+      priority:'important',recordInInbox:true
+    },'task-'+body.kind+'-'+item.id+':'+notificationId,Date.now(),{
+      id:notificationId,senderId:session.user_id,kind:body.kind,sourceId:item.id,
+      title:String(item.title),message:content
+    })
+    return {recipientId,status:response.status}
+  }))
+  return json({ok:true,recipients:deliveries})
 }
 
 // Family messages and task notifications share the same verified recipient scope.
