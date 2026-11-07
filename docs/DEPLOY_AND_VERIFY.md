@@ -1,3 +1,5 @@
+> **PWA 版本更新机制（2026-11-07）**：GitHub 主分支每次发布时，`scripts/stamp-pwa.mjs` 使用本次提交 SHA 给 Service Worker 缓存名加唯一后缀；新的 Service Worker 激活后，已运行新版客户端会提示手动刷新，避免用户正在编辑时被强制刷新。新代码首次进入已长期打开的旧客户端时，可能需要先手动刷新一次；不需要退出账号或重新安装 PWA。此机制需要走 GitHub 发布流程；手动直接执行 Wrangler 时请自行确保缓存版本更新。
+
 > **2026-11-07 更新：当前发布基线**：Preview 与 Production 独立 D1 各已登记 **33/33** 条迁移，最后为 `0032_settlement_origin.sql`，外键异常 0。健康检查要同时验证这条迁移与 `goal_period_settlements.settlement_origin` 实际列，不得把 `0028` 作为完整上线门槛。无需重新执行历史迁移。Production 已有 2 条家庭成员关系、4 条 Push 订阅；Push 服务成功不代表手机真实收到或显示角标。iPhone/iPad 双账号同步、隐私、离线、ZIP 恢复及真实交易关联验收仍未签收；R2 未启用。下方旧快照数字仅作历史参考。
 
 > 2026-11-06：以下按日期记录的 20/23/24 迁移计数属于历史状态；当前只读核验为 Production/Preview 各 27 条。未进行任何重放迁移或生产写入。
