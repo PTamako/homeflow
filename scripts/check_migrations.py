@@ -47,7 +47,8 @@ MIGRATIONS=[
     "0040_monthly_achievement_credits.sql",
     "0041_household_lottery.sql",
     "0041_dual_assignees.sql",
-    "0042_shopping_dual_assignee.sql"
+    "0042_shopping_dual_assignee.sql",
+    "0043_trip_participant_rewards.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -62,6 +63,7 @@ views={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='view
 assert "monthly_achievement_credits" in views, "Monthly effective payout view missing"
 assert "dual_completion_splits" in views, "Dual assignee point sharing view missing"
 assert "shopping_joint_credits" in views, "Shopping joint credits view missing"
+assert "trip_completion_rewards" in views, "Travel completion rewards view missing"
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
           "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox","today_plan_actions","household_revisions","member_revisions","completion_points","reward_items","reward_redemptions",
@@ -115,6 +117,7 @@ added_columns={
   "shopping_items":{"ledger_entry_id","due_on","assigned_to","second_assignee_user_id"},
   "wishes":{"target_on","remind_enabled","remind_advance_days"},
   "goals":{"goal_mode","start_on"},
+  "trips":{"participant_user_ids","trip_rewarded_at"},
   "shopping_expense_links":{"purchase_quantity"},
   "reminder_preferences":{"quiet_start_hour","quiet_end_hour"},
   "notification_deliveries":{"attempts"},
