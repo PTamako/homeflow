@@ -311,7 +311,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </details>
      <EditBottomSheet v-if="formOpen" :title="editId?'编辑奖励':'新增奖励'" :close-disabled="busy" @close="resetForm">
      <form class="reward-form" @submit.prevent="saveReward">
-       <div class="form-heading"><b>{{ editId?'编辑奖励':'新增奖励' }}</b><button type="button" @click="resetForm">取消</button></div>
        <label>奖励名称<input v-model="formTitle" type="text" maxlength="60" placeholder="例如：周末奶茶任选" required/></label>
        <label>简介<input v-model="formDescription" type="text" maxlength="150" placeholder="兑换后怎么兑现"/></label>
        <div class="form-fields">
