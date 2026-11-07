@@ -23,7 +23,9 @@ export function householdWalletSql(h,u){
      AND a.assignee_user_id<>${u} AND r.visibility='household' AND r.deleted_at IS NULL
      AND ((m.completed_at IS NULL AND m.skipped_at IS NULL)
        OR (m.completed_at IS NOT NULL AND m.completed_by=a.assignee_user_id))`)
+ const lotteryWinnings=sum(`l.prize_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u}`)
+ const lotteryCosts=sum(`l.cost_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u}`)
  const direct=sum(`r.points_spent) FROM reward_redemptions r WHERE r.household_id=${h} AND r.redeemed_by=${u}`)
  const group=sum(`c.points) FROM reward_group_contributions c JOIN reward_group_orders g ON g.id=c.order_id WHERE c.household_id=${h} AND c.user_id=${u} AND g.status<>'cancelled'`)
- return `(${earned} + ${adjust} + ${shopping} + ${weekly} + ${savings} + ${achievements} + ${incoming} + ${routineIncoming} - ${outgoing} - ${routineOutgoing} - ${direct} - ${group})`
+ return `(${earned} + ${adjust} + ${shopping} + ${weekly} + ${savings} + ${achievements} + ${incoming} + ${routineIncoming} - ${outgoing} - ${routineOutgoing} - ${direct} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
 }
