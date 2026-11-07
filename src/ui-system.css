@@ -165,6 +165,36 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
  min-height:40px;padding:8px 12px;border-radius:9px;
  border:1px solid #d8e7dc;
 }
+
+/* Recurring task's four contextual actions fit on a single row even on iPhone SE.
+   Scope this to the recurring-task menu; other menus may have more actions. */
+.shell .routine-inline-actions.routine-period-actions{
+ display:grid;
+ grid-template-columns:repeat(4,minmax(0,1fr));
+ gap:5px;
+ padding:9px 8px;
+ align-items:stretch;
+}
+.shell .routine-inline-actions.routine-period-actions > button{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ min-width:0;
+ width:100%;
+ min-height:44px;
+ padding:7px 1px;
+ white-space:nowrap;
+ line-height:1.2;
+ font-size:clamp(10px,2.7vw,12px);
+ letter-spacing:-.15px;
+ text-align:center;
+}
+@media(max-width:359px){
+ .shell .routine-inline-actions.routine-period-actions{
+  gap:3px;
+  padding-inline:5px;
+ }
+}
 .shell .shopping-plan-entry .shopping-inline-actions{
  padding:10px;margin-bottom:10px;border:1px solid var(--ui-line);
 }
