@@ -245,7 +245,7 @@ test('point rules are hidden behind an accessible title help popover on mobile',
  assert.match(source,/:aria-expanded="ruleHelpOpen"/)
  assert.match(source,/@click="ruleHelpOpen=!ruleHelpOpen"/)
  assert.match(source,/v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip"/)
- assert.match(source,/普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。/)
+ assert.match(source,/购物计划完成 \+2；周期任务每期 \+5；一次性任务指定处理人 \+5、未指定 \+10；储值和心愿不计分。/)
  assert.doesNotMatch(source,/<p class="points-hint">普通待办和周期任务每期都计分/)
  assert.match(source,/document\.addEventListener\('pointerdown',dismissRulesOutside\)/)
  assert.match(source,/document\.removeEventListener\('pointerdown',dismissRulesOutside\)/)
