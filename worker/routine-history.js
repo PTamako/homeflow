@@ -32,7 +32,7 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
     ...routines.map(r=>nextRoutineDue(r,day))].filter(Boolean))]
   const assignments=assignmentDates.length
     ? await db.prepare(`SELECT routine_id,occurrence_on,assignee_user_id AS assigneeUserId,
-         bonus_points AS bonusPoints FROM routine_occurrence_assignments
+         second_assignee_user_id AS secondAssigneeUserId,bonus_points AS bonusPoints FROM routine_occurrence_assignments
        WHERE routine_id IN (${ids.map(()=>'?').join(',')})
          AND occurrence_on IN (${assignmentDates.map(()=>'?').join(',')}) LIMIT 750`)
       .bind(...ids,...assignmentDates).all()
