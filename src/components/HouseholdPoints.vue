@@ -279,7 +279,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
      <div class="monthly-achievement-heading">
        <b>{{ data.month.replace('-', ' 年 ') }} 月 · 月度成就</b>
-       <small>每月 1 日重置进度 · 奖励积分与 XP 保留</small>
+       <small>每月 1 日重置 · 六项全达成共 +100 分，积分与 XP 保留</small>
      </div>
      <div class="badges-grid">
        <div v-for="badge in data.badges" :key="badge.id" class="achievement" :class="{locked:!badge.unlocked}">

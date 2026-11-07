@@ -32,7 +32,7 @@ function insert(db,{who='alice',kind='task',id,day,visibility='household'}){
   .run(kind,id,who,visibility,jstDate(day))
 }
 function awards(db,who='alice'){
- return db.prepare('SELECT month_on,badge_id,points FROM monthly_achievement_awards WHERE user_id=? ORDER BY month_on,badge_id').all(who)
+ return db.prepare('SELECT month_on,badge_id,points FROM monthly_achievement_credits WHERE user_id=? ORDER BY month_on,badge_id').all(who)
 }
 async function score(store,who='alice'){
  const response=await pointsRoute(new Request('https://homeflow.invalid/api/points'),store,
@@ -50,7 +50,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
    const day=lastDate.slice(0,7)+'-'+String(1+Math.floor(i/4)*7).padStart(2,'0')
    insert(db,{id:'prior-'+i,day})
   }
-  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).reduce((sum,x)=>sum+x.points,0),40,
+  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).reduce((sum,x)=>sum+x.points,0),25,
     'prior-month first/master/challenge badges are independent of this month')
   const day=month+'-03'
   insert(db,{id:'current-0',day})
@@ -61,7 +61,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
     'previous month completions do not carry into a new month')
   assert.equal(current.badges.find(x=>x.id==='first').rewardPoints,5)
   assert.equal(current.members[0].monthPoints,15)
-  assert.equal(current.achievementBonusPoints,45)
+  assert.equal(current.achievementBonusPoints,30)
   insert(db,{id:'current-0',day})
   assert.equal(awards(db).filter(x=>x.month_on===month&&x.badge_id==='first').length,1,
     'a duplicate completion never grants a second badge')
@@ -69,7 +69,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
   current=await score(store)
   assert.equal(current.badges.find(x=>x.id==='first').unlocked,false,
     'undo re-locks only the active-month badge')
-  assert.equal(current.achievementBonusPoints,40,'only revoked month reward is deducted')
+  assert.equal(current.achievementBonusPoints,25,'only revoked month reward is deducted')
   assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).length,2)
  }finally{db.close()}
 })
@@ -83,8 +83,8 @@ test('private completions earn XP, not monthly household awards, and weekly chal
   for(let i=0;i<10;i++)insert(db,{id:'shared-'+i,day})
   let data=await score(store)
   assert.equal(data.weeklyBonusPoints,30)
-  assert.equal(data.achievementBonusPoints,25,'first 5 plus weekly-win 20')
-  assert.equal(data.availablePoints,155,'100 base +30 weekly +25 monthly')
+  assert.equal(data.achievementBonusPoints,20,'first 5 plus weekly-win 15')
+  assert.equal(data.availablePoints,150,'100 base +30 weekly +20 monthly')
   db.prepare("DELETE FROM completion_points WHERE source_id='shared-0'").run()
   data=await score(store)
   assert.equal(data.weeklyBonusPoints,0)
@@ -94,7 +94,7 @@ test('private completions earn XP, not monthly household awards, and weekly chal
  }finally{db.close()}
 })
 
-test('seven distinct JST days unlock 60 points, a removed day re-locks streak',async()=>{
+test('seven distinct JST days unlock 25 points, a removed day re-locks streak',async()=>{
  const {db,store}=fixture()
  try{
   const month=tokyoMonthWindow().month
@@ -104,7 +104,7 @@ test('seven distinct JST days unlock 60 points, a removed day re-locks streak',a
   let data=await score(store)
   assert.equal(data.badges.find(x=>x.id==='streak').unlocked,true)
   assert.equal(data.badges.find(x=>x.id==='streak').progress,7)
-  assert.equal(data.achievementBonusPoints,65,'first 5 plus seven-day streak 60')
+  assert.equal(data.achievementBonusPoints,30,'first 5 plus seven-day streak 25')
   db.prepare("DELETE FROM completion_points WHERE source_id='streak-4'").run()
   data=await score(store)
   assert.equal(data.badges.find(x=>x.id==='streak').unlocked,false)
@@ -112,7 +112,7 @@ test('seven distinct JST days unlock 60 points, a removed day re-locks streak',a
  }finally{db.close()}
 })
 
-test('pet guardian grants 45 points only for ten household pet-care completions',async()=>{
+test('pet guardian grants 25 points only for ten household pet-care completions',async()=>{
  const {db,store}=fixture()
  try{
   const month=tokyoMonthWindow().month
@@ -126,11 +126,35 @@ test('pet guardian grants 45 points only for ten household pet-care completions'
   }
   let data=await score(store)
   assert.equal(data.badges.find(x=>x.id==='pet').unlocked,true)
-  assert.equal(data.badges.find(x=>x.id==='pet').rewardPoints,45)
-  assert.equal(data.achievementBonusPoints,70,'first 5 + challenge 20 + pet 45')
+  assert.equal(data.badges.find(x=>x.id==='pet').rewardPoints,25)
+  assert.equal(data.achievementBonusPoints,45,'first 5 + challenge 15 + pet 25')
   db.prepare("DELETE FROM completion_points WHERE source_id='pet-task-9'").run()
   data=await score(store)
   assert.equal(data.badges.find(x=>x.id==='pet').unlocked,false)
   assert.equal(data.achievementBonusPoints,5,'undo revokes both pet and weekly challenge badges')
+ }finally{db.close()}
+})
+
+test('six earned legacy badges pay exactly 100 effective points, without rewriting history',async()=>{
+ const {db,store}=fixture()
+ try{
+  const stamp='2026-10-10T00:00:00.000Z'
+  const rows=[['first',5,5],['routines',15,10],['challenge',20,15],
+   ['master',35,20],['pet',45,25],['streak',60,25]]
+  const insert=db.prepare(`INSERT INTO monthly_achievement_awards
+   (household_id,user_id,month_on,badge_id,points,awarded_at)
+   VALUES('h','alice','2026-10',?1,?2,?3)`)
+  for(const [badge,oldAmount] of rows)insert.run(badge,oldAmount,stamp)
+  const raw=db.prepare(`SELECT SUM(points) AS total FROM monthly_achievement_awards`).get()
+  assert.equal(raw.total,180,'original immutable badge history is preserved')
+  const credits=db.prepare(`SELECT badge_id,points FROM monthly_achievement_credits ORDER BY badge_id`).all()
+  assert.equal(credits.reduce((sum,row)=>sum+row.points,0),100)
+  for(const [badge,,newAmount] of rows)
+    assert.equal(credits.find(row=>row.badge_id===badge).points,newAmount)
+  const scored=await score(store)
+  assert.equal(scored.achievementBonusPoints,100)
+  assert.equal(scored.availablePoints,100)
+  assert.equal(scored.experience,100)
+  assert.equal(credits.length,6,'no duplicated award rows after migration')
  }finally{db.close()}
 })

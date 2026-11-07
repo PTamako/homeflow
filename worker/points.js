@@ -52,12 +52,12 @@ export async function pointsRoute(request,db,session){
       COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
-      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0) AS sharedPoints,
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0) AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
-      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0) AS routinePoints
@@ -93,7 +93,7 @@ export async function pointsRoute(request,db,session){
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
-      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_awards WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
+      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
@@ -129,7 +129,7 @@ export async function pointsRoute(request,db,session){
       weekly_wins AS weeksWon FROM monthly_achievement_progress
       WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
       .bind(h,u,month).first(),
-    db.prepare(`SELECT badge_id AS badgeId,points FROM monthly_achievement_awards
+    db.prepare(`SELECT badge_id AS badgeId,points FROM monthly_achievement_credits
       WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
       .bind(h,u,month).all()
   ])
@@ -145,11 +145,11 @@ export async function pointsRoute(request,db,session){
   })
   const badges=[
     badge('first','初次出发','🌱',1,monthProgress?.taskDone,5),
-    badge('routines','周期达人','🔁',5,monthProgress?.routineDone,15),
-    badge('challenge','每周挑战王','🏆',1,monthProgress?.weeksWon,20),
-    badge('master','家务达人','🏅',20,monthProgress?.taskDone,35),
-    badge('pet','毛孩子守护者','🐱',10,monthProgress?.petCare,45),
-    badge('streak','连续七天','🔥',7,monthProgress?.longestStreak,60)
+    badge('routines','周期达人','🔁',5,monthProgress?.routineDone,10),
+    badge('challenge','每周挑战王','🏆',1,monthProgress?.weeksWon,15),
+    badge('master','家务达人','🏅',20,monthProgress?.taskDone,20),
+    badge('pet','毛孩子守护者','🐱',10,monthProgress?.petCare,25),
+    badge('streak','连续七天','🔥',7,monthProgress?.longestStreak,25)
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
