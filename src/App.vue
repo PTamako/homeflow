@@ -135,11 +135,17 @@ const focusPlanFromToday=ref(false)
 const focusPlanRequest=ref(0)
 const openPlanCreatorOnNavigate=ref(false)
 let savedTodayScrollY=0
+// Keep the previous page height while the plan rows load: without it iOS
+// clamps the retained Today scroll offset to zero during the tab swap.
+const planFocusHoldHeight=ref(0)
 let returningToToday=false
 function openPlans(kind:string,id='',periodKey='',done=false){
   openPlanCreatorOnNavigate.value=false
   focusPlanFromToday.value=tab.value==='today'&&!!id
-  if(focusPlanFromToday.value)savedTodayScrollY=window.scrollY
+  if(focusPlanFromToday.value){
+    savedTodayScrollY=window.scrollY
+    planFocusHoldHeight.value=Math.ceil(document.documentElement.scrollHeight)
+  }else planFocusHoldHeight.value=0
   focusPlanType.value=kind
   focusPlanId.value=id
   focusPlanPeriodKey.value=periodKey
@@ -148,7 +154,15 @@ function openPlans(kind:string,id='',periodKey='',done=false){
   focusPlanRequest.value++
   tab.value='plans'
 }
+function onPlanFocusSettled(requestId:number){
+  if(requestId!==focusPlanRequest.value||tab.value!=='plans')return
+  // Release the temporary height only after the target has been positioned.
+  window.requestAnimationFrame(()=>{
+    if(requestId===focusPlanRequest.value&&tab.value==='plans')planFocusHoldHeight.value=0
+  })
+}
 async function returnToToday(){
+  planFocusHoldHeight.value=0
   returningToToday=true
   tab.value='today'
   await nextTick()
@@ -228,6 +242,7 @@ function openSearchResult(result:{id:string;kind:string}){
  }
 }
 function navigateTab(value:typeof tab.value){
+  planFocusHoldHeight.value=0
   openPlanCreatorOnNavigate.value=false
   if(value==='plans'){
     focusPlanId.value=''
@@ -239,6 +254,7 @@ function navigateTab(value:typeof tab.value){
   tab.value=value
 }
 function clearPlanFocus(){
+  planFocusHoldHeight.value=0
   focusPlanId.value=''
   focusPlanPeriodKey.value=''
   focusPlanFromToday.value=false
@@ -788,7 +804,7 @@ onBeforeUnmount(()=>{
         </div>
       </form>
     </main>
-    <main v-else class="content">
+    <main v-else class="content" :style="planFocusHoldHeight?{minHeight:planFocusHoldHeight+'px'}:undefined">
       <div class="eyebrow">OUR LITTLE HOME</div>
       <h1>{{ {today:'我们家的今天',plans:'我的计划',memories:'我们的时光轴',family:'家庭档案',manage:'管理中心'}[tab] }} ♡</h1>
       <p class="lead">让爱与生活·自然流转</p>
@@ -994,7 +1010,8 @@ onBeforeUnmount(()=>{
          :focus-plan-from-today="focusPlanFromToday"
         :focus-plan-request="focusPlanRequest" :open-plan-creator="openPlanCreatorOnNavigate" :profile-revision="profileRevision"
         @edit-profile="openBirthdayProfileEditor" @tasks-changed="() => loadTodayPage(true)"
-        @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus" />
+        @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus"
+        @plan-focus-settled="onPlanFocusSettled" />
       <ManagePage :key="user.id+':'+manageRevisionCounter" v-show="tab==='manage'" :active="tab==='manage'"
         :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
