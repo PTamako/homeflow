@@ -64,6 +64,7 @@ test('every GitHub release changes service worker bytes without editing sw.js by
  const a=stampServiceWorker(original,'a'.repeat(40))
  const b=stampServiceWorker(original,'b'.repeat(40))
  assert.notEqual(a,b)
+ assert.equal(stampServiceWorker(a,'a'.repeat(40)),a,'stamping the same release is idempotent')
  assert.ok(a.includes("const CACHE='homeflow-shell-v6-aaaaaaaaaaaa'"))
  assert.ok(b.includes("const CACHE='homeflow-shell-v6-bbbbbbbbbbbb'"))
  assert.throws(()=>stampServiceWorker(original,'bad'))
