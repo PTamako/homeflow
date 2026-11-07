@@ -63,23 +63,21 @@ LEFT JOIN wins w ON w.household_id=s.household_id
  AND w.user_id=s.user_id AND w.month_on=s.month_on;
 
 CREATE VIEW monthly_achievement_eligible AS
-SELECT household_id,user_id,month_on,'first' AS badge_id,5 AS points
-FROM monthly_achievement_progress WHERE task_done>=1
-UNION ALL
-SELECT household_id,user_id,month_on,'routines',15
-FROM monthly_achievement_progress WHERE routine_done>=5
-UNION ALL
-SELECT household_id,user_id,month_on,'challenge',20
-FROM monthly_achievement_progress WHERE weekly_wins>=1
-UNION ALL
-SELECT household_id,user_id,month_on,'master',35
-FROM monthly_achievement_progress WHERE task_done>=20
-UNION ALL
-SELECT household_id,user_id,month_on,'pet',45
-FROM monthly_achievement_progress WHERE pet_care_done>=10
-UNION ALL
-SELECT household_id,user_id,month_on,'streak',60
-FROM monthly_achievement_progress WHERE longest_streak>=7;
+WITH badge_rules(badge_id,points,metric,target) AS (
+ VALUES ('first',5,'tasks',1),
+        ('routines',15,'routines',5),
+        ('challenge',20,'weekly',1),
+        ('master',35,'tasks',20),
+        ('pet',45,'pet',10),
+        ('streak',60,'streak',7)
+)
+SELECT p.household_id,p.user_id,p.month_on,b.badge_id,b.points
+FROM monthly_achievement_progress p CROSS JOIN badge_rules b
+WHERE (b.metric='tasks' AND p.task_done>=b.target)
+   OR (b.metric='routines' AND p.routine_done>=b.target)
+   OR (b.metric='weekly' AND p.weekly_wins>=b.target)
+   OR (b.metric='pet' AND p.pet_care_done>=b.target)
+   OR (b.metric='streak' AND p.longest_streak>=b.target);
 
 -- On source changes: grant once per month and immediately revoke only bonuses
 -- whose supporting records no longer qualify. Duplicate saves never pay twice.
