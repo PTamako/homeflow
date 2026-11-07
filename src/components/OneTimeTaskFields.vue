@@ -65,7 +65,7 @@ defineExpose({focusTitle})
    </select>
   </label>
   <label v-if="model.assigneeUserId&&model.assigneeUserId!==userId&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
-   <input v-model.number="model.bonusPoints" type="number" min="0" max="10000" step="1" placeholder="0" aria-label="一次性任务额外奖励积分"/>
+   <input v-model.number="model.bonusPoints" type="number" inputmode="numeric" min="1" max="10000" step="1" required placeholder="必须填写正整数" aria-label="一次性任务额外奖励积分"/>
    <small>完成后转给指定处理人；撤销完成退回预留状态，删除任务解除预留。基础完成奖励另有 5 分。</small>
   </label>
   <label>可见范围

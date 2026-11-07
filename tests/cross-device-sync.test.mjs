@@ -27,7 +27,7 @@ function dbFixture(){
  '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
  '0029_household_revisions.sql','0030_member_revisions.sql',
  '0031_completion_event_read_state.sql','0032_settlement_origin.sql',
- '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql']
+ '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql']
  for(const m of migrations)sqlite.exec(readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8'))
  const db={
   prepare(sql){const stmt=sqlite.prepare(sql);let args=[]
@@ -121,6 +121,7 @@ test('actual authenticated Worker writes by either family account advance the ot
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0035_household_rewards_only.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0036_plan_scoring.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0037_goal_rewards.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0038_routine_occurrence_assignments.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
   for(const name of ['alice','bob']){
    sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
@@ -177,6 +178,7 @@ test('successful 06:00 system notifications advance only affected household revi
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0035_household_rewards_only.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0036_plan_scoring.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0037_goal_rewards.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0038_routine_occurrence_assignments.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home'),('other','Unchanged')")
   sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('alice','alice','salt','verifier')")
   sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('shared','alice','owner')")

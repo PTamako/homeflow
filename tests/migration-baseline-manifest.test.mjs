@@ -8,7 +8,7 @@ test('canonical historical migrations match ALL tracked .sql file names exactly 
  const block=code.split('MIGRATIONS=[')[1]?.split(']')[0]||''
  const names=[...block.matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(x=>x[1])
  const actual=readdirSync(new URL('../migrations/',import.meta.url)).filter(x=>x.endsWith('.sql'))
- assert.equal(names.length,38)
+ assert.equal(names.length,39)
  assert.equal(new Set(names).size,names.length)
  assert.deepEqual([...names].sort(),[...actual].sort())
  assert.deepEqual(names.filter(x=>x.startsWith('0009_')),

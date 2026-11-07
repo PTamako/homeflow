@@ -21,7 +21,7 @@ const migrations=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_proj
  '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
  '0029_household_revisions.sql','0030_member_revisions.sql',
  '0031_completion_event_read_state.sql','0032_settlement_origin.sql',
- '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql']
+ '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql']
 const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')

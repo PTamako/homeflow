@@ -230,7 +230,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；心愿不计分。指定他人可由发布人预留额外奖励。跳过无分、撤销扣回，私人积分不可兑换家庭奖励。</p>
+           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回，私人积分不可兑换家庭奖励。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>

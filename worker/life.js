@@ -7,6 +7,7 @@ import {currentRoutinePeriod,nextEarlyPeriod,isCompletionInterval,jstDate,jstTod
 import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-history.js'
 import {isJapaneseWorkday} from './jp-holidays.js'
 import {readTodayRows} from './today-source-read.js'
+import {routineAssignmentRoute} from './routine-assignments.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -190,13 +191,14 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     }
     return json({date,items})
   }
+  if(id&&parts[3]==='assignment'&&table==='routines')
+    return routineAssignmentRoute(request,db,session,id,options)
   if(id&&parts[3]==='mark'&&table==='routines'&&request.method==='POST'){
     const body=await readBody(request)
     if(!ymd(body?.date)||!['completed','skipped','open'].includes(body?.status))return bad()
     const rule=await getObject(db,table,id,session)
     if(!rule)return json({error:'not_found'},404)
-    if((rule.visibility==='private'&&rule.created_by!==session.user_id)||
-      (rule.assigned_to&&rule.assigned_to!==session.user_id&&rule.created_by!==session.user_id))
+    if(rule.visibility==='private'&&rule.created_by!==session.user_id)
       return json({error:'forbidden'},403)
     const actual=body.date,scheduled=currentRoutinePeriod(rule,actual)
     const current=scheduled===actual?scheduled:null
@@ -209,6 +211,15 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       return bad()
     const early=body.early===true&&body.status==='completed'&&actual===jstToday()&&
       earlyOn===periodOn
+    const assignment=await db.prepare(`SELECT assignee_user_id,bonus_points
+      FROM routine_occurrence_assignments WHERE household_id=?1 AND routine_id=?2
+      AND occurrence_on=?3`).bind(session.household_id,id,periodOn).first()
+    const effectiveAssignee=assignment?.assignee_user_id||rule.assigned_to
+    if(effectiveAssignee&&effectiveAssignee!==session.user_id&&
+      rule.created_by!==session.user_id)return json({error:'forbidden'},403)
+    // The creator can skip an assigned occurrence but cannot claim the assignee's bounty.
+    if(body.status==='completed'&&assignment?.assignee_user_id&&
+      assignment.assignee_user_id!==session.user_id)return json({error:'assigned_to_other_member'},403)
     const existing=await db.prepare(`SELECT completed_at,skipped_at FROM routine_marks
       WHERE routine_id=?1 AND occurrence_on=?2`).bind(id,recordOn).first()
     if(recordOn!==periodOn){
@@ -251,6 +262,12 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       .bind(id,recordOn,body.status==='completed'?completedStamp:null,
         body.status==='completed'?session.user_id:null,
         body.status==='skipped'?stamp:null)]
+    if(body.status==='skipped'){
+      // Skip earns no base or extra points and releases reserved bonus.
+      statements.push(db.prepare(`DELETE FROM routine_occurrence_assignments
+        WHERE household_id=?1 AND routine_id=?2 AND occurrence_on=?3`)
+        .bind(session.household_id,id,periodOn))
+    }
     if(body.status==='completed'&&rule.subject_profile_id&&rule.health_record_type){
       statements.push(db.prepare(`INSERT INTO pet_health_records
         (id,household_id,profile_id,created_by,visibility,record_type,event_on,note,
@@ -289,7 +306,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     const results=await db.batch(statements)
     if(body.status==='completed'&&Number(results?.[0]?.meta?.changes||0)>0)
       onComplete?.({kind:'routine',id:rule.id,title:rule.title,
-        creatorId:rule.created_by,assigneeId:rule.assigned_to,
+        creatorId:rule.created_by,assigneeId:effectiveAssignee,
         visibility:rule.visibility,completedAt:stamp,periodOn})
     return json({ok:true,periodOn,completedOn:body.status==='completed'?actual:null})
   }
@@ -362,6 +379,8 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     const b=await readBody(request)
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='routines'&&vals[4]&&vals[4]!==session.user_id)
+      return json({error:'assign_recurring_occurrence_instead'},400)
     if(table==='wishes'&&b.status==='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     const spec=catalog[table].columns
@@ -424,6 +443,9 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     }
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='routines'&&vals[4]&&vals[4]!==session.user_id&&
+      vals[4]!==current.assigned_to)
+      return json({error:'assign_recurring_occurrence_instead'},400)
     if(table==='wishes'&&b.status==='completed'&&current.status!=='completed')
       return json({error:'complete_wish_via_verified_action'},409)
     // Updated-at CAS where supported, column snapshot CAS on original tables

@@ -3,12 +3,14 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {pointLevel,pointsRoute,tokyoMonthWindow,tokyoWeekWindow,longestStreak} from '../worker/points.js'
+import {routineAssignmentRoute} from '../worker/routine-assignments.js'
 
 const migration=readFileSync(new URL('../migrations/0033_completion_points.sql',import.meta.url),'utf8')
 const rewardsMigration=readFileSync(new URL('../migrations/0034_rewards_shop.sql',import.meta.url),'utf8')
 const householdRewardsMigration=readFileSync(new URL('../migrations/0035_household_rewards_only.sql',import.meta.url),'utf8')
 const scoringMigration=readFileSync(new URL('../migrations/0036_plan_scoring.sql',import.meta.url),'utf8')
 const goalRewardsMigration=readFileSync(new URL('../migrations/0037_goal_rewards.sql',import.meta.url),'utf8')
+const assignmentMigration=readFileSync(new URL('../migrations/0038_routine_occurrence_assignments.sql',import.meta.url),'utf8')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec(`
@@ -28,7 +30,11 @@ function fixture(){
     plan_id TEXT NOT NULL,period_key TEXT NOT NULL,completed_at TEXT NOT NULL,
     completed_by TEXT NOT NULL,PRIMARY KEY(household_id,plan_type,plan_id,period_key));
   CREATE TABLE routines (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,created_by TEXT,
-    visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
+    visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
+    anchor_date TEXT NOT NULL DEFAULT '2026-11-01',
+    repeat_type TEXT NOT NULL DEFAULT 'daily',
+    repeat_config TEXT NOT NULL DEFAULT '{}',next_due_on TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1);
   CREATE TABLE routine_marks (routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
     occurrence_on TEXT NOT NULL,completed_at TEXT,completed_by TEXT,skipped_at TEXT,
     PRIMARY KEY(routine_id,occurrence_on));
@@ -62,7 +68,7 @@ test('migration never awards points retroactively and has 10 immutable triggers'
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   assert.deepEqual(rows(sqlite),[])
   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,21)
  }finally{sqlite.close()}
@@ -74,7 +80,7 @@ test('who finishes gets all 10 points, and retry, reopen, skip and change of com
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('task-1','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='task-1'")
   assert.equal(rows(sqlite).length,1)
@@ -98,7 +104,7 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-07',NULL,NULL,'2026-11-07T01:00:00Z')")
   assert.deepEqual(rows(sqlite),[])
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-08','2026-11-08T03:00:00Z','bob',NULL)")
@@ -120,7 +126,7 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
 test('new plan scoring is 2/5/10, reserved bonus transfers only on actual completion',async()=>{
  const {sqlite,db}=fixture()
  try{
-  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   const task=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at,subject_profile_id) VALUES(?1,'family','alice',NULL,NULL,'household',NULL,NULL)")
   task.run('open')
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='open'")
@@ -153,7 +159,7 @@ test('new plan scoring is 2/5/10, reserved bonus transfers only on actual comple
 test('verified savings goal awards each household member 50 for every period without duplicate grants',async()=>{
  const {sqlite,db}=fixture()
  try{
-  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   sqlite.exec("INSERT INTO goals(id,household_id,visibility,created_by) VALUES('shared-goal','family','household','alice'),('private-goal','family','private','alice')")
   const mark=sqlite.prepare("INSERT OR IGNORE INTO plan_completion_marks(household_id,plan_type,plan_id,period_key,completed_at,completed_by) VALUES('family','goal',?1,?2,'2026-11-07T03:00:00Z','alice')")
   mark.run('shared-goal','2026-10')
@@ -179,13 +185,49 @@ test('verified savings goal awards each household member 50 for every period wit
  }finally{sqlite.close()}
 })
 
+test('one routine occurrence gets a creator-funded positive integer bonus, paid only once to assignee',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
+  sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='old'") // already completed by fixture; no additional points
+  sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,visibility,deleted_at) VALUES('credit','family','alice','household',NULL)")
+  sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id='credit'")
+  const post=async(person,bonus,assignee,period='2027-01-20')=>{
+    const req=new Request('https://homeflow.invalid/api/routines/routine-1/assignment',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({periodOn:period,assigneeUserId:assignee,bonusPoints:bonus})})
+    return routineAssignmentRoute(req,db,person,'routine-1')
+  }
+  assert.equal((await post(alice,0,'bob')).status,400,'assigned others require strictly positive integer bonus')
+  assert.equal((await post(alice,1.5,'bob')).status,400,'fractional reward rejected')
+  assert.equal((await post(alice,-1,'bob')).status,400,'negative reward rejected')
+  assert.equal((await post(bob,1,'alice')).status,403,'only creator can assign')
+  assert.equal((await post(alice,11,'bob')).status,409,'cannot promise more than wallet')
+  assert.equal((await post(alice,7,'bob')).status,200)
+  assert.equal((await get(db,alice)).availablePoints,3,'creator reserves seven of ten points')
+  assert.equal((await get(db,bob)).availablePoints,0)
+  const getAssignment=await routineAssignmentRoute(new Request('https://homeflow.invalid/api/routines/routine-1/assignment?on=2027-01-20'),db,bob,'routine-1')
+  assert.equal((await getAssignment.json()).assignment.bonusPoints,7)
+  sqlite.exec("INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at) VALUES('routine-1','2027-01-20','2027-01-20T03:00:00Z','bob',NULL)")
+  assert.equal((await get(db,bob)).availablePoints,12,'bob receives five base plus seven from creator')
+  assert.equal((await get(db,alice)).availablePoints,3,'creator is charged once, no new coins minted')
+  sqlite.exec("UPDATE routine_marks SET completed_at=NULL,completed_by=NULL WHERE occurrence_on='2027-01-20'")
+  assert.equal((await get(db,bob)).availablePoints,0,'undo revokes base five and transferred seven')
+  assert.equal((await get(db,alice)).availablePoints,3,'after undo the pledge is reserved again')
+  const cleared=await post(alice,0,null)
+  assert.equal(cleared.status,200)
+  assert.equal((await get(db,alice)).availablePoints,10,'unassign returns reserved points')
+ }finally{sqlite.close()}
+})
+
 test('pet guardian badge needs ten linked pet-care completions and relocks on undo',async()=>{
  const {sqlite,db}=fixture()
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   sqlite.exec("INSERT INTO family_profiles(id,household_id,type,display_name,created_at) VALUES('pet-1','family','pet','豆沙','2026-11-07')")
   const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at,subject_profile_id) VALUES(?1,'family','alice',NULL,NULL,'household',NULL,'pet-1')")
   const complete=sqlite.prepare("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id=?1")
@@ -209,7 +251,7 @@ test('leaderboard never reveals another member\'s private completions or another
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('shared','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='shared'")
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('private','family','bob',NULL,NULL,'private',NULL)")
@@ -239,7 +281,7 @@ test('level bands, monthly JST date boundaries and route allow read-only access'
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
   sqlite.exec(householdRewardsMigration)
-  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration)
+  sqlite.exec(scoringMigration);sqlite.exec(goalRewardsMigration);sqlite.exec(assignmentMigration)
   const response=await pointsRoute(new Request('https://homeflow.invalid/api/points',{method:'POST'}),db,alice)
   assert.equal(response.status,405)
  }finally{sqlite.close()}

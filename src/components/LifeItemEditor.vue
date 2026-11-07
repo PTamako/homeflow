@@ -185,9 +185,10 @@ async function save(){
    <label v-if="form.repeatType==='interval'">间隔天数<input v-model.number="form.repeatDays" type="number" min="1" max="3650"/></label>
    <label v-if="form.repeatType==='interval'">间隔起算<select v-model="form.repeatAnchor"><option value="fixed">原定日期</option><option value="completion">完成日期</option></select></label>
    <label>起始日期<DateField v-model="form.anchorDate" required /></label>
-   <label>处理人<select v-model="form.assignedTo" aria-label="修改定期任务处理人">
-    <option value="">未指派</option>
-    <option v-for="member in (members||[])" :key="member.id" :value="member.id" :disabled="form.visibility==='private'&&member.id!==userId">{{ member.loginName }}</option>
+   <small>定期任务的处理人可在每期「指派本期」中单独设置，不影响以后各期。</small>
+   <label v-if="form.assignedTo&&form.assignedTo!==userId">原有长期指派<select v-model="form.assignedTo" aria-label="原有长期处理人">
+     <option :value="form.assignedTo">{{ members?.find(m=>m.id===form.assignedTo)?.loginName||'原处理人' }}</option>
+     <option value="">取消长期指派</option>
    </select></label>
    <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启提醒</label>
    <label>关联对象（可选）

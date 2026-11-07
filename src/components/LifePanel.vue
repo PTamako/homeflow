@@ -35,6 +35,49 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
+const routineAssignTarget=ref<{id:string;title:string;periodOn:string}|null>(null)
+const routineAssignMember=ref(''),routineAssignBonus=ref<string>(''),routineAssignBusy=ref(false)
+function routineAssignmentPeriod(r:Row){
+ return String(r.currentPeriodOn||r.nextDueOn||r.earlyPeriodOn||'')
+}
+async function openRoutineAssignment(r:Row){
+ const periodOn=routineAssignmentPeriod(r)
+ if(!periodOn||r.visibility!=='household'||!canEdit(r))return
+ routineAssignTarget.value={id:r.id,title:r.title,periodOn}
+ routineAssignMember.value='';routineAssignBonus.value='';expandedTaskMenu.value=null
+ try{
+  const result=await api('/routines/'+r.id+'/assignment?on='+encodeURIComponent(periodOn))
+  if(routineAssignTarget.value?.id!==r.id)return
+  routineAssignMember.value=result.assignment?.assigneeUserId||''
+  routineAssignBonus.value=result.assignment?.bonusPoints?String(result.assignment.bonusPoints):''
+ }catch(e){error.value=(e as Error).message;routineAssignTarget.value=null}
+}
+function routineAssignMemberChanged(){
+ if(!routineAssignMember.value||routineAssignMember.value===props.userId)
+   routineAssignBonus.value=''
+}
+async function saveRoutineAssignment(){
+ const item=routineAssignTarget.value
+ if(!item||routineAssignBusy.value)return
+ const other=routineAssignMember.value&&routineAssignMember.value!==props.userId
+ const bonus=other?Number(routineAssignBonus.value):0
+ if(other&&(!routineAssignBonus.value.trim()||!Number.isSafeInteger(bonus)||bonus<1||bonus>10000)){
+  error.value='指定其他处理人时，额外奖励必须填写 1～10000 的正整数';return
+ }
+ routineAssignBusy.value=true;error.value=''
+ try{
+  await api('/routines/'+item.id+'/assignment','POST',{
+   periodOn:item.periodOn,assigneeUserId:routineAssignMember.value||null,bonusPoints:bonus
+  })
+  routineAssignTarget.value=null
+  await fetchMode()
+  notify(other?'本期已指派，已安排专属提醒':'本期处理人已更新')
+  emit('tasksChanged')
+ }catch(e){
+  const code=(e as Error).message
+  error.value=code==='insufficient_points_or_period_resolved'?'家庭可用积分不足，或本期已完成／跳过':code
+ }finally{routineAssignBusy.value=false}
+}
 function openTaskPush(kind:'task'|'routine'|'shopping',item:Row){
  const key=kind+':'+item.id
  if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
@@ -47,7 +90,9 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
  try{
   const response=await fetch('/api/push/send-task',{method:'POST',
     credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
-    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim()})})
+    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim(),
+      ...(kind==='routine'&&(item.currentAssignment?.assigneeUserId||item.nextAssignment?.assigneeUserId)?
+        {periodOn:routineAssignmentPeriod(item)}:{})})})
   const data=await response.json().catch(()=>({}))
   if(!response.ok){
    const hints:Record<string,string>={
@@ -1044,7 +1089,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       </button>
                     </div>
                   </div>
-                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to) }}<template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
@@ -1059,15 +1104,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
                 class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title"
                 @keydown.esc.stop="expandedTaskMenu=null">
+                <button v-if="canEdit(r)&&r.visibility==='household'&&routineAssignmentPeriod(r)>=today()"
+                  type="button" @click="openRoutineAssignment(r)">指派本期</button>
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
-                <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
+                <button v-if="canEdit(r)&&r.visibility==='household'&&
+                  (r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to)&&
+                  (r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to)!==props.userId" type="button"
                   :disabled="!!pushBusyId" @click="openTaskPush('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
               <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
 <form class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
-                <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
+                <label>给 {{ memberName(r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to) }} 留言（可选）
                   <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
                 </label>
                 <div class="task-push-actions">
@@ -1076,6 +1125,33 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </form>
 </EditBottomSheet>
+              <EditBottomSheet v-if="routineAssignTarget?.id===r.id" title="指派这一期"
+                :close-disabled="routineAssignBusy" @close="routineAssignTarget=null">
+                <form class="task-push-form" @submit.prevent="saveRoutineAssignment">
+                  <small>{{ routineAssignTarget?.periodOn||'' }} · {{ r.title }}（只影响这一期）</small>
+                  <label>处理人
+                    <select v-model="routineAssignMember" aria-label="本期指定处理人"
+                      @change="routineAssignMemberChanged">
+                      <option value="">未指派（全家均可完成）</option>
+                      <option v-for="member in (props.members||[])" :key="member.id" :value="member.id">
+                        {{ memberName(member.id) }}{{ member.id===props.userId?'（我）':'' }}
+                      </option>
+                    </select>
+                  </label>
+                  <label v-if="routineAssignMember&&routineAssignMember!==props.userId">
+                    额外奖励积分（由发布人支付）
+                    <input v-model.trim="routineAssignBonus" type="number" inputmode="numeric"
+                      min="1" max="10000" step="1" required aria-label="本期额外奖励正整数"
+                      placeholder="请输入大于 0 的整数"/>
+                  </label>
+                  <small v-if="routineAssignMember&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
+                  <p v-if="error" role="alert" class="edit-error">{{ error }}</p>
+                  <div class="task-push-actions">
+                    <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
+                    <button type="submit" :disabled="routineAssignBusy">{{ routineAssignBusy?'保存中…':'保存本期指派' }}</button>
+                  </div>
+                </form>
+              </EditBottomSheet>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -1174,7 +1250,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </label>
               <label v-if="onceAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
                 <span>额外奖励（由发布人积分预留）</span>
-                <input v-model.number="onceBonus" type="number" min="0" max="10000" step="1" aria-label="额外奖励积分"/>
+                <input v-model.number="onceBonus" type="number" inputmode="numeric" min="1" max="10000" step="1" required aria-label="额外奖励积分"/>
               </label>
               <label class="once-edit-field">
                 <span>可见范围</span>

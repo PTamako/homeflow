@@ -65,7 +65,7 @@ async function submit(){
            weekNumbers:[...form.monthWeekNumbers].sort((a,b)=>a-b)}:
           {mode:'day',days:[...form.monthDays].sort((a,b)=>a-b)}):
         form.repeatType==='interval'?{days:form.intervalDays,anchor:form.intervalAnchor,startOnAnchor:true}:{}
-      result=await send('/routines',{...details,repeatType:form.repeatType,
+      result=await send('/routines',{...details,assignedTo:null,repeatType:form.repeatType,
         repeatConfig:config,anchorDate:form.date})
     }
   }else if(kind.value==='shopping'){
@@ -122,10 +122,7 @@ async function submit(){
      <OneTimeTaskFields v-if="form.repeatType==='once'" v-model="onceDraft" :profiles="profiles" :members="members" :user-id="userId"/>
      <template v-else>
       <label>起始日期<DateField v-model="form.date" required /></label>
-      <label>处理人<select v-model="form.assignedTo" @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
-       <option value="">未指派</option>
-       <option v-for="member in (members||[])" :key="member.id" :value="member.id">{{ member.loginName }}{{ member.id===userId?'（我）':'' }}</option>
-      </select></label>
+      <small class="plan-field-hint">定期任务默认不指派。需要某一期交给家人时，在计划的「···」中选择「指派本期」，并设置正整数奖励。</small>
       <fieldset v-if="form.repeatType==='weekly'" class="day-select-group">
        <legend>每周执行日（可多选）</legend>
        <div class="day-select weekday-select">

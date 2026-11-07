@@ -4,13 +4,13 @@ import test from 'node:test'
 import worker from '../worker/index.js'
 import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
 const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
-function environment(name='preview',database='homeflow-preview',migration='0037_goal_rewards.sql'){
+function environment(name='preview',database='homeflow-preview',migration='0038_routine_occurrence_assignments.sql'){
   return {APP_ENV:name,DB:{
     prepare(sql){return {
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
-         required_migration_ready:migration==='0037_goal_rewards.sql'?1:0,
-         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4}:null,
+         required_migration_ready:migration==='0038_routine_occurrence_assignments.sql'?1:0,
+         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
@@ -32,8 +32,8 @@ test('health rejects old migration baselines even if they were accepted during r
 test('health rejects a missing physical Today index even with a current migration name',async()=>{
   const env=environment()
   env.DB.prepare=()=>({first:async()=>({
-   database_name:'homeflow-preview',latest_migration:'0037_goal_rewards.sql',
-   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4})})
+   database_name:'homeflow-preview',latest_migration:'0038_routine_occurrence_assignments.sql',
+   required_migration_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1})})
   assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
@@ -101,7 +101,7 @@ test('future migration must not break identity health if required schema remains
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
-  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4})})
+  required_migration_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
 })
 
@@ -110,13 +110,13 @@ test('health refuses a recorded 0032 migration whose provenance column is absent
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',required_migration_ready:1,
   action_index_ready:1,sync_table_ready:1,member_sync_ready:1,
-  completion_read_ready:1,settlement_origin_ready:0,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4})})
+  completion_read_ready:1,settlement_origin_ready:0,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 
 test('health requires latest settlement migration and column in one D1 read',()=>{
  const source=readFileSync(new URL('../worker/security.js',import.meta.url),'utf8')
- assert.ok(source.includes("name='0037_goal_rewards.sql'"))
+ assert.ok(source.includes("name='0038_routine_occurrence_assignments.sql'"))
  assert.ok(source.includes("pragma_table_info('goal_period_settlements')"))
  assert.ok(source.includes("Number(identity.settlement_origin_ready)===1"))
 })
@@ -126,7 +126,7 @@ test('health rejects a point table missing its secure completion triggers',async
  env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
   required_migration_ready:1,action_index_ready:1,sync_table_ready:1,
   member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
-  points_table_ready:1,points_triggers_ready:9,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4})})
+  points_table_ready:1,points_triggers_ready:9,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 
@@ -141,7 +141,7 @@ test('health requires reward tables and pooling triggers',async()=>{
  env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
   required_migration_ready:1,action_index_ready:1,sync_table_ready:1,
   member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
-  points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:4,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4})})
+  points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:4,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('reward routes cannot be accessed anonymously',async()=>{
