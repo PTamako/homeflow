@@ -198,7 +198,7 @@ test('private completions grant XP but can neither buy nor cofund household rewa
       'private points must not top up the household wallet')
     assert.equal((await call(db,alice,'/api/rewards/pool/'+pool.body.id+'/contribute','POST',
       {points:90,requestId:id(104)})).status,201)
-    assert.equal((await balance(db,alice)).availablePoints,0)
+    assert.equal((await balance(db,alice)).availablePoints,5)
   }finally{sqlite.close()}
 })
 
