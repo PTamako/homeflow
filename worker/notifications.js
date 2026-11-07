@@ -88,7 +88,8 @@ export async function notificationsRoute(request,db,path,session){
     const select=`SELECT n.id,n.kind,n.source_id AS sourceId,n.dedupe_key AS dedupeKey,n.title,n.message,
        n.delivery_status AS deliveryStatus,n.sent_devices AS sentDevices,
        n.failed_devices AS failedDevices,n.created_at AS createdAt,
-       n.read_at AS readAt,n.sender_user_id AS senderUserId,
+       n.read_at AS readAt,n.last_completion_key AS lastCompletionKey,
+       n.sender_user_id AS senderUserId,
        n.recipient_user_id AS recipientUserId,
        COALESCE(s.login_name,'系统') AS senderName,r.login_name AS recipientName
        FROM notification_inbox n
@@ -122,19 +123,37 @@ export async function notificationsRoute(request,db,path,session){
   if(match&&request.method==='POST'){
     if(!UUID.test(match[1]))return json({error:'invalid_input'},400)
     const markUnread=match[2].toLowerCase()==='unread'
+    // An in-app read belongs to the EXACT notification revision the recipient saw.
+    // Scheduled reminders can be replaced by a newly completed task in the same
+    // inbox row; a stale click must not silently read that new completion.
+    const guarded=(request.headers.get('content-type')||'').includes('application/json')
+    let expectedCompletionKey=null
+    if(guarded){
+      let payload
+      try{payload=await request.json()}catch{return json({error:'invalid_input'},400)}
+      if(!payload||!Object.hasOwn(payload,'expectedCompletionKey')||
+        !(payload.expectedCompletionKey===null||
+          (typeof payload.expectedCompletionKey==='string'&&payload.expectedCompletionKey.length<=160)))
+        return json({error:'invalid_input'},400)
+      expectedCompletionKey=payload.expectedCompletionKey
+    }
     // Both state transitions are limited to today's inbox row for the signed-in
     // recipient. The sender cannot change another household member's read status.
     const result=await db.prepare(`UPDATE notification_inbox
       SET read_at=${markUnread?'NULL':'COALESCE(read_at,CURRENT_TIMESTAMP)'}
       WHERE id=?1 AND household_id=?2 AND recipient_user_id=?3
-      AND local_day=?4`)
-      .bind(match[1],session.household_id,session.user_id,day).run()
-    if(!result.meta?.changes)return json({error:'not_found'},404)
+      AND local_day=?4
+      ${guarded?"AND COALESCE(last_completion_key,'')=?5":''}`)
+      .bind(match[1],session.household_id,session.user_id,day,
+        ...(guarded?[expectedCompletionKey||'']:[])).run()
+    // Do not acknowledge a stale click as success. The UI will refresh the
+    // current row and invite the user to review the new completion.
+    if(!result.meta?.changes)return json({error:guarded?'notification_changed':'not_found'},guarded?409:404)
     const count=await db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
         AND read_at IS NULL`)
       .bind(session.household_id,session.user_id,day).first()
-    return json({ok:true,read:!markUnread,unreadCount:Number(count?.count||0)})
+    return json({ok:true,notificationId:match[1],read:!markUnread,unreadCount:Number(count?.count||0)})
   }
   return json({error:'not_found'},404)
 }
