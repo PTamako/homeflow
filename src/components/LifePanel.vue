@@ -40,7 +40,7 @@ type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
 const routineAssignTarget=ref<{id:string;title:string;periodOn:string}|null>(null)
-const routineAssignMember=ref(''),routineAssignSecond=ref(''),routineAssignBonus=ref<string>(''),routineAssignBusy=ref(false)
+const routineAssignMember=ref(''),routineAssignSecond=ref(''),routineAssignBonus=ref<string>(''),routineAssignBusy=ref(false),routineAssignError=ref('')
 function assignedMembers(a:Row|null|undefined,primary:string|null|undefined){
  const first=a?.assigneeUserId||primary||''
  const second=a?.secondAssigneeUserId||''
@@ -71,16 +71,17 @@ async function openRoutineAssignment(r:Row){
  const periodOn=routineAssignmentPeriod(r)
  if(!periodOn||r.visibility!=='household'||!canEdit(r))return
  routineAssignTarget.value={id:r.id,title:r.title,periodOn}
- routineAssignMember.value='';routineAssignSecond.value='';routineAssignBonus.value='';expandedTaskMenu.value=null
+ routineAssignMember.value='';routineAssignSecond.value='';routineAssignBonus.value='';routineAssignError.value='';expandedTaskMenu.value=null
  try{
   const result=await api('/routines/'+r.id+'/assignment?on='+encodeURIComponent(periodOn))
   if(routineAssignTarget.value?.id!==r.id)return
   routineAssignMember.value=result.assignment?.assigneeUserId||''
   routineAssignSecond.value=result.assignment?.secondAssigneeUserId||''
   routineAssignBonus.value=result.assignment?.bonusPoints?String(result.assignment.bonusPoints):''
- }catch(e){error.value=(e as Error).message;routineAssignTarget.value=null}
+ }catch(e){routineAssignTarget.value=null;notify('读取本期指派失败：'+(e as Error).message)}
 }
 function routineAssignMemberChanged(){
+ routineAssignError.value=''
  if(!routineAssignMember.value||routineAssignSecond.value===routineAssignMember.value)routineAssignSecond.value=''
  if((!routineAssignMember.value||routineAssignMember.value===props.userId)&&
     (!routineAssignSecond.value||routineAssignSecond.value===props.userId))
@@ -89,25 +90,39 @@ function routineAssignMemberChanged(){
 async function saveRoutineAssignment(){
  const item=routineAssignTarget.value
  if(!item||routineAssignBusy.value)return
- const other=(routineAssignMember.value&&routineAssignMember.value!==props.userId)||
-    (routineAssignSecond.value&&routineAssignSecond.value!==props.userId)
+ // Validate explicitly: iOS native required validation can silently block submit in a sheet.
+ const other=!!((routineAssignMember.value&&routineAssignMember.value!==props.userId)||
+   (routineAssignSecond.value&&routineAssignSecond.value!==props.userId))
  const bonus=other?Number(routineAssignBonus.value):0
  if(other&&(!routineAssignBonus.value.trim()||!Number.isSafeInteger(bonus)||bonus<1||bonus>10000)){
-  error.value='指定其他处理人时，额外奖励必须填写 1～10000 的正整数';return
+  routineAssignError.value='指定其他家人时，请填写 1～10000 的额外奖励积分';return
  }
- routineAssignBusy.value=true;error.value=''
+ if(routineAssignSecond.value&&routineAssignSecond.value===routineAssignMember.value){
+  routineAssignError.value='两位处理人不能相同';return
+ }
+ routineAssignBusy.value=true;routineAssignError.value=''
  try{
-  await api('/routines/'+item.id+'/assignment','POST',{
+  const result=await api('/routines/'+item.id+'/assignment','POST',{
    periodOn:item.periodOn,assigneeUserId:routineAssignMember.value||null,
    secondAssigneeUserId:routineAssignSecond.value||null,bonusPoints:bonus
   })
   routineAssignTarget.value=null
-  await fetchMode()
-  notify(other?'本期已指派，已安排专属提醒':'本期处理人已更新')
+  notify(result?.unchanged?'这一期的指派没有变化':other?'本期指派已保存，已安排专属提醒':'本期处理人已更新')
   emit('tasksChanged')
+  void fetchMode()
  }catch(e){
   const code=(e as Error).message
-  error.value=code==='insufficient_points_or_period_resolved'?'家庭可用积分不足，或本期已完成／跳过':code
+  const hints:Record<string,string>={
+   insufficient_points_or_period_resolved:'家庭可用积分不足，或本期已完成／跳过',
+   positive_integer_bonus_required:'指定其他家人时，额外奖励积分必须大于 0',
+   period_expired:'本期已过期，无法再指派',
+   period_already_resolved:'本期已经完成或跳过，无法再指派',
+   invalid_period:'本期日期已变化，请重新打开指派',
+   forbidden:'只有发布人可以指派',
+   recipient_not_in_household:'所选处理人不在家庭中',
+   invalid_assignee:'处理人无效，请重新选择'
+  }
+  routineAssignError.value=hints[code]||'保存失败：'+code
  }finally{routineAssignBusy.value=false}
 }
 function openTaskPush(kind:'task'|'routine'|'shopping',item:Row){
@@ -1194,8 +1209,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </EditBottomSheet>
               <EditBottomSheet v-if="routineAssignTarget?.id===r.id" title="指派这一期"
                 :close-disabled="routineAssignBusy" @close="routineAssignTarget=null">
-                <form class="task-push-form" @submit.prevent="saveRoutineAssignment">
-                  <small>{{ routineAssignTarget?.periodOn||'' }} · {{ r.title }}（只影响这一期）</small>
+                <form class="task-push-form routine-assignment-form" novalidate @submit.prevent="saveRoutineAssignment">
+                  <div class="routine-assignment-summary"><span>{{ routineAssignTarget?.periodOn||'' }} · 仅影响本期</span><b>{{ r.title }}</b></div>
                   <label>处理人
                     <select v-model="routineAssignMember" aria-label="本期指定处理人"
                       @change="routineAssignMemberChanged">
@@ -1217,13 +1232,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     额外奖励积分（由发布人支付）
                     <input v-model.trim="routineAssignBonus" type="number" inputmode="numeric"
                       min="1" max="10000" step="1" required aria-label="本期额外奖励正整数"
-                      placeholder="请输入大于 0 的整数"/>
+                      placeholder="1～10000" :aria-invalid="!!routineAssignError" @input="routineAssignError=''"/>
                   </label>
                   <small v-if="routineAssignMember&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
-                  <p v-if="error" role="alert" class="edit-error">{{ error }}</p>
-                  <div class="task-push-actions">
+                  <p v-if="routineAssignError" role="alert" class="routine-assignment-error">{{ routineAssignError }}</p>
+                  <div class="task-push-actions routine-assignment-actions">
                     <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
-                    <button type="submit" :disabled="routineAssignBusy">{{ routineAssignBusy?'保存中…':'保存本期指派' }}</button>
+                    <button type="submit" :disabled="routineAssignBusy">{{ routineAssignBusy?'保存中…':'保存指派' }}</button>
                   </div>
                 </form>
               </EditBottomSheet>
@@ -2152,4 +2167,34 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   .once-task-editor{padding:12px;gap:11px}
   .once-task-editor .once-edit-actions{gap:8px}
 }
+
+/* Assignment form is teleported to body: .shell rules don't apply there. */
+.routine-assignment-form{
+ display:grid;gap:14px;margin:0;padding:0;border:0;border-radius:0;background:transparent;
+ min-width:0;max-width:100%;
+}
+.routine-assignment-summary{
+ display:grid;gap:3px;padding:10px 12px;background:#f5f8f5;border-radius:10px;
+ min-width:0;overflow-wrap:anywhere;
+}
+.routine-assignment-summary span{color:#718575;font-size:12px;line-height:1.4}
+.routine-assignment-summary b{color:#304b3a;font-size:14px;line-height:1.5}
+.routine-assignment-form label{display:grid;gap:7px;min-width:0;color:#536b5d;font-size:13px;font-weight:650}
+.routine-assignment-form select,.routine-assignment-form input[type=number]{
+ display:block;box-sizing:border-box;appearance:none;-webkit-appearance:none;
+ width:100%;max-width:100%;min-width:0;min-height:44px;height:44px;
+ padding:9px 12px;border:1px solid #d4e1d6;border-radius:10px;
+ background:#fff;color:#293e32;font-size:16px;line-height:1.4;box-shadow:none
+}
+.routine-assignment-form select{
+ padding-right:36px;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23698572' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+ background-repeat:no-repeat;background-size:16px 16px;background-position:right 12px center
+}
+.routine-assignment-form :is(select,input):focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.routine-assignment-form label small{font-size:12px;font-weight:400;color:#748778;line-height:1.45}
+.routine-assignment-error{margin:0;padding:10px 12px;background:#fff2ec;color:#a04437;border-radius:10px;font-size:13px;line-height:1.5}
+.routine-assignment-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.55fr);gap:10px;margin-top:2px}
+.routine-assignment-actions button{min-width:0;min-height:44px;border-radius:10px;font-size:14px;padding:9px 12px}
+.routine-assignment-actions button[type=submit]{background:#43866a;color:#fff;border-color:#43866a}
 </style>
