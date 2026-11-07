@@ -91,7 +91,8 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
   const response=await fetch('/api/push/send-task',{method:'POST',
     credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
     body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim(),
-      ...(kind==='routine'&&item.currentAssignment?.assigneeUserId?{periodOn:routineAssignmentPeriod(item)}:{})})})
+      ...(kind==='routine'&&(item.currentAssignment?.assigneeUserId||item.nextAssignment?.assigneeUserId)?
+        {periodOn:routineAssignmentPeriod(item)}:{})})})
   const data=await response.json().catch(()=>({}))
   if(!response.ok){
    const hints:Record<string,string>={
@@ -1088,7 +1089,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       </button>
                     </div>
                   </div>
-                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.assigned_to) }}</small>
+                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template> · 发起人：{{ memberName(r.created_by) }} · 处理人：{{ memberName(r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to) }}<template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
                   <div class="plan-task-footer">
                     <span class="plan-task-next">
                       {{ r.currentPeriodOn&&r.currentStatus==='pending'&&r.currentPeriodOn<today()?r.currentPeriodOn:'下次 '+(routineNextDue(r)||'待安排') }}
@@ -1103,15 +1104,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
                 class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title"
                 @keydown.esc.stop="expandedTaskMenu=null">
+                <button v-if="canEdit(r)&&r.visibility==='household'&&routineAssignmentPeriod(r)>=today()"
+                  type="button" @click="openRoutineAssignment(r)">指派本期</button>
                 <button type="button" @click="expandedTaskMenu=null;toggleReminderEditor('routine',r.id)">提醒设置</button>
-                <button v-if="canEdit(r)&&r.visibility==='household'&&r.assigned_to&&r.assigned_to!==props.userId" type="button"
+                <button v-if="canEdit(r)&&r.visibility==='household'&&
+                  (r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to)&&
+                  (r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to)!==props.userId" type="button"
                   :disabled="!!pushBusyId" @click="openTaskPush('routine',r)">{{ pushBusyId===r.id?'发送中…':'通知处理人' }}</button>
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
               <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
 <form class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
-                <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
+                <label>给 {{ memberName(r.currentAssignment?.assigneeUserId||r.nextAssignment?.assigneeUserId||r.assigned_to) }} 留言（可选）
                   <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
                 </label>
                 <div class="task-push-actions">
@@ -1120,6 +1125,33 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </form>
 </EditBottomSheet>
+              <EditBottomSheet v-if="routineAssignTarget?.id===r.id" title="指派这一期"
+                :close-disabled="routineAssignBusy" @close="routineAssignTarget=null">
+                <form class="task-push-form" @submit.prevent="saveRoutineAssignment">
+                  <small>{{ routineAssignTarget.periodOn }} · {{ r.title }}（只影响这一期）</small>
+                  <label>处理人
+                    <select v-model="routineAssignMember" aria-label="本期指定处理人"
+                      @change="routineAssignMemberChanged">
+                      <option value="">未指派（全家均可完成）</option>
+                      <option v-for="member in (props.members||[])" :key="member.id" :value="member.id">
+                        {{ memberName(member.id) }}{{ member.id===props.userId?'（我）':'' }}
+                      </option>
+                    </select>
+                  </label>
+                  <label v-if="routineAssignMember&&routineAssignMember!==props.userId">
+                    额外奖励积分（由发布人支付）
+                    <input v-model.trim="routineAssignBonus" type="number" inputmode="numeric"
+                      min="1" max="10000" step="1" required aria-label="本期额外奖励正整数"
+                      placeholder="请输入大于 0 的整数"/>
+                  </label>
+                  <small v-if="routineAssignMember&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
+                  <p v-if="error" role="alert" class="edit-error">{{ error }}</p>
+                  <div class="task-push-actions">
+                    <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
+                    <button type="submit" :disabled="routineAssignBusy">{{ routineAssignBusy?'保存中…':'保存本期指派' }}</button>
+                  </div>
+                </form>
+              </EditBottomSheet>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
