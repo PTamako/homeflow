@@ -23,7 +23,7 @@ const form=reactive({
  title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
  monthWeekday:2,monthWeekNumbers:[2,4] as number[],monthDays:[Number(today().slice(-2))] as number[],leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,
- subjectProfileId:'',assignedTo:props.userId||'',healthRecordType:'other',quantity:1,dueOn:'',
+ subjectProfileId:'',assignedTo:props.userId||'',shoppingSecond:'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',wishRemindEnabled:false,wishRemindAdvanceDays:0,createSavingsGoal:false,
  targetAmount:100000,reservedAmount:0,destination:'',
@@ -33,7 +33,7 @@ const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.shoppingSecond='';form.visibility='household';form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
@@ -69,7 +69,7 @@ async function submit(){
         repeatConfig:config,anchorDate:form.date})
     }
   }else if(kind.value==='shopping'){
-    result=await send('/shopping',{...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null})
+    result=await send('/shopping',{...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null,secondAssigneeUserId:form.shoppingSecond||null})
   }else if(kind.value==='wish'){
     if(form.createSavingsGoal&&form.estimatedAmount<=0)throw Error('添加关联储值计划时，请填写大于零的预估金额')
     result=await send('/wishes',{...common,wishType:form.wishType,
@@ -194,13 +194,23 @@ async function submit(){
      <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
      <label>计划购买日期（可选）<DateField v-model="form.dueOn" /></label>
      <label>处理人<select v-model="form.assignedTo" aria-label="选择购物处理人"
-       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
+       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null;form.shoppingSecond===form.assignedTo?form.shoppingSecond='':null">
        <option value="">未指派</option>
        <option v-for="member in (members||[])" :key="member.id" :value="member.id">
          {{ profiles.find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}{{ member.id===userId?'（我）':'' }}
        </option>
      </select></label>
-
+     <label v-if="form.assignedTo">共同处理人（可选）
+       <select v-model="form.shoppingSecond" aria-label="购物共同处理人"
+         @change="form.shoppingSecond&&form.shoppingSecond!==userId?form.visibility='household':null">
+         <option value="">仅一人</option>
+         <option v-for="member in (members||[])" :key="member.id"
+           :disabled="member.id===form.assignedTo" :value="member.id">
+           {{ profiles.find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}
+         </option>
+       </select>
+       <small v-if="form.shoppingSecond">关联实际消费后两位处理人各得 1 分</small>
+     </label>
     </template>
     <template v-else-if="kind==='wish'">
      <label>心愿类型<select v-model="form.wishType">
