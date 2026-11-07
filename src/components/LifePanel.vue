@@ -101,6 +101,7 @@ const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
+const showMemoryForm=ref(false)
 function closeAnniversaryForm(){
   showAnniversaryForm.value=false
   eventTitle.value='';eventDate.value='';eventRepeat.value='yearly'
@@ -792,6 +793,7 @@ async function addMemory(){
       }
     }
     memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
+    showMemoryForm.value=false
     await fetchMode()
     if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
@@ -910,7 +912,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" class="life-more" :aria-expanded="showAnniversaryForm"
           aria-controls="new-anniversary-form" :disabled="busy"
           @click="showAnniversaryForm?closeAnniversaryForm():showAnniversaryForm=true">
-          {{ showAnniversaryForm?'收起表单':'＋ 添加纪念日' }}
+          ＋ 添加纪念日
         </button>
         <EditBottomSheet v-if="showAnniversaryForm" title="添加纪念日" :close-disabled="busy" @close="closeAnniversaryForm">
 <form id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
@@ -1551,6 +1553,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     <template v-else-if="mode==='memories'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="book-heart" :size="21" /> 留下一段美好的回忆</h2>
+        <button type="button" class="life-more" :aria-expanded="showMemoryForm" @click="showMemoryForm=true">＋ 添加回忆</button>
+        <EditBottomSheet v-if="showMemoryForm" title="添加回忆" :close-disabled="busy" @close="showMemoryForm=false">
         <form class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<DateField v-model="memoryDate" required /></label>
@@ -1565,7 +1569,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <p class="life-caption">{{ cloudEnabled?'本机与云端保存':'照片仅存本机，请备份' }}</p>
           <button :disabled="busy">保存到时光轴</button>
+          <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
+        </EditBottomSheet>
       </section>
       <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
         <div class="archive-date-filters">
