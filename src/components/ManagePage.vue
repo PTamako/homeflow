@@ -5,6 +5,7 @@ import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
+import StatusBadge from './StatusBadge.vue'
 import ImportantReminders from './ImportantReminders.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import PageToast from './PageToast.vue'
@@ -14,11 +15,12 @@ const props=defineProps<{active:boolean;userId:string;loginName:string;members?:
 const emit=defineEmits<{logout:[]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminderRulesOpen=ref(false)
+const pushStatus=ref<'enabled'|'disabled'|'unavailable'|null>(null)
 const {toast,notify}=usePageToast()
 // An invitation is a bearer credential. Clear its visible value when leaving
 // Management; fetching or creating a new one always requires an explicit tap.
 watch(()=>props.active,active=>{
- if(!active){invitation.value='';inviteError.value=''}
+ if(!active){invitation.value='';inviteError.value='';pushStatus.value=null}
  if(!active)reminderRulesOpen.value=false
 })
 async function generateInvite(){
@@ -58,8 +60,8 @@ async function generateInvite(){
      </div>
    </section>
    <section class="panel">
-     <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2></div>
-     <PushPanel v-if="active" :user-id="userId" :members="members"/>
+     <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
+     <PushPanel v-if="active" :user-id="userId" :members="members" @status="pushStatus=$event"/>
 <button type="button" class="reminder-rules-trigger"
        :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
        <span>分类提醒规则</span>
