@@ -123,19 +123,33 @@ export async function pointsRoute(request,db,session){
     db.prepare(`SELECT DISTINCT date(earned_at,'+9 hours') AS day
       FROM completion_points WHERE household_id=?1 AND earner_user_id=?2
         AND date(earned_at,'+9 hours')>=date('now','+9 hours','-90 days')
-      ORDER BY day DESC LIMIT 92`).bind(h,u).all()
+      ORDER BY day DESC LIMIT 92`).bind(h,u).all(),
+    db.prepare(`SELECT task_done AS taskDone,routine_done AS routineDone,
+      pet_care_done AS petCare,longest_streak AS longestStreak,
+      weekly_wins AS weeksWon FROM monthly_achievement_progress
+      WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
+      .bind(h,u,month).first(),
+    db.prepare(`SELECT badge_id AS badgeId,points FROM monthly_achievement_awards
+      WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
+      .bind(h,u,month).all()
   ])
   const earned=Number(totals?.earned||0),bonus=Number(totals?.bonus||0)
   const savingsBonus=Number(totals?.savingsBonus||0)
-  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0),experience=earned+bonus+savingsBonus
+  const achievementBonus=Number(totals?.achievementBonus||0)
+  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0)
+  const experience=earned+bonus+savingsBonus+achievementBonus
+  const awarded=new Set((monthAwards.results||[]).map(row=>row.badgeId))
+  const badge=(id,label,icon,target,progress,rewardPoints)=>({
+    id,label,icon,target,progress:Math.max(0,Number(progress)||0),
+    rewardPoints,unlocked:awarded.has(id)
+  })
   const badges=[
-    {id:'first',label:'初次出发',icon:'🌱',unlocked:earned>=2},
-    {id:'routines',label:'周期达人',icon:'🔁',unlocked:Number(totals?.routineDone||0)>=5},
-    {id:'master',label:'家务达人',icon:'🏅',unlocked:earned>=300},
-    {id:'pet',label:'毛孩子守护者',icon:'🐱',unlocked:Number(totals?.petCare||0)>=10},
-    {id:'challenge',label:'每周挑战王',icon:'🏆',unlocked:Number(totals?.weeksWon||0)>=1},
-    {id:'streak',label:'连续七天',icon:'🔥',
-      unlocked:longestStreak((streakDays.results||[]).map(row=>row.day))>=7}
+    badge('first','初次出发','🌱',1,monthProgress?.taskDone,5),
+    badge('routines','周期达人','🔁',5,monthProgress?.routineDone,15),
+    badge('challenge','每周挑战王','🏆',1,monthProgress?.weeksWon,20),
+    badge('master','家务达人','🏅',20,monthProgress?.taskDone,35),
+    badge('pet','毛孩子守护者','🐱',10,monthProgress?.petCare,45),
+    badge('streak','连续七天','🔥',7,monthProgress?.longestStreak,60)
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
@@ -150,7 +164,7 @@ export async function pointsRoute(request,db,session){
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
     experience,earnedPoints:earned,weeklyBonusPoints:bonus,
-    savingsBonusPoints:savingsBonus,spentPoints:spent,
+    savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
     householdEarnedPoints:Number(totals?.householdEarned||0),
     ownLevel:pointLevel(experience),badges,
