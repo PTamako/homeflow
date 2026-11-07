@@ -2,6 +2,7 @@
 import {ref} from 'vue'
 import {loginPassword,registerPassword,validLocalPassword} from '../auth-crypto'
 import PageToast from './PageToast.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{loginName:string}>()
 const expanded=ref(false),currentPassword=ref(''),newPassword=ref(''),confirmed=ref('')
@@ -21,7 +22,10 @@ async function issueRecoveryCodes(){
   notify('请将恢复码保存在安全的地方，关闭后不再显示')
  }catch(e){error.value=(e as Error).message}finally{codeBusy.value=false}
 }
-function toggleSecurity(){expanded.value=!expanded.value;if(!expanded.value)backupCodes.value=[]}
+function toggleSecurity(){
+ expanded.value=!expanded.value
+ if(!expanded.value){backupCodes.value=[];currentPassword.value='';newPassword.value='';confirmed.value='';error.value=''}
+}
 async function changePassword(){
  error.value=''
  if(!validLocalPassword(newPassword.value)||newPassword.value!==confirmed.value){
@@ -52,7 +56,8 @@ async function changePassword(){
   <button type="button" class="security-toggle" :aria-expanded="expanded" @click="toggleSecurity">
     账号安全 · {{ expanded?'收起':'修改密码' }}
   </button>
-  <form v-if="expanded" class="security-form" @submit.prevent="changePassword">
+  <EditBottomSheet v-if="expanded" title="账号安全 · 修改密码" :close-disabled="busy||codeBusy" @close="toggleSecurity">
+  <form class="security-form" @submit.prevent="changePassword">
    <label>当前密码<input v-model="currentPassword" type="password" autocomplete="current-password" required minlength="12"/></label>
    <label>新密码<input v-model="newPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="128"/></label>
    <label>确认新密码<input v-model="confirmed" type="password" autocomplete="new-password" required minlength="12" maxlength="128"/></label>
@@ -69,6 +74,7 @@ async function changePassword(){
      <code v-for="code in backupCodes" :key="code">{{ code }}</code>
    </div>
   </div>
+  </EditBottomSheet>
   <PageToast :toast="toast"/>
  </section>
 </template>
