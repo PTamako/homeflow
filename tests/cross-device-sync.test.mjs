@@ -118,6 +118,8 @@ test('actual authenticated Worker writes by either family account advance the ot
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0032_settlement_origin.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0033_completion_points.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0034_rewards_shop.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0035_household_rewards_only.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0036_plan_scoring.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
   for(const name of ['alice','bob']){
    sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
@@ -171,6 +173,8 @@ test('successful 06:00 system notifications advance only affected household revi
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0032_settlement_origin.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0033_completion_points.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0034_rewards_shop.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0035_household_rewards_only.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0036_plan_scoring.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home'),('other','Unchanged')")
   sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('alice','alice','salt','verifier')")
   sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('shared','alice','owner')")
