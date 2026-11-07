@@ -12,6 +12,7 @@ const items=ref<Health[]>([]),kind=ref('deworm'),eventDate=ref(new Date(Date.now
 const nextDate=ref(''),weight=ref<number|null>(null),note=ref(''),busy=ref(false),error=ref('')
 const editingId=ref<string|null>(null)
 const showHealthForm=ref(false)
+const historyFilterOpen=ref(false)
 const {toast,notify}=usePageToast()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
@@ -143,6 +144,8 @@ watch(year,value=>{if(!value)month.value=''})
     </EditBottomSheet>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <PageToast :toast="toast" />
+    <button type="button" class="pet-more" @click="historyFilterOpen=true">筛选护理记录 · {{ year||'全部' }}</button>
+    <EditBottomSheet v-if="historyFilterOpen" title="筛选护理记录" @close="historyFilterOpen=false">
     <div class="pet-history-filter">
       <label>年份<select v-model="year" aria-label="宠物护理记录年份">
         <option value="">全部年份</option><option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
@@ -151,6 +154,8 @@ watch(year,value=>{if(!value)month.value=''})
         <option value="">全年</option><option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
       </select></label>
     </div>
+    <button type="button" class="pet-more" @click="historyFilterOpen=false">完成</button>
+    </EditBottomSheet>
 
     <div v-if="!items.length" class="empty">暂无护理记录</div>
     <div v-for="r in items" :key="r.id" class="record">

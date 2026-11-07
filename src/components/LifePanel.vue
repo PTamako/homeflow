@@ -101,6 +101,9 @@ const onceEditing=ref<Row|null>(null)
 const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
+const showMemoryForm=ref(false)
+const anniversaryFilterOpen=ref(false),planFilterOpen=ref(false),memoryFilterOpen=ref(false)
+const recapFormOpen=ref(false),tripImportOpen=ref(false)
 function closeAnniversaryForm(){
   showAnniversaryForm.value=false
   eventTitle.value='';eventDate.value='';eventRepeat.value='yearly'
@@ -270,6 +273,7 @@ async function loadRecap(){
  try{
   const data=await api('/plans/summary?month='+encodeURIComponent(recapYear.value+'-'+recapMonth.value))
   recap.value=data
+  recapFormOpen.value=false
  }catch(e){recapError.value=(e as Error).message}
  finally{recapBusy.value=false}
 }
@@ -486,6 +490,8 @@ async function savePlanMemory(){
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
+const convertWishEdit=ref<{id:string;title:string;destination:string}|null>(null)
+const tripItemEdit=ref<{id:string;title:string;quantity:number|null}|null>(null)
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
@@ -701,22 +707,19 @@ async function addGoal(){
     reservedAmount:0,currency:'JPY',targetOn:goalTarget.value||null,visibility:'household'}))
   if(!error.value)goalTitle.value=''
 }
-async function reserve(g:Row){
-  const value=prompt('为这个累计目标设置多少期初储值额？（不会产生家計簿交易）',String(g.reserved_amount||0))
-  if(value===null)return
-  const amount=Number(value)
-  if(!Number.isSafeInteger(amount)||amount<0){error.value='请输入有效金额';return}
-  await update(()=>api('/goals/'+g.id,'PATCH',{title:g.title,targetAmount:g.target_amount,
-    reservedAmount:amount,currency:g.currency,targetOn:g.target_on,visibility:g.visibility,wishId:g.wish_id}))
-}
 async function addShopping(){
   await update(()=>api('/shopping','POST',{title:shoppingTitle.value,quantity:1,visibility:'household'}))
   if(!error.value)shoppingTitle.value=''
 }
-async function convertWish(w:Row){
-  const destination=prompt('目的地（例如北海道）',w.title)
-  if(!destination)return
-  await update(()=>api('/wishes/'+w.id+'/start-trip','POST',{title:w.title,destination}))
+function convertWish(w:Row){
+ convertWishEdit.value={id:w.id,title:w.title,destination:w.title};error.value=''
+}
+async function submitConvertWish(){
+ const draft=convertWishEdit.value
+ if(!draft||busy.value||!draft.destination.trim())return
+ await update(()=>api('/wishes/'+draft.id+'/start-trip','POST',
+  {title:draft.title,destination:draft.destination.trim()}))
+ if(!error.value)convertWishEdit.value=null
 }
 async function selectTrip(id:string){
   try{const data=await api('/trips/'+id);tripDetail.value=data.trip;tripProgress.value=data.progress||[]}
@@ -731,17 +734,24 @@ async function toggleTrip(id:string){
     notify('旅行事项已更新')
   }catch(e){error.value=(e as Error).message}
 }
-async function editTripItem(item:Row){
-  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
-  const title=prompt('修改明细名称',item.label||item.title)
-  if(title===null)return
-  if(!title.trim()||title.length>150){error.value='名称须为 1～150 个字符';return}
-  try{
-    const payload={title:title.trim(),...(item.quantity?{quantity:item.quantity}:{})}
-    await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'PATCH',payload)
-    await selectTrip(tripDetail.value.id)
-    notify('修改已保存')
-  }catch(e){error.value=(e as Error).message}
+function editTripItem(item:Row){
+ if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
+ tripItemEdit.value={id:String(item.externalId),title:String(item.label||item.title),quantity:Number(item.quantity)||null}
+ error.value=''
+}
+async function saveTripItem(){
+ const draft=tripItemEdit.value,trip=tripDetail.value
+ if(!draft||!trip||busy.value||!draft.title.trim())return
+ busy.value=true;error.value=''
+ try{
+  if(draft.title.trim().length>150)throw Error('名称须为 1～150 个字符')
+  const payload={title:draft.title.trim(),...(draft.quantity?{quantity:draft.quantity}:{})}
+  await api('/trips/'+trip.id+'/items/'+encodeURIComponent(draft.id),'PATCH',payload)
+  await selectTrip(trip.id)
+  tripItemEdit.value=null
+  notify('修改已保存')
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
 }
 async function removeTripItem(item:Row){
   if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||
@@ -763,7 +773,7 @@ async function importTrip(){
   if(change==='update'&&!confirm('会更新原旅行内容，但不会删除已完成事项。确定更新吗？'))return
   await update(()=>api('/trips/import','POST',{payload:preview.value?.payload,
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
-  if(!error.value){paste.value='';preview.value=null}
+  if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
 }
 async function removeCloudPhoto(id:string){
   if(!confirm('删除这张云端照片吗？本机原图不会删除。'))return
@@ -792,6 +802,7 @@ async function addMemory(){
       }
     }
     memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
+    showMemoryForm.value=false
     await fetchMode()
     if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
@@ -880,7 +891,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:anniversaryView==='past'}"
             :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
         </div>
-        <div v-if="anniversaryView==='past'" class="archive-date-filters">
+        <button v-if="anniversaryView==='past'" type="button" class="life-filter-trigger" @click="anniversaryFilterOpen=true">筛选日期 · {{ anniversaryYear||'全部' }}</button>
+        <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="anniversaryFilterOpen=false">
+        <div class="archive-date-filters">
           <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
             <option value="">全部年份</option>
             <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
@@ -890,6 +903,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
           </select></label>
         </div>
+        <button class="life-more" type="button" @click="anniversaryFilterOpen=false">完成</button>
+        </EditBottomSheet>
         <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
           <div :id="'plan-item-'+e.id" :class="{'focused-plan-entry':isFocused(e)}">
@@ -910,14 +925,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button type="button" class="life-more" :aria-expanded="showAnniversaryForm"
           aria-controls="new-anniversary-form" :disabled="busy"
           @click="showAnniversaryForm?closeAnniversaryForm():showAnniversaryForm=true">
-          {{ showAnniversaryForm?'收起表单':'＋ 添加纪念日' }}
+          ＋ 添加纪念日
         </button>
-        <form v-if="showAnniversaryForm" id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
+        <EditBottomSheet v-if="showAnniversaryForm" title="添加纪念日" :close-disabled="busy" @close="closeAnniversaryForm">
+<form id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
           <input v-model.trim="eventTitle" required placeholder="纪念日名称"/><DateField v-model="eventDate" required />
           <select v-model="eventRepeat"><option value="yearly">每年</option><option value="once">一次性</option><option value="monthly">每月</option></select>
           <button :disabled="busy">添加纪念日</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="closeAnniversaryForm">取消</button>
         </form>
+</EditBottomSheet>
       </section>
     </template>
 
@@ -945,7 +962,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
             @click="changePlanScope('history')">已完成／历史</button>
         </div>
-        <div v-if="planScope==='history'" class="archive-date-filters">
+        <button v-if="planScope==='history'" type="button" class="life-filter-trigger" @click="planFilterOpen=true">筛选日期 · {{ planYear||'全部' }}</button>
+        <EditBottomSheet v-if="planScope==='history'&&planFilterOpen" title="筛选历史计划" @close="planFilterOpen=false">
+        <div class="archive-date-filters">
           <label>年份
             <select v-model="planYear" aria-label="历史记录年份"><option value="">全部年份</option>
               <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
@@ -957,6 +976,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
+        <button class="life-more" type="button" @click="planFilterOpen=false">完成</button>
+        </EditBottomSheet>
       </div>
       </div>
       <p v-if="listLoading" class="life-caption" role="status">正在读取计划…</p>
@@ -1037,7 +1058,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
-              <form v-if="pushTarget==='routine:'+r.id" class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
+              <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
                 <label>给 {{ memberName(r.assigned_to) }} 留言（可选）
                   <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
                 </label>
@@ -1046,6 +1068,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
                 </div>
               </form>
+</EditBottomSheet>
               <ReminderItemEditor v-if="reminderTarget?.kind==='routine'&&reminderTarget.id===r.id"
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
@@ -1103,7 +1126,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
                 :disabled="!!pushBusyId" @click="openTaskPush('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
-            <form v-if="pushTarget==='task:'+t.id" class="task-push-form" @submit.prevent="notifyHandler('task',t)">
+            <EditBottomSheet v-if="pushTarget==='task:'+t.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form" @submit.prevent="notifyHandler('task',t)">
               <label>给 {{ memberName(t.assigneeUserId) }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：下班顺路买一下，记得买原来的牌子"/>
               </label>
@@ -1112,6 +1136,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
               </div>
             </form>
+</EditBottomSheet>
             <ReminderItemEditor v-if="reminderTarget?.kind==='task'&&reminderTarget.id===t.id"
               kind="task" :item-id="t.id" @close="reminderTarget=null"/>
             <EditBottomSheet v-if="onceEditing?.id===t.id" title="编辑任务" :close-disabled="busy" @close="onceEditing=null">
@@ -1203,7 +1228,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 class="life-link" :disabled="busy" @click="expandedTaskMenu=null;startPlanMemory('wish',w)">记录心愿回忆</button>
               <small v-if="linkedGoal(w)">储值达标后可完成心愿</small>
             </div>
-            <form v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id"
+            <EditBottomSheet v-if="planMemoryDraft?.kind==='wish'&&planMemoryDraft.id===w.id" title="记录心愿回忆" :close-disabled="busy" @close="planMemoryDraft=null">
+<form
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
@@ -1219,6 +1245,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
+</EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='wishes'&&editing.item.id===w.id"
               kind="wishes" :item="w" @saved="changed" @cancel="editing=null"/>
             <button v-if="isFocused(w)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
@@ -1254,13 +1281,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     '收起本期':'查看本期' }}
                 </button>
               </div>
-              <FinancePanel v-if="historicalGoalDetail?.goal.id===period.goalId&&
-                historicalGoalDetail?.periodKey===period.periodKey"
+              <EditBottomSheet v-if="historicalGoalDetail?.goal.id===period.goalId&&historicalGoalDetail?.periodKey===period.periodKey" title="储值计划 · 本期结算详情" @close="historicalGoalDetail=null">
+<FinancePanel
                 :key="'historical-goal-'+period.goalId+'-'+period.periodKey"
                 :trips="trips" :goals="[historicalGoalDetail.goal]" :owner="isOwner" :can-adjust="canEdit(historicalGoalDetail.goal)"
                 embedded-kind="goal" :embedded-id="period.goalId"
                 :initial-period-key="period.periodKey" :fixed-period-key="period.periodKey"
                 @completed="goalFinished"/>
+</EditBottomSheet>
             </div>
             <button v-if="historicalGoalCursor" type="button" class="life-more"
               :disabled="historicalGoalBusy" @click="loadMoreGoalPeriods">加载更多</button>
@@ -1295,12 +1323,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </SwipeActions>
             <LifeItemEditor v-if="editing?.kind==='goals'&&editing.item.id===g.id"
               kind="goals" :item="g" @saved="changed" @cancel="editing=null"/>
-            <FinancePanel v-if="financeDetail?.kind==='goal'&&financeDetail.id===g.id"
+            <EditBottomSheet v-if="financeDetail?.kind==='goal'&&financeDetail.id===g.id" title="储值计划 · 账目与调整额" @close="financeDetail=null">
+<FinancePanel
               :key="'goal-finance-'+g.id" :trips="trips" :goals="goals" :owner="isOwner" :can-adjust="canEdit(g)"
               embedded-kind="goal" :embedded-id="g.id"
               :initial-period-key="isFocused(g)?props.focusPlanPeriodKey||'':''"
               :initial-completed-periods="isFocused(g)?goalCompletionMarks:[]"
               @completed="goalFinished"/>
+</EditBottomSheet>
             <button v-if="isFocused(g)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
@@ -1345,7 +1375,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
                 type="button" :disabled="!!pushBusyId" @click="openTaskPush('shopping',s)">通知处理人</button>
             </div>
-            <form v-if="pushTarget==='shopping:'+s.id" class="task-push-form"
+            <EditBottomSheet v-if="pushTarget==='shopping:'+s.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+<form class="task-push-form"
               @submit.prevent="notifyHandler('shopping',s)">
               <label>给 {{ memberName(s.assigned_to) }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2"
@@ -1356,6 +1387,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===s.id?'发送中…':'发送购物通知' }}</button>
               </div>
             </form>
+</EditBottomSheet>
             <ReminderItemEditor v-if="reminderTarget?.kind==='shopping'&&reminderTarget.id===s.id"
               kind="shopping" :item-id="s.id" @close="reminderTarget=null"/>
             <LifeItemEditor v-if="editing?.kind==='shopping'&&editing.item.id===s.id"
@@ -1403,7 +1435,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 class="life-link" :disabled="busy"
                 @click="expandedTaskMenu=null;startPlanMemory('trip',t)">记录旅行回忆</button>
             </div>
-            <form v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id"
+            <EditBottomSheet v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id" title="记录旅行回忆" :close-disabled="busy" @close="planMemoryDraft=null">
+<form
               class="life-form plan-memory-form" @submit.prevent="savePlanMemory">
               <input v-model.trim="planMemoryDraft.title" maxlength="150" required placeholder="回忆标题"/>
               <DateField v-model="planMemoryDraft.happenedOn" required/>
@@ -1419,11 +1452,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button :disabled="busy||!planMemoryDraft.title.trim()">保存回忆</button>
               </div>
             </form>
+</EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" @saved="changed" @cancel="editing=null"/>
-            <FinancePanel v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id"
+            <EditBottomSheet v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id" title="旅行 · 费用与调整额" @close="financeDetail=null">
+<FinancePanel
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="trip" :embedded-id="t.id"/>
+</EditBottomSheet>
             <button v-if="isFocused(t)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
@@ -1494,7 +1530,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </template>
             <p v-else class="life-caption">暂无行程</p>
           </div>
-          <details class="trip-import"><summary>导入行程</summary>
+          <button type="button" class="life-filter-trigger" @click="tripImportOpen=true">导入行程</button>
+           <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
+           <div class="trip-import">
             <label>导入到哪个旅行项目？
               <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
             </label>
@@ -1505,13 +1543,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <p>{{ preview.summary.days }} 天 / {{ preview.summary.itineraryItems }} 项行程 / {{ preview.summary.tasks }} 项准备任务</p>
               <button :disabled="busy" @click="importTrip">确认导入</button>
             </div>
-          </details>
+          <p v-if="error" class="life-error" role="alert">{{ error }}</p></div>
+           </EditBottomSheet>
         </section>
       </div>
-      <details class="life-card plan-recap">
-        <summary><AppIcon name="clipboard-check" :size="18" /> 月度回顾</summary>
-
-        <div class="plan-recap-controls">
+      <section class="life-card plan-recap">
+       <div class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 月度回顾
+         <button type="button" class="life-filter-trigger" @click="recapFormOpen=true">选择月份</button>
+       </div>
+       <EditBottomSheet v-if="recapFormOpen" title="生成月度回顾" :close-disabled="recapBusy" @close="recapFormOpen=false">
+         <div class="plan-recap-controls">
           <label>年份<select v-model="recapYear" aria-label="回顾年份">
             <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
           </select></label>
@@ -1520,6 +1561,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </select></label>
           <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
         </div>
+         <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
+       </EditBottomSheet>
+       
         <p v-if="recapError" role="alert" class="life-error">{{ recapError }}</p>
         <div v-if="recap" class="plan-recap-results">
           <strong>{{ recap.month }} · 已完成／核验 {{ recap.total }} 次</strong>
@@ -1528,12 +1572,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
           
         </div>
-      </details>
+      
+      </section>
      </template>
 
     <template v-else-if="mode==='memories'">
       <section class="life-card">
         <h2 class="life-heading"><AppIcon name="book-heart" :size="21" /> 留下一段美好的回忆</h2>
+        <button type="button" class="life-more" :aria-expanded="showMemoryForm" @click="showMemoryForm=true">＋ 添加回忆</button>
+        <EditBottomSheet v-if="showMemoryForm" title="添加回忆" :close-disabled="busy" @close="showMemoryForm=false">
         <form class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<DateField v-model="memoryDate" required /></label>
@@ -1548,9 +1595,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <p class="life-caption">{{ cloudEnabled?'本机与云端保存':'照片仅存本机，请备份' }}</p>
           <button :disabled="busy">保存到时光轴</button>
+          <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
+        </EditBottomSheet>
       </section>
       <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
+        <button type="button" class="life-filter-trigger" @click="memoryFilterOpen=true">筛选日期 · {{ memoryYear||'全部' }}</button>
+        <EditBottomSheet v-if="memoryFilterOpen" title="筛选时光轴" @close="memoryFilterOpen=false">
         <div class="archive-date-filters">
           <label>年份
             <select v-model="memoryYear" aria-label="回忆年份"><option value="">全部年份</option>
@@ -1563,6 +1614,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
+        <button class="life-more" type="button" @click="memoryFilterOpen=false">完成</button>
+        </EditBottomSheet>
 
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
         <p v-else-if="!items.length" class="life-empty">暂无回忆</p>
@@ -1595,10 +1648,25 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           @click="loadMore('memories')">加载更多回忆</button>
       </section>
     </template>
+    <EditBottomSheet v-if="convertWishEdit" title="由心愿创建旅行" :close-disabled="busy" @close="convertWishEdit=null">
+     <form class="life-form" @submit.prevent="submitConvertWish">
+      <label>旅行目的地<input v-model.trim="convertWishEdit.destination" required maxlength="300" placeholder="例如：北海道"/></label>
+      <p v-if="error" role="alert" class="life-error">{{ error }}</p>
+      <button :disabled="busy||!convertWishEdit.destination.trim()" type="submit">确认创建旅行</button>
+     </form>
+    </EditBottomSheet>
+    <EditBottomSheet v-if="tripItemEdit" title="编辑旅行明细" :close-disabled="busy" @close="tripItemEdit=null">
+     <form class="life-form" @submit.prevent="saveTripItem">
+      <label>名称<input v-model.trim="tripItemEdit.title" required maxlength="150"/></label>
+      <p v-if="error" role="alert" class="life-error">{{ error }}</p>
+      <button :disabled="busy||!tripItemEdit.title.trim()" type="submit">保存修改</button>
+     </form>
+    </EditBottomSheet>
   </section>
 </template>
 
 <style scoped>
+.life-filter-trigger{padding:7px 10px;background:#eef6f0;border:1px solid #c9dfcf;border-radius:9px;color:#397a59;font-size:12px;font-weight:650}
 .plan-recap{margin:12px 0;padding:12px 14px}
 .plan-recap summary{cursor:pointer;display:flex;align-items:center;gap:7px;font-size:14px;font-weight:650}
 .plan-recap-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:10px}

@@ -4,6 +4,7 @@ import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
 import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 const backupStorageKey='homeflow-last-local-export:'+props.userId
@@ -13,6 +14,7 @@ type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<s
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
   'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','reminderSnoozes','reminderPreferences','reminderItemPreferences']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
+const restoreSheetOpen=ref(false)
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
 const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
@@ -148,6 +150,7 @@ async function restore(){
     const count=Object.values(restoreCounts.value).reduce((n,i)=>n+i,0)
     status.value=''
     notify('恢复完成：新增 '+count+' 条记录，恢复照片 '+restoredPhotos+' 张')
+    restoreSheetOpen.value=false
   }catch(e){
     error.value='恢复未全部完成：'+(e as Error).message+'。已有记录未被覆盖，可以重新导入继续。'
   }finally{pending.value=false}
@@ -167,7 +170,9 @@ async function restore(){
       </button>
     </div>
     <div class="backup-section">
-      <h3>恢复备份</h3>
+      <button type="button" class="backup-restore-entry" :aria-expanded="restoreSheetOpen" @click="restoreSheetOpen=true">恢复备份 · 选择文件</button>
+      <EditBottomSheet v-if="restoreSheetOpen" title="恢复备份" :close-disabled="pending" @close="restoreSheetOpen=false">
+      <div class="backup-restore-content">
       <p class="backup-caption">选择 ZIP / JSON 文件，仅补充缺失记录</p>
       <div class="backup-file-row">
         <label class="backup-file-picker" :class="{'backup-file-picker-disabled':pending}">
@@ -186,6 +191,8 @@ async function restore(){
         <p>校验通过：{{ previewRecordCount }} 条记录 · {{ previewPhotoCount }} 张本机照片</p>
         <button type="button" class="backup-restore" :disabled="pending" @click="restore">确认恢复</button>
       </div>
+      </div>
+      </EditBottomSheet>
     </div>
     <details class="backup-notes">
       <summary>备份与恢复说明<AppIcon name="chevron-down" :size="16" class="backup-chevron"/></summary>
@@ -204,6 +211,8 @@ async function restore(){
   font-size:17px;line-height:1.4;color:#26392f}
 .backup-section{min-width:0;padding:14px 0 16px}
 .backup-section+.backup-section{border-top:1px solid #e8eee9}
+.backup-restore-entry{width:100%;border:1px solid #cdded2;border-radius:11px;background:#f7fbf7;color:#39785c;padding:12px;font-size:13px;font-weight:700;text-align:left}
+.backup-restore-content{display:grid;gap:10px;min-width:0}
 .backup-section h3{margin:0;font-size:14px;line-height:1.5;color:#26392f}
 .backup-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .backup-section-head small{color:#829187;font-size:11px}

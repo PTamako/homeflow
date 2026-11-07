@@ -5,6 +5,7 @@ import OneTimeTaskFields from './OneTimeTaskFields.vue'
 import {newOneTimeTaskDraft,oneTimeTaskPayload} from '../one-time-task'
 import {computed,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 
 type PlanKind='routine'|'shopping'|'wish'|'goal'|'trip'
 const props=defineProps<{profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string;openOnMount?:boolean}>()
@@ -97,7 +98,7 @@ async function submit(){
   <button class="creator-trigger" type="button" :aria-expanded="opened" @click="opened?dismiss():opened=true">
    <AppIcon v-if="!opened" name="plus" :size="19"/> {{ opened?'收起新增计划':'新增计划' }}
   </button>
-  <template v-if="opened">
+  <EditBottomSheet v-if="opened" title="新增计划" :close-disabled="busy" @close="dismiss">
    <h2>选择计划类型</h2>
    <div class="plan-type-grid">
     <button v-for="choice in choices" :key="choice.id" type="button"
@@ -247,17 +248,17 @@ async function submit(){
      <button class="creator-save" :disabled="busy||(kind==='routine'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
-  </template>
+  </EditBottomSheet>
  </section>
 </template>
 <style scoped>
-.plan-creator{padding:15px;border:1px solid #d9e9dc;background:#fff;border-radius:17px;margin:0 0 16px;display:grid;gap:12px}
+.plan-creator{padding:0;border:0;background:transparent;border-radius:0;margin:0 0 16px;display:grid;gap:12px}
 .plan-creator h2{font-size:15px;margin:0}.plan-creator h3{margin:0;font-size:14px;color:#2a4c3a}
 .creator-trigger{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;min-height:44px;background:#43866a;color:white;font-size:14px;font-weight:700}
 .plan-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .plan-type{border:1px solid #e0e9e1;border-radius:12px;background:#fbfcf9;padding:12px;min-width:0;text-align:left;display:grid;justify-items:start;gap:5px;color:#466e54}
 .plan-type.selected{border-color:#43866a;background:#eef7ef}.plan-type b{font-size:13px;color:#314637}.plan-type small{font-size:11px;line-height:1.45;color:#7b9082}
-.plan-fields{display:grid;gap:10px;padding-top:12px;border-top:1px solid #e6eee5}
+.plan-fields{display:grid;gap:12px;padding-top:12px;border-top:1px solid #e6eee5}
 .plan-fields label{display:grid;gap:5px;min-width:0;color:#5d7769;font-size:12px}
 .plan-fields input:not([type="checkbox"]),.plan-fields select{width:100%;max-width:100%;min-width:0;min-height:41px;border-radius:9px;padding:8px 10px;border:1px solid #d9e4db;background:#fff;box-sizing:border-box;color:#304838}
 .plan-fields .plan-checkbox{display:flex;align-items:center;gap:10px}.plan-checkbox input{width:19px;height:19px;flex:none;accent-color:#43866a}

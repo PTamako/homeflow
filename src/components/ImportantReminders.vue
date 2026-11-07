@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref,watch,onBeforeUnmount} from 'vue'
 import AppIcon from './AppIcon.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import DateField from './DateField.vue'
 import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
@@ -208,7 +209,8 @@ onBeforeUnmount(()=>{requestId++})
         @click="selectedSnoozeId=selectedSnoozeId===item.kind+':'+item.id?'':item.kind+':'+item.id;againOn=tomorrow">选日期</button>
        <button v-if="['task','routine','shopping','trip'].includes(item.kind)" class="snooze-button" type="button"
         @click="settingItemKey=settingItemKey===item.kind+':'+item.id?'':item.kind+':'+item.id">单项设置</button>
-       <div v-if="settingItemKey===item.kind+':'+item.id" class="snooze-calendar item-settings">
+       <EditBottomSheet v-if="settingItemKey===item.kind+':'+item.id" title="单项提醒设置" :close-disabled="savingItem" @close="settingItemKey=''">
+       <div class="snooze-calendar item-settings">
         <label>提前<select :value="String(advanceOf(item))" :disabled="savingItem"
          @change="saveItem(item,Number(($event.target as HTMLSelectElement).value),priorityOf(item))">
          <option value="0">当天</option><option value="1">1 天</option><option value="3">3 天</option><option value="7">7 天</option>
@@ -219,11 +221,14 @@ onBeforeUnmount(()=>{requestId++})
         </select></label>
         <button v-if="prefOf(item)" type="button" :disabled="savingItem" @click="saveItem(item,advanceDays,'normal',true)">重置</button>
        </div>
-       <div v-if="selectedSnoozeId===item.kind+':'+item.id" class="snooze-calendar">
+       </EditBottomSheet>
+       <EditBottomSheet v-if="selectedSnoozeId===item.kind+':'+item.id" title="选择再次提醒日期" :close-disabled="snoozing" @close="selectedSnoozeId=''">
+       <div class="snooze-calendar">
         <DateField v-model="againOn" :min="tomorrow" :max="maxSnoozeDate" aria-label="重新提醒日期"/>
         <button type="button" :disabled="snoozing||!againOn||againOn<tomorrow||againOn>maxSnoozeDate"
          @click="snooze(item,againOn)">保存</button>
        </div>
+       </EditBottomSheet>
       </div>
     </div>
     </template>

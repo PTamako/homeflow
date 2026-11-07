@@ -53,7 +53,7 @@ test('Today notification hub combines pending reminders and delivery history wit
  assert.match(today,/>我发送的<\/button>/)
  assert.match(today,/<ImportantReminders :today-date="todayDate"/)
  assert.match(today,/compact mode="list"/)
- assert.match(manage,/<ImportantReminders v-if="active&&reminderRulesOpen"/)
+ assert.match(manage,/<EditBottomSheet v-if="active&&reminderRulesOpen"/)
  assert.match(manage,/compact mode="settings"/)
  assert.doesNotMatch(manage,/>暂无重要提醒</)
  assert.match(important,/mode!=='settings'/)

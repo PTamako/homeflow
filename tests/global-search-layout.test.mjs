@@ -6,9 +6,9 @@ const component = readFileSync(new URL('../src/components/GlobalSearch.vue', imp
 const style = component.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1]
 assert.ok(style, 'GlobalSearch should include scoped styles')
 
-test('global search stays anchored inside the viewport', () => {
-  assert.match(style, /\.search-panel\{[^}]*right:0;/)
-  assert.match(style, /width:min\(355px,calc\(100vw - 32px\)\)/)
+test('global search uses the shared mobile sheet instead of an anchored floating panel', () => {
+  assert.match(component, /<EditBottomSheet v-if="open" title="全站搜索"/)
+  assert.match(style, /\.search-panel\{position:static;width:100%;/)
   assert.doesNotMatch(style, /\.search-panel\{[^}]*right:-\d+px/)
 })
 

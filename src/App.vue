@@ -8,6 +8,7 @@ import GlobalSearch from './components/GlobalSearch.vue'
 import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
+import EditBottomSheet from './components/EditBottomSheet.vue'
 import AppIcon from './components/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
 import SwipeActions from './components/SwipeActions.vue'
@@ -838,14 +839,15 @@ onBeforeUnmount(()=>{
                   @click="row.task?openPlans('task',row.task.id,'',row.done):row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
                   {{ row.done?'查看计划':'去处理' }}</button>
               </div>
-              <form v-if="!row.done&&!row.routine&&postponeKey===row.key"
-                class="today-postpone-form" @submit.prevent="postponeToday(row)">
+              <EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key" title="延期待办" :close-disabled="todayActionBusy" @close="postponeKey=''">
+              <form class="today-postpone-form" @submit.prevent="postponeToday(row)">
                 <label>延期到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
                 <div class="today-decision-actions">
                   <button type="button" class="outline" @click="postponeKey=''">取消</button>
                   <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认延期</button>
                 </div>
               </form>
+              </EditBottomSheet>
             </SwipeActions>
           </template>
           <button v-if="todayNextCursor" type="button" class="outline"
@@ -917,10 +919,10 @@ onBeforeUnmount(()=>{
         <section v-if="user.role==='owner'" class="panel">
           <button type="button" class="outline" :aria-expanded="showProfileForm"
             aria-controls="new-family-profile-form" @click="toggleProfileForm">
-            {{ showProfileForm?'收起表单':'＋ 添加家庭或宠物档案' }}
+            ＋ 添加家庭或宠物档案
           </button>
-          <form v-if="showProfileForm" id="new-family-profile-form" class="profile-form"
-            @submit.prevent="addProfile">
+          <EditBottomSheet v-if="showProfileForm" title="添加家庭或宠物档案" :close-disabled="loading" @close="closeProfileForm">
+          <form id="new-family-profile-form" class="profile-form" @submit.prevent="addProfile">
             <label class="field-wide">昵称或名字
               <input v-model="name" required maxlength="60" placeholder="例如：豆沙" />
             </label>
@@ -938,6 +940,7 @@ onBeforeUnmount(()=>{
               <button type="submit" class="primary">添加档案</button>
             </div>
           </form>
+          </EditBottomSheet>
         </section>
       </template>
       <section v-else-if="tab==='plans'||tab==='memories'" class="hero"><div><span>HOMEFLOW LIFE</span>

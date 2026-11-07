@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
 import StatusBadge from './StatusBadge.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {computed,onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
 type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
@@ -69,8 +70,8 @@ async function unlink(entryId?:string|number){
 onMounted(()=>{void check()})
 </script>
 <template>
+ <EditBottomSheet title="查看关联账单" :close-disabled="busy" @close="emit('close')">
  <section class="shopping-ledger">
-  <b>关联家計簿真实支出</b>
   <p class="hint">关联一笔真实账单后，这件物品即完成。同一账单可以关联多个物品。</p>
   <p v-if="!loaded" class="hint">正在检查联动…</p>
   <p v-else-if="!connected" class="hint">
@@ -105,9 +106,10 @@ onMounted(()=>{void check()})
   <p v-if="error" role="alert" class="ledger-error">{{ error }}</p>
   <button type="button" class="ledger-close" @click="emit('close')">关闭</button>
  </section>
+ </EditBottomSheet>
 </template>
 <style scoped>
-.shopping-ledger{margin:11px 0 15px;padding:14px;background:#f5faf6;border:1px solid #d9eadf;border-radius:12px;display:grid;gap:10px}
+.shopping-ledger{margin:0;padding:0;background:transparent;border:0;border-radius:0;display:grid;gap:12px}
 .shopping-ledger>b{font-size:14px}.hint{font-size:12px;line-height:1.7;color:#688574;margin:0}
 .ledger-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .ledger-dates label{display:grid;gap:5px;min-width:0;font-size:12px;color:#607c6d}

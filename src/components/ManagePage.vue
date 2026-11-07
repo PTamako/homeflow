@@ -6,6 +6,7 @@ import SecurityPanel from './SecurityPanel.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
 import ImportantReminders from './ImportantReminders.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
@@ -62,10 +63,11 @@ async function generateInvite(){
 <button type="button" class="reminder-rules-trigger"
        :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
        <span>分类提醒规则</span>
-       <span aria-hidden="true">{{ reminderRulesOpen?'收起':'展开' }}</span>
+       <span aria-hidden="true">设置</span>
      </button>
-     <ImportantReminders v-if="active&&reminderRulesOpen" :today-date="todayDate"
-       :today-entry-keys="todayEntryKeys" compact mode="settings"/>
+     <EditBottomSheet v-if="active&&reminderRulesOpen" title="分类提醒规则" @close="reminderRulesOpen=false">
+      <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys" compact mode="settings"/>
+      </EditBottomSheet>
    </section>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>

@@ -8,7 +8,7 @@ const pet=readFileSync(new URL('../src/components/PetHealthPanel.vue',import.met
 
 test('new family and pet profile form is collapsed by default',()=>{
   assert.match(app,/const showProfileForm=ref\(false\)/)
-  assert.match(app,/<form v-if="showProfileForm" id="new-family-profile-form"/)
+  assert.match(app,/<EditBottomSheet v-if="showProfileForm"/)
   assert.match(app,/:aria-expanded="showProfileForm"/)
   assert.match(app,/@click="toggleProfileForm"/)
   assert.match(app,/function closeProfileForm\(\)\{[\s\S]*?showProfileForm\.value=false/)
@@ -20,7 +20,7 @@ test('family anniversaries stay visible while entry form is collapsed',()=>{
   assert.match(life,/const showAnniversaryForm=ref\(false\)/)
   assert.match(life,/家人的重要日子/)
   assert.match(life,/v-for="e in upcomingAnniversaries"/)
-  assert.match(life,/<form v-if="showAnniversaryForm" id="new-anniversary-form"/)
+  assert.match(life,/<EditBottomSheet v-if="showAnniversaryForm"/)
   assert.match(life,/:aria-expanded="showAnniversaryForm"/)
   assert.match(life,/if\(!error\.value\)closeAnniversaryForm\(\)/)
   assert.match(life,/@click="closeAnniversaryForm">取消/)
