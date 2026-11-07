@@ -13,14 +13,19 @@ test('installed PWA can navigate to a genuinely new HTML document',()=>{
   assert.ok(refresh.includes("target.searchParams.set('_hf_refresh',String(Date.now()))"))
   assert.ok(refresh.includes('window.location.replace(target.pathname+target.search+target.hash)'))
   assert.ok(!refresh.includes('window.location.reload()'))
-  assert.ok(app.includes('@refresh-app="refreshToLatest"'))
+  // Keep the automatic new-version banner as the only refresh action.
+  assert.ok(app.includes('v-if="updateReady" class="app-update-banner"'))
+  assert.ok(app.includes('@click="refreshToLatest">刷新</button>'))
+  assert.ok(!app.includes('@refresh-app="refreshToLatest"'))
 })
 
-test('every family member has a manual refresh fallback in Manage',()=>{
-  assert.ok(management.includes('refreshApp:[]'))
-  assert.ok(management.includes('class="management-refresh"'))
-  assert.ok(management.includes("emit('refreshApp')"))
-  assert.ok(management.includes('刷新到最新版'))
+test('management footer keeps only sign out, without a redundant manual refresh button',()=>{
+  assert.ok(!management.includes('refreshApp:[]'))
+  assert.ok(!management.includes('class="management-refresh"'))
+  assert.ok(!management.includes("emit('refreshApp')"))
+  assert.ok(!management.includes('刷新到最新版'))
+  assert.match(management,/class="management-app-actions"[\s\S]*?class="management-logout" @click="emit\('logout'\)"/)
+  assert.match(management,/\.management-app-actions>button\{flex:1 1 0;/)
 })
 
 test('production lottery history retains compact standalone list',()=>{
