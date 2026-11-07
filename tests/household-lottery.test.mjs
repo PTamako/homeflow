@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {lotteryOdds,lotteryPrize,lotteryRoute} from '../worker/lottery.js'
 import {pointsRoute} from '../worker/points.js'
-import {sendLotteryDrawNotification} from '../worker/webpush.js'
+import {lotteryNotificationCopy,sendLotteryDrawNotification} from '../worker/webpush.js'
 
 const manifest=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const names=[...manifest.slice(manifest.indexOf('MIGRATIONS=['),manifest.indexOf(']\nfiles=')).matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(x=>x[1])
@@ -124,6 +124,26 @@ test('racing attempts obey monthly cap and a stale history row stays hidden',asy
  }finally{sqlite.close()}
 })
 
+test('every lottery prize has playful push and inbox copy without displaying the entry fee',()=>{
+ const name='白ちゃん'
+ const cases=[
+  ['empty',0,'🎲','空手而归'],
+  ['five',5,'🎉','5 积分'],
+  ['ten',10,'🎉','10 积分'],
+  ['twenty',20,'🎉','20 积分'],
+  ['fifty',50,'🎉','50 积分'],
+  ['double',85,'👑','积分翻倍']
+ ]
+ for(const [kind,points,emoji,expected] of cases){
+  const {title,message}=lotteryNotificationCopy(name,{kind,points})
+  assert.ok(title.startsWith(emoji),kind)
+  assert.ok(title.includes(name),kind)
+  assert.ok(message.includes(expected),kind)
+  assert.ok(!title.includes('消耗')&&!message.includes('消耗'),kind)
+  assert.ok(!title.includes('本次')&&!message.includes('本次'),kind)
+ }
+})
+
 test('each draw creates an independent today inbox message for both members; retries preserve read status',async()=>{
  const {sqlite,db}=fixture()
  try{
@@ -135,7 +155,8 @@ test('each draw creates an independent today inbox message for both members; ret
   assert.equal(first.members,2)
   const rows=sqlite.prepare("SELECT recipient_user_id,kind,title,message,read_at FROM notification_inbox ORDER BY recipient_user_id").all()
   assert.deepEqual(rows.map(x=>x.recipient_user_id),['alice','bob'])
-  assert.equal(rows.every(x=>x.kind==='system'&&x.title.includes('Alice')&&x.message.includes('空手而归')),true)
+  assert.equal(rows.every(x=>x.kind==='system'&&x.title==='🎲 Alice 发起了抽奖'&&x.message.includes('空手而归')),true)
+  assert.equal(rows.every(x=>!x.message.includes('消耗')&&!x.title.includes('消耗')),true)
   sqlite.prepare("UPDATE notification_inbox SET read_at='2026-11-07 08:00:00' WHERE recipient_user_id='bob'").run()
   await sendLotteryDrawNotification({DB:db},alice,draw)
   const again=sqlite.prepare("SELECT recipient_user_id,read_at FROM notification_inbox ORDER BY recipient_user_id").all()
