@@ -55,7 +55,7 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0)
-      +COALESCE((SELECT SUM(l.prize_points-l.cost_points) FROM household_lottery_draws l WHERE l.household_id=m.household_id AND l.user_id=m.user_id),0) AS sharedPoints,
+      AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
@@ -63,11 +63,14 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND j.earned_at>=?2 AND j.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0)
-      +COALESCE((SELECT SUM(l.prize_points-l.cost_points) FROM household_lottery_draws l WHERE l.household_id=m.household_id AND l.user_id=m.user_id AND l.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
+      AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0)
-      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.kind='routine' AND j.visibility='household'),0) AS routinePoints
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.kind='routine' AND j.visibility='household'),0) AS routinePoints,
+      -- Each member's spendable wallet is the exact same ledger expression
+      -- used by redemptions; lottery changes wallet, never contribution scores.
+      MAX(0,${householdWalletSql('m.household_id','m.user_id')}) AS availablePoints
     FROM household_members m JOIN users u ON u.id=m.user_id
     LEFT JOIN completion_points cp ON cp.household_id=m.household_id
       AND cp.earner_user_id=m.user_id
@@ -173,6 +176,7 @@ export async function pointsRoute(request,db,session){
       sharedPoints:Number(row.sharedPoints)||0,
       monthPoints:Number(row.monthPoints)||0,
       routinePoints:Number(row.routinePoints)||0,
+      availablePoints:Math.max(0,Number(row.availablePoints)||0),
       ...pointLevel(row.sharedPoints)
     })),
     ownPrivatePoints:Number(own?.privatePoints)||0,
