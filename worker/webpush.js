@@ -156,7 +156,7 @@ async function sendTaskPush(env,session,body){
   // Trusted table/column identifiers are selected from the two constants above.
   let item
   if(routine&&body.periodOn){
-    if(typeof body.periodOn!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(body.periodOn))
+    if(typeof body.periodOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(body.periodOn))
       return json({error:'invalid_input'},400)
     item=await env.DB.prepare(`SELECT t.id,t.title,a.occurrence_on AS dueOn,
        a.assignee_user_id AS recipientId,
