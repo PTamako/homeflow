@@ -521,10 +521,36 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-details{display:block;margin-top:7px}
 .points-private{margin:0;color:#42694c;font-size:12px;line-height:1.6}
 .points-private small{color:#758c7b}
-.points-tabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:4px;border-radius:11px;background:#f2f5f0}
-.points-tabs button{border:0;border-radius:8px;background:transparent;padding:9px 5px;font-size:13px;color:#657b6b;display:flex;justify-content:center;align-items:center;gap:5px}
+.points-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
+.points-tabs button{min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
-.challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
+ .lottery-card{display:grid;gap:12px;border:1px solid #e4ede6;border-radius:13px;padding:12px;background:#fbfdfa}
+ .lottery-main{display:flex;align-items:center;gap:12px;min-width:0}
+ .lottery-box{flex:0 0 94px;min-height:103px;border-radius:16px;background:#e5f0e7;border:1px solid #d4e6d9;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#4b8669;gap:3px;box-shadow:inset 0 -5px 0 #d5e8db}
+ .lottery-box .lottery-slot{width:42px;height:5px;border-radius:9px;background:#99c4ac;margin-bottom:6px}
+ .lottery-box span{font-size:10px;font-weight:700;letter-spacing:.12em}
+ .lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
+ .lottery-panel>b{font-size:15px;color:#365b43}
+ .lottery-panel small{font-size:11px;color:#708977}
+ .lottery-spin{justify-self:start;min-height:35px;margin-top:5px}
+ .lottery-spin:disabled{opacity:.55}
+ .lottery-result{display:flex;align-items:center;gap:9px;border-radius:10px;background:#eef7ef;padding:10px;color:#3b7656}
+ .lottery-result>div{display:grid;gap:4px}
+ .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
+ .lottery-odds summary{cursor:pointer;font-size:12px;color:#4a8265}
+ .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+ .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
+ .lottery-odds p{margin:9px 0 0;font-size:11px;line-height:1.65;color:#6c8574}
+ .lottery-history{display:grid;gap:8px;padding-top:8px}
+ .lottery-history>b{font-size:14px;color:#426b50}
+ .lottery-empty{padding:12px;font-size:12px;color:#829487;text-align:center}
+ .lottery-history-row{display:flex;align-items:center;gap:9px;min-width:0;border-bottom:1px solid #e8efe9;padding:8px 0;color:#5b846b}
+ .lottery-history-row>div{display:grid;gap:3px;flex:1;min-width:0}
+ .lottery-history-row strong{font-size:12px;color:#3f624c}
+ .lottery-history-row small{font-size:10px;color:#849787}
+ .lottery-history-row>span{font-size:11px;font-weight:700;color:#407f5c;text-align:right;max-width:42%}
+ .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
+ .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
 .monthly-achievement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:3px 0 8px;color:#43674e;font-size:12px}.monthly-achievement-heading small{font-size:11px;color:#71867a}.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
