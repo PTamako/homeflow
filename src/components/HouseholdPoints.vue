@@ -26,6 +26,8 @@ const view=ref<'shop'|'achievements'>('shop')
 const expanded=ref(false)
 const ruleHelpOpen=ref(false)
 const rulesAnchor=ref<HTMLElement|null>(null)
+const experienceHelpOpen=ref(false)
+const experienceAnchor=ref<HTMLElement|null>(null)
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
@@ -76,6 +78,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    generation++
    expanded.value=false
    ruleHelpOpen.value=false
+   experienceHelpOpen.value=false
    shop.value=null
  }
 },{immediate:true})
@@ -85,13 +88,19 @@ watch(()=>props.userId,()=>{
  shop.value=null
  expanded.value=false
  ruleHelpOpen.value=false
+ experienceHelpOpen.value=false
 })
 function dismissRulesOutside(event:PointerEvent){
  if(ruleHelpOpen.value&&!rulesAnchor.value?.contains(event.target as Node))
    ruleHelpOpen.value=false
+ if(experienceHelpOpen.value&&!experienceAnchor.value?.contains(event.target as Node))
+   experienceHelpOpen.value=false
 }
 function dismissRulesKey(event:KeyboardEvent){
- if(event.key==='Escape')ruleHelpOpen.value=false
+ if(event.key==='Escape'){
+   ruleHelpOpen.value=false
+   experienceHelpOpen.value=false
+ }
 }
 onMounted(()=>{
  document.addEventListener('pointerdown',dismissRulesOutside)
@@ -109,6 +118,7 @@ function openDetails(){
 function closeDetails(){
  expanded.value=false
  ruleHelpOpen.value=false
+ experienceHelpOpen.value=false
  generation++
  view.value='shop'
  resetForm()
@@ -222,8 +232,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <button type="button" class="points-collapse" @click="closeDetails">收起 <span aria-hidden="true">⌃</span></button>
      </div>
    <div v-if="data" class="points-my-card">
-     <div><small>我的成长经验（永久累计，兑换不扣）</small><strong>{{ fmt(myTotal) }} XP</strong>
-       <span>{{ data.ownLevel.title }} · Lv.{{ data.ownLevel.level }}</span></div>
+     <div>
+       <span ref="experienceAnchor" class="xp-label">
+         <small>我的成长经验</small>
+         <button type="button" class="points-rule-help" aria-label="查看成长经验规则"
+           aria-controls="experience-rule-popover" :aria-expanded="experienceHelpOpen"
+           @click="experienceHelpOpen=!experienceHelpOpen;ruleHelpOpen=false">?</button>
+         <div v-if="experienceHelpOpen" id="experience-rule-popover" role="tooltip" class="points-rule-popover">
+           <b>成长经验与积分</b>
+           <p>成长经验包含任务积分与挑战奖励，不会因兑换而减少；撤销任务会收回对应积分和未满足条件的奖励。</p>
+         </div>
+       </span>
+       <strong>{{ fmt(myTotal) }} XP</strong>
+       <span>{{ data.ownLevel.title }} · Lv.{{ data.ownLevel.level }}</span>
+     </div>
      <div><small>可用积分</small><strong>{{ fmt(points) }}</strong><span>已兑换 {{ fmt(data.spentPoints) }} 分</span></div>
    </div>
    <div v-if="data" class="own-level-line" :aria-label="'再获得'+data.ownLevel.nextLevelIn+'经验升级'">
@@ -256,7 +278,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <span>{{ badge.icon }}</span><b>{{ badge.label }}</b><small>{{ badge.unlocked?'已解锁':'待解锁' }}</small>
        </div>
      </div>
-     <p class="points-hint">成长经验包含任务积分与挑战奖励，不会因兑换而减少；撤销任务会收回对应积分和未满足条件的奖励。</p>
    </template>
    <template v-if="view==='shop'">
      <div class="shop-title">
@@ -376,6 +397,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-head small{font-size:12px;color:#52846c;font-weight:650;white-space:nowrap}
 .points-hint{margin:0;color:#75877a;font-size:12px;line-height:1.55}
 .points-my-card{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xp-label{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0}
 .points-my-card>div{display:grid;gap:5px;border-radius:12px;background:#f2f8f2;padding:11px;min-width:0}
 .points-my-card small{color:#658775;font-size:11px;line-height:1.5}
 .points-my-card strong{font-size:22px;color:#377c59;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
