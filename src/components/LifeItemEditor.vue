@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
 import MoneyInput from './MoneyInput.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {reactive,ref,computed,watch} from 'vue'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
@@ -104,8 +105,8 @@ async function save(){
 }
 </script>
 <template>
+ <EditBottomSheet :title="'编辑'+({shopping:'购物计划',routines:'定期任务',anniversaries:'重要日子',wishes:'心愿计划',goals:'储值计划',memories:'回忆',trips:'旅行'} as Record<string,string>)[kind]" :close-disabled="busy" @close="emit('cancel')">
  <form class="detail-editor" @submit.prevent="save">
-  <b class="detail-editor-title">编辑{{ ({shopping:'购物计划',routines:'定期任务',anniversaries:'重要日子',wishes:'心愿计划',goals:'储值计划',memories:'回忆',trips:'旅行'} as Record<string,string>)[kind] }}</b>
   <label>名称<input v-model="form.title" required maxlength="150"/></label>
   <template v-if="kind==='shopping'">
    <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
@@ -249,9 +250,10 @@ async function save(){
    <button class="editor-save" :disabled="busy||(kind==='routines'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':'保存修改' }}</button>
   </div>
  </form>
+ </EditBottomSheet>
 </template>
 <style scoped>
-.detail-editor{margin:12px 0;padding:15px;border:1px solid #d7e8dc;background:#f6faf6;border-radius:12px;display:grid;gap:10px;min-width:0}
+.detail-editor{margin:0;padding:0;border:0;background:transparent;display:grid;gap:12px;min-width:0}
 .detail-editor-title{font-size:14px}
 .detail-editor label{font-size:12px;color:#65796e;display:grid;gap:5px;min-width:0}
 .detail-editor :is(input,select,textarea){width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #d4e0d6;border-radius:9px;background:#fff;min-height:40px;padding:9px;color:#273e30}
