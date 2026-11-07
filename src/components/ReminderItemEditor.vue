@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {ref,watch,onBeforeUnmount} from 'vue'
 import PageToast from './PageToast.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import {usePageToast} from '../page-toast'
 
 const props=defineProps<{kind:'task'|'routine'|'shopping'|'trip';itemId:string}>()
@@ -41,6 +42,7 @@ async function save(reset=false){
   await load()
   notify(reset?'已恢复默认提醒':'单项提醒已保存')
   emit('saved')
+  emit('close')
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
@@ -48,6 +50,7 @@ watch(()=>[props.kind,props.itemId],()=>{void load()},{immediate:true})
 onBeforeUnmount(()=>{serial++})
 </script>
 <template>
+ <EditBottomSheet title="单项提醒设置" :close-disabled="busy" @close="emit('close')">
  <section class="plan-reminder-editor" aria-label="单项提醒设置">
   <b>单项提醒</b>
   <p v-if="loading" class="editor-hint">加载中…</p>
@@ -75,10 +78,11 @@ onBeforeUnmount(()=>{serial++})
   <p v-if="error" role="alert" class="editor-error">{{ error }}</p>
   <PageToast :toast="toast"/>
  </section>
+ </EditBottomSheet>
 </template>
 <style scoped>
-.plan-reminder-editor{border:1px solid #d9eadf;background:#f6fbf7;border-radius:10px;
- padding:10px;display:grid;gap:7px;margin:5px 0 9px;min-width:0}
+.plan-reminder-editor{border:0;background:transparent;border-radius:0;
+ padding:0;display:grid;gap:12px;margin:0;min-width:0}
 .plan-reminder-editor>b{font-size:12px;color:#406e56}
 .editor-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .editor-fields label{display:grid;gap:4px;font-size:11px;color:#5d7565;min-width:0}
