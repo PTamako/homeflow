@@ -901,15 +901,15 @@ async function completeTrip(){
  if(!trip||trip.createdBy!==props.userId||trip.status==='completed'||busy.value)return
  const unfinished=tripItineraryItems.value.length-tripItineraryCompleted.value
  if(!confirm(unfinished>0
-   ?'还有 '+unfinished+' 项行程未勾选。确定这次旅行已结束吗？'
-   :'确定这次旅行已结束并移入历史？'))return
+   ?'还有 '+unfinished+' 项行程未勾选，但不影响旅行完成和积分。确定旅行已结束并结算参与人积分吗？'
+   :'确定旅行已结束并结算参与人积分吗？'))return
  busy.value=true;error.value=''
  try{
   await api('/trips/'+encodeURIComponent(trip.id),'PATCH',{status:'completed'})
   tripDetail.value=null
   await fetchMode()
-  notify('旅行已完成，可在已完成 / 历史查看')
- }catch(e){error.value=(e as Error).message}
+  notify('旅行已完成，参与人积分已结算，可在历史查看')
+ }catch(e){const code=(e as Error).message;error.value=code==='trip_not_finished'?'请在旅行结束日期当天或之后确认完成':code==='trip_dates_required_for_completion'?'请先填写旅行的开始和结束日期':code}
  finally{busy.value=false}
 }
 function editTripItem(item:Row){
@@ -1735,10 +1735,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <span v-if="tripRewardPerPerson(tripDetail)">每人 {{ tripDetail.status==='completed'?'已获得':'结束后可获得' }} {{ tripRewardPerPerson(tripDetail) }} 分</span>
             </div>
             <div class="trip-progress">
-              <span>行程完成 {{ tripItineraryCompleted }} / {{ tripItineraryItems.length }}</span>
+              <span>行程清单 {{ tripItineraryCompleted }} / {{ tripItineraryItems.length }}</span>
               <span>{{ tripItineraryItems.length?Math.round(tripItineraryCompleted/tripItineraryItems.length*100):0 }}%</span>
               <div class="trip-progress-track" role="progressbar" :aria-valuenow="tripItineraryCompleted"
-                aria-valuemin="0" :aria-valuemax="tripItineraryItems.length" aria-label="行程完成进度">
+                aria-valuemin="0" :aria-valuemax="tripItineraryItems.length" aria-label="行程清单勾选进度">
                 <div class="trip-progress-fill" :style="{width:(tripItineraryItems.length?tripItineraryCompleted/tripItineraryItems.length*100:0)+'%'}"></div>
               </div>
             </div>
