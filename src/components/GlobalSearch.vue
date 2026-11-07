@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {ref} from 'vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 type Result={id:string;kind:string;title:string;event_date:string}
 const emit=defineEmits<{select:[result:Result]}>()
 const open=ref(false),keyword=ref(''),kind=ref('all'),year=ref(''),month=ref('')
@@ -44,7 +45,8 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 <div class="global-search">
  <button type="button" class="search-trigger" :aria-expanded="open" aria-label="全站搜索"
    @click="toggle">搜索</button>
- <section v-if="open" class="search-panel" role="dialog" aria-label="全站搜索">
+ <EditBottomSheet v-if="open" title="全站搜索" @close="toggle">
+ <section class="search-panel">
   <form @submit.prevent="load(false)">
    <label>查找计划、任务、纪念日与回忆
     <input v-model="keyword" @input="resetFilters" maxlength="60" placeholder="输入关键词" required autocomplete="off"/>
@@ -74,12 +76,13 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
   <button v-if="cursor" type="button" class="search-more" :disabled="busy" @click="load(true)">加载更多（5条）</button>
   <button type="button" class="search-close" @click="toggle">关闭</button>
  </section>
+ </EditBottomSheet>
 </div>
 </template>
 <style scoped>
 .global-search{position:relative}
 .search-trigger{min-height:40px;padding:7px 10px;border:1px solid #d8e6db;background:#fff;border-radius:11px;color:#43866a;font-size:13px;font-weight:700}
-.search-panel{position:absolute;right:0;top:calc(100% + 11px);z-index:43;width:min(355px,calc(100vw - 32px));max-height:75dvh;overflow-y:auto;background:#fff;border:1px solid #dce9de;border-radius:16px;box-shadow:0 15px 36px #263f3126;padding:14px;display:grid;gap:10px}
+.search-panel{position:static;width:100%;max-height:none;overflow:visible;background:transparent;border:0;border-radius:0;box-shadow:none;padding:0;display:grid;gap:12px}
 .search-panel form{display:grid;gap:8px}
 .search-panel label{display:grid;gap:5px;font-size:12px}
 .search-panel input,.search-panel select{width:100%;min-width:0;min-height:39px;border:1px solid #dce5de;border-radius:9px;padding:7px;background:white;color:#24382d}
