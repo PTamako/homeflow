@@ -84,6 +84,8 @@ test('lottery net winnings appear in shared cumulative and monthly leaderboard b
   assert.equal(result.status,201)
   const after=await wallet(db,alice)
   assert.equal(after.availablePoints,before.availablePoints+5)
+  assert.equal(after.lotteryNetPoints,5,'summary breaks out net lottery points only once')
+  assert.equal(before.lotteryNetPoints,0)
   assert.equal(myself(after).sharedPoints,base.sharedPoints+5)
   assert.equal(myself(after).monthPoints,base.monthPoints+5)
   assert.equal(after.experience,before.experience,'lottery does not generate XP')
