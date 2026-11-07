@@ -1795,9 +1795,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
            <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
            <div class="trip-import">
             <label>导入到哪个旅行项目？
-              <select v-model="importTargetId"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
+              <select v-model="importTargetId" aria-label="选择导入旅行项目"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
             </label>
-            <textarea v-model="paste" rows="6" placeholder="粘贴完整的 JSON 内容"></textarea>
+            <textarea v-model="paste" rows="4" placeholder="粘贴完整的 JSON 内容" aria-label="行程 JSON 内容"></textarea>
             <button class="life-light" @click="previewTrip">验证与预览</button>
             <div v-if="preview" class="trip-preview">
               <b><StatusBadge :code="preview.changes==='new'?'new':preview.changes==='unchanged'?'unchanged':'updated'" :label="preview.changes==='new'?'新旅行':preview.changes==='unchanged'?'未发生变化':'更新已有旅行'" /></b>
@@ -2163,10 +2163,39 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-view-toolbar .plan-filter-tabs{gap:7px;padding:0 0 10px}
 .plan-view-toolbar .archive-toolbar{background:transparent;border:0;border-top:1px solid #edf0eb;
   border-radius:0;padding:10px 0 0;margin:0 0 7px}
-.plan-view-toolbar .archive-date-filters{margin:9px 0 1px;gap:8px}
+.plan-view-toolbar .archive-toolbar>.life-filter-trigger{
+  display:flex;align-items:center;justify-content:center;
+  min-height:36px;margin:12px 0 3px auto;padding:7px 12px;
+  width:max-content;max-width:100%;border-radius:10px;
+  font-size:12px;line-height:1.35;white-space:nowrap
+}
+.plan-view-toolbar .archive-date-filters{margin:12px 0 6px;gap:8px}
 .plan-view-toolbar .archive-date-filters label{font-size:11px}
 .plan-view-toolbar .archive-date-filters select{min-height:38px}
 .plan-view-toolbar .archive-tabs button{min-height:37px}
+.trip-import{padding:2px 0 0;margin-top:0;background:transparent}
+.trip-import label{display:grid;gap:8px;color:#526c5b;font-size:13px;font-weight:650;line-height:1.45}
+.trip-import textarea{display:block;min-height:124px;max-height:32dvh;margin:12px 0 12px;
+  padding:11px 12px;line-height:1.45;resize:vertical;font-size:16px}
+.trip-import>.life-light{width:100%;min-height:44px;padding:10px 14px;
+  background:#edf5ef;border:1px solid #c8dfd0;color:#397e59;font-size:13px;font-weight:700}
+.trip-import :is(select,textarea):focus-visible{outline:2px solid #43866a;outline-offset:1px}
+.life-form select,.trip-import select,.archive-date-filters select,.plan-recap-controls select{
+  display:block;box-sizing:border-box;appearance:none;-webkit-appearance:none;
+  width:100%;max-width:100%;min-width:0;min-height:44px;
+  border:1px solid #d5e2d8;border-radius:11px;
+  background-color:#fff;
+  background-image:linear-gradient(45deg,transparent 50%,#6b8773 50%),
+    linear-gradient(135deg,#6b8773 50%,transparent 50%);
+  background-position:calc(100% - 19px) calc(50% - 1px),calc(100% - 14px) calc(50% - 1px);
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  color:#293f34;font-family:inherit;font-size:16px;line-height:1.35;
+  padding:10px 36px 10px 12px;box-shadow:none
+}
+.life-form select:focus-visible,.archive-date-filters select:focus-visible,
+.plan-recap-controls select:focus-visible{
+  outline:2px solid #43866a;outline-offset:1px
+}
 .plan-recap{margin:10px 0 16px}
 .plan-tasks-card .plan-task-item.focused-plan-entry{
   background:#f7fbf8;box-shadow:inset 3px 0 0 #72aa88;
