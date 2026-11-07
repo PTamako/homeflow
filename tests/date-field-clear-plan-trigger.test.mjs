@@ -9,7 +9,8 @@ const once=read('src/components/OneTimeTaskFields.vue')
 const finance=read('src/components/FinancePanel.vue')
 
 test('plan creation button shows exactly one plus while collapsed',()=>{
- assert.match(plan,/<AppIcon v-if="!opened" name="plus" :size="19"\/>/)
+ assert.match(plan,/<AppIcon name="plus" :size="19"\/>/)
+ assert.match(plan,/:class="\['plan-creator',\{compact:props.compact\}\]"/)
  assert.match(plan,/opened\?'收起新增计划':'新增计划'/)
  assert.doesNotMatch(plan,/＋ 新增计划/)
 })
