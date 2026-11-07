@@ -56,6 +56,14 @@ function routineCompletable(r:Row){
 function taskCompletable(t:Row){
  return canCompleteAssigned(t.assigneeUserId,t.secondAssigneeUserId)
 }
+function shoppingCompletable(s:Row){
+ return canCompleteAssigned(s.assigned_to,s.second_assignee_user_id)
+}
+async function confirmShopping(s:Row){
+ if(busy.value||!s.ledger_entry_id||s.completed_at||!shoppingCompletable(s))return
+ await update(()=>api('/shopping/'+s.id+'/confirm','POST'),'购物已确认，积分已发放')
+ if(!error.value)emit('tasksChanged')
+}
 function routineAssignmentPeriod(r:Row){
  return String(r.currentPeriodOn||r.nextDueOn||r.earlyPeriodOn||'')
 }
@@ -1503,14 +1511,20 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="shopping-check">
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
                     <small><StatusBadge :code="s.completed_at?'completed':'to_buy'" /></small>
-                    <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ memberName(s.assigned_to) }}</small>
+                    <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
+                    <small v-if="s.second_assignee_user_id">完成后共 2 分 · 两人各 1 分</small>
+                    <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
                   </span>
                 </div>
                 <div class="shopping-row-actions">
                   <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
                     class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
+                  <button v-if="!s.completed_at&&s.ledger_entry_id&&shoppingCompletable(s)"
+                    type="button" class="life-link" :disabled="busy"
+                    @click="confirmShopping(s)">确认完成</button>
                   <button v-if="planScope==='active'&&!s.completed_at&&(!!s.due_on||
-                    (canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId))"
+                    (canEdit(s)&&s.visibility==='household'&&s.assigned_to&&
+                       [s.assigned_to,s.second_assignee_user_id].some(id=>id!==props.userId)))"
                     type="button" class="routine-more-trigger"
                     :aria-label="'更多操作：'+s.title"
                     :aria-expanded="expandedTaskMenu==='shopping:'+s.id"
@@ -1526,13 +1540,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @keydown.esc.stop="expandedTaskMenu=null">
               <button v-if="planScope==='active'&&s.due_on" type="button"
                 @click="expandedTaskMenu=null;toggleReminderEditor('shopping',s.id)">提醒设置</button>
-              <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&s.assigned_to!==props.userId&&!s.completed_at"
+              <button v-if="canEdit(s)&&s.visibility==='household'&&s.assigned_to&&
+                  [s.assigned_to,s.second_assignee_user_id].some(id=>id&&id!==props.userId)&&!s.completed_at"
                 type="button" :disabled="!!pushBusyId" @click="openTaskPush('shopping',s)">通知处理人</button>
             </div>
             <EditBottomSheet v-if="pushTarget==='shopping:'+s.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
 <form class="task-push-form"
               @submit.prevent="notifyHandler('shopping',s)">
-              <label>给 {{ memberName(s.assigned_to) }} 留言（可选）
+              <label>给 {{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、') }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2"
                   placeholder="例如：下班顺路买一下哦"/>
               </label>

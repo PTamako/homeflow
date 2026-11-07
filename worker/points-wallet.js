@@ -6,6 +6,7 @@ export function householdWalletSql(h,u){
  const adjust=sum(`a.delta) FROM completion_point_adjustments a WHERE a.household_id=${h} AND a.earner_user_id=${u} AND a.visibility='household'`)
  const jointBase=sum(`j.points) FROM dual_completion_splits j WHERE j.household_id=${h} AND j.user_id=${u} AND j.visibility='household'`)
  const shopping=sum(`s.points) FROM shopping_completion_points s WHERE s.household_id=${h} AND s.earner_user_id=${u} AND s.visibility='household'`)
+ const shoppingSplit=sum(`j.points) FROM shopping_joint_credits j WHERE j.household_id=${h} AND j.user_id=${u} AND j.visibility='household'`)
  const weekly=sum(`w.points) FROM weekly_challenge_awards w WHERE w.household_id=${h} AND w.user_id=${u}`)
  const savings=sum(`gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=${h} AND gr.user_id=${u}`)
  const achievements=sum(`ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=${h} AND ma.user_id=${u}`)
@@ -55,5 +56,5 @@ export function householdWalletSql(h,u){
  const lotteryCosts=sum(`l.cost_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u}`)
  const direct=sum(`r.points_spent) FROM reward_redemptions r WHERE r.household_id=${h} AND r.redeemed_by=${u}`)
  const group=sum(`c.points) FROM reward_group_contributions c JOIN reward_group_orders g ON g.id=c.order_id WHERE c.household_id=${h} AND c.user_id=${u} AND g.status<>'cancelled'`)
- return `(${earned} + ${adjust} + ${jointBase} + ${shopping} + ${weekly} + ${savings} + ${achievements} + ${incoming} + ${routineIncoming} + ${duoTaskIn} + ${duoRoutineIn} - ${outgoing} - ${routineOutgoing} - ${duoTaskOut} - ${duoRoutineOut} - ${direct} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
+ return `(${earned} + ${adjust} + ${jointBase} + ${shopping} + ${shoppingSplit} + ${weekly} + ${savings} + ${achievements} + ${incoming} + ${routineIncoming} + ${duoTaskIn} + ${duoRoutineIn} - ${outgoing} - ${routineOutgoing} - ${duoTaskOut} - ${duoRoutineOut} - ${direct} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
 }

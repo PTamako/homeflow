@@ -157,7 +157,7 @@ export async function remindersRoute(request,db,session) {
       AND completed_at IS NULL AND due_on IS NOT NULL AND due_on<=?2
       AND (due_on>=?4 OR id IN(SELECT source_id FROM today_plan_actions
         WHERE household_id=?1 AND kind='shopping' AND action='postponed' AND postponed_to BETWEEN ?4 AND ?2))
-      AND (visibility='household' OR created_by=?3) AND (assigned_to=?3 OR assigned_to IS NULL)
+      AND (visibility='household' OR created_by=?3) AND (assigned_to=?3 OR second_assignee_user_id=?3 OR assigned_to IS NULL)
       ORDER BY due_on LIMIT 100`).bind(hid,addDays(date,7),u,date),
     db.prepare(`SELECT id,title,plan_json,created_by FROM trips
       WHERE household_id=?1 AND deleted_at IS NULL AND status IN ('planning','active')

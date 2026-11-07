@@ -83,7 +83,7 @@ async function handleAction(request,db,session){
  if(!row)return json({error:'not_found'},404)
  const canAct=row[config.owner]===u ||
    ((kind==='task'||kind==='shopping')&&row.assignee_user_id===u&&row.visibility==='household') ||
-   (kind==='shopping'&&row.assigned_to===u&&row.visibility==='household')
+   (kind==='shopping'&&(row.assigned_to===u||row.second_assignee_user_id===u)&&row.visibility==='household')
  if(!canAct)return json({error:'forbidden'},403)
  if(!sourceAvailable(kind,row)||!row[config.date])return json({error:'already_resolved'},409)
  const {results:decisions}=await db.prepare(`SELECT original_on,action,postponed_to,kind,source_id

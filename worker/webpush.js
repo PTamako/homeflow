@@ -171,7 +171,7 @@ async function sendTaskPush(env,session,body){
          AND t.enabled=1 AND rm.completed_at IS NULL AND rm.skipped_at IS NULL LIMIT 1`)
        .bind(body.id,session.household_id,session.user_id,body.periodOn).first()
   }else{
-    const secondary=routine?'NULL':shopping?'NULL':'t.second_assignee_user_id'
+    const secondary=routine?'NULL':shopping?'t.second_assignee_user_id':'t.second_assignee_user_id'
     const sql=`SELECT t.id,t.title,${due} AS dueOn,${assignee} AS recipientId,
       ${secondary} AS secondRecipientId
       FROM ${table} t JOIN household_members m ON m.user_id=${assignee} AND m.household_id=t.household_id

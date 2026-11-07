@@ -23,7 +23,7 @@ const form=reactive({
  monthWeekday:Number(config.weekday??2),
  monthWeekNumbers:Array.isArray(config.weekNumbers)?[...config.weekNumbers] as number[]:[2,4] as number[],
  anchorDate:String(data.anchor_date||''),
- subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),healthRecordType:String(data.health_record_type||''),
+ subjectProfileId:String(data.subject_profile_id||''),assignedTo:String(data.assigned_to||''),shoppingSecond:String(data.second_assignee_user_id||''),healthRecordType:String(data.health_record_type||''),
  wishType:String(data.wish_type||'other'),status:String(data.status||'wished'),
  estimatedAmount:Number(data.estimated_amount||0),wishRemindEnabled:data.remind_enabled===1,
  wishRemindAdvanceDays:Number(data.remind_advance_days??0),
@@ -44,7 +44,7 @@ function values(){
  if(!common.title||common.title.length>150)throw Error('名称须为 1～150 个字符')
  switch(props.kind){
   case 'shopping':
-   return {...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null}
+   return {...common,quantity:form.quantity,dueOn:form.dueOn||null,assignedTo:form.assignedTo||null,secondAssigneeUserId:form.shoppingSecond||null}
   case 'anniversaries':
    return {...common,eventDate:form.eventDate,repeatMode:form.repeatMode,
      advanceDays:JSON.parse(data.advance_days_json||'[30,7,1,0]'),
@@ -85,7 +85,7 @@ function values(){
 }
 async function save(){
  busy.value=true;error.value=''
- if(['routines','shopping'].includes(props.kind)&&form.visibility==='private'&&form.assignedTo&&form.assignedTo!==props.userId){
+ if(['routines','shopping'].includes(props.kind)&&form.visibility==='private'&&((form.assignedTo&&form.assignedTo!==props.userId)||props.kind==='shopping'&&!!form.shoppingSecond)){
   error.value='指派给其他家庭账号时，请选择家庭共享';busy.value=false;return
  }
  try{
@@ -94,7 +94,7 @@ async function save(){
    body:JSON.stringify({...values(),expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null,
     ...(['shopping','memories'].includes(props.kind)?{
       expectedSnapshot:JSON.stringify((props.kind==='shopping'?
-        ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to']:
+        ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to','second_assignee_user_id']:
         ['title','story','happened_on','visibility','linked_type','linked_id'])
         .map(key=>data[key]??null))
     }:{})})})
@@ -113,16 +113,26 @@ async function save(){
    <label>计划购买日<DateField v-model="form.dueOn" /></label>
    <label>处理人
      <select v-model="form.assignedTo" aria-label="修改购物计划处理人"
-       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null">
+       @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null;form.shoppingSecond===form.assignedTo?form.shoppingSecond='':null">
        <option value="">未指派</option>
        <option v-for="member in (members||[])" :key="member.id" :value="member.id">
          {{ (profiles||[]).find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}
        </option>
      </select>
    </label>
+   <label v-if="form.assignedTo">共同处理人（可选）
+     <select v-model="form.shoppingSecond" aria-label="修改购物共同处理人"
+       @change="form.shoppingSecond&&form.shoppingSecond!==userId?form.visibility='household':null">
+       <option value="">仅一人</option>
+       <option v-for="member in (members||[])" :key="member.id"
+         :disabled="member.id===form.assignedTo" :value="member.id">
+         {{ (profiles||[]).find(p=>p.memberUserId===member.id)?.displayName||member.loginName }}
+       </option>
+     </select>
+   </label>
    <label>可见范围
      <select v-model="form.visibility" aria-label="购物计划可见范围"
-       @change="form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
+       @change="form.visibility==='private'?form.shoppingSecond='':null;form.visibility==='private'&&form.assignedTo!==userId?form.assignedTo=userId||'':null">
        <option value="household">家庭共享</option>
        <option value="private">仅自己</option>
      </select>
