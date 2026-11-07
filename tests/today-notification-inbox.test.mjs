@@ -39,6 +39,8 @@ test('notifications list uses recipient-only or sender-only scope, current day a
   '/api/notifications/today',session)
  assert.equal(sent.status,200)
  assert.match(queries[2].sql,/n.sender_user_id=\?3/)
+ assert.match(queries[2].sql,/n.dedupe_key NOT LIKE 'lottery:%'/)
+ assert.match(queries[2].sql,/n.recipient_user_id<>n.sender_user_id/)
  assert.doesNotMatch(queries[2].sql,/AND n.sent_devices>0/)
 })
 
