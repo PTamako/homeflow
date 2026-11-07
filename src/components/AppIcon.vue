@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   name: 'sun'|'clipboard-check'|'images'|'house'|'paw'|'users'|'calendar-heart'|'repeat'|
-    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'
+    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'|'gift'|'award'|'handshake'
   size?: number
 }>(), {size:22})
 </script>
@@ -68,6 +68,16 @@ withDefaults(defineProps<{
     <template v-else-if="name==='settings'">
       <circle cx="12" cy="12" r="3"/>
       <path d="m19.4 15 .8 1.5-2.3 2.3-1.5-.8-1.5.6-.5 2.4h-3.2l-.5-2.4-1.5-.6-1.5.8-2.3-2.3.8-1.5-.6-1.5L3 13v-2l2.4-.5.6-1.5-.8-1.5 2.3-2.3 1.5.8 1.5-.6L11 3h3.2l.5 2.4 1.5.6 1.5-.8L20 7.5l-.8 1.5.6 1.5L22 11v2l-2.4.5z"/>
+    </template>
+    <template v-else-if="name==='gift'">
+      <rect x="3" y="9" width="18" height="12" rx="2"/><path d="M3 12h18M12 9v12M12 9H8a3 3 0 1 1 3-4c1 1 1 4 1 4zm0 0h4a3 3 0 1 0-3-4c-1 1-1 4-1 4z"/>
+    </template>
+    <template v-else-if="name==='award'">
+      <circle cx="12" cy="8" r="5"/><path d="m8.5 12-2 9 5.5-3 5.5 3-2-9"/>
+    </template>
+    <template v-else-if="name==='handshake'">
+      <path d="m2 12 4-4 3 2 3-3 3 1 5-2 2 7-4 2-5 5-3-1-6-5-2-2z"/>
+      <path d="m9 10 3 3 2-1 4 3M8 16l3-2m1 4 2-3"/>
     </template>
     <template v-else-if="name==='ellipsis'">
       <circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>
