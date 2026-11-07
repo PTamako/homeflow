@@ -66,6 +66,7 @@ test('paid assignment moves contribution on completion, undo reverses it; pendin
  const {db,members}=fixture()
  try{
   addTask(db,'seed','alice');complete(db,'seed','alice')
+  addTask(db,'bob-seed','bob');complete(db,'bob-seed','bob')
   const baseline=await members()
   addTask(db,'assigned','alice','bob',null,'household',8)
   const pending=await members()
@@ -87,6 +88,7 @@ test('two named assignees share base and funded bounty; total household contribu
  const {db,members}=fixture()
  try{
   addTask(db,'seed','alice');complete(db,'seed','alice')
+  addTask(db,'bob-seed','bob');complete(db,'bob-seed','bob')
   const baseline=await members()
   addTask(db,'team','alice','alice','bob','household',8)
   complete(db,'team','bob')
