@@ -22,6 +22,8 @@ type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
 const view=ref<'shop'|'achievements'>('shop')
+// Default to a compact family overview entry, not an open reward catalog.
+const expanded=ref(false)
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
@@ -53,17 +55,44 @@ async function refresh(){
  const current=++generation
  loading.value=true;error.value=''
  try{
-   const [pointsResult,shopResult]=await Promise.all([
-     fetchJSON('/points'),fetchJSON('/rewards')])
-   if(current!==generation||!props.active)return
-   data.value=pointsResult as Summary;shop.value=shopResult as Shop
+   if(!expanded.value){
+     const pointsResult=await fetchJSON('/points')
+     if(current!==generation||!props.active)return
+     data.value=pointsResult as Summary
+   }else{
+     const [pointsResult,shopResult]=await Promise.all([
+       fetchJSON('/points'),fetchJSON('/rewards')])
+     if(current!==generation||!props.active||!expanded.value)return
+     data.value=pointsResult as Summary;shop.value=shopResult as Shop
+   }
  }catch(e){if(current===generation)error.value=(e as Error).message}
  finally{if(current===generation)loading.value=false}
 }
 watch(()=>[props.active,props.userId,props.syncRevision],()=>{
  if(props.active)void refresh()
- else generation++
+ else{
+   generation++
+   expanded.value=false
+   shop.value=null
+ }
 },{immediate:true})
+watch(()=>props.userId,()=>{
+ generation++
+ data.value=null
+ shop.value=null
+ expanded.value=false
+})
+function openDetails(){
+ if(expanded.value)return
+ expanded.value=true
+ void refresh()
+}
+function closeDetails(){
+ expanded.value=false
+ generation++
+ view.value='shop'
+ resetForm()
+}
 function resetForm(){
  formOpen.value=false;editId.value='';formIcon.value='🎁';formTitle.value=''
  formDescription.value='';formCost.value='100';formStock.value='';formActive.value=true
@@ -147,8 +176,21 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 </script>
 
 <template>
- <section class="points-board panel" aria-labelledby="points-title">
-   <div class="points-head"><h2 id="points-title">家庭成长积分</h2><small>完成一次 +10 分</small></div>
+ <section class="points-board panel" :class="{'points-board--collapsed':!expanded}" aria-label="家庭成长积分">
+   <button v-if="!expanded" type="button" class="points-entry" :aria-expanded="expanded"
+     aria-controls="points-expanded" @click="openDetails">
+     <span class="points-entry-icon" aria-hidden="true">🎁</span>
+     <span class="points-entry-main"><strong>家庭成长积分</strong>
+       <small v-if="data">Lv.{{ data.ownLevel.level }} · 可用 {{ fmt(points) }} 分</small>
+       <small v-else>{{ loading?'正在读取积分…':'积分商店 · 合力兑换 · 成就' }}</small>
+     </span>
+     <span class="points-entry-right">查看 <span aria-hidden="true">›</span></span>
+   </button>
+   <p v-if="!expanded&&error" role="alert" class="points-error">{{ error }}</p>
+   <div v-if="expanded" id="points-expanded" class="points-expanded">
+     <div class="points-head"><h2 id="points-title">家庭成长积分</h2>
+       <button type="button" class="points-collapse" @click="closeDetails">收起 <span aria-hidden="true">⌃</span></button>
+     </div>
    <p class="points-hint">普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
    <div v-if="data" class="points-my-card">
      <div><small>我的成长经验（永久累计，兑换不扣）</small><strong>{{ fmt(myTotal) }} XP</strong>
@@ -197,11 +239,11 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div class="reward-details"><b>{{ item.title }}</b><small>{{ item.description }}</small>
            <span>{{ fmt(item.points) }} 积分 <small v-if="item.stock!==null"> · 剩余 {{ Math.max(0,item.stock-item.redeemedCount) }}</small></span>
          </div>
+         <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<item.points||(item.stock!==null&&item.redeemedCount>=item.stock)"
+           @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
          <div class="reward-actions">
-           <button type="button" class="redeem-btn" :disabled="busy||points<item.points||(item.stock!==null&&item.redeemedCount>=item.stock)"
-             @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
            <button type="button" class="link-btn" :disabled="busy||(item.stock!==null&&item.redeemedCount>=item.stock)"
-              @click="startPool(item)">合力</button>
+             @click="startPool(item)">🤝 合力</button>
            <button type="button" class="link-btn" :disabled="busy" @click="editReward(item)">编辑</button>
            <button type="button" class="link-btn" :disabled="busy" @click="toggleActive(item)">下架</button>
          </div>
@@ -269,10 +311,25 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <p v-if="error" role="alert" class="points-error">{{ error }}
      <button type="button" class="points-retry" @click="refresh">刷新</button>
    </p>
+   </div>
  </section>
 </template>
 <style scoped>
 .points-board{display:grid;gap:12px;min-width:0}
+.points-board--collapsed{padding:10px 13px;margin:10px 0}
+.points-entry{width:100%;display:flex;align-items:center;gap:10px;text-align:left;
+  padding:3px 1px;min-height:48px;border:0;background:none;color:#344c3d}
+.points-entry-icon{display:grid;place-items:center;flex:none;width:38px;height:38px;
+  background:#f0f7ef;border-radius:11px;font-size:21px}
+.points-entry-main{min-width:0;flex:1;display:grid;gap:3px}
+.points-entry-main strong{font-size:14px;line-height:1.3}
+.points-entry-main small{font-size:11px;color:#748c7a;line-height:1.4}
+.points-entry-right{font-size:12px;color:#4a8662;white-space:nowrap}
+.points-entry-right span{font-size:20px;vertical-align:middle}
+.points-entry:focus-visible,.points-collapse:focus-visible{outline:2px solid #43866a;outline-offset:3px}
+.points-expanded{display:grid;gap:11px;min-width:0}
+.points-collapse{border:0;background:#f3f8f2;color:#518069;border-radius:8px;
+  font-size:12px;min-height:30px;padding:4px 11px;white-space:nowrap}
 .points-head,.shop-title,.form-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .points-head h2{margin:0;font-size:17px;line-height:1.4}
 .points-head small{font-size:12px;color:#52846c;font-weight:650;white-space:nowrap}
@@ -308,16 +365,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .shop-title b,.history-section>b{font-size:14px;color:#426b50}
 .small-outline{border:1px solid #cde1d1;background:white;color:#448765;border-radius:8px;padding:7px 10px;font-size:12px}
 .reward-list{display:grid;gap:7px}
-.reward-row{display:flex;align-items:center;gap:9px;border:1px solid #e4ede6;border-radius:11px;padding:10px;min-width:0}
-.reward-emoji{flex:none;font-size:24px;background:#f4f8f3;width:40px;height:40px;border-radius:10px;display:grid;place-items:center}
-.reward-details{min-width:0;flex:1;display:grid;gap:3px}
+.reward-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;
+  align-items:center;gap:6px 9px;border:1px solid #e4ede6;border-radius:11px;padding:9px;min-width:0}
+.reward-emoji{grid-column:1;grid-row:1;font-size:23px;background:#f4f8f3;
+  width:38px;height:38px;border-radius:10px;display:grid;place-items:center}
+.reward-details{grid-column:2;grid-row:1;min-width:0;display:grid;gap:3px}
 .reward-details b{font-size:13px;overflow-wrap:anywhere}
 .reward-details small{font-size:11px;color:#7b8d80;line-height:1.35;overflow-wrap:anywhere}
 .reward-details>span{font-size:12px;color:#438266;font-weight:650}
-.reward-actions{display:grid;gap:2px;justify-items:stretch;flex:none}
+.reward-buy{grid-column:3;grid-row:1;min-height:32px;white-space:nowrap}
+.reward-actions{grid-column:2/-1;grid-row:2;display:flex;gap:6px;justify-content:flex-end;
+  align-items:center;min-width:0;flex-wrap:wrap}
 .redeem-btn,.save-btn{border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
 .redeem-btn:disabled,.save-btn:disabled{opacity:.45}
-.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:3px}
+.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:6px 5px;min-height:28px}
 .pool-section{display:grid;gap:8px;padding-top:9px;border-top:1px solid #ecf0ea}
 .pool-section>b{font-size:14px;color:#426b50}
 .pooled-order{border:1px solid #dceadf;border-radius:11px;padding:11px;display:grid;gap:8px;background:#fafdfb;min-width:0}
@@ -354,5 +415,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-loading,.points-error{margin:0;font-size:12px;color:#7c8c80}
 .points-error{color:#a34b3d}
 .points-retry{background:none;border:0;color:#438669;font-size:12px}
-@media(max-width:360px){.reward-row{padding:8px;gap:6px}.reward-emoji{width:34px;height:34px}.points-my-card strong{font-size:19px}}
+@media(max-width:360px){.reward-row{padding:8px;gap:5px}.reward-emoji{width:34px;height:34px}
+.reward-actions{gap:2px}.link-btn{padding:5px 3px}.points-my-card strong{font-size:19px}
+.points-board--collapsed{padding:9px 11px}}
 </style>
