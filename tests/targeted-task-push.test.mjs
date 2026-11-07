@@ -74,7 +74,7 @@ test('task and message UI link to the secure push routes and deep-link task deta
  const push=read('src/components/PushPanel.vue')
  assert.match(life,/notifyHandler\('task',t\)/)
  assert.match(life,/notifyHandler\('routine',r\)/)
- assert.match(life,/处理人：\{\{ memberName\(t\.assigneeUserId\) \}\}/)
+ assert.match(life,/t\.secondAssigneeUserId/)
  assert.match(web,/\/\?taskType='/)
  assert.match(web,/taskId='/)
  assert.match(web,/WHERE household_id=\?1 AND user_id=\?2 LIMIT 10/)
