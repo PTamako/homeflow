@@ -9,7 +9,7 @@ type Level={level:number;title:string;progress:number;nextLevelIn:number}
 type Badge={id:string;label:string;icon:string;unlocked:boolean;target:number;progress:number;rewardPoints:number}
 type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
  ownPrivatePoints:number;ownPrivateMonthPoints:number;experience:number;
- earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;achievementBonusPoints:number;spentPoints:number;availablePoints:number;
+ earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;achievementBonusPoints:number;lotteryNetPoints:number;spentPoints:number;availablePoints:number;
  ownLevel:Level;badges:Badge[];challenge:{weekOn:string;completed:number;target:number;bonus:number;achieved:boolean}}
 type Reward={id:string;title:string;description:string;icon:string;points:number;
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
@@ -295,8 +295,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <small class="points-details">累计共享 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
      </article>
    </div>
-   <p v-if="data" class="points-private">我的贡献：共享 {{ own?.sharedPoints||0 }} + 私人 {{ data.ownPrivatePoints }}
-     <small> · 每周挑战 +{{ data.weeklyBonusPoints }} · 储值达标 +{{ data.savingsBonusPoints }} · 月度成就 +{{ data.achievementBonusPoints }}；私人任务不参与家庭积分兑换</small>
+   <p v-if="data" class="points-private">我的积分：累计共享 {{ fmt(own?.sharedPoints||0) }} 分 · 私人 {{ fmt(data.ownPrivatePoints) }} 分
+     <small> · 共享积分包含：每周挑战 +{{ fmt(data.weeklyBonusPoints) }} · 储值达标 +{{ fmt(data.savingsBonusPoints) }} · 月度成就 +{{ fmt(data.achievementBonusPoints) }} · 抽奖净收益 {{ data.lotteryNetPoints>0?'+':'' }}{{ fmt(data.lotteryNetPoints||0) }}；以上来源已包含在累计共享中，不重复累加。私人任务积分不可兑换家庭奖励。</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>

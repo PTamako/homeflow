@@ -70,6 +70,30 @@ test('seven draws per member per month; replay does not double-charge; private X
  }finally{sqlite.close()}
 })
 
+test('lottery net winnings appear in shared cumulative and monthly leaderboard but never XP',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',4)
+  const awardedTask=sqlite.prepare("SELECT source_id FROM completion_points WHERE household_id='h' AND earner_user_id='alice' LIMIT 1").get().source_id
+  sqlite.prepare("INSERT INTO completion_point_adjustments(household_id,kind,source_id,occurrence_on,earner_user_id,visibility,delta,earned_at) VALUES('h','task',?1,'','alice','household',-5,?2)")
+   .run(awardedTask,new Date().toISOString())
+  const before=await wallet(db,alice)
+  const myself=result=>result.members.find(m=>m.userId==='alice')
+  const base=myself(before)
+  const result=await call(db,alice,'POST',crypto.randomUUID(),'ten')
+  assert.equal(result.status,201)
+  const after=await wallet(db,alice)
+  assert.equal(after.availablePoints,before.availablePoints+5)
+  assert.equal(after.lotteryNetPoints,5,'summary breaks out net lottery points only once')
+  assert.equal(before.lotteryNetPoints,0)
+  assert.equal(myself(after).sharedPoints,base.sharedPoints+5)
+  assert.equal(myself(after).monthPoints,base.monthPoints+5)
+  assert.equal(after.experience,before.experience,'lottery does not generate XP')
+  const bobs=(await wallet(db,bob)).members.find(x=>x.userId==='bob')
+  assert.equal(bobs.sharedPoints,0,'no shared ranking credit to partner')
+ }finally{sqlite.close()}
+})
+
 test('doubling uses balance AFTER five-point entry fee; private points cannot pay',async()=>{
  const {sqlite,db}=fixture()
  try{
