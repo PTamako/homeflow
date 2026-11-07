@@ -52,7 +52,6 @@ onBeforeUnmount(()=>{serial++})
 <template>
  <EditBottomSheet title="单项提醒设置" :close-disabled="busy" @close="emit('close')">
  <section class="plan-reminder-editor" aria-label="单项提醒设置">
-  <b>单项提醒</b>
   <p v-if="loading" class="editor-hint">加载中…</p>
   <template v-else>
    <div class="editor-fields">
