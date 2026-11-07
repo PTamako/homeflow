@@ -867,6 +867,15 @@ async function selectTrip(id:string){
   catch(e){error.value=(e as Error).message}
 }
 function itemDone(externalId:string){return !!tripProgress.value.find(p=>p.itemId===externalId&&p.completedAt)}
+const tripItineraryItems=computed(()=>(tripDetail.value?.plan?.trip?.days||[])
+  .flatMap((day:Row)=>day.items||[]))
+const tripItineraryCompleted=computed(()=>tripItineraryItems.value
+  .filter((it:Row)=>itemDone(String(it.externalId))).length)
+function tripDisplayTitle(item:Row){
+ const title=String(item.title||''),time=String(item.startTime||'')
+ return time&&title.startsWith(time)
+   ?title.slice(time.length).replace(/^[\s·：:–—-]+/,'').trim():title
+}
 async function toggleTrip(id:string){
   if(!tripDetail.value)return
   try{
@@ -874,6 +883,22 @@ async function toggleTrip(id:string){
     await selectTrip(tripDetail.value.id)
     notify('旅行事项已更新')
   }catch(e){error.value=(e as Error).message}
+}
+async function completeTrip(){
+ const trip=tripDetail.value
+ if(!trip||trip.createdBy!==props.userId||trip.status==='completed'||busy.value)return
+ const unfinished=tripItineraryItems.value.length-tripItineraryCompleted.value
+ if(!confirm(unfinished>0
+   ?'还有 '+unfinished+' 项行程未勾选。确定这次旅行已结束吗？'
+   :'确定这次旅行已结束并移入历史？'))return
+ busy.value=true;error.value=''
+ try{
+  await api('/trips/'+encodeURIComponent(trip.id),'PATCH',{status:'completed'})
+  tripDetail.value=null
+  await fetchMode()
+  notify('旅行已完成，可在已完成 / 历史查看')
+ }catch(e){error.value=(e as Error).message}
+ finally{busy.value=false}
 }
 function editTripItem(item:Row){
  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId)return
@@ -1624,7 +1649,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
         </section>
         <section v-if="planType==='all'||planType==='trip'" class="life-card">
-          <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
+          <div class="trip-section-header">
+            <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
+            <button type="button" class="trip-import-trigger" @click="tripImportOpen=true">导入行程</button>
+          </div>
           <template v-for="t in trips" :key="t.id">
             <div :id="'plan-item-'+t.id" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
@@ -1633,8 +1661,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="life-details"><b class="detail-name">{{ t.title }}</b>
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · <StatusBadge :code="t.status" /></small></div>
                 <div class="trip-card-actions">
-                  <button type="button" class="life-link" @click="selectTrip(t.id)">行程</button>
-                  <button v-if="isOwner||(canEdit(t)&&t.status==='completed')"
+                  <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
+                  <button v-if="isOwner" type="button" class="life-link trip-finance-trigger"
+                    @click.stop="toggleFinance('trip',t.id)">费用</button>
+                  <button v-if="canEdit(t)&&t.status==='completed'"
                     type="button" class="routine-more-trigger"
                     :aria-label="'更多操作：'+t.title"
                     :aria-expanded="expandedTaskMenu==='trip:'+t.id"
@@ -1645,13 +1675,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </div>
             </SwipeActions>
-            <div v-if="expandedTaskMenu==='trip:'+t.id" :id="'trip-actions-'+t.id"
-              class="routine-inline-actions" role="group" :aria-label="'操作：'+t.title"
+            <div v-if="expandedTaskMenu==='trip:'+t.id&&canEdit(t)&&t.status==='completed'"
+              :id="'trip-actions-'+t.id"
+              class="trip-inline-actions" role="group" :aria-label="'操作：'+t.title"
               @keydown.esc.stop="expandedTaskMenu=null">
-              <button v-if="isOwner" type="button" class="life-link"
-                @click="expandedTaskMenu=null;toggleFinance('trip',t.id)">费用与调整额</button>
-              <button v-if="canEdit(t)&&t.status==='completed'" type="button"
-                class="life-link" :disabled="busy"
+              <button type="button" class="life-link" :disabled="busy"
                 @click="expandedTaskMenu=null;startPlanMemory('trip',t)">记录旅行回忆</button>
             </div>
             <EditBottomSheet v-if="planMemoryDraft?.kind==='trip'&&planMemoryDraft.id===t.id" title="记录旅行回忆" :close-disabled="busy" @close="planMemoryDraft=null">
@@ -1686,7 +1714,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button v-if="listCursors.trips" class="life-more" type="button" :disabled="pageBusy.trips"
             @click="loadMore('trips')">加载更多旅行</button>
           <div v-if="tripDetail" class="trip-detail">
-            <h3>{{ tripDetail.title }}</h3>
+            <div class="trip-detail-header">
+              <h3>{{ tripDetail.title }}</h3>
+              <button type="button" class="trip-detail-close" @click="tripDetail=null" aria-label="收起行程"><AppIcon name="x" :size="16"/></button>
+            </div>
+            <div class="trip-progress">
+              <span>行程完成 {{ tripItineraryCompleted }} / {{ tripItineraryItems.length }}</span>
+              <span>{{ tripItineraryItems.length?Math.round(tripItineraryCompleted/tripItineraryItems.length*100):0 }}%</span>
+              <div class="trip-progress-track" role="progressbar" :aria-valuenow="tripItineraryCompleted"
+                aria-valuemin="0" :aria-valuemax="tripItineraryItems.length" aria-label="行程完成进度">
+                <div class="trip-progress-fill" :style="{width:(tripItineraryItems.length?tripItineraryCompleted/tripItineraryItems.length*100:0)+'%'}"></div>
+              </div>
+            </div>
             <template v-if="tripDetail.plan">
               <div v-for="d in tripDetail.plan.trip.days" :key="d.date" class="trip-day"><b>{{ d.date }}</b>
                 <SwipeActions v-for="it in d.items" :key="it.externalId" :id="it.externalId" :scope="'trip-'+tripDetail.id"
@@ -1696,7 +1735,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <div class="trip-detail-row">
                   <label class="trip-item" :class="{done:itemDone(it.externalId)}">
                     <input type="checkbox" :checked="itemDone(it.externalId)" @change="toggleTrip(it.externalId)"/>
-                    <span>{{ it.startTime||'待定' }} · {{ it.title }}</span>
+                    <span class="trip-item-text"><strong>{{ it.startTime||'待定' }}</strong> · {{ tripDisplayTitle(it) }}</span>
                     <StatusBadge :code="itemDone(it.externalId)?'completed':'pending'" />
                   </label>
                 </div>
@@ -1721,7 +1760,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </SwipeActions>
               </div>
               <div v-for="list in tripDetail.plan.trip.packingLists||[]" :key="list.externalId" class="trip-day">
-                <b class="life-heading"><AppIcon name="shopping" :size="18" /> 行李清单 · {{ list.owner }}</b>
+                <b class="life-heading"><AppIcon name="shopping" :size="18" /> 行李清单</b>
                 <SwipeActions v-for="piece in list.items" :key="piece.externalId" :id="piece.externalId" :scope="'trip-'+tripDetail.id"
                     :allow-edit="tripDetail.createdBy===props.userId"
                     :allow-delete="tripDetail.createdBy===props.userId"
@@ -1748,8 +1787,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </template>
             <p v-else class="life-caption">暂无行程</p>
+            <button v-if="tripDetail.status!=='completed'&&tripDetail.createdBy===props.userId"
+              type="button" class="trip-finish-action" :disabled="busy" @click="completeTrip">
+              <AppIcon name="check-circle" :size="17"/> 完成整趟旅行
+            </button>
           </div>
-          <button type="button" class="life-filter-trigger" @click="tripImportOpen=true">导入行程</button>
            <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
            <div class="trip-import">
             <label>导入到哪个旅行项目？
@@ -1919,7 +1961,21 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
  padding:8px 12px;min-height:36px;flex:none;font-size:12px}
 .plan-filter-tabs button.selected{background:#43866a;color:#fff;border-color:#43866a}
+.trip-section-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.trip-section-header h2{margin:0}
+.trip-import-trigger{background:#edf5ef;color:#397e5f;border:1px solid #d4e6d9;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:650;min-height:36px;white-space:nowrap}
 .trip-card-actions,.wish-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none;flex-wrap:wrap}
+.trip-card-actions .life-link{min-height:34px;white-space:nowrap}
+.trip-card-actions .routine-more-trigger{width:34px;height:34px}
+.trip-inline-actions{display:flex;gap:6px;padding:5px 0 8px}
+.trip-detail-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.trip-detail-header h3{margin:0;min-width:0;overflow-wrap:anywhere}
+.trip-detail-close{display:grid;place-items:center;border:none;background:#e9f0e9;color:#567765;border-radius:9px;width:32px;height:32px;flex:none}
+.trip-progress{display:grid;grid-template-columns:1fr auto;gap:6px;margin:10px 0 12px;color:#506e5b;font-size:12px}
+.trip-progress-track{grid-column:1/-1;height:6px;background:#dfe9dd;border-radius:10px;overflow:hidden}
+.trip-progress-fill{height:100%;border-radius:10px;background:#43866a;transition:width .2s}
+.trip-finish-action{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:13px;padding:10px 12px;border:none;border-radius:10px;background:#43866a;color:#fff;font-size:13px;font-weight:700}
+.trip-finish-action:disabled{opacity:.5}
 .once-edit{background:#f6faf6;border-radius:12px;padding:12px}
 .once-remind{display:flex!important;align-items:center;gap:9px}
 .once-remind input{width:18px!important;min-height:18px!important}
@@ -1985,9 +2041,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-task-subtle:focus-visible,.plan-task-action:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-task-action:disabled{opacity:.55}
 @media(max-width:370px){.plan-task-next{flex-basis:100%}}
-.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:center;gap:8px;font-size:12px;margin:9px 0}.trip-day{border-top:1px solid #e8ece6;padding:12px 0}
-.trip-detail-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;flex-wrap:wrap}
-.trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere}
+.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:flex-start;gap:9px;font-size:12px;margin:0;min-width:0}.trip-item input[type="checkbox"]{flex:0 0 19px;width:19px;height:19px;margin:1px 0 0;accent-color:#43866a}.trip-item-text{min-width:0;line-height:1.5;overflow-wrap:anywhere}.trip-item-text strong{white-space:nowrap;color:#4f715b;font-size:12px}.trip-day{border-top:1px solid #e8ece6;padding:11px 0}.trip-day>.life-heading{margin-bottom:10px!important;display:flex;align-items:center;gap:7px}.trip-day :deep(.swipe-content){padding:0;background:transparent}.trip-day .trip-detail-row{padding:7px 0}
+.trip-detail-row{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;min-width:0;flex-wrap:nowrap}
+.trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere;align-items:flex-start}.trip-detail-row .trip-item :deep(.status-badge){flex:none;margin-left:auto}
 .trip-item.done span{color:#9aa99d;text-decoration:line-through}
 .trip-item-actions{display:flex;gap:5px;flex:none}
 .trip-item-actions button{border:0;border-radius:7px;background:#edf5ed;color:#43866a;padding:6px 8px;font-size:11px}
