@@ -78,8 +78,16 @@ async function routeRequest(request,env,ctx,state){
           return goalPeriodArchiveRoute(request,env.DB,session)
         if(/^\/api\/goals\/[0-9a-f-]{36}\/periods(?:\/settle)?$/i.test(path))
           return goalPeriodsRoute(request,env,path,session)
-        if(/^\/api\/(anniversaries|routines|wishes|goals|shopping|memories)(\/|$)/.test(path))
-          return lifeRoute(request,env.DB,path,session,onComplete)
+        if(/^\/api\/(anniversaries|routines|wishes|goals|shopping|memories)(\/|$)/.test(path)){
+          const onAssigned=typeof ctx?.waitUntil==='function'
+            ? event=>ctx.waitUntil(pushRoute(new Request('https://homeflow.invalid/api/push/send-task',{
+                method:'POST',headers:{'content-type':'application/json'},
+                body:JSON.stringify({...event,message:'本期已指派给你，请按时处理'})
+              }),env,'/api/push/send-task',session)
+              .catch(()=>console.warn('homeflow_routine_assignment_push_failed')))
+            : null
+          return lifeRoute(request,env.DB,path,session,onComplete,{onAssigned})
+        }
         return json({error:'not_found'},404)
       }catch{
         return json({error:'server_error'},500)
