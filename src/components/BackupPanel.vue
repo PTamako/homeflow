@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,onBeforeUnmount,onMounted,ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
 import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
@@ -15,6 +15,22 @@ const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','
   'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','reminderSnoozes','reminderPreferences','reminderItemPreferences']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const restoreSheetOpen=ref(false)
+const helpOpen=ref(false)
+const helpAnchor=ref<HTMLElement|null>(null)
+function closeHelpOnOutside(event:PointerEvent){
+  if(helpOpen.value&&!helpAnchor.value?.contains(event.target as Node))helpOpen.value=false
+}
+function closeHelpOnEscape(event:KeyboardEvent){
+  if(event.key==='Escape')helpOpen.value=false
+}
+onMounted(()=>{
+  document.addEventListener('pointerdown',closeHelpOnOutside)
+  document.addEventListener('keydown',closeHelpOnEscape)
+})
+onBeforeUnmount(()=>{
+  document.removeEventListener('pointerdown',closeHelpOnOutside)
+  document.removeEventListener('keydown',closeHelpOnEscape)
+})
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
 const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
@@ -158,7 +174,20 @@ async function restore(){
 </script>
 <template>
   <section class="backup" aria-labelledby="backup-title">
-    <h2 id="backup-title" class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
+    <div class="backup-heading">
+      <h2 id="backup-title" class="backup-title"><AppIcon name="archive" :size="20" /> 备份与恢复</h2>
+      <span ref="helpAnchor" class="backup-help">
+        <button type="button" class="backup-help-trigger" aria-label="查看备份与恢复说明"
+          aria-controls="backup-help-popover" :aria-expanded="helpOpen" @click="helpOpen=!helpOpen">
+          <span class="backup-help-glyph" aria-hidden="true">?</span>
+        </button>
+        <div v-if="helpOpen" id="backup-help-popover" class="backup-help-popover" role="note">
+          <strong>备份与恢复说明</strong>
+          <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
+          <p>备份仅包含当前账号及本机照片；不含密码、未同步任务和云端照片。请妥善保存 ZIP 文件。</p>
+        </div>
+      </span>
+    </div>
     <div class="backup-section">
       <div class="backup-section-head">
         <h3>下载备份</h3>
@@ -194,11 +223,6 @@ async function restore(){
       </div>
       </EditBottomSheet>
     </div>
-    <details class="backup-notes">
-      <summary>备份与恢复说明<AppIcon name="chevron-down" :size="16" class="backup-chevron"/></summary>
-      <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
-      <p>备份仅包含当前账号及本机照片；不含密码、未同步任务和云端照片。请妥善保存 ZIP 文件。</p>
-    </details>
     <p v-if="status" class="success" role="status">{{ status }}</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <PageToast :toast="toast" />
@@ -207,8 +231,26 @@ async function restore(){
 <style scoped>
 .backup{display:grid;gap:0;min-width:0;max-width:100%;margin:12px 0;padding:18px;
   background:#fff;border:1px solid #e2ebe4;border-radius:16px;box-sizing:border-box}
-.backup-title{display:flex;align-items:center;gap:9px;margin:0 0 6px;
+.backup-heading{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin:0 0 6px;min-width:0}
+.backup-title{display:flex;align-items:center;gap:9px;margin:0;
   font-size:17px;line-height:1.4;color:#26392f}
+.backup-help{position:relative;display:inline-flex;align-items:center;flex:none}
+.backup-help-trigger{display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:0;
+  border-radius:50%;background:transparent;color:#527962;appearance:none;-webkit-appearance:none}
+.backup-help-glyph{display:inline-flex;align-items:center;justify-content:center;
+  width:15px;height:15px;min-width:15px;min-height:15px;box-sizing:border-box;
+  border:1px solid #b8ccc0;border-radius:50%;background:#f7faf7;
+  font-size:10px;font-weight:700;line-height:1}
+.backup-help-trigger:focus-visible{outline:2px solid #43866a;outline-offset:1px}
+.backup-help-popover{position:absolute;top:calc(100% + 6px);right:0;z-index:12;
+  width:min(310px,calc(100vw - 64px));max-height:min(320px,65dvh);overflow-y:auto;
+  padding:14px 15px;border:1px solid #d5e5d9;border-radius:12px;
+  box-shadow:0 10px 28px #1d392827;background:#fff;color:#385643;
+  font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+.backup-help-popover strong{display:block;margin-bottom:8px;font-size:13px}
+.backup-help-popover p{margin:0 0 9px}
+.backup-help-popover p:last-child{margin-bottom:0}
 .backup-section{min-width:0;padding:14px 0 16px}
 .backup-section+.backup-section{border-top:1px solid #e8eee9}
 .backup-restore-entry{width:100%;border:1px solid #cdded2;border-radius:11px;background:#f7fbf7;color:#39785c;padding:12px;font-size:13px;font-weight:700;text-align:left}
@@ -240,13 +282,6 @@ async function restore(){
   color:#829187;font-size:12px}
 .backup-preview{margin-top:12px;padding:12px;border:1px solid #dceade;border-radius:11px;background:#f7faf7}
 .backup-preview p{margin:0;font-size:12px;line-height:1.5;color:#446851}
-.backup-notes{border-top:1px solid #e8eee9;padding-top:13px}
-.backup-notes summary{width:fit-content;min-height:44px;display:flex;align-items:center;
-  gap:6px;color:#547664;font-size:12px;font-weight:650;cursor:pointer;list-style:none}
-.backup-notes summary::-webkit-details-marker{display:none}
-.backup-notes .backup-chevron{flex:none;transition:transform .15s}
-.backup-notes[open] .backup-chevron{transform:rotate(180deg)}
-.backup-notes p{margin:5px 0;color:#78887c;font-size:11px;line-height:1.65}
 .backup .error,.backup .success{margin:8px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .backup .error{color:#a94d37}.backup .success{color:#3c8566}
 @media(max-width:380px){.backup{padding:14px}.backup-file-picker{min-width:104px}}
