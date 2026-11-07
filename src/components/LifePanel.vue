@@ -1145,10 +1145,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='plans'">
-      <div v-if="focusedItemId&&props.focusPlanFromToday" class="focused-plan-banner">
-        <div><b>已打开对应计划</b></div>
-        <button type="button" @click="emit('backToToday')">返回今天</button>
-      </div>
       <p v-if="focusError" role="alert" class="life-error">{{ focusError }} · 请从计划列表手动查找。</p>
       <div class="plan-view-toolbar" aria-label="计划筛选与状态">
         <div class="plan-view-heading">
@@ -1226,6 +1222,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button v-if="r.status!=='missed'" type="button" class="routine-text-action" :disabled="busy"
                   @click="undoRoutineHistory(r)">撤销</button>
               </div>
+              <button v-if="isFocused(r)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <template v-else-if="entry.kind==='routine'">
@@ -1334,6 +1331,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 kind="routine" :item-id="r.id" @close="reminderTarget=null"/>
               <LifeItemEditor v-if="editing?.kind==='routines'&&editing.item.id===r.id"
                 kind="routines" :item="r" :profiles="props.profiles" :members="props.members" :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
+              <button v-if="isFocused(r)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
           <template v-else>
@@ -1454,6 +1452,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </div>
             </form>
             </EditBottomSheet>
+            <button v-if="isFocused(t)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
           </div>
           </template>
           </template>
@@ -1987,19 +1986,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-memory-form{margin:8px 0 12px;padding:10px;border:1px solid #dbe8dd;border-radius:10px;background:#f5faf6}
 .plan-memory-form textarea{min-width:0;max-width:100%;box-sizing:border-box;width:100%}
 .plan-memory-actions{display:flex;justify-content:flex-end;gap:8px}
-.focused-plan-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:12px 14px;margin-bottom:14px;background:#eef6ef;border:1px solid #cfe3d4;border-radius:13px}
-.focused-plan-banner>div{display:grid;gap:3px;min-width:0;flex:1}
-.focused-plan-banner b{font-size:13px;color:#365d47}
-.focused-plan-banner small{font-size:11px;color:#688779;line-height:1.6}
-.focused-plan-banner button,.life-return{border:0;border-radius:9px;
+.life-return{border:0;border-radius:9px;
   background:#43866a;color:#fff;padding:8px 10px;font-size:12px;white-space:nowrap}
 .focused-plan-entry{background:#f7fbf8;border-radius:8px;padding:2px 9px;
   box-shadow:inset 3px 0 0 #72aa88;scroll-margin-top:176px}
 .plan-action-strip{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 0}
 .plan-action-strip small{font-size:11px;color:#668776}
 .life-return{display:block;margin:10px 0 12px;background:#eaf3ec;color:#397e59}
-@media(max-width:480px){.focused-plan-banner{padding:10px;align-items:flex-start;flex-wrap:wrap}}
 .plan-filter-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 11px;scrollbar-width:none}
 .plan-filter-tabs button{border:1px solid #d8e6dc;background:#fff;color:#648171;border-radius:999px;
  padding:8px 12px;min-height:36px;flex:none;font-size:12px}
