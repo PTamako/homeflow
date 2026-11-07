@@ -20,7 +20,8 @@ const {toast,notify}=usePageToast()
 // An invitation is a bearer credential. Clear its visible value when leaving
 // Management; fetching or creating a new one always requires an explicit tap.
 watch(()=>props.active,active=>{
- if(!active){invitation.value='';inviteError.value='';pushStatus.value=null}
+ if(!active){invitation.value='';inviteError.value=''}
+ if(!active)pushStatus.value=null
  if(!active)reminderRulesOpen.value=false
 })
 async function generateInvite(){
