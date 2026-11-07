@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {lotteryOdds,lotteryPrize,lotteryRoute} from '../worker/lottery.js'
 import {pointsRoute} from '../worker/points.js'
+import {sendLotteryDrawNotification} from '../worker/webpush.js'
 
 const manifest=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const names=[...manifest.slice(manifest.indexOf('MIGRATIONS=['),manifest.indexOf(']\nfiles=')).matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(x=>x[1])
@@ -96,5 +97,25 @@ test('racing attempts obey monthly cap and a stale history row stays hidden',asy
   assert.equal(list.used,7)
   assert.equal(list.history.length,7)
   assert.equal(list.history.every(x=>x.kind==='empty'&&x.points===0),true)
+ }finally{sqlite.close()}
+})
+
+test('each draw creates an independent today inbox message for both members; retries preserve read status',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',1)
+  const result=await call(db,alice,'POST',crypto.randomUUID(),'empty')
+  assert.equal(result.status,201)
+  const draw=result.body.draw
+  const first=await sendLotteryDrawNotification({DB:db},alice,draw)
+  assert.equal(first.members,2)
+  const rows=sqlite.prepare("SELECT recipient_user_id,kind,title,message,read_at FROM notification_inbox ORDER BY recipient_user_id").all()
+  assert.deepEqual(rows.map(x=>x.recipient_user_id),['alice','bob'])
+  assert.equal(rows.every(x=>x.kind==='system'&&x.title.includes('Alice')&&x.message.includes('空手而归')),true)
+  sqlite.prepare("UPDATE notification_inbox SET read_at='2026-11-07 08:00:00' WHERE recipient_user_id='bob'").run()
+  await sendLotteryDrawNotification({DB:db},alice,draw)
+  const again=sqlite.prepare("SELECT recipient_user_id,read_at FROM notification_inbox ORDER BY recipient_user_id").all()
+  assert.equal(again.length,2,'no duplicate message')
+  assert.equal(again[1].read_at,'2026-11-07 08:00:00','replayed delivery must not clear read status')
  }finally{sqlite.close()}
 })
