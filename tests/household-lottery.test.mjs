@@ -168,7 +168,9 @@ test('racing attempts obey monthly cap and a stale history row stays hidden',asy
   sqlite.prepare("INSERT INTO household_lottery_draws(id,household_id,user_id,client_request_id,month_on,prize_kind,cost_points,prize_points,created_at) VALUES (?1,'h','alice',?2,'2024-02','empty',5,0,?3)").run(crypto.randomUUID(),crypto.randomUUID(),old.toISOString())
   const list=(await call(db,alice)).body
   assert.equal(list.used,7)
-  assert.equal(list.history.length,7)
+  assert.equal(list.history.length,5)
+  assert.equal(list.historyTotal,7)
+  assert.equal(list.historyTotalPages,2)
   assert.equal(list.history.every(x=>x.kind==='empty'&&x.points===0),true)
  }finally{sqlite.close()}
 })
