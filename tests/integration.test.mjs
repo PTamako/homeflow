@@ -84,6 +84,22 @@ async function send(env,path,method='GET',body,cookie,csrf=true){
  const result=await response.json()
  return {status:response.status,cookie:response.headers.get('set-cookie'),body:result}
 }
+// Test only: simulate the server's wall clock at the recorded occurrence.
+// Never add a client-controlled date override to the production Worker.
+async function sendAtMarkDate(env,path,method='GET',body,cookie){
+ if(method!=='POST'||!/^\/api\/routines\/[^/]+\/mark$/.test(path)||
+    !['completed','skipped'].includes(body?.status)||!body?.date)
+    return send(env,path,method,body,cookie)
+ const RealDate=Date
+ const instant=RealDate.parse(body.date+'T12:00:00+09:00')
+ if(!Number.isFinite(instant))throw Error('invalid_test_clock')
+ globalThis.Date=class extends RealDate{
+  constructor(...args){super(...(args.length?args:[instant]))}
+  static now(){return instant}
+ }
+ try{return await send(env,path,method,body,cookie)}
+ finally{globalThis.Date=RealDate}
+}
 function extractCookie(header) {return header?.split(';')[0]||''}
 // Mock the private, READ-ONLY Kakebo ledger. All assertions exercise the
 // production-only verification gate, never a real user database or network.
@@ -1104,7 +1120,7 @@ test('future interval can be completed early in Plans and undone without duplica
 test('missed weekly and monthly occurrences expire; later cycles are independent',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ask=(path,method='GET',body,cookie)=>sendAtMarkDate(env,path,method,body,cookie)
  const registration=await ask('/api/auth/bootstrap','POST',{
    loginName:'rollover-owner',password:'another-long-password-1234',
    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
@@ -1154,7 +1170,7 @@ test('missed weekly and monthly occurrences expire; later cycles are independent
 test('workday routines do not roll into Japanese weekends and daily marks reset each day',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ask=(path,method='GET',body,cookie)=>sendAtMarkDate(env,path,method,body,cookie)
  const registration=await ask('/api/auth/bootstrap','POST',{
    loginName:'workday-owner',password:'a-strong-test-password-123',
    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
@@ -1351,7 +1367,7 @@ test('completed routine plans can be archived without losing their completion ma
    title:'喝水',repeatType:'daily',repeatConfig:{},anchorDate:'2026-11-04',
    visibility:'household'},owner)
  assert.equal(r.status,201)
- assert.equal((await send(env,'/api/routines/'+r.body.id+'/mark','POST',
+ assert.equal((await sendAtMarkDate(env,'/api/routines/'+r.body.id+'/mark','POST',
    {date:'2026-11-04',status:'completed'},owner)).status,200)
  assert.equal((await send(env,'/api/routines/'+r.body.id,'DELETE',undefined,owner)).status,200)
  assert.equal((await send(env,'/api/routines','GET',undefined,owner)).body.items.length,0)
@@ -1573,7 +1589,7 @@ test('old one-time anniversaries are in history; recurring birthdays stay upcomi
 test('recurring pet task completion creates exactly one linked care record, supports undo and privacy',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ask=(path,method='GET',body,cookie)=>sendAtMarkDate(env,path,method,body,cookie)
  const registered=await ask('/api/auth/bootstrap','POST',{
    loginName:'care-owner',password:'care-strong-test-password-123',
    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
@@ -1774,7 +1790,7 @@ test('hiding a Today detail is per-person and per-date, never deletes a plan or 
 test('monthly nth weekday routine creates two separate Tuesday periods and reminder dates',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ask=(path,method='GET',body,cookie)=>sendAtMarkDate(env,path,method,body,cookie)
  try{
   const registration=await ask('/api/auth/bootstrap','POST',{
    loginName:'nth-tuesday-owner',password:'another-long-password-1234',
@@ -1782,6 +1798,9 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   })
   assert.equal(registration.status,201)
   const owner=extractCookie(registration.cookie)
+  // This fixture simulates dates beyond a real 14-day login, without changing
+  // production session expiry or bypassing authorization for actual users.
+  sqlite.prepare('UPDATE sessions SET expires_at=?1').run(Date.parse('2026-12-31T00:00:00Z'))
   const create=await ask('/api/routines','POST',{
    title:'扔不可燃垃圾',repeatType:'monthly',
    repeatConfig:{mode:'weekday',weekday:2,weekNumbers:[2,4]},
@@ -1860,5 +1879,35 @@ test('monthly date rules can be edited into nth weekdays and back without losing
   assert.equal(saved.day,15)
   assert.equal(saved.mode,undefined)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routines').get().n,1)
+ }finally{sqlite.close()}
+})
+
+
+test('period completions reject forged historic/future dates without awarding credits',async()=>{
+ const {db,sqlite}=makeDb()
+ const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
+ try{
+  const registered=await send(env,'/api/auth/bootstrap','POST',{
+   loginName:'date-guard-owner',password:'date-guard-long-password-12345',
+   displayName:'Owner',householdName:'家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
+  assert.equal(registered.status,201)
+  const owner=extractCookie(registered.cookie)
+  const created=await send(env,'/api/routines','POST',{
+   title:'daily security',repeatType:'daily',repeatConfig:{},
+   anchorDate:'2026-01-01',visibility:'household'},owner)
+  assert.equal(created.status,201)
+  for(const date of ['2026-01-02','2099-01-02']){
+   const attempted=await send(env,'/api/routines/'+created.body.id+'/mark','POST',
+     {date,status:'completed'},owner)
+   assert.equal(attempted.status,409,JSON.stringify(attempted.body))
+  }
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM routine_marks WHERE routine_id=?')
+   .get(created.body.id).n,0)
+  const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+  const legitimate=await send(env,'/api/routines/'+created.body.id+'/mark','POST',
+    {date:today,status:'completed'},owner)
+  assert.equal(legitimate.status,200,JSON.stringify(legitimate.body))
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM completion_points WHERE source_id=?')
+   .get(created.body.id).n,1)
  }finally{sqlite.close()}
 })

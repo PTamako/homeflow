@@ -240,6 +240,9 @@ async function drawLottery(){
      showLotteryResult(result.draw)
    }
    await refresh()
+   // A committed draw is final even when the follow-up read fails. Never show
+   // a generic draw failure or invite a second charge in that situation.
+   if(error.value)error.value='抽奖已经成功，积分刷新失败，请稍后重新打开查看：'+error.value
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }

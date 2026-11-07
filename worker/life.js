@@ -245,6 +245,13 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       if(!prior?.completed_at&&!prior?.skipped_at)
         return json({error:'resolve_previous_period_first'},409)
     }
+    // A client-chosen date must never mint points by completing historical or future
+    // periods. Existing old marks may still be reopened; harmless retries stay idempotent.
+    // Legitimate early completion already supplies today's actual date above.
+    if(actual!==jstToday()&&(
+      (body.status==='completed'&&!existing?.completed_at)||
+      (body.status==='skipped'&&!existing?.skipped_at)))
+      return json({error:'completion_date_must_be_today'},409)
     if(body.status==='completed'&&existing?.completed_at)return json({ok:true,unchanged:true})
     if(body.status==='skipped'&&existing?.skipped_at)return json({ok:true,unchanged:true})
     if(body.status==='open'&&!existing)return json({ok:true,unchanged:true})
