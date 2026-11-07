@@ -98,7 +98,7 @@ test('inbox UI binds touch and API updates to the exact ID plus completion revis
  assert.match(ui,/JSON.stringify\(\{expectedCompletionKey:revision\}\)/)
  assert.match(ui,/data.notificationId!==id/)
  assert.match(ui,/row.id===id/)
- assert.match(ui,/row.lastCompletionKey===revision/)
+ assert.match(ui,/visible.lastCompletionKey===revision/)
  assert.match(ui,/generation\+\+/)
  assert.match(api,/n.last_completion_key AS lastCompletionKey/)
  assert.match(api,/COALESCE\(last_completion_key,''\)=\?5/)
