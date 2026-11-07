@@ -115,7 +115,7 @@ test('health refuses a recorded 0032 migration whose provenance column is absent
 
 test('health requires latest settlement migration and column in one D1 read',()=>{
  const source=readFileSync(new URL('../worker/security.js',import.meta.url),'utf8')
- assert.match(source,/name='0032_settlement_origin\\.sql'/)
- assert.match(source,/pragma_table_info\\('goal_period_settlements'\\)/)
- assert.match(source,/Number\\(identity\\.settlement_origin_ready\\)===1/)
+ assert.ok(source.includes("name='0032_settlement_origin.sql'"))
+ assert.ok(source.includes("pragma_table_info('goal_period_settlements')"))
+ assert.ok(source.includes("Number(identity.settlement_origin_ready)===1"))
 })
