@@ -231,10 +231,11 @@ async function restore(){
 <style scoped>
 .backup{display:grid;gap:0;min-width:0;max-width:100%;margin:12px 0;padding:18px;
   background:#fff;border:1px solid #e2ebe4;border-radius:16px;box-sizing:border-box}
-.backup-heading{display:flex;align-items:center;justify-content:flex-start;gap:5px;margin:0 0 6px;min-width:0}
+.backup-heading{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:5px;
+  margin:0 0 6px;min-width:0;width:100%;box-sizing:border-box}
 .backup-title{display:flex;align-items:center;gap:9px;margin:0;
   font-size:17px;line-height:1.4;color:#26392f}
-.backup-help{position:relative;display:inline-flex;align-items:center;flex:none}
+.backup-help{position:static;display:inline-flex;align-items:center;flex:none}
 .backup-help-trigger{display:inline-flex;align-items:center;justify-content:center;
   width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:0;
   border-radius:50%;background:transparent;color:#527962;appearance:none;-webkit-appearance:none}
@@ -243,8 +244,10 @@ async function restore(){
   border:1px solid #b8ccc0;border-radius:50%;background:#f7faf7;
   font-size:10px;font-weight:700;line-height:1}
 .backup-help-trigger:focus-visible{outline:2px solid #43866a;outline-offset:1px}
+/* Position relative to the full heading, not the tiny ? icon: a 310px
+   popup right-aligned to the icon extends off the left edge of an iPhone. */
 .backup-help-popover{position:absolute;top:calc(100% + 6px);right:0;z-index:12;
-  width:min(310px,calc(100vw - 64px));max-height:min(320px,65dvh);overflow-y:auto;
+  width:min(310px,100%);box-sizing:border-box;max-height:min(320px,65dvh);overflow-y:auto;
   padding:14px 15px;border:1px solid #d5e5d9;border-radius:12px;
   box-shadow:0 10px 28px #1d392827;background:#fff;color:#385643;
   font-size:12px;line-height:1.65;overflow-wrap:anywhere}
