@@ -168,14 +168,14 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
 
 /* Recurring task's four contextual actions fit on a single row even on iPhone SE.
    Scope this to the recurring-task menu; other menus may have more actions. */
-.shell .routine-inline-actions.routine-period-actions{
+.shell .routine-inline-actions[id^="routine-actions-"]{
  display:grid;
  grid-template-columns:repeat(4,minmax(0,1fr));
  gap:5px;
  padding:9px 8px;
  align-items:stretch;
 }
-.shell .routine-inline-actions.routine-period-actions > button{
+.shell .routine-inline-actions[id^="routine-actions-"] > button{
  display:flex;
  align-items:center;
  justify-content:center;
@@ -190,7 +190,7 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
  text-align:center;
 }
 @media(max-width:359px){
- .shell .routine-inline-actions.routine-period-actions{
+ .shell .routine-inline-actions[id^="routine-actions-"]{
   gap:3px;
   padding-inline:5px;
  }
