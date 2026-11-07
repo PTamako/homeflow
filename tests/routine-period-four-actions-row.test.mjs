@@ -9,7 +9,7 @@ test('recurring plan menu keeps four distinct contextual actions',()=>{
  const start=life.indexOf('class="routine-inline-actions"')
  assert.ok(start>=0)
  const menu=life.slice(start,life.indexOf('</div>',start))
- assert.equal((menu.match(/<button\\b/g)||[]).length,4)
+ assert.equal((menu.match(/<button /g)||[]).length,4)
  for(const action of ['指派本期','提醒设置','通知处理人','跳过本期'])
   assert.ok(menu.includes(action),action)
 })
