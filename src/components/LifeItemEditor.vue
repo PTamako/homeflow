@@ -257,7 +257,6 @@ async function save(){
      <span>{{ profiles?.find(p=>p.memberUserId===member.id&&p.type==='person')?.displayName||member.loginName }}</span>
     </label>
    </fieldset>
-   <small class="trip-scoring-note">旅行结束后确认完成，每位参与人每天 +10 分。修改参与人或日期会同步调整积分。</small>
    <label>状态<select v-model="form.status"><option value="planning">规划中</option><option value="active">进行中</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label>
   </template>
   <label v-if="kind!=='shopping'&&kind!=='trips'">可见范围
@@ -273,11 +272,14 @@ async function save(){
 </template>
 <style scoped>
 .detail-editor{margin:0;padding:0;border:0;background:transparent;display:grid;gap:12px;min-width:0}
-.trip-participants-field{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:10px;border:1px solid #d4e0d6;border-radius:10px;min-width:0}
+.trip-participants-field{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:10px;border:1px solid #d4e0d6;border-radius:10px;min-width:0;max-width:100%}
 .trip-participants-field legend{font-size:12px;color:#65796e;padding:0 5px}
-.detail-editor .trip-participant-option{display:flex;flex-direction:row;align-items:center;gap:7px;min-height:36px;padding:6px 9px;border:1px solid #e0e9e1;border-radius:8px;background:#fff}
-.trip-participant-option input{width:18px;height:18px;flex:none;accent-color:#43866a}
-.trip-scoring-note{font-size:11px;color:#718778;line-height:1.45}
+.detail-editor .trip-participant-option{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:9px;min-width:0;max-width:100%;width:100%;min-height:42px;margin:0;padding:9px 10px;border:1px solid #dce7df;border-radius:10px;background:#fff;cursor:pointer}
+.detail-editor .trip-participant-option:has(input:checked){background:#edf6ef;border-color:#91c5a6}
+.detail-editor .trip-participant-option:focus-within{outline:2px solid #43866a;outline-offset:2px}
+.detail-editor .trip-participant-option>input[type="checkbox"]{display:block;flex:0 0 18px;width:18px;min-width:18px;max-width:18px;height:18px;min-height:18px;max-height:18px;margin:0;padding:0;border-radius:5px;box-sizing:border-box;accent-color:#43866a}
+.detail-editor .trip-participant-option>span{display:block;flex:1 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal;font-size:13px;font-weight:600;line-height:1.4;color:#314d3e}
+@media(max-width:350px){.trip-participants-field{grid-template-columns:minmax(0,1fr)}}
 .detail-editor-title{font-size:14px}
 .detail-editor label{font-size:12px;color:#65796e;display:grid;gap:5px;min-width:0}
 .detail-editor :is(input,select,textarea){width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid #d4e0d6;border-radius:9px;background:#fff;min-height:40px;padding:9px;color:#273e30}
