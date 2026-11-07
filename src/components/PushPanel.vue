@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
 import PageToast from './PageToast.vue'
+import EditBottomSheet from './EditBottomSheet.vue'
 import StatusBadge from './StatusBadge.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string;members?:Array<{id:string;loginName:string}>}>()
@@ -112,10 +113,11 @@ onMounted(discover)
         @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
       <button v-if="otherMembers.length" type="button" class="push-now"
         :aria-expanded="familyFormOpen" @click="familyFormOpen=!familyFormOpen">
-        {{ familyFormOpen?'收起':'通知家人' }}
+        通知家人
       </button>
     </div>
-    <form v-if="familyFormOpen" class="family-message-form" @submit.prevent="sendFamily">
+    <EditBottomSheet v-if="familyFormOpen" title="通知家人" :close-disabled="familyBusy" @close="familyFormOpen=false">
+    <form class="family-message-form" @submit.prevent="sendFamily">
       <p v-if="otherMembers.length===1" class="push-recipient">发送给 {{ otherMembers[0].loginName }}</p>
       <label v-else>接收人
         <select v-model="recipientId" required>
@@ -131,6 +133,7 @@ onMounted(discover)
       </button>
       <small v-if="familyError" role="alert">{{ familyError }}</small>
     </form>
+    </EditBottomSheet>
     <small v-if="message" role="status">{{ message }}</small>
     <PageToast :toast="toast" />
   </section>
@@ -143,7 +146,7 @@ onMounted(discover)
 .push-now{border:1px solid #80a790;background:#fff;color:#397f5f;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
 .push-toggle:focus-visible{outline:2px solid #43866a;outline-offset:3px}
 .push-setting small{font-size:12px;line-height:1.55;color:#7b8c81;overflow-wrap:anywhere}
-.family-message-form{display:grid;gap:10px;width:100%;min-width:0;max-width:420px;padding:12px;border:1px solid #e3e9e2;border-radius:12px;background:#fafcf9;box-sizing:border-box}
+.family-message-form{display:grid;gap:12px;width:100%;min-width:0;max-width:none;padding:0;border:0;border-radius:0;background:transparent;box-sizing:border-box}
 .push-recipient{margin:0;font-size:13px;font-weight:700;color:#395d48}
 .family-message-form label{display:grid;gap:5px;font-size:12px;color:#586b60}
 .family-message-form select,.family-message-form textarea{
