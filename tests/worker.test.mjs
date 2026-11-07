@@ -10,7 +10,7 @@ function environment(name='preview',database='homeflow-preview',migration='0034_
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
          required_migration_ready:migration==='0034_rewards_shop.sql'?1:0,
-         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,rewards_tables_ready:5,rewards_triggers_ready:4}:null,
+         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
     }}
