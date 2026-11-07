@@ -236,7 +236,7 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
   let sent=0,failed=0,already=0
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
-    const key=keyPrefix+':'+minute
+    const key=meta?.dedupeKey?.startsWith('lottery:')?keyPrefix:keyPrefix+':'+minute
     const claimed=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
       (endpoint_hash,notification_key,sent_on,status,attempts)
       VALUES(?1,?2,?3,'claimed',1)`).bind(sub.endpoint_hash,key,day).run()
@@ -514,4 +514,50 @@ export async function sendCompletionFeedback(env,session,event){
     }catch{failed++}
   }
   return {recipients:recipients.length,sent,failed}
+}
+
+/**
+ * Each lottery draw is a separate TODAY inbox message for every household
+ * member, including the player. A stable message ID and delivery key prevent
+ * replays from clearing read status or sending duplicate iOS notifications.
+ */
+export async function sendLotteryDrawNotification(env,session,draw){
+  if(!draw?.id||!draw?.userId||draw.householdId!==session.household_id||
+    draw.userId!==session.user_id)return {skipped:'invalid_draw'}
+  const db=env.DB
+  const actor=await db.prepare(`SELECT COALESCE(
+    (SELECT p.display_name FROM family_profiles p
+     WHERE p.household_id=?1 AND p.member_user_id=?2 AND p.type='person'
+       AND p.archived_at IS NULL ORDER BY p.created_at DESC LIMIT 1),
+    u.login_name) AS name FROM users u WHERE u.id=?2`)
+    .bind(session.household_id,draw.userId).first()
+  const name=String(actor?.name||'家庭成员').slice(0,30)
+  const label=draw.kind==='empty'?'空手而归':
+    draw.kind==='double'?('当前积分翻倍，获得 '+draw.points+' 积分'):
+    ('获得 '+draw.points+' 积分')
+  const title='家庭抽奖 · '+name
+  const message=name+' 抽奖：'+label+'（消耗 5 积分）'
+  const {results:members=[]}=await db.prepare(`SELECT m.user_id AS id
+    FROM household_members m JOIN users u ON u.id=m.user_id
+    WHERE m.household_id=?1 AND u.disabled_at IS NULL LIMIT 20`)
+    .bind(session.household_id).all()
+  let sent=0,failed=0
+  for(const member of members){
+    try{
+      const digest=await sha256(draw.id+'|'+member.id)
+      const id=[digest.slice(0,8),digest.slice(8,12),digest.slice(12,16),
+        digest.slice(16,20),digest.slice(20,32)].join('-')
+      const result=await deliverToHouseholdUser(env,session.household_id,member.id,{
+        title,body:message,url:'/?notificationId='+id,
+        tag:'homeflow-lottery-'+draw.id,priority:'important',recordInInbox:true
+      },'lottery:'+draw.id,Date.now(),{
+        id,senderId:draw.userId,kind:'system',sourceId:draw.id,
+        title,message,dedupeKey:'lottery:'+draw.id
+      })
+      const payload=await result.json()
+      sent+=Number(payload.sent||0)
+      failed+=Number(payload.failed||0)
+    }catch{failed++}
+  }
+  return {members:members.length,sent,failed}
 }
