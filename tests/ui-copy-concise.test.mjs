@@ -42,3 +42,17 @@ test('HomeFlow header uses the new brand tagline',()=>{
  assert.match(app,/<p class="lead">让爱与生活·自然流转<\/p>/)
  assert.doesNotMatch(app,/每件重要的小事/)
 })
+
+test('shopping records do not repeat fixed point split explanations',()=>{
+  const source=template('src/components/LifePanel.vue')
+  assert.doesNotMatch(source,/完成后共 2 分 · 两人各 1 分/)
+  assert.match(source,/发起人：/)
+})
+test('personal points are compact while bonus details remain expandable',()=>{
+  const source=template('src/components/HouseholdPoints.vue')
+  assert.match(source,/<details v-if="data" class="points-private">/)
+  assert.match(source,/我的积分：共享/)
+  assert.match(source,/奖励明细（已计入共享）/)
+  assert.doesNotMatch(source,/以上来源已包含在累计共享中/)
+  assert.doesNotMatch(source,/私人任务积分不可兑换家庭奖励/)
+})
