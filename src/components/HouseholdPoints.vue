@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref,watch} from 'vue'
+import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 
 type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
@@ -24,6 +24,8 @@ const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),
 const view=ref<'shop'|'achievements'>('shop')
 // Default to a compact family overview entry, not an open reward catalog.
 const expanded=ref(false)
+const ruleHelpOpen=ref(false)
+const rulesAnchor=ref<HTMLElement|null>(null)
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
 const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
@@ -73,6 +75,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
  else{
    generation++
    expanded.value=false
+   ruleHelpOpen.value=false
    shop.value=null
  }
 },{immediate:true})
@@ -81,6 +84,22 @@ watch(()=>props.userId,()=>{
  data.value=null
  shop.value=null
  expanded.value=false
+ ruleHelpOpen.value=false
+})
+function dismissRulesOutside(event:PointerEvent){
+ if(ruleHelpOpen.value&&!rulesAnchor.value?.contains(event.target as Node))
+   ruleHelpOpen.value=false
+}
+function dismissRulesKey(event:KeyboardEvent){
+ if(event.key==='Escape')ruleHelpOpen.value=false
+}
+onMounted(()=>{
+ document.addEventListener('pointerdown',dismissRulesOutside)
+ document.addEventListener('keydown',dismissRulesKey)
+})
+onBeforeUnmount(()=>{
+ document.removeEventListener('pointerdown',dismissRulesOutside)
+ document.removeEventListener('keydown',dismissRulesKey)
 })
 function openDetails(){
  if(expanded.value)return
@@ -89,6 +108,7 @@ function openDetails(){
 }
 function closeDetails(){
  expanded.value=false
+ ruleHelpOpen.value=false
  generation++
  view.value='shop'
  resetForm()
@@ -188,10 +208,19 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    </button>
    <p v-if="!expanded&&error" role="alert" class="points-error">{{ error }}</p>
    <div v-if="expanded" id="points-expanded" class="points-expanded">
-     <div class="points-head"><h2 id="points-title">家庭成长积分</h2>
+     <div class="points-head">
+       <div ref="rulesAnchor" class="points-title-wrap">
+         <h2 id="points-title">家庭成长积分</h2>
+         <button type="button" class="points-rule-help" aria-label="查看积分规则"
+           aria-controls="points-rule-popover" :aria-expanded="ruleHelpOpen"
+           @click="ruleHelpOpen=!ruleHelpOpen">?</button>
+         <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
+           <b>积分规则</b>
+           <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
+         </div>
+       </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <span aria-hidden="true">⌃</span></button>
      </div>
-   <p class="points-hint">普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
    <div v-if="data" class="points-my-card">
      <div><small>我的成长经验（永久累计，兑换不扣）</small><strong>{{ fmt(myTotal) }} XP</strong>
        <span>{{ data.ownLevel.title }} · Lv.{{ data.ownLevel.level }}</span></div>
@@ -332,6 +361,18 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
   font-size:12px;min-height:30px;padding:4px 11px;white-space:nowrap}
 .points-head,.shop-title,.form-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .points-head h2{margin:0;font-size:17px;line-height:1.4}
+.points-title-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0}
+.points-rule-help{display:grid;place-items:center;width:21px;height:21px;flex:none;
+  border:1px solid #b8ccc0;border-radius:50%;background:#f7faf7;
+  color:#527962;font-size:12px;font-weight:700;padding:0;line-height:1}
+.points-rule-help:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.points-rule-popover{position:absolute;top:calc(100% + 9px);left:0;z-index:20;
+  width:min(290px,calc(100vw - 64px));box-sizing:border-box;
+  background:#fff;border:1px solid #dce9de;border-radius:11px;
+  box-shadow:0 10px 25px #27352f26;padding:11px 13px;text-align:left;
+  font-size:12px;line-height:1.65;color:#526f5b}
+.points-rule-popover b{display:block;margin-bottom:3px;color:#3b674e;font-size:12px}
+.points-rule-popover p{margin:0;overflow-wrap:anywhere}
 .points-head small{font-size:12px;color:#52846c;font-weight:650;white-space:nowrap}
 .points-hint{margin:0;color:#75877a;font-size:12px;line-height:1.55}
 .points-my-card{display:grid;grid-template-columns:1fr 1fr;gap:8px}
