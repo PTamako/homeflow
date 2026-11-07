@@ -40,20 +40,20 @@ test('selected DouSha tail icon replaces all PWA image variants',()=>{
 test('service worker gets fresh icons and manifest while retaining offline copies',()=>{
  const sw=read('public/sw.js').toString()
  const headers=read('public/_headers').toString()
- assert.match(sw,/FRESH_ASSETS\\.has\\(url\\.pathname\\)/)
- assert.match(sw,/fetch\\(req,\\{cache:'no-store'\\}\\)/)
- assert.match(sw,/caches\\.match\\(req\\)/)
+ assert.ok(sw.includes('FRESH_ASSETS.has(url.pathname)'))
+ assert.ok(sw.includes("fetch(req,{cache:'no-store'})"))
+ assert.ok(sw.includes('caches.match(req)'))
  for(const path of ['/manifest.webmanifest','/icon.svg','/icon-192.png',
    '/icon-512.png','/apple-touch-icon.png']){
    assert.ok(sw.includes("'"+path+"'"),path)
-   assert.ok(headers.includes(path+'\\n  Cache-Control: no-cache'),path)
+   assert.ok(headers.includes(path+String.fromCharCode(10)+'  Cache-Control: no-cache'),path)
  }
 })
 
 test('running PWA gives a safe refresh action when a worker update activates',()=>{
  const app=read('src/App.vue').toString()
- assert.match(app,/controllerchange/)
- assert.match(app,/getRegistration\\(\\)/)
- assert.match(app,/updateReady/)
- assert.match(app,/刷新到最新版本/)
+ assert.ok(app.includes('controllerchange'))
+ assert.ok(app.includes('getRegistration()'))
+ assert.ok(app.includes('updateReady'))
+ assert.ok(app.includes('刷新到最新版本'))
 })
