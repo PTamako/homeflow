@@ -1188,7 +1188,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 </div>
               </SwipeActions>
               <div v-if="expandedTaskMenu==='routine:'+r.id" :id="'routine-actions-'+r.id"
-                class="routine-inline-actions routine-period-actions" role="group" :aria-label="'操作：'+r.title"
+                class="routine-inline-actions" role="group" :aria-label="'操作：'+r.title"
                 @keydown.esc.stop="expandedTaskMenu=null">
                 <button v-if="canEdit(r)&&r.visibility==='household'&&routineAssignmentPeriod(r)>=today()"
                   type="button" @click="openRoutineAssignment(r)">指派本期</button>
