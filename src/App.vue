@@ -13,6 +13,7 @@ import StatusBadge from './components/StatusBadge.vue'
 import SwipeActions from './components/SwipeActions.vue'
 import PageToast from './components/PageToast.vue'
 import TodayNotifications from './components/TodayNotifications.vue'
+import HouseholdPoints from './components/HouseholdPoints.vue'
 import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
@@ -853,6 +854,8 @@ onBeforeUnmount(()=>{
         </section>
       </template>
       <template v-else-if="tab==='family'">
+        <HouseholdPoints :active="tab==='family'" :user-id="user.id"
+          :sync-revision="sharedRefreshCounter" />
         <section class="panel">
           <div class="family-section-heading">
             <h2><AppIcon name="users" :size="20" /> 家庭成员</h2>
