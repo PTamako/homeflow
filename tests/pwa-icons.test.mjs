@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
+import {stampServiceWorker} from '../scripts/stamp-pwa.mjs'
 const read=path=>readFileSync(new URL('../'+path,import.meta.url))
 test('HomeFlow icon PNG files have expected sizes',()=>{
  for(const [path,dimension] of [['public/apple-touch-icon.png',180],['public/icon-192.png',192],['public/icon-512.png',512]]){
@@ -56,4 +57,16 @@ test('running PWA gives a safe refresh action when a worker update activates',()
  assert.ok(app.includes('getRegistration()'))
  assert.ok(app.includes('updateReady'))
  assert.ok(app.includes('刷新到最新版本'))
+})
+
+test('every GitHub release changes service worker bytes without editing sw.js by hand',()=>{
+ const original=read('public/sw.js').toString()
+ const a=stampServiceWorker(original,'a'.repeat(40))
+ const b=stampServiceWorker(original,'b'.repeat(40))
+ assert.notEqual(a,b)
+ assert.equal(stampServiceWorker(a,'a'.repeat(40)),a,'stamping the same release is idempotent')
+ assert.ok(a.includes("const CACHE='homeflow-shell-v6-aaaaaaaaaaaa'"))
+ assert.ok(b.includes("const CACHE='homeflow-shell-v6-bbbbbbbbbbbb'"))
+ assert.throws(()=>stampServiceWorker(original,'bad'))
+ assert.ok(read('.github/workflows/deploy.yml').toString().includes('node scripts/stamp-pwa.mjs "$GITHUB_SHA"'))
 })
