@@ -223,7 +223,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <h2 id="points-title">家庭成长积分</h2>
          <button type="button" class="points-rule-help" aria-label="查看积分规则"
            aria-controls="points-rule-popover" :aria-expanded="ruleHelpOpen"
-           @click="ruleHelpOpen=!ruleHelpOpen">?</button>
+           @click="ruleHelpOpen=!ruleHelpOpen;experienceHelpOpen=false"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
            <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
@@ -237,7 +237,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <small>我的成长经验</small>
          <button type="button" class="points-rule-help" aria-label="查看成长经验规则"
            aria-controls="experience-rule-popover" :aria-expanded="experienceHelpOpen"
-           @click="experienceHelpOpen=!experienceHelpOpen;ruleHelpOpen=false">?</button>
+           @click="experienceHelpOpen=!experienceHelpOpen;ruleHelpOpen=false"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="experienceHelpOpen" id="experience-rule-popover" role="tooltip" class="points-rule-popover">
            <b>成长经验与积分</b>
            <p>成长经验包含任务积分与挑战奖励，不会因兑换而减少；撤销任务会收回对应积分和未满足条件的奖励。</p>
@@ -383,9 +383,19 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-head,.shop-title,.form-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .points-head h2{margin:0;font-size:17px;line-height:1.4}
 .points-title-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0}
-.points-rule-help{display:grid;place-items:center;width:21px;height:21px;flex:none;
-  border:1px solid #b8ccc0;border-radius:50%;background:#f7faf7;
-  color:#527962;font-size:12px;font-weight:700;padding:0;line-height:1}
+/* The tappable area stays comfortable, but only the inner 15px glyph is visible.
+   Fixed min/max sizes prevent iOS/PWA button sizing from stretching the circle. */
+.points-rule-help{display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 26px;width:26px;height:26px;min-width:26px;max-width:26px;
+  min-height:26px;max-height:26px;padding:0;margin:0;align-self:center;
+  border:0;border-radius:50%;background:transparent;color:#527962;
+  font-size:10px;line-height:1;appearance:none;-webkit-appearance:none}
+.points-rule-help .points-help-glyph{display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 15px;width:15px;height:15px;min-width:15px;min-height:15px;
+  max-width:15px;max-height:15px;aspect-ratio:1;
+  box-sizing:border-box;border:1px solid #b8ccc0;border-radius:50%;
+  background:#f7faf7;color:#527962;font-size:10px;font-weight:700;line-height:1}
+.points-my-card .points-rule-help .points-help-glyph{font-size:10px;color:#527962}
 .points-rule-help:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .points-rule-popover{position:absolute;top:calc(100% + 9px);left:0;z-index:20;
   width:min(290px,calc(100vw - 64px));box-sizing:border-box;
