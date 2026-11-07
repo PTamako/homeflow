@@ -84,6 +84,7 @@ const tab=ref<'today'|'family'|'plans'|'memories'|'manage'>('today')
 const unreadNotificationCount=ref(0)
 const todayNotificationsRef=ref<{refresh:()=>Promise<boolean>}|null>(null)
 const notificationToOpen=ref('')
+const notificationToOpenVersion=ref<string|null>(null)
 const notificationOpenRequest=ref(0)
 type BadgeNavigator=Navigator&{setAppBadge?:(count?:number)=>Promise<void>;clearAppBadge?:()=>Promise<void>}
 let badgeQueue:Promise<void>=Promise.resolve()
@@ -100,10 +101,13 @@ function setUnreadNotificationCount(value:number){
   })
   return badgeQueue
 }
-async function markNotificationRead(id:string){
+async function markNotificationRead(id:string,version:string|null=null){
   if(!/^[a-f0-9-]{36}$/i.test(id)||!user.value)return
+  const expectedCompletionKey=version==='scheduled'?null:
+    version?.startsWith('complete:')?version:undefined
   try{
-    const result=await api('/notifications/'+id+'/read','POST')
+    const result=await api('/notifications/'+id+'/read','POST',
+      expectedCompletionKey===undefined?undefined:{expectedCompletionKey})
     if(typeof (result as any).unreadCount==='number')
       void setUnreadNotificationCount((result as any).unreadCount)
     todayNotificationsRef.value?.refresh()
@@ -155,25 +159,30 @@ function openIncomingTask(kind:string|null,id:string|null,done=false,periodKey='
  openPlans(kind!,id!,period,done)
  return true
 }
-function openIncomingNotification(id:string|null){
+function openIncomingNotification(id:string|null,version:string|null=null){
  if(!user.value||!/^[a-f0-9-]{36}$/i.test(id||''))return false
  notificationToOpen.value=id!
+ notificationToOpenVersion.value=version
  notificationOpenRequest.value++
  tab.value='today'
  return true
 }
 function onNotificationFocused(id:string){
- if(notificationToOpen.value===id)notificationToOpen.value=''
+ if(notificationToOpen.value===id){
+  notificationToOpen.value=''
+  notificationToOpenVersion.value=null
+ }
 }
 function consumeTaskLink(){
  const url=new URL(window.location.href)
  const notificationId=url.searchParams.get('notificationId')
+ const notificationVersion=url.searchParams.get('notificationVersion')
  const openedTask=openIncomingTask(url.searchParams.get('taskType'),url.searchParams.get('taskId'),
    url.searchParams.get('taskDone')==='1',url.searchParams.get('taskPeriod')||'')
- const openedNotice=!openedTask&&openIncomingNotification(notificationId)
- if(openedTask&&notificationId)void markNotificationRead(notificationId)
+ const openedNotice=!openedTask&&openIncomingNotification(notificationId,notificationVersion)
+ if(openedTask&&notificationId)void markNotificationRead(notificationId,notificationVersion)
  if(!openedTask&&!openedNotice)return false
- url.searchParams.delete('notificationId')
+ url.searchParams.delete('notificationId');url.searchParams.delete('notificationVersion')
  url.searchParams.delete('taskType');url.searchParams.delete('taskId')
  url.searchParams.delete('taskDone');url.searchParams.delete('taskPeriod')
  window.history.replaceState(null,'',url.pathname+url.search+url.hash)
@@ -182,13 +191,13 @@ function consumeTaskLink(){
 function onPushMessage(event:MessageEvent){
  if(event.origin!==window.location.origin&&event.origin!=='')return
  const payload=event.data
- if(payload?.type==='homeflow-open-notification')openIncomingNotification(payload.id)
+ if(payload?.type==='homeflow-open-notification')openIncomingNotification(payload.id,payload.notificationVersion||null)
  if(payload?.type==='homeflow-open-task'){
    const opened=openIncomingTask(payload.kind,payload.id,payload.completed===true,
      payload.periodKey||'')
    if(payload.notificationId){
-     if(opened)void markNotificationRead(payload.notificationId)
-     else openIncomingNotification(payload.notificationId)
+     if(opened)void markNotificationRead(payload.notificationId,payload.notificationVersion||null)
+     else openIncomingNotification(payload.notificationId,payload.notificationVersion||null)
    }
  }
  if(payload?.type==='homeflow-notification-pushed'){
@@ -785,7 +794,7 @@ onBeforeUnmount(()=>{
           </div><div class="hero-mark"><AppIcon name="heart" :size="76" /></div></section>
         <TodayNotifications ref="todayNotificationsRef" :active="tab==='today'" :today-date="currentJstDay"
           :user-id="user.id" :today-entry-keys="todayEntryKeys" :member-profiles="profiles" @unread-change="setUnreadNotificationCount"
-          :focus-notification-id="notificationToOpen" :focus-request="notificationOpenRequest"
+          :focus-notification-id="notificationToOpen" :focus-notification-version="notificationToOpenVersion" :focus-request="notificationOpenRequest"
           @focus-handled="onNotificationFocused" @open-plan="(kind,id,periodKey,done)=>openPlans(kind,id,periodKey,done)" />
         <div class="section-title today-task-heading">
           <h2>今日待办</h2>
