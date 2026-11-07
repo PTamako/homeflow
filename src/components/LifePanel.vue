@@ -35,6 +35,49 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
+const routineAssignTarget=ref<{id:string;title:string;periodOn:string}|null>(null)
+const routineAssignMember=ref(''),routineAssignBonus=ref<string>(''),routineAssignBusy=ref(false)
+function routineAssignmentPeriod(r:Row){
+ return String(r.currentPeriodOn||r.nextDueOn||r.earlyPeriodOn||'')
+}
+async function openRoutineAssignment(r:Row){
+ const periodOn=routineAssignmentPeriod(r)
+ if(!periodOn||r.visibility!=='household'||!canEdit(r))return
+ routineAssignTarget.value={id:r.id,title:r.title,periodOn}
+ routineAssignMember.value='';routineAssignBonus.value='';expandedTaskMenu.value=null
+ try{
+  const result=await api('/routines/'+r.id+'/assignment?on='+encodeURIComponent(periodOn))
+  if(routineAssignTarget.value?.id!==r.id)return
+  routineAssignMember.value=result.assignment?.assigneeUserId||''
+  routineAssignBonus.value=result.assignment?.bonusPoints?String(result.assignment.bonusPoints):''
+ }catch(e){error.value=(e as Error).message;routineAssignTarget.value=null}
+}
+function routineAssignMemberChanged(){
+ if(!routineAssignMember.value||routineAssignMember.value===props.userId)
+   routineAssignBonus.value=''
+}
+async function saveRoutineAssignment(){
+ const item=routineAssignTarget.value
+ if(!item||routineAssignBusy.value)return
+ const other=routineAssignMember.value&&routineAssignMember.value!==props.userId
+ const bonus=other?Number(routineAssignBonus.value):0
+ if(other&&(!routineAssignBonus.value.trim()||!Number.isSafeInteger(bonus)||bonus<1||bonus>10000)){
+  error.value='指定其他处理人时，额外奖励必须填写 1～10000 的正整数';return
+ }
+ routineAssignBusy.value=true;error.value=''
+ try{
+  await api('/routines/'+item.id+'/assignment','POST',{
+   periodOn:item.periodOn,assigneeUserId:routineAssignMember.value||null,bonusPoints:bonus
+  })
+  routineAssignTarget.value=null
+  await fetchMode()
+  notify(other?'本期已指派，已安排专属提醒':'本期处理人已更新')
+  emit('tasksChanged')
+ }catch(e){
+  const code=(e as Error).message
+  error.value=code==='insufficient_points_or_period_resolved'?'家庭可用积分不足，或本期已完成／跳过':code
+ }finally{routineAssignBusy.value=false}
+}
 function openTaskPush(kind:'task'|'routine'|'shopping',item:Row){
  const key=kind+':'+item.id
  if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
@@ -47,7 +90,8 @@ async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
  try{
   const response=await fetch('/api/push/send-task',{method:'POST',
     credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
-    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim()})})
+    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim(),
+      ...(kind==='routine'&&item.currentAssignment?.assigneeUserId?{periodOn:routineAssignmentPeriod(item)}:{})})})
   const data=await response.json().catch(()=>({}))
   if(!response.ok){
    const hints:Record<string,string>={
@@ -1174,7 +1218,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </label>
               <label v-if="onceAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
                 <span>额外奖励（由发布人积分预留）</span>
-                <input v-model.number="onceBonus" type="number" min="0" max="10000" step="1" aria-label="额外奖励积分"/>
+                <input v-model.number="onceBonus" type="number" inputmode="numeric" min="1" max="10000" step="1" required aria-label="额外奖励积分"/>
               </label>
               <label class="once-edit-field">
                 <span>可见范围</span>
