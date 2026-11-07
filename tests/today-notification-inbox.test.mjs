@@ -136,7 +136,7 @@ test('opening a push deep-link loads a scoped, exact notification without affect
 test('push click opens the matching notification or plan and keeps badge state in sync',()=>{
  const app=read('src/App.vue'),ui=read('src/components/TodayNotifications.vue')
  const sw=read('public/sw.js')
- assert.match(app,/openIncomingNotification\(notificationId\)/)
+ assert.match(app,/openIncomingNotification\(notificationId,notificationVersion\)/)
  assert.match(app,/:focus-notification-id="notificationToOpen"/)
  assert.match(ui,/showIncomingNotification\(props.focusNotificationId\)/)
  assert.match(ui,/params.set\('focus',focusId\)/)
