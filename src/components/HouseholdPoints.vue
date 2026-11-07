@@ -216,7 +216,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <small v-if="data">Lv.{{ data.ownLevel.level }} · 可用 {{ fmt(points) }} 分</small>
        <small v-else>{{ loading?'正在读取积分…':'积分商店 · 合力兑换 · 成就' }}</small>
      </span>
-     <span class="points-entry-right">查看 <span aria-hidden="true">›</span></span>
+     <span class="points-entry-right">查看 <AppIcon name="chevron-down" :size="16" class="points-chevron-right"/></span>
    </button>
    <p v-if="!expanded&&error" role="alert" class="points-error">{{ error }}</p>
    <div v-if="expanded" id="points-expanded" class="points-expanded">
@@ -231,7 +231,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
          </div>
        </div>
-       <button type="button" class="points-collapse" @click="closeDetails">收起 <span aria-hidden="true">⌃</span></button>
+       <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
      </div>
    <div v-if="data" class="points-my-card">
      <div>
@@ -376,12 +376,14 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-entry-main{min-width:0;flex:1;display:grid;gap:3px}
 .points-entry-main strong{font-size:14px;line-height:1.3}
 .points-entry-main small{font-size:11px;color:#748c7a;line-height:1.4}
-.points-entry-right{font-size:12px;color:#4a8662;white-space:nowrap}
-.points-entry-right span{font-size:20px;vertical-align:middle}
+.points-entry-right{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#4a8662;white-space:nowrap;line-height:1}
+.points-chevron-right{transform:rotate(-90deg)}
 .points-entry:focus-visible,.points-collapse:focus-visible{outline:2px solid #43866a;outline-offset:3px}
 .points-expanded{display:grid;gap:11px;min-width:0}
-.points-collapse{border:0;background:#f3f8f2;color:#518069;border-radius:8px;
-  font-size:12px;min-height:30px;padding:4px 11px;white-space:nowrap}
+.points-collapse{display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  border:0;background:#f3f8f2;color:#518069;border-radius:8px;
+  font-size:12px;line-height:1;min-height:30px;padding:4px 11px;white-space:nowrap}
+.points-chevron-up{transform:rotate(180deg)}
 .points-head,.shop-title,.form-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .points-head h2{margin:0;font-size:17px;line-height:1.4}
 .points-title-wrap{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0}
