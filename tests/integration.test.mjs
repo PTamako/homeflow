@@ -1798,6 +1798,9 @@ test('monthly nth weekday routine creates two separate Tuesday periods and remin
   })
   assert.equal(registration.status,201)
   const owner=extractCookie(registration.cookie)
+  // This fixture simulates dates beyond a real 14-day login, without changing
+  // production session expiry or bypassing authorization for actual users.
+  sqlite.prepare('UPDATE sessions SET expires_at=?1').run(Date.parse('2026-12-31T00:00:00Z'))
   const create=await ask('/api/routines','POST',{
    title:'扔不可燃垃圾',repeatType:'monthly',
    repeatConfig:{mode:'weekday',weekday:2,weekNumbers:[2,4]},
