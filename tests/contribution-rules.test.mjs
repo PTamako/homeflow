@@ -103,6 +103,36 @@ test('two named assignees share base and funded bounty; total household contribu
   assert.equal(undone.bob.sharedPoints,baseline.bob.sharedPoints)
  }finally{db.close()}
 })
+test('dated recurring assignment transfers contribution only after completed mark, including undo',async()=>{
+ const {db,members}=fixture()
+ try{
+  addTask(db,'alice-first','alice');complete(db,'alice-first','alice')
+  addTask(db,'bob-first','bob');complete(db,'bob-first','bob')
+  const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+  db.prepare(`INSERT INTO routines
+    (id,household_id,created_by,visibility,title,repeat_type,anchor_date)
+    VALUES('routine','h','alice','household','Periodic','daily',?1)`).run(day)
+  const baseline=await members()
+  db.prepare(`INSERT INTO routine_occurrence_assignments
+    (household_id,routine_id,occurrence_on,assignee_user_id,bonus_points)
+    VALUES('h','routine',?1,'bob',9)`).run(day)
+  const reserved=await members()
+  assert.equal(reserved.alice.sharedPoints,baseline.alice.sharedPoints)
+  assert.equal(reserved.alice.availablePoints,baseline.alice.availablePoints-9)
+  db.prepare(`INSERT INTO routine_marks
+    (routine_id,occurrence_on,completed_at,completed_by)
+    VALUES('routine',?1,?2,'bob')`).run(day,now())
+  const completed=await members()
+  assert.equal(completed.alice.sharedPoints-baseline.alice.sharedPoints,-9)
+  assert.equal(completed.bob.sharedPoints-baseline.bob.sharedPoints,14)
+  assert.equal(completed.bob.monthPoints-baseline.bob.monthPoints,14)
+  db.prepare(`UPDATE routine_marks SET completed_at=NULL,completed_by=NULL
+    WHERE routine_id='routine' AND occurrence_on=?1`).run(day)
+  const undone=await members()
+  assert.equal(undone.alice.sharedPoints,baseline.alice.sharedPoints)
+  assert.equal(undone.bob.sharedPoints,baseline.bob.sharedPoints)
+ }finally{db.close()}
+})
 test('assignment transfer SQL supports month window as well as lifetime',()=>{
  const sql=contributionAssignmentDeltaSql('?1','?2','?3','?4')
  assert.match(sql,/t\.completed_at>=\?3/)
