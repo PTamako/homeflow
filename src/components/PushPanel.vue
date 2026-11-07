@@ -2,11 +2,14 @@
 import {computed,onMounted,ref,watch} from 'vue'
 import PageToast from './PageToast.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
-import StatusBadge from './StatusBadge.vue'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string;members?:Array<{id:string;loginName:string}>}>()
+const emit=defineEmits<{status:[code:'enabled'|'disabled'|'unavailable']}>()
 const otherMembers=computed(()=>(props.members||[]).filter(m=>m.id!==props.userId))
 const available=ref(false),configured=ref(false),enabled=ref(false),busy=ref(false),message=ref('')
+watch([available,enabled],([isAvailable,isEnabled])=>{
+  emit('status',!isAvailable?'unavailable':isEnabled?'enabled':'disabled')
+},{immediate:true})
 const familyFormOpen=ref(false),recipientId=ref(''),familyMessage=ref('')
 const familyBusy=ref(false),familyError=ref('')
 const testingPush=ref(false),testPushResult=ref('')
@@ -125,7 +128,6 @@ onMounted(discover)
 <template>
   <section class="push-setting">
     <div class="push-actions">
-      <StatusBadge :code="!available?'unavailable':enabled?'enabled':'disabled'" />
       <button type="button" class="push-toggle" :aria-pressed="enabled" :disabled="busy||!available"
         @click="enabled?disable():enable()">{{ busy?'正在处理…':enabled?'关闭推送':'开启推送' }}</button>
       <button v-if="enabled" type="button" class="push-now" :disabled="testingPush||busy"
