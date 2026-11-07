@@ -182,3 +182,17 @@ test('point rules are hidden behind an accessible title help popover on mobile',
  assert.match(source,/\.points-rule-popover\{position:absolute;/)
  assert.match(source,/\.points-rule-popover[\s\S]*z-index:20;/)
 })
+
+test('growth experience explanation is title help, not a persistent block',()=>{
+ const source=readFileSync(new URL('../src/components/HouseholdPoints.vue',import.meta.url),'utf8')
+ assert.match(source,/<small>我的成长经验<\/small>/)
+ assert.match(source,/aria-label="查看成长经验规则"/)
+ assert.match(source,/:aria-expanded="experienceHelpOpen"/)
+ assert.match(source,/v-if="experienceHelpOpen" id="experience-rule-popover" role="tooltip"/)
+ assert.match(source,/成长经验包含任务积分与挑战奖励，不会因兑换而减少；撤销任务会收回对应积分和未满足条件的奖励。/)
+ assert.doesNotMatch(source,/<p class="points-hint">成长经验包含任务积分与挑战奖励/)
+ assert.match(source,/const experienceHelpOpen=ref\(false\)/)
+ assert.match(source,/experienceHelpOpen\.value=false/)
+ assert.match(source,/if\(experienceHelpOpen\.value&&!experienceAnchor\.value\?\.contains/)
+ assert.match(source,/\.xp-label\{position:relative;/)
+})
