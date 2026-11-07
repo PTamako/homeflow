@@ -7,7 +7,7 @@ const points=readFileSync(new URL('../worker/points.js',import.meta.url),'utf8')
 test('leaderboards show separate first-place honors on their respective member titles',()=>{
  assert.match(panel,/const contributionLeaderId=computed\(\(\)=>data\.value\?\.members\[0\]/)
  assert.match(panel,/const walletLeaderId=computed\(\(\)=>data\.value\?\.members\.reduce/)
- assert.match(panel,/item\.availablePoints>leader\.availablePoints/)
+ assert.match(panel,/member\.availablePoints>leader\.availablePoints/)
  const section=panel.slice(panel.indexOf('class="points-members"'),panel.indexOf('class="points-private"'))
  assert.match(section,/v-if="item\.userId===contributionLeaderId"[^>]*>🏆 贡献第一/)
  assert.match(section,/v-if="item\.userId===walletLeaderId"[^>]*>👑 积分第一/)
