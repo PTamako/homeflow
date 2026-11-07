@@ -21,6 +21,11 @@ function fixture(){
     assignee_user_id TEXT);
   CREATE TABLE shopping_items(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
     completed_at TEXT,completed_by TEXT,deleted_at TEXT);
+  CREATE TABLE goals(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
+    goal_mode TEXT NOT NULL DEFAULT 'once',created_by TEXT NOT NULL,deleted_at TEXT);
+  CREATE TABLE plan_completion_marks(household_id TEXT NOT NULL,plan_type TEXT NOT NULL,
+    plan_id TEXT NOT NULL,period_key TEXT NOT NULL,completed_at TEXT NOT NULL,
+    completed_by TEXT NOT NULL,PRIMARY KEY(household_id,plan_type,plan_id,period_key));
   CREATE TABLE routines (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,created_by TEXT,
     visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT);
   CREATE TABLE routine_marks (routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -58,7 +63,7 @@ test('migration never awards points retroactively and has 10 immutable triggers'
   sqlite.exec(householdRewardsMigration)
   sqlite.exec(scoringMigration)
   assert.deepEqual(rows(sqlite),[])
-  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,17)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,21)
  }finally{sqlite.close()}
 })
 
@@ -141,6 +146,35 @@ test('new plan scoring is 2/5/10, reserved bonus transfers only on actual comple
   assert.equal((await get(db,alice)).availablePoints,10,'creator pledge remains reserved until cancellation')
   sqlite.exec("UPDATE tasks SET deleted_at='2026-11-07T03:00:00Z' WHERE id='reward'")
   assert.equal((await get(db,alice)).availablePoints,20,'deleted task releases reserved bonus')
+ }finally{sqlite.close()}
+})
+
+test('verified savings goal awards each household member 50 for every period without duplicate grants',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  sqlite.exec(migration);sqlite.exec(rewardsMigration);sqlite.exec(householdRewardsMigration);sqlite.exec(scoringMigration)
+  sqlite.exec("INSERT INTO goals(id,household_id,visibility,created_by) VALUES('shared-goal','family','household','alice'),('private-goal','family','private','alice')")
+  const mark=sqlite.prepare("INSERT OR IGNORE INTO plan_completion_marks(household_id,plan_type,plan_id,period_key,completed_at,completed_by) VALUES('family','goal',?1,?2,'2026-11-07T03:00:00Z','alice')")
+  mark.run('shared-goal','2026-10')
+  assert.equal((await get(db,alice)).savingsBonusPoints,50)
+  assert.equal((await get(db,bob)).savingsBonusPoints,50)
+  assert.equal((await get(db,bob)).availablePoints,50)
+  assert.equal((await get(db,alice)).experience,50)
+  mark.run('shared-goal','2026-10')
+  assert.equal((await get(db,alice)).savingsBonusPoints,50,'idempotent retry does not double-credit')
+  mark.run('shared-goal','2026-11')
+  assert.equal((await get(db,alice)).savingsBonusPoints,100,'new period pays once again')
+  assert.equal((await get(db,bob)).savingsBonusPoints,100)
+  mark.run('private-goal','once')
+  assert.equal((await get(db,alice)).savingsBonusPoints,100,'private goal has no household reward')
+  sqlite.exec("DELETE FROM plan_completion_marks WHERE plan_id='shared-goal' AND period_key='2026-11'")
+  assert.equal((await get(db,bob)).savingsBonusPoints,50,'recheck shortfall reclaims one period')
+  sqlite.exec("UPDATE goals SET deleted_at='2026-11-07' WHERE id='shared-goal'")
+  assert.equal((await get(db,alice)).savingsBonusPoints,0,'archiving goal reclaims reward')
+  sqlite.exec("UPDATE goals SET deleted_at=NULL WHERE id='shared-goal'")
+  assert.equal((await get(db,alice)).savingsBonusPoints,50,'restoring verified goal restores existing mark only')
+  sqlite.exec("UPDATE goals SET visibility='private' WHERE id='shared-goal'")
+  assert.equal((await get(db,bob)).savingsBonusPoints,0,'private goal cannot credit partner')
  }finally{sqlite.close()}
 })
 
