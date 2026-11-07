@@ -26,7 +26,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
   '0029_household_revisions.sql','0030_member_revisions.sql','0031_completion_event_read_state.sql',
   '0032_settlement_origin.sql','0033_completion_points.sql','0034_rewards_shop.sql',
-  '0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql']
+  '0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
