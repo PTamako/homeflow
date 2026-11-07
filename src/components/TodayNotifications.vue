@@ -34,7 +34,7 @@ function readStateLabel(item:Notice){
 }
 function deliveryDetail(item:Notice){
  if(item.sentDevices===0)return '仅应用内'
- return item.failedDevices>0?'部分推送成功':'已推送'
+ return item.failedDevices>0?'部分推送已受理':'推送服务已受理'
 }
 function deliveryTone(item:Notice){
  if(item.sentDevices===0)return 'app-only'
