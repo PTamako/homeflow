@@ -110,7 +110,7 @@ export async function pointsRoute(request,db,session){
     {id:'first',label:'初次出发',icon:'🌱',unlocked:earned>=10},
     {id:'routines',label:'周期达人',icon:'🔁',unlocked:Number(totals?.routineEarned||0)>=50},
     {id:'master',label:'家务达人',icon:'🏅',unlocked:earned>=300},
-    {id:'pet',label:'毛孩子守护者',icon:'🐱',unlocked:Number(totals?.petCare||0)>=3},
+    {id:'pet',label:'毛孩子守护者',icon:'🐱',unlocked:Number(totals?.petCare||0)>=10},
     {id:'challenge',label:'每周挑战王',icon:'🏆',unlocked:Number(totals?.weeksWon||0)>=1},
     {id:'streak',label:'连续七天',icon:'🔥',
       unlocked:longestStreak((streakDays.results||[]).map(row=>row.day))>=7}

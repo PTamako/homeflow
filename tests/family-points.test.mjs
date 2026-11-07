@@ -104,6 +104,29 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
  }finally{sqlite.close()}
 })
 
+test('pet guardian badge needs ten linked pet-care completions and relocks on undo',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  sqlite.exec(migration)
+  sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
+  sqlite.exec("INSERT INTO family_profiles(id,household_id,type,display_name,created_at) VALUES('pet-1','family','pet','豆沙','2026-11-07')")
+  const insert=sqlite.prepare("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at,subject_profile_id) VALUES(?1,'family','alice',NULL,NULL,'household',NULL,'pet-1')")
+  const complete=sqlite.prepare("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='alice' WHERE id=?1")
+  for(let i=1;i<=9;i++){
+   insert.run('care-'+i)
+   complete.run('care-'+i)
+  }
+  assert.equal((await get(db,alice)).badges.find(x=>x.id==='pet').unlocked,false,'9 pet care completions must not unlock')
+  insert.run('care-10')
+  complete.run('care-10')
+  assert.equal((await get(db,alice)).badges.find(x=>x.id==='pet').unlocked,true,'10 pet care completions unlock')
+  assert.equal((await get(db,bob)).badges.find(x=>x.id==='pet').unlocked,false,'the badge belongs to the actual completer')
+  sqlite.exec("UPDATE tasks SET completed_at=NULL,completed_by=NULL WHERE id='care-10'")
+  assert.equal((await get(db,alice)).badges.find(x=>x.id==='pet').unlocked,false,'undoing one completion revokes the badge')
+ }finally{sqlite.close()}
+})
+
 test('leaderboard never reveals another member\'s private completions or another household',async()=>{
  const {sqlite,db}=fixture()
  try{
