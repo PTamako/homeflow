@@ -281,7 +281,8 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     }
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)
     const data=validated({...b,bonusPoints:b.bonusPoints??task.bonus_points},session)
-    if(task.completed_at && (data?.bonus!==task.bonus_points||data?.assignee!==task.assignee_user_id))
+    if(task.completed_at && (data?.bonus!==task.bonus_points||data?.assignee!==task.assignee_user_id||
+      (task.bonus_points>0&&data?.visibility!==task.visibility)))
       return json({error:'completed_task_reward_locked'},409)
     if(data && data.care===undefined && data.subject===task.subject_profile_id)
       data.care=task.health_record_type
