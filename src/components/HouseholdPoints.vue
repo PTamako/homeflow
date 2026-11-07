@@ -2,6 +2,7 @@
 import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import LotteryCelebration from './LotteryCelebration.vue'
 
 type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;availablePoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
@@ -28,6 +29,18 @@ const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),
 const view=ref<'shop'|'achievements'|'lottery'>('shop')
 const lottery=ref<Lottery|null>(null)
 const lotteryLastDraw=ref<LotteryDraw|null>(null)
+const LOTTERY_RESULT_DURATION_MS=3000
+let lotteryResultTimer:ReturnType<typeof setTimeout>|null=null
+function clearLotteryResult(){
+ if(lotteryResultTimer!==null){clearTimeout(lotteryResultTimer);lotteryResultTimer=null}
+ lotteryLastDraw.value=null
+}
+function showLotteryResult(draw:LotteryDraw){
+ clearLotteryResult()
+ lotteryLastDraw.value=draw
+ lotteryResultTimer=setTimeout(()=>{lotteryLastDraw.value=null;lotteryResultTimer=null},
+  LOTTERY_RESULT_DURATION_MS)
+}
 // Default to a compact family overview entry, not an open reward catalog.
 const expanded=ref(false)
 const ruleHelpOpen=ref(false)
@@ -100,7 +113,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    lotteryHelpOpen.value=false
    shop.value=null
    lottery.value=null
-   lotteryLastDraw.value=null
+   clearLotteryResult()
  }
 },{immediate:true})
 watch(()=>props.userId,()=>{
@@ -108,7 +121,7 @@ watch(()=>props.userId,()=>{
  data.value=null
  shop.value=null
  lottery.value=null
- lotteryLastDraw.value=null
+ clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
@@ -136,6 +149,7 @@ onMounted(()=>{
 onBeforeUnmount(()=>{
  document.removeEventListener('pointerdown',dismissRulesOutside)
  document.removeEventListener('keydown',dismissRulesKey)
+ clearLotteryResult()
 })
 function openDetails(){
  if(expanded.value)return
@@ -143,6 +157,7 @@ function openDetails(){
  void refresh()
 }
 function closeDetails(){
+ clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
@@ -164,6 +179,7 @@ function editReward(reward:Reward){
 function openCreate(){resetForm();formOpen.value=true}
 function selectView(next:'shop'|'achievements'|'lottery'){
  if(view.value===next)return
+ clearLotteryResult()
  lotteryHelpOpen.value=false
  view.value=next
  if(next==='lottery'||next==='shop'&&!shop.value)void refresh()
@@ -172,11 +188,13 @@ const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
  draw.kind==='double'?'积分翻倍 +'+fmt(draw.points):'+'+fmt(draw.points)+' 积分'
 async function drawLottery(){
  if(busy.value||!lottery.value||lotteryRemaining.value<1||points.value<5)return
- busy.value=true;error.value='';lotteryLastDraw.value=null
+ busy.value=true;error.value='';clearLotteryResult()
  const requestId=crypto.randomUUID()
+ const drawingUser=props.userId
  try{
    const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
-   lotteryLastDraw.value=result.draw
+   if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser)
+     showLotteryResult(result.draw)
    await refresh()
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
@@ -254,6 +272,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 </script>
 
 <template>
+ <LotteryCelebration :draw="lotteryLastDraw"/>
  <section class="points-board panel" :class="{'points-board--collapsed':!expanded}" aria-label="家庭成长积分">
    <button v-if="!expanded" type="button" class="points-entry" :aria-expanded="expanded"
      aria-controls="points-expanded" @click="openDetails">
@@ -348,7 +367,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <template v-if="view==='lottery'">
      <div v-if="lottery" class="lottery-card">
        <div class="lottery-main">
-         <div class="lottery-box" aria-hidden="true">
+         <div class="lottery-box" :class="{'lottery-box--rolling':busy}" aria-hidden="true">
            <div class="lottery-slot"></div>
            <AppIcon name="gift" :size="46"/>
            <span>好运箱</span>
@@ -361,10 +380,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
              :disabled="busy||lotteryRemaining===0||points<5"
              @click="drawLottery">{{ busy?'正在抽奖…':lotteryRemaining===0?'本月机会已用完':points<5?'积分不足':'抽一次 · 5 分' }}</button>
          </div>
-       </div>
-       <div v-if="lotteryLastDraw" class="lottery-result" role="status">
-         <AppIcon name="ticket" :size="20"/>
-         <div><b>{{ lotteryLastDraw.kind==='empty'?'🍀 这次空手而归～下次继续加油！':lotteryLastDraw.kind==='double'?'👑 超级大奖！积分翻倍！':'🎉 恭喜抽中奖励！' }}</b><small>{{ lotteryLastDraw.kind==='empty'?'好运下次见～':'获得 '+fmt(lotteryLastDraw.points)+' 积分，奖励已计入可用积分！' }}</small></div>
        </div>
        <div ref="lotteryRulesAnchor" class="lottery-odds">
          <div class="lottery-odds-heading">
@@ -597,6 +612,17 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-box{flex:0 0 94px;min-height:103px;border-radius:16px;background:#e5f0e7;border:1px solid #d4e6d9;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#4b8669;gap:3px;box-shadow:inset 0 -5px 0 #d5e8db}
  .lottery-box .lottery-slot{width:42px;height:5px;border-radius:9px;background:#99c4ac;margin-bottom:6px}
  .lottery-box span{font-size:10px;font-weight:700;letter-spacing:.12em}
+.lottery-box--rolling{animation:lottery-box-shuffle .46s ease-in-out infinite;transform-origin:50% 90%}
+.lottery-box--rolling :deep(svg){animation:lottery-box-pulse .46s ease-in-out infinite}
+@keyframes lottery-box-shuffle{
+ 0%,100%{transform:rotate(0deg) translateY(0)}
+ 25%{transform:rotate(-7deg) translateY(-3px)}
+ 75%{transform:rotate(7deg) translateY(-3px)}
+}
+@keyframes lottery-box-pulse{50%{transform:scale(1.18)}}
+@media(prefers-reduced-motion:reduce){
+ .lottery-box--rolling,.lottery-box--rolling :deep(svg){animation:none}
+}
  .lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
  .lottery-panel>b{font-size:15px;color:#365b43}
  .lottery-panel small{font-size:11px;color:#708977}
