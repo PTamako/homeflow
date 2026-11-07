@@ -71,6 +71,9 @@ export async function pointsRoute(request,db,session){
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2) AS earned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
+        WHERE household_id=?1 AND earner_user_id=?2
+          AND visibility='household') AS householdEarned,
+      (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
@@ -84,7 +87,7 @@ export async function pointsRoute(request,db,session){
           AND g.status<>'cancelled') AS groupSpent,
       (SELECT COUNT(*) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
-        AND earned_at>=?3 AND earned_at<?4) AS weekDone,
+        AND visibility='household' AND earned_at>=?3 AND earned_at<?4) AS weekDone,
       (SELECT COUNT(*) FROM completion_points cp
         LEFT JOIN tasks t ON cp.kind='task' AND cp.source_id=t.id
           AND t.household_id=cp.household_id
@@ -124,7 +127,9 @@ export async function pointsRoute(request,db,session){
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
     experience,earnedPoints:earned,weeklyBonusPoints:bonus,spentPoints:spent,
-    availablePoints:experience-spent,ownLevel:pointLevel(experience),badges,
+    availablePoints:Math.max(0,Number(totals?.householdEarned||0)+bonus-spent),
+    householdEarnedPoints:Number(totals?.householdEarned||0),
+    ownLevel:pointLevel(experience),badges,
     challenge:{weekOn:week.weekOn,completed:Number(totals?.weekDone||0),
       target:10,bonus:30,achieved:Number(totals?.weekDone||0)>=10}
   })
