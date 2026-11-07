@@ -1,3 +1,7 @@
+<script lang="ts">
+let activeSheetLocks=0
+let savedBodyOverflow=''
+</script>
 <script setup lang="ts">
 import {nextTick,onBeforeUnmount,onMounted,ref,useId} from 'vue'
 
@@ -36,8 +40,6 @@ onBeforeUnmount(()=>{
  unlockSheetScroll()
  previousFocus?.focus({preventScroll:true})
 })
-let activeSheetLocks=0
-let savedBodyOverflow=''
 function lockSheetScroll(){
  if(activeSheetLocks++===0){
   savedBodyOverflow=document.body.style.overflow
