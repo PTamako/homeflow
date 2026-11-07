@@ -69,8 +69,9 @@ test('seven draws per member per month; replay does not double-charge; private X
   assert.equal(latest.history.length,5,'first page never returns more than five records')
   assert.equal(latest.historyTotal,8,'all eight family draws count toward history')
   assert.equal(latest.historyTotalPages,2)
-  const next=(await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page=2'),
-   db,'/api/lottery',alice)).json())
+  const nextResponse=await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page=2'),
+   db,'/api/lottery',alice)
+  const next=await nextResponse.json()
   assert.equal(next.history.length,3)
   assert.equal(next.historyPage,2)
   assert.equal(new Set([...latest.history,...next.history].map(x=>x.id)).size,8,
