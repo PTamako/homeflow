@@ -367,12 +367,27 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <template v-if="view==='lottery'">
      <div v-if="lottery" class="lottery-card">
        <div class="lottery-main">
-         <div class="lottery-box" :class="{'lottery-box--rolling':busy}" aria-hidden="true">
-           <div class="lottery-slot"></div>
-           <AppIcon name="gift" :size="46"/>
-           <span>好运箱</span>
-         </div>
-         <div class="lottery-panel">
+         <div class="lottery-box" :class="{'lottery-box--rolling':busy,'lottery-box--jackpot':lotteryLastDraw?.kind==='double'}" aria-hidden="true">
+            <span class="lottery-box-glow"></span>
+            <span class="lottery-box-spark lottery-box-spark--one">✦</span>
+            <span class="lottery-box-spark lottery-box-spark--two">✦</span>
+            <span class="lottery-box-spark lottery-box-spark--three">✧</span>
+            <span class="lottery-box-spark lottery-box-spark--four">✦</span>
+            <div class="lottery-chest">
+              <div class="lottery-chest-top">
+                <span class="lottery-chest-bow lottery-chest-bow--left"></span>
+                <span class="lottery-chest-bow lottery-chest-bow--right"></span>
+                <span class="lottery-chest-slot"></span>
+              </div>
+              <div class="lottery-chest-front">
+                <span class="lottery-chest-ribbon"></span>
+                <span class="lottery-chest-seal">✦</span>
+              </div>
+            </div>
+            <span class="lottery-box-label">好运箱</span>
+            <small class="lottery-box-subtitle">试试今天的好运</small>
+          </div>
+          <div class="lottery-panel">
            <b>家庭幸运抽奖</b>
            <small>每次消耗 5 家庭积分</small>
            <small>本月已抽 {{ lottery.used }}/{{ lottery.limit }} 次 · 剩余 {{ lotteryRemaining }} 次</small>
