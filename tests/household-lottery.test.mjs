@@ -65,7 +65,16 @@ test('seven draws per member per month; replay does not double-charge; private X
   assert.equal(after.availablePoints,before.availablePoints+net)
   assert.equal(after.experience,before.experience)
   assert.equal((await call(db,bob,'POST',crypto.randomUUID())).status,201)
-  assert.equal((await call(db,alice)).body.history.length,8)
+  const latest=(await call(db,alice)).body
+  assert.equal(latest.history.length,5,'first page never returns more than five records')
+  assert.equal(latest.historyTotal,8,'all eight family draws count toward history')
+  assert.equal(latest.historyTotalPages,2)
+  const next=(await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page=2'),
+   db,'/api/lottery',alice)).json())
+  assert.equal(next.history.length,3)
+  assert.equal(next.historyPage,2)
+  assert.equal(new Set([...latest.history,...next.history].map(x=>x.id)).size,8,
+   'pagination does not duplicate or lose draws')
   assert.equal((await call(db,other)).body.history.length,0)
  }finally{sqlite.close()}
 })
@@ -96,6 +105,41 @@ test('lottery results affect wallets but never contribute to the leaderboard or 
   const bobs=(await wallet(db,bob)).members.find(x=>x.userId==='bob')
   assert.equal(bobs.sharedPoints,0,'no ranking contribution from a partner draw')
   assert.equal(bobs.availablePoints,(await wallet(db,bob)).availablePoints)
+ }finally{sqlite.close()}
+})
+
+test('lottery history validates pages and keeps the family list scoped to the past year',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',2);earn(sqlite,'bob',2)
+  for(const [person,kind] of [[alice,'empty'],[bob,'five'],[alice,'ten'],[bob,'twenty'],[alice,'empty'],[bob,'fifty']]){
+   const response=await call(db,person,'POST',crypto.randomUUID(),kind)
+   assert.equal(response.status,201)
+  }
+  const requestPage=async p=>{
+   const response=await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page='+p),
+    db,'/api/lottery',alice)
+   return {status:response.status,body:await response.json()}
+  }
+  const first=await requestPage(1),second=await requestPage(2),third=await requestPage(3)
+  assert.equal(first.status,200)
+  assert.equal(first.body.history.length,5)
+  assert.equal(first.body.historyPageSize,5)
+  assert.equal(first.body.historyTotal,6)
+  assert.equal(first.body.historyTotalPages,2)
+  assert.equal(second.body.history.length,1)
+  assert.equal(second.body.historyPage,2)
+  assert.equal(third.body.history.length,0)
+  for(const invalid of ['0','-1','hello','1.5','01','10001']){
+   const res=await requestPage(invalid)
+   assert.equal(res.status,400,'page '+invalid+' must be invalid')
+   assert.equal(res.body.error,'invalid_page')
+  }
+  const old=new Date();old.setUTCFullYear(old.getUTCFullYear()-2)
+  sqlite.prepare("INSERT INTO household_lottery_draws(id,household_id,user_id,client_request_id,month_on,prize_kind,cost_points,prize_points,created_at) VALUES(?1,'h','alice',?2,'2024-02','empty',5,0,?3)").run(crypto.randomUUID(),crypto.randomUUID(),old.toISOString())
+  const afterOld=await requestPage(1)
+  assert.equal(afterOld.body.historyTotal,6,'records older than one year are excluded')
+  assert.equal(afterOld.body.history.length,5)
  }finally{sqlite.close()}
 })
 
