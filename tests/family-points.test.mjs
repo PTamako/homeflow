@@ -23,6 +23,7 @@ function fixture(){
   CREATE TABLE households (id TEXT PRIMARY KEY);
   CREATE TABLE users (id TEXT PRIMARY KEY,login_name TEXT NOT NULL);
   CREATE TABLE household_members (household_id TEXT NOT NULL,user_id TEXT NOT NULL);
+  CREATE VIEW trip_completion_rewards AS SELECT NULL AS household_id,NULL AS user_id,NULL AS visibility,0 AS points,NULL AS awarded_at WHERE 0;
   CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT,type TEXT NOT NULL DEFAULT 'person',id TEXT);
   CREATE TABLE tasks (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,creator_user_id TEXT,
     completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
