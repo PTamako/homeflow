@@ -1128,7 +1128,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <EditBottomSheet v-if="routineAssignTarget?.id===r.id" title="指派这一期"
                 :close-disabled="routineAssignBusy" @close="routineAssignTarget=null">
                 <form class="task-push-form" @submit.prevent="saveRoutineAssignment">
-                  <small>{{ routineAssignTarget.periodOn }} · {{ r.title }}（只影响这一期）</small>
+                  <small>{{ routineAssignTarget?.periodOn||'' }} · {{ r.title }}（只影响这一期）</small>
                   <label>处理人
                     <select v-model="routineAssignMember" aria-label="本期指定处理人"
                       @change="routineAssignMemberChanged">
