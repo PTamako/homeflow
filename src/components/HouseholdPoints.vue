@@ -95,7 +95,10 @@ const walletLeaderId=computed(()=>data.value?.members.reduce((leader,member)=>
 const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??7)-(lottery.value?.used??0)))
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
-const recentGroupOrders=computed(()=>shop.value?.groupOrders||[])
+// A cancelled group order is fully refunded and should no longer occupy the
+// active joint-redemption list. Keep its database history for auditing.
+const recentGroupOrders=computed(()=>
+ (shop.value?.groupOrders||[]).filter(order=>order.status!=='cancelled'))
 let generation=0
 async function fetchJSON(path:string,method='GET',body?:unknown){
  const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
