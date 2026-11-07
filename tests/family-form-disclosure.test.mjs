@@ -29,11 +29,11 @@ test('family anniversaries stay visible while entry form is collapsed',()=>{
 
 test('pet health entry opens on add or edit, closes on save or cancel',()=>{
   assert.match(pet,/const showHealthForm=ref\(false\)/)
-  assert.match(pet,/<form v-if="showHealthForm"/)
+  assert.match(pet,/<EditBottomSheet v-if="showHealthForm"/)
   assert.match(pet,/:aria-expanded="showHealthForm"/)
   assert.match(pet,/@click="toggleHealthForm"/)
   assert.match(pet,/function editRecord\(r:Health\)\{[\s\S]*?showHealthForm\.value=true/)
-  assert.match(pet,/nextTick\(\(\)=>healthFormEl\.value\?\.scrollIntoView/)
+  assert.match(pet,/:close-disabled="busy" @close="cancelEditing"/)
   assert.match(pet,/function cancelEditing\(\)\{[\s\S]*?showHealthForm\.value=false/)
   assert.match(pet,/const edited=!!editingId\.value\s*cancelEditing\(\)/)
   assert.match(pet,/@click="cancelEditing">取消/)
