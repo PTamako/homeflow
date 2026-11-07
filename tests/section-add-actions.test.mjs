@@ -22,7 +22,8 @@ test('family member and pet add buttons live within the correct headings, never 
 })
 
 test('timeline add and anniversary add share their section heading and keep mobile forms',()=>{
- const anniversary=life.slice(life.indexOf('家人的重要日子'),life.indexOf('家人的重要日子')+650)
+ const dayTitle=life.indexOf('家人的重要日子')
+ const anniversary=life.slice(life.lastIndexOf('<div class="life-section-heading">',dayTitle),dayTitle+700)
  const timeline=life.slice(life.indexOf('<template v-else-if="mode===\'memories\'">'))
  assert.match(anniversary,/class="life-section-heading"[\s\S]*?aria-label="添加纪念日"/)
  assert.match(timeline,/class="life-section-heading"[\s\S]*?aria-label="添加回忆"/)
