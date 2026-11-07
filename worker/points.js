@@ -96,6 +96,8 @@ export async function pointsRoute(request,db,session){
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
       (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
+      (SELECT COALESCE(SUM(prize_points-cost_points),0) FROM household_lottery_draws
+        WHERE household_id=?1 AND user_id=?2) AS lotteryNetPoints,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
@@ -166,7 +168,8 @@ export async function pointsRoute(request,db,session){
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
     experience,earnedPoints:earned,weeklyBonusPoints:bonus,
-    savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,spentPoints:spent,
+    savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,
+    lotteryNetPoints:Number(totals?.lotteryNetPoints||0),spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
     householdEarnedPoints:Number(totals?.householdEarned||0),
     ownLevel:pointLevel(experience),badges,
