@@ -56,3 +56,14 @@ test('personal points are compact while bonus details remain expandable',()=>{
   assert.doesNotMatch(source,/以上来源已包含在累计共享中/)
   assert.doesNotMatch(source,/私人任务积分不可兑换家庭奖励/)
 })
+
+test('lottery odds use a separate question-mark popover for long rules',()=>{
+  const source=template('src/components/HouseholdPoints.vue')
+  assert.match(source,/class="lottery-odds-heading"/)
+  assert.match(source,/class="lottery-odds-toggle"[\s\S]*?@click="lotteryOddsOpen=!lotteryOddsOpen"/)
+  assert.match(source,/aria-label="查看抽奖规则说明"/)
+  assert.match(source,/v-if="lotteryHelpOpen" id="lottery-rule-popover" role="tooltip"/)
+  assert.equal(source.split('每位成员每月最多抽 7 次').length-1,1,
+    'lottery explanatory copy belongs only in the question-mark popover')
+  assert.doesNotMatch(source,/<details class="lottery-odds">/)
+})
