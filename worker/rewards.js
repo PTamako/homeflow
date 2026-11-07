@@ -5,8 +5,9 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const getList=async(db,household)=>{
   const {results}=await db.prepare(`SELECT r.id,r.title,r.description,r.icon,r.points,r.stock,r.active,
     r.builtin,r.created_by AS createdBy,
-    (SELECT COUNT(*) FROM reward_redemptions x
-      WHERE x.reward_id=r.id) AS redeemedCount
+    ((SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)+
+     (SELECT COUNT(*) FROM reward_group_orders g WHERE g.reward_id=r.id
+       AND g.status<>'cancelled')) AS redeemedCount
     FROM reward_items r WHERE r.household_id=?1
     ORDER BY r.active DESC,r.builtin DESC,r.created_at,r.id LIMIT 100`)
     .bind(household).all()
@@ -109,7 +110,7 @@ export async function rewardsRoute(request,db,path,session){
     }
     return json({error:'reward_unavailable_or_insufficient'},409)
   }
-  const poolContribution=path.match(/^\\/api\\/rewards\\/pool\\/([a-f0-9-]{36})\\/contribute$/i)
+  const poolContribution=path.match(/^\/api\/rewards\/pool\/([a-f0-9-]{36})\/contribute$/i)
   if(poolContribution&&request.method==='POST'){
     const b=await readBody(request)
     if(!b||!uuid.test(b.requestId)||!Number.isSafeInteger(b.points)||
@@ -153,7 +154,7 @@ export async function rewardsRoute(request,db,path,session){
     }
     return json({error:'pool_closed_or_insufficient'},409)
   }
-  const poolAction=path.match(/^\\/api\\/rewards\\/pool\\/([a-f0-9-]{36})\\/(cancel|fulfill)$/i)
+  const poolAction=path.match(/^\/api\/rewards\/pool\/([a-f0-9-]{36})\/(cancel|fulfill)$/i)
   if(poolAction&&request.method==='POST'){
     const [id,action]=[poolAction[1],poolAction[2]]
     if(action==='cancel'){
