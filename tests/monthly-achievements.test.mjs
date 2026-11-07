@@ -46,8 +46,11 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
   const month=tokyoMonthWindow().month
   const lastDate=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-2,15))
     .toISOString().slice(0,10)
-  for(let i=0;i<20;i++)insert(db,{id:'prior-'+i,day:lastDate})
-  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).reduce((sum,x)=>sum+x.points,0),60,
+  for(let i=0;i<20;i++){
+   const day=lastDate.slice(0,7)+'-'+String(1+Math.floor(i/4)*7).padStart(2,'0')
+   insert(db,{id:'prior-'+i,day})
+  }
+  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).reduce((sum,x)=>sum+x.points,0),40,
     'prior-month first/master/challenge badges are independent of this month')
   const day=month+'-03'
   insert(db,{id:'current-0',day})
@@ -58,7 +61,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
     'previous month completions do not carry into a new month')
   assert.equal(current.badges.find(x=>x.id==='first').rewardPoints,5)
   assert.equal(current.members[0].monthPoints,15)
-  assert.equal(current.achievementBonusPoints,65)
+  assert.equal(current.achievementBonusPoints,45)
   insert(db,{id:'current-0',day})
   assert.equal(awards(db).filter(x=>x.month_on===month&&x.badge_id==='first').length,1,
     'a duplicate completion never grants a second badge')
@@ -66,8 +69,8 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
   current=await score(store)
   assert.equal(current.badges.find(x=>x.id==='first').unlocked,false,
     'undo re-locks only the active-month badge')
-  assert.equal(current.achievementBonusPoints,60,'only revoked month reward is deducted')
-  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).length,3)
+  assert.equal(current.achievementBonusPoints,40,'only revoked month reward is deducted')
+  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).length,2)
  }finally{db.close()}
 })
 test('private completions earn XP, not monthly household awards, and weekly challenge is additionally rewarded',async()=>{
