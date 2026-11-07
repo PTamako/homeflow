@@ -220,7 +220,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
      (shop&&(request.method==='POST'||request.method==='DELETE'))){
     // Owner may see shared items but never a different member's private item.
     const shoppingId=(shopList||shop)[1]
-    const item=await db.prepare('SELECT id,title,created_by,assigned_to,visibility,ledger_entry_id,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
+    const item=await db.prepare('SELECT id,title,created_by,assigned_to,second_assignee_user_id,visibility,ledger_entry_id,completed_at FROM shopping_items WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL')
       .bind(shoppingId,h).first()
     if(!item)return json({error:'not_found'},404)
     if(item.created_by!==user&&item.visibility!=='household')return json({error:'forbidden'},403)
@@ -284,16 +284,22 @@ export async function financeRoute(request,env,path,session,onComplete=null){
         db.prepare('UPDATE shopping_items SET '+
           'ledger_entry_id=COALESCE(ledger_entry_id,?1),'+
           // A verified receipt completes this item regardless of its planned quantity.
-          'completed_at=COALESCE(completed_at,?2),'+
-          'completed_by=COALESCE(completed_by,?3) '+
+          'completed_at=CASE WHEN assigned_to IS NULL OR ?3 IN (assigned_to,second_assignee_user_id) '+ 
+          'THEN COALESCE(completed_at,?2) ELSE completed_at END,'+
+          'completed_by=CASE WHEN assigned_to IS NULL OR ?3 IN (assigned_to,second_assignee_user_id) '+
+          'THEN COALESCE(completed_by,?3) ELSE completed_by END '+
           "WHERE id=?4 AND household_id=?5 AND (visibility='household' OR created_by=?3) AND completed_at IS NULL")
           .bind(entryId,stamp,user,item.id,h)
       ])
-      if(Number(results?.[1]?.meta?.changes||0)>0)
+      if(Number(results?.[1]?.meta?.changes||0)>0&&
+         (!item.assigned_to||[item.assigned_to,item.second_assignee_user_id].includes(user)))
         onComplete?.({kind:'shopping',id:item.id,title:item.title,
           creatorId:item.created_by,assigneeId:item.assigned_to,
+          secondAssigneeId:item.second_assignee_user_id,
           visibility:item.visibility,completedAt:stamp})
-      return json({ok:true,linked:true})
+      return json({ok:true,linked:true,
+        awaitingAssignee:!!item.assigned_to&&
+          ![item.assigned_to,item.second_assignee_user_id].includes(user)})
     }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/candidates'&&request.method==='GET'){
