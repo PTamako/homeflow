@@ -232,7 +232,7 @@ onBeforeUnmount(()=>{requestId++})
       </div>
     </div>
     </template>
-    <div v-if="mode!=='list'" class="reminder-settings">
+    <div v-if="mode!=='list'" :class="['reminder-settings',{'reminder-settings--sheet':mode==='settings'}]">
       <div class="reminder-rule-section">
         <h3>普通与定期计划</h3>
         <p class="reminder-rule-desc">适用于一次性待办、定期、购物和旅行事项。单项提醒设置优先。</p>
@@ -320,6 +320,10 @@ onBeforeUnmount(()=>{requestId++})
 .quiet-hours select{width:100%;border:1px solid #d5e3d8;border-radius:8px;padding:6px;background:white}
 .quiet-controls>.snooze-button{justify-self:start}
 .reminder-settings{margin-top:10px;border-top:1px solid #e7eee9}
+ /* In the settings bottom sheet, the shared sheet header already provides a
+    divider and padding. Avoid drawing a second rule with a blank strip. */
+.reminder-settings--sheet{margin-top:0;border-top:0}
+.reminder-settings--sheet>.reminder-rule-section:first-child{padding-top:0}
 .reminder-settings label{font-size:12px;display:grid;gap:5px}
 .reminder-settings select{min-height:34px;width:100%;border-radius:8px;border:1px solid #d5e3d8;background:white}
 .reminder-settings small{color:#71867a;font-size:11px}
