@@ -175,7 +175,7 @@ test('stale memory and shopping editor snapshots never overwrite newer changes',
   assert.equal((await patch('memories',memoryId,{title:'第二台覆盖',story:'不该保存',happenedOn:'2026-11-04',
    visibility:'household',expectedSnapshot:before})).status,409)
   assert.equal(sqlite.prepare('SELECT title FROM memories WHERE id=?').get(memoryId).title,'第一台修改')
-  const beforeShopping=JSON.stringify(['旧购物',1,null,null,null,null])
+  const beforeShopping=JSON.stringify(['旧购物',1,null,null,null,null,null])
   assert.equal((await patch('shopping',shop,{title:'第一台购物',quantity:1,visibility:'household',
     expectedSnapshot:beforeShopping})).status,200)
   assert.equal((await patch('shopping',shop,{title:'第二台购物',quantity:1,visibility:'household',
