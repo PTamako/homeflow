@@ -217,7 +217,7 @@ test('Family tab mounts a compact points panel and the server owns all awarding'
  assert.match(app,/<HouseholdPoints :active="tab==='family'"/)
  assert.match(index,/if\(path==='\/api\/points'\)return pointsRoute/)
  assert.match(board,/私人任务不进入共享榜/)
- assert.match(board,/周期任务每期都计分/)
+ assert.match(board,/周期任务每期 \+5/)
  assert.match(migration,/NEW\.completed_by/)
  assert.doesNotMatch(migration,/NEW\.created_by.*points/)
 })
