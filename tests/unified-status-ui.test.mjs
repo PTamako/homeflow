@@ -37,17 +37,21 @@ test('all workflow list surfaces use one StatusBadge implementation',()=>{
   const finance=read('src/components/FinancePanel.vue')
   const shopping=read('src/components/ShoppingLedgerPicker.vue')
   const push=read('src/components/PushPanel.vue')
+  const manage=read('src/components/ManagePage.vue')
   const trash=read('src/components/TrashPanel.vue')
   const component=read('src/components/StatusBadge.vue')
   const palette=read('src/style.css')
   for(const [name,file] of [
     ['Today tasks',app],['Plans/history',life],['Pending reminders',reminders],
     ['Savings ledger',finance],['Shopping ledger picker',shopping],
-    ['Push settings',push],['Recycle bin',trash]
+    ['Push settings heading',manage],['Recycle bin',trash]
   ]){
     assert.match(file,/import StatusBadge from/,name)
     assert.match(file,/<StatusBadge/,name)
   }
+  assert.doesNotMatch(push,/<StatusBadge/,'push action row should not duplicate the heading status')
+  assert.match(manage,/<h2>通知设置<\/h2><StatusBadge v-if="pushStatus" :code="pushStatus"\/>/)
+  assert.match(manage,/@status="pushStatus=\$event"/)
   for(const tone of ['success','info','warning','danger','muted']){
     assert.match(component,new RegExp('hf-status-'+tone))
     assert.match(palette,new RegExp('--hf-'+tone+'-text'))
@@ -83,7 +87,7 @@ test('today, notifications, reminders and finance share statuses without changin
   assert.match(reminder,/item.dueOn<todayDate/)
   assert.match(finance,/periodDisplay.status.startsWith\('进行中'\)\?'active'/)
   assert.match(picker,/linkedEntryIds.has\(String\(entry.id\)\)/)
-  assert.match(read('src/components/PushPanel.vue'),/!available\?'unavailable':enabled\?'enabled':'disabled'/)
+  assert.match(read('src/components/PushPanel.vue'),/emit\('status',!isAvailable\?'unavailable':isEnabled\?'enabled':'disabled'\)/)
   assert.match(read('src/components/TrashPanel.vue'),/<StatusBadge code="deleted" \/>/)
   assert.match(notifications,/var\(--hf-success-text\)/)
   assert.match(notifications,/var\(--hf-danger-text\)/)
