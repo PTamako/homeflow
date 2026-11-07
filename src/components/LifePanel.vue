@@ -102,6 +102,8 @@ const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref('
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 const showMemoryForm=ref(false)
+const anniversaryFilterOpen=ref(false),planFilterOpen=ref(false),memoryFilterOpen=ref(false)
+const recapFormOpen=ref(false),tripImportOpen=ref(false)
 function closeAnniversaryForm(){
   showAnniversaryForm.value=false
   eventTitle.value='';eventDate.value='';eventRepeat.value='yearly'
@@ -882,7 +884,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:anniversaryView==='past'}"
             :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
         </div>
-        <div v-if="anniversaryView==='past'" class="archive-date-filters">
+        <button type="button" class="life-filter-trigger" @click="anniversaryFilterOpen=true">筛选日期 · {{ anniversaryYear||'全部' }}</button>
+        <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="anniversaryFilterOpen=false">
+        <div class="archive-date-filters">
           <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
             <option value="">全部年份</option>
             <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
@@ -892,6 +896,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
           </select></label>
         </div>
+        <button class="life-more" type="button" @click="anniversaryFilterOpen=false">完成</button>
+        </EditBottomSheet>
         <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
           <div :id="'plan-item-'+e.id" :class="{'focused-plan-entry':isFocused(e)}">
@@ -949,7 +955,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
             @click="changePlanScope('history')">已完成／历史</button>
         </div>
-        <div v-if="planScope==='history'" class="archive-date-filters">
+        <button type="button" class="life-filter-trigger" @click="planFilterOpen=true">筛选日期 · {{ planYear||'全部' }}</button>
+        <EditBottomSheet v-if="planScope==='history'&&planFilterOpen" title="筛选历史计划" @close="planFilterOpen=false">
+        <div class="archive-date-filters">
           <label>年份
             <select v-model="planYear" aria-label="历史记录年份"><option value="">全部年份</option>
               <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
@@ -961,6 +969,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
+        <button class="life-more" type="button" @click="planFilterOpen=false">完成</button>
+        </EditBottomSheet>
       </div>
       </div>
       <p v-if="listLoading" class="life-caption" role="status">正在读取计划…</p>
@@ -1574,6 +1584,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </EditBottomSheet>
       </section>
       <section class="life-card"><h2 class="life-heading"><AppIcon name="images" :size="21" /> 我们的时光轴</h2>
+        <button type="button" class="life-filter-trigger" @click="memoryFilterOpen=true">筛选日期 · {{ memoryYear||'全部' }}</button>
+        <EditBottomSheet v-if="memoryFilterOpen" title="筛选时光轴" @close="memoryFilterOpen=false">
         <div class="archive-date-filters">
           <label>年份
             <select v-model="memoryYear" aria-label="回忆年份"><option value="">全部年份</option>
@@ -1586,6 +1598,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
         </div>
+        <button class="life-more" type="button" @click="memoryFilterOpen=false">完成</button>
+        </EditBottomSheet>
 
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
         <p v-else-if="!items.length" class="life-empty">暂无回忆</p>
@@ -1622,6 +1636,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </template>
 
 <style scoped>
+.life-filter-trigger{padding:7px 10px;background:#eef6f0;border:1px solid #c9dfcf;border-radius:9px;color:#397a59;font-size:12px;font-weight:650}
 .plan-recap{margin:12px 0;padding:12px 14px}
 .plan-recap summary{cursor:pointer;display:flex;align-items:center;gap:7px;font-size:14px;font-weight:650}
 .plan-recap-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:10px}
