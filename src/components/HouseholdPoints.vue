@@ -460,7 +460,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  </section>
 </template>
 <style scoped>
-.points-board{display:grid;gap:12px;min-width:0}
+.points-board{display:grid;align-content:start;gap:12px;min-width:0}
 .points-board--collapsed{padding:10px 13px;margin:10px 0}
 .points-entry{width:100%;display:flex;align-items:center;gap:10px;text-align:left;
   padding:3px 1px;min-height:48px;border:0;background:none;color:#344c3d}
@@ -472,7 +472,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-entry-right{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#4a8662;white-space:nowrap;line-height:1}
 .points-chevron-right{transform:rotate(-90deg)}
 .points-entry:focus-visible,.points-collapse:focus-visible{outline:2px solid #43866a;outline-offset:3px}
-.points-expanded{display:grid;gap:11px;min-width:0}
+.points-expanded{display:grid;align-content:start;gap:11px;min-width:0}
 .points-collapse{display:inline-flex;align-items:center;justify-content:center;gap:4px;
   border:0;background:#f3f8f2;color:#518069;border-radius:8px;
   font-size:12px;line-height:1;min-height:30px;padding:4px 11px;white-space:nowrap}
@@ -546,14 +546,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
  .lottery-odds p{margin:9px 0 0;font-size:11px;line-height:1.65;color:#6c8574}
- /* Compact, predictable two-line entries for the lottery ledger on phones.
-    Keep spacing in the rows themselves instead of adding extra grid gaps. */
- .lottery-history{display:grid;gap:0;padding-top:6px}
- .lottery-history>b{font-size:14px;color:#426b50;margin-bottom:5px}
+ /* Flex column avoids auto-sized grid tracks stretching the lottery rows vertically. */
+ .lottery-history{display:flex;flex-direction:column;align-self:start;gap:0;min-width:0;padding-top:4px}
+ .lottery-history>b{font-size:14px;line-height:1.3;color:#426b50;margin-bottom:4px}
  .lottery-empty{padding:12px;font-size:12px;color:#829487;text-align:center}
  .lottery-history-row{display:grid;grid-template-columns:17px minmax(0,1fr) auto;
-   align-items:center;column-gap:8px;min-width:0;min-height:44px;
-   border-bottom:1px solid #e8efe9;padding:6px 0;color:#5b846b}
+   align-items:center;column-gap:8px;min-width:0;min-height:42px;
+   border-bottom:1px solid #e8efe9;padding:5px 0;color:#5b846b}
  .lottery-history-row>div{display:grid;gap:2px;min-width:0}
  .lottery-history-row strong{font-size:12px;line-height:1.25;color:#3f624c}
  .lottery-history-row small{font-size:10px;line-height:1.3;color:#849787}
