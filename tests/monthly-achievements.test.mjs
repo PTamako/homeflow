@@ -93,3 +93,44 @@ test('private completions earn XP, not monthly household awards, and weekly chal
   assert.equal((await score(store,'bob')).achievementBonusPoints,0)
  }finally{db.close()}
 })
+
+test('seven distinct JST days unlock 60 points, a removed day re-locks streak',async()=>{
+ const {db,store}=fixture()
+ try{
+  const month=tokyoMonthWindow().month
+  for(let day=1;day<=7;day++)insert(db,{
+    id:'streak-'+day,day:month+'-'+String(day).padStart(2,'0')
+  })
+  let data=await score(store)
+  assert.equal(data.badges.find(x=>x.id==='streak').unlocked,true)
+  assert.equal(data.badges.find(x=>x.id==='streak').progress,7)
+  assert.equal(data.achievementBonusPoints,65,'first 5 plus seven-day streak 60')
+  db.prepare("DELETE FROM completion_points WHERE source_id='streak-4'").run()
+  data=await score(store)
+  assert.equal(data.badges.find(x=>x.id==='streak').unlocked,false)
+  assert.equal(data.achievementBonusPoints,5)
+ }finally{db.close()}
+})
+
+test('pet guardian grants 45 points only for ten household pet-care completions',async()=>{
+ const {db,store}=fixture()
+ try{
+  const month=tokyoMonthWindow().month
+  db.prepare("INSERT INTO family_profiles(id,household_id,type,display_name) VALUES('pet','h','pet','豆沙')").run()
+  const addTask=db.prepare(`INSERT INTO tasks
+   (id,household_id,creator_user_id,subject_profile_id,visibility,title)
+   VALUES(?1,'h','alice','pet','household',?2)`)
+  for(let i=0;i<10;i++){
+   addTask.run('pet-task-'+i,'护理 '+i)
+   insert(db,{id:'pet-task-'+i,day:month+'-03'})
+  }
+  let data=await score(store)
+  assert.equal(data.badges.find(x=>x.id==='pet').unlocked,true)
+  assert.equal(data.badges.find(x=>x.id==='pet').rewardPoints,45)
+  assert.equal(data.achievementBonusPoints,70,'first 5 + challenge 20 + pet 45')
+  db.prepare("DELETE FROM completion_points WHERE source_id='pet-task-9'").run()
+  data=await score(store)
+  assert.equal(data.badges.find(x=>x.id==='pet').unlocked,false)
+  assert.equal(data.achievementBonusPoints,5,'undo revokes both pet and weekly challenge badges')
+ }finally{db.close()}
+})
