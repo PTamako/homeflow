@@ -6,6 +6,7 @@ import {pointLevel,pointsRoute,tokyoMonthWindow,tokyoWeekWindow,longestStreak} f
 
 const migration=readFileSync(new URL('../migrations/0033_completion_points.sql',import.meta.url),'utf8')
 const rewardsMigration=readFileSync(new URL('../migrations/0034_rewards_shop.sql',import.meta.url),'utf8')
+const householdRewardsMigration=readFileSync(new URL('../migrations/0035_household_rewards_only.sql',import.meta.url),'utf8')
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec(`
@@ -50,6 +51,7 @@ test('migration never awards points retroactively and has 10 immutable triggers'
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
   assert.deepEqual(rows(sqlite),[])
   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='trigger' AND name LIKE 'points_%'").get().n,10)
  }finally{sqlite.close()}
@@ -60,6 +62,7 @@ test('who finishes gets all 10 points, and retry, reopen, skip and change of com
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('task-1','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='task-1'")
   assert.equal(rows(sqlite).length,1)
@@ -82,6 +85,7 @@ test('routine adds ten points for each distinct occurrence; skip is zero and und
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-07',NULL,NULL,'2026-11-07T01:00:00Z')")
   assert.deepEqual(rows(sqlite),[])
   sqlite.exec("INSERT INTO routine_marks VALUES('routine-1','2026-11-08','2026-11-08T03:00:00Z','bob',NULL)")
@@ -105,6 +109,7 @@ test('leaderboard never reveals another member\'s private completions or another
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('shared','family','alice',NULL,NULL,'household',NULL)")
   sqlite.exec("UPDATE tasks SET completed_at='2026-11-07T03:00:00Z',completed_by='bob' WHERE id='shared'")
   sqlite.exec("INSERT INTO tasks(id,household_id,creator_user_id,completed_at,completed_by,visibility,deleted_at) VALUES('private','family','bob',NULL,NULL,'private',NULL)")
@@ -133,6 +138,7 @@ test('level bands, monthly JST date boundaries and route allow read-only access'
  try{
   sqlite.exec(migration)
   sqlite.exec(rewardsMigration)
+  sqlite.exec(householdRewardsMigration)
   const response=await pointsRoute(new Request('https://homeflow.invalid/api/points',{method:'POST'}),db,alice)
   assert.equal(response.status,405)
  }finally{sqlite.close()}
