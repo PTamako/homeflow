@@ -51,11 +51,13 @@ export async function pointsRoute(request,db,session){
         u.login_name) AS displayName,
       COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0) AS sharedPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0) AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0) AS monthPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0) AS routinePoints
@@ -64,9 +66,9 @@ export async function pointsRoute(request,db,session){
       AND cp.earner_user_id=m.user_id
     WHERE m.household_id=?1
     GROUP BY m.user_id,u.login_name
-    ORDER BY sharedPoints DESC,monthPoints DESC,m.user_id`).bind(h,begin,end).all()
+    ORDER BY monthPoints DESC,sharedPoints DESC,m.user_id`).bind(h,begin,end).all()
   const week=tokyoWeekWindow()
-  const [own,totals,streakDays]=await Promise.all([
+  const [own,totals,streakDays,monthProgress,monthAwards]=await Promise.all([
     db.prepare(`SELECT
       COALESCE(SUM(points),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private'),0)
@@ -91,6 +93,7 @@ export async function pointsRoute(request,db,session){
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
+      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_awards WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
