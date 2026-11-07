@@ -214,7 +214,7 @@ async function redeem(item:Reward){
   '兑换成功！已添加到待兑现记录')
 }
 async function startPool(item:Reward){
- if(!window.confirm('创建「'+item.title+'」的合力兑换？\\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
+ if(!window.confirm('创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool','POST',{rewardId:item.id,requestId}),
   '合力兑换已创建，请在下方选择出资金额')
@@ -226,14 +226,14 @@ async function contributePool(item:GroupOrder){
    error.value='本次出资请填写 1～'+remaining+' 的整数';return
  }
  if(amount>points.value){error.value='当前可用积分不足';return}
- if(!window.confirm('确认出资 '+amount+' 分给「'+item.title+'」？\\n只扣你的可用积分，未凑齐时仍可取消并返还。'))return
+ if(!window.confirm('确认出资 '+amount+' 分给「'+item.title+'」？\n只扣你的可用积分，未凑齐时仍可取消并返还。'))return
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/contribute','POST',
   {points:amount,requestId}),'已出资 '+amount+' 分')
  if(!error.value)poolContributionOpen.value=''
 }
 async function cancelPool(item:GroupOrder){
- if(!window.confirm('取消「'+item.title+'」的合力兑换？\\n未凑齐的订单可以取消，双方已出的积分都会返还。'))return
+ if(!window.confirm('取消「'+item.title+'」的合力兑换？\n未凑齐的订单可以取消，双方已出的积分都会返还。'))return
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/cancel','POST'),
   '合力兑换已取消，积分已返还')
 }
