@@ -48,6 +48,7 @@ export async function rewardsRoute(request,db,path,session){
         COALESCE((SELECT SUM(c.points) FROM reward_group_contributions c
           WHERE c.order_id=o.id),0) AS fundedPoints
         FROM reward_group_orders o WHERE o.household_id=?1
+          AND o.status<>'cancelled'
         ORDER BY o.created_at DESC,o.id DESC LIMIT 25`).bind(h).all(),
       db.prepare(`SELECT c.order_id AS orderId,c.user_id AS userId,
         COALESCE((SELECT p.display_name FROM family_profiles p
@@ -58,6 +59,7 @@ export async function rewardsRoute(request,db,path,session){
         FROM reward_group_contributions c JOIN users u ON u.id=c.user_id
         WHERE c.household_id=?1 AND c.order_id IN
           (SELECT id FROM reward_group_orders WHERE household_id=?1
+            AND status<>'cancelled'
             ORDER BY created_at DESC,id DESC LIMIT 25)
         GROUP BY c.order_id,c.user_id,u.login_name`).bind(h).all()
     ])

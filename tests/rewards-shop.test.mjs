@@ -141,6 +141,20 @@ test('pool cancellation fully refunds both partial contributors and releases lim
   assert.equal((await call(db,bob,'/api/rewards/pool/'+open.body.id+'/cancel','POST')).status,200)
   assert.equal((await balance(db,alice)).availablePoints,170)
   assert.equal((await balance(db,bob)).availablePoints,170)
+  // A refunded, cancelled group order disappears from both members' active
+  // list without deleting its record or its audit-friendly contributions.
+  const ownerShop=await call(db,alice,'/api/rewards')
+  const memberShop=await call(db,bob,'/api/rewards')
+  assert.equal(ownerShop.body.groupOrders.some(o=>o.id===open.body.id),false)
+  assert.equal(memberShop.body.groupOrders.some(o=>o.id===open.body.id),false)
+  assert.equal(sqlite.prepare("SELECT status FROM reward_group_orders WHERE id=?").get(open.body.id).status,'cancelled')
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reward_group_contributions WHERE order_id=?").get(open.body.id).n,2)
+  // Cancelled entries cannot consume the 25-row active-list budget.
+  const another=await call(db,alice,'/api/rewards/pool','POST',{rewardId:dessert.id,requestId:id(17)})
+  assert.equal(another.status,201)
+  assert.deepEqual((await call(db,alice,'/api/rewards')).body.groupOrders.map(o=>o.id),[another.body.id])
+  assert.equal((await call(db,bob,'/api/rewards/redeem','POST',{rewardId:dessert.id,requestId:id(15)})).status,409,'new pending pool keeps stock reserved')
+  assert.equal((await call(db,alice,'/api/rewards/pool/'+another.body.id+'/cancel','POST')).status,200)
   assert.equal((await call(db,bob,'/api/rewards/redeem','POST',{rewardId:dessert.id,requestId:id(15)})).status,201)
   assert.equal((await balance(db,bob)).availablePoints,70)
   assert.equal((await call(db,bob,'/api/rewards/redeem','POST',{rewardId:dessert.id,requestId:id(15)})).body.replayed,true)
