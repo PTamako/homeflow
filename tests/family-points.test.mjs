@@ -178,7 +178,7 @@ test('point rules are hidden behind an accessible title help popover on mobile',
  assert.doesNotMatch(source,/<p class="points-hint">普通待办和周期任务每期都计分/)
  assert.match(source,/document\.addEventListener\('pointerdown',dismissRulesOutside\)/)
  assert.match(source,/document\.removeEventListener\('pointerdown',dismissRulesOutside\)/)
- assert.match(source,/if\(event\.key==='Escape'\)ruleHelpOpen\.value=false/)
+ assert.match(source,/if\(event\.key==='Escape'\)\s*\{[\s\S]*ruleHelpOpen\.value=false[\s\S]*experienceHelpOpen\.value=false/)
  assert.match(source,/\.points-rule-popover\{position:absolute;/)
  assert.match(source,/\.points-rule-popover[\s\S]*z-index:20;/)
 })
