@@ -240,7 +240,7 @@ const authMode=ref<'login'|'bootstrap'|'join'|'recover'>('login'),initialized=re
 const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
-const showProfileForm=ref(false)
+const showProfileForm=ref(false),profileSaving=ref(false)
 function closeProfileForm(){
   showProfileForm.value=false
   name.value='';petType.value='pet';birth.value='';adopted.value=''
@@ -657,13 +657,16 @@ async function toggleTask(t:Task){
   }catch(e){error.value=(e as Error).message}
 }
 async function addProfile(){
+  if(profileSaving.value||!name.value.trim())return
+  profileSaving.value=true
   error.value=''
   try{
     await api('/family/profiles','POST',{displayName:name.value,type:petType.value,
-      birthday:birth.value||null,adoptedOn:adopted.value||null})
+      birthday:birth.value||null,adoptedOn:petType.value==='pet'?adopted.value||null:null})
     await profileSaved()
     closeProfileForm()
   }catch(e){error.value=(e as Error).message}
+  finally{profileSaving.value=false}
 }
 watch(tab,value=>{
   clearToast()
@@ -935,7 +938,7 @@ onBeforeUnmount(()=>{
         </section>
         <EditBottomSheet v-if="user.role==='owner'&&showProfileForm"
           :title="petType==='person'?'添加家庭成员':'添加宠物档案'"
-          :close-disabled="loading" @close="closeProfileForm">
+          :close-disabled="profileSaving" @close="closeProfileForm">
           <form id="new-family-profile-form" class="profile-form" @submit.prevent="addProfile">
             <label class="field-wide">昵称或名字
               <input v-model="name" required maxlength="60"
@@ -949,7 +952,7 @@ onBeforeUnmount(()=>{
             </label>
             <div class="field-wide profile-form-actions">
               <button type="button" class="outline" @click="closeProfileForm">取消</button>
-              <button type="submit" class="primary" :disabled="loading">
+              <button type="submit" class="primary" :disabled="profileSaving">
                 {{ petType==='person'?'添加成员':'添加宠物' }}
               </button>
             </div>
