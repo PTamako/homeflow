@@ -22,7 +22,7 @@ import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean;syncRevision?:number}>()
-const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[]}>()
+const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[];planFocusSettled:[requestId:number]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
@@ -35,6 +35,9 @@ const listLoading=ref(false)
 const planListReady=ref(false)
 let lastPlanQueryKey=''
 let activeFetch=0
+// A deep link may refresh more than once while remote revisions synchronize.
+// Only the first successful focus for this navigation is allowed to scroll.
+let lastFocusedScrollKey=''
 type PlanType='all'|'routine'|'unscheduled'|'shopping'|'wish'|'goal'|'trip'
 const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'shopping'|'trip'
@@ -648,6 +651,10 @@ async function focusExactPlan(requestId:number){
   const destination=kind==='memory'?'memories':kind==='anniversary'?'family':'plans'
   if(!id||!endpoints[kind]||props.mode!==destination||
     !/^[0-9a-f-]{36}$/i.test(id))return
+  const focusKey=[props.focusPlanRequest||0,kind,id,props.focusPlanPeriodKey||'',planScope.value].join(':')
+  const settleFocus=()=>{
+    if(props.focusPlanFromToday)emit('planFocusSettled',props.focusPlanRequest||0)
+  }
   try{
     const response=await api(kind==='routine'&&planScope.value==='history'&&props.focusPlanPeriodKey?
       '/routines/'+encodeURIComponent(id)+'/period?on='+encodeURIComponent(props.focusPlanPeriodKey):
@@ -656,7 +663,7 @@ async function focusExactPlan(requestId:number){
     const item=kind==='trip'?response.trip:kind==='task'?response.task:response.item
     if(!item?.id)throw Error('找不到对应搜索结果')
     if(kind==='goal'&&planScope.value==='history'&&
-        ['monthly','yearly'].includes(item.goal_mode))return
+        ['monthly','yearly'].includes(item.goal_mode))return settleFocus()
     const target=kind==='task'?oneTimePlans:kind==='routine'?routines:
       kind==='shopping'?other:kind==='goal'?goals:kind==='trip'?trips:items
     // Active plans have one row per plan ID; historical routine occurrences are distinct by period.
@@ -682,19 +689,34 @@ async function focusExactPlan(requestId:number){
         (kind!=='routine'||!item.periodOn||entry.item.periodOn===item.periodOn))
       if(index>=0)taskPage.value=Math.floor(index/pageLimit)
     }
+    // planListReady must be true before nextTick; otherwise the target row
+    // is still behind v-if and the first iOS navigation silently misses it.
     await nextTick()
-    if(requestId===activeFetch&&focusedItemId.value===id){
-      // Wait until rendering settles; keep the selected row below the iOS safe area.
+    if(requestId===activeFetch&&focusedItemId.value===id&&lastFocusedScrollKey!==focusKey){
       window.requestAnimationFrame(()=>{
-        if(requestId!==activeFetch||focusedItemId.value!==id)return
+        if(requestId!==activeFetch||focusedItemId.value!==id||props.focusPlanScope!==planScope.value||
+          lastFocusedScrollKey===focusKey)return
         const row=document.getElementById('plan-item-'+id+
           (kind==='routine'&&item.periodOn?'-'+item.periodOn:''))
-        if(!row)return
-        window.scrollTo({top:Math.max(0,row.getBoundingClientRect().top+window.scrollY-176),behavior:'auto'})
+        if(!row){
+          focusError.value='已打开计划列表，但未找到需要定位的记录'
+          settleFocus()
+          return
+        }
+        lastFocusedScrollKey=focusKey
+        // Exactly once per Today deep link; sync/edit refreshes must not yank
+        // the user back to the top of the plan list.
+        window.scrollTo({top:Math.max(0,row.getBoundingClientRect().top+window.scrollY-176),behavior:'instant'})
+        settleFocus()
       })
+    }else if(requestId===activeFetch){
+      settleFocus()
     }
   }catch(e){
-    if(requestId===activeFetch)focusError.value=(e as Error).message
+    if(requestId===activeFetch){
+      focusError.value=(e as Error).message
+      settleFocus()
+    }
   }
 }
 async function finishWish(w:Row){
@@ -805,7 +827,12 @@ async function fetchMode(){
       skippedTodayActions.value=actionPath?pages[actionIndex].items||[]:[]
       skippedActionCursor.value=actionPath?pages[actionIndex].nextCursor||null:null
       if(failed)error.value='部分计划记录读取失败，请稍后重试或切换分类查看'
-      await focusExactPlan(requestId)
+      // Reveal the rows before focusExactPlan waits for their DOM nodes.
+      // On the first navigation they were previously still hidden behind
+      // v-if="planListReady", making the scroll occasionally land at page top.
+      planListReady.value=true
+      await nextTick()
+      if(requestId===activeFetch)await focusExactPlan(requestId)
     }else if(props.mode==='memories'){
       const path=listPath('memories')
       const data=await api(path)
