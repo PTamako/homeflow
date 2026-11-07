@@ -295,9 +295,10 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <small class="points-details">累计共享 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
      </article>
    </div>
-   <p v-if="data" class="points-private">我的积分：累计共享 {{ fmt(own?.sharedPoints||0) }} 分 · 私人 {{ fmt(data.ownPrivatePoints) }} 分
-     <small> · 共享积分包含：每周挑战 +{{ fmt(data.weeklyBonusPoints) }} · 储值达标 +{{ fmt(data.savingsBonusPoints) }} · 月度成就 +{{ fmt(data.achievementBonusPoints) }} · 抽奖净收益 {{ data.lotteryNetPoints>0?'+':'' }}{{ fmt(data.lotteryNetPoints||0) }}；以上来源已包含在累计共享中，不重复累加。私人任务积分不可兑换家庭奖励。</small>
-   </p>
+   <details v-if="data" class="points-private">
+     <summary><span>我的积分：共享 {{ fmt(own?.sharedPoints||0) }} 分 · 私人 {{ fmt(data.ownPrivatePoints) }} 分</span><AppIcon name="chevron-down" :size="14" class="points-private-chevron"/></summary>
+     <p class="points-bonus-breakdown">奖励明细（已计入共享）：挑战 +{{ fmt(data.weeklyBonusPoints) }} · 储值 +{{ fmt(data.savingsBonusPoints) }} · 成就 +{{ fmt(data.achievementBonusPoints) }} · 抽奖 {{ data.lotteryNetPoints>0?'+':'' }}{{ fmt(data.lotteryNetPoints||0) }}</p>
+   </details>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>
      <button type="button" :class="{chosen:view==='achievements'}" @click="selectView('achievements')"><AppIcon name="award" :size="16"/> 成就挑战</button>
@@ -520,7 +521,11 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-score span,.points-level,.points-details{font-size:11px;color:#728574}
 .points-details{display:block;margin-top:7px}
 .points-private{margin:0;color:#42694c;font-size:12px;line-height:1.6}
-.points-private small{color:#758c7b}
+.points-private summary{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;list-style:none}
+.points-private summary::-webkit-details-marker{display:none}
+.points-private-chevron{flex:none;color:#758c7b;transition:transform .2s}
+.points-private[open] .points-private-chevron{transform:rotate(180deg)}
+.points-bonus-breakdown{margin:5px 0 0;color:#758c7b;font-size:11px;line-height:1.5}
 .points-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
 .points-tabs button{min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}

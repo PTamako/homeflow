@@ -1512,7 +1512,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
                     <small><StatusBadge :code="s.completed_at?'completed':'to_buy'" /></small>
                     <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
-                    <small v-if="s.second_assignee_user_id">完成后共 2 分 · 两人各 1 分</small>
                     <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
                   </span>
                 </div>
