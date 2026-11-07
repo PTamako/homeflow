@@ -329,7 +329,7 @@ export async function tripsRoute(request,db,path,session){
         }catch{return json({error:'invalid_saved_plan'},409)}
       }
       const timestamp=iso()
-      const rewardedAt=b.status==='completed'?(trip.status==='completed'?trip.trip_rewarded_at||timestamp:timestamp):null
+      const rewardedAt=b.status==='completed'?(trip.status==='completed'?trip.trip_rewarded_at:timestamp):null
       const updated=await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
         status=?6,plan_json=?7,import_hash=?8,updated_at=?9,participant_user_ids=?14,trip_rewarded_at=?15
         WHERE id=?10 AND household_id=?11 AND created_by=?12 AND updated_at=?13`)
