@@ -8,7 +8,7 @@ import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/po
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
 const names=[...manifests.matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(m=>m[1])
-assert.equal(names.length,38)
+assert.equal(names.length,39)
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
