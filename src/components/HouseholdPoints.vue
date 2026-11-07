@@ -541,14 +541,18 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
  .lottery-odds p{margin:9px 0 0;font-size:11px;line-height:1.65;color:#6c8574}
- .lottery-history{display:grid;gap:8px;padding-top:8px}
- .lottery-history>b{font-size:14px;color:#426b50}
+ /* Compact, predictable two-line entries for the lottery ledger on phones.
+    Keep spacing in the rows themselves instead of adding extra grid gaps. */
+ .lottery-history{display:grid;gap:0;padding-top:6px}
+ .lottery-history>b{font-size:14px;color:#426b50;margin-bottom:5px}
  .lottery-empty{padding:12px;font-size:12px;color:#829487;text-align:center}
- .lottery-history-row{display:flex;align-items:center;gap:9px;min-width:0;border-bottom:1px solid #e8efe9;padding:8px 0;color:#5b846b}
- .lottery-history-row>div{display:grid;gap:3px;flex:1;min-width:0}
- .lottery-history-row strong{font-size:12px;color:#3f624c}
- .lottery-history-row small{font-size:10px;color:#849787}
- .lottery-history-row>span{font-size:11px;font-weight:700;color:#407f5c;text-align:right;max-width:42%}
+ .lottery-history-row{display:grid;grid-template-columns:17px minmax(0,1fr) auto;
+   align-items:center;column-gap:8px;min-width:0;min-height:44px;
+   border-bottom:1px solid #e8efe9;padding:6px 0;color:#5b846b}
+ .lottery-history-row>div{display:grid;gap:2px;min-width:0}
+ .lottery-history-row strong{font-size:12px;line-height:1.25;color:#3f624c}
+ .lottery-history-row small{font-size:10px;line-height:1.3;color:#849787}
+ .lottery-history-row>span{font-size:11px;line-height:1.3;font-weight:700;color:#407f5c;text-align:right;max-width:42vw;justify-self:end}
  .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
  .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
