@@ -96,6 +96,7 @@ export async function notificationsRoute(request,db,path,session){
        JOIN users r ON r.id=n.recipient_user_id`
     const sql=`${select}
        WHERE n.household_id=?1 AND n.local_day=?2 AND ${column}=?3
+       ${view==='sent'?"AND (n.dedupe_key IS NULL OR n.dedupe_key NOT LIKE 'lottery:%' OR n.recipient_user_id<>n.sender_user_id)":''}
        ${before?'AND (n.created_at<?4 OR (n.created_at=?4 AND n.id<?5))':''}
        ORDER BY n.created_at DESC,n.id DESC LIMIT 6`
     const query=db.prepare(sql).bind(...(before?
