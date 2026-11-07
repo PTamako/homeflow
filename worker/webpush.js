@@ -532,6 +532,28 @@ export async function sendCompletionFeedback(env,session,event){
   return {recipients:recipients.length,sent,failed}
 }
 
+// One copy for iOS Web Push and Today's inbox; never include entry costs here.
+// The explicit 5-point draw cost remains visible at the lottery action itself.
+export function lotteryNotificationCopy(name,draw){
+  const who=String(name||'家庭成员').slice(0,30)
+  if(draw?.kind==='empty')return {
+    title:'🎲 '+who+' 发起了抽奖',
+    message:who+' 这次空手而归～下次继续加油！🍀'
+  }
+  if(draw?.kind==='double')return {
+    title:'👑 恭喜 '+who+' 触发超级大奖！🎉',
+    message:'欧皇附体！'+who+' 触发积分翻倍，获得 '+draw.points+' 积分！✨'
+  }
+  if(draw?.kind==='fifty')return {
+    title:'🎉 恭喜 '+who+' 抽中奖了',
+    message:'欧气爆发！'+who+' 抽中了 50 积分！✨'
+  }
+  return {
+    title:'🎉 恭喜 '+who+' 抽中奖了',
+    message:who+' 抽中了 '+draw.points+' 积分！🎊'
+  }
+}
+
 /**
  * Each lottery draw is a separate TODAY inbox message for every household
  * member, including the player. A stable message ID and delivery key prevent
@@ -548,11 +570,7 @@ export async function sendLotteryDrawNotification(env,session,draw){
     u.login_name) AS name FROM users u WHERE u.id=?2`)
     .bind(session.household_id,draw.userId).first()
   const name=String(actor?.name||'家庭成员').slice(0,30)
-  const label=draw.kind==='empty'?'空手而归':
-    draw.kind==='double'?('当前积分翻倍，获得 '+draw.points+' 积分'):
-    ('获得 '+draw.points+' 积分')
-  const title='家庭抽奖 · '+name
-  const message=name+' 抽奖：'+label+'（消耗 5 积分）'
+  const {title,message}=lotteryNotificationCopy(name,draw)
   const {results:members=[]}=await db.prepare(`SELECT m.user_id AS id
     FROM household_members m JOIN users u ON u.id=m.user_id
     WHERE m.household_id=?1 AND u.disabled_at IS NULL LIMIT 20`)
