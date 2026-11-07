@@ -57,6 +57,7 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=m.household_id AND tr.user_id=m.user_id AND tr.visibility='household'),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0)
       +${contributionWeeklySql('m.household_id','m.user_id')}
       +${contributionAssignmentDeltaSql('m.household_id','m.user_id')}
@@ -67,6 +68,7 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND j.earned_at>=?2 AND j.earned_at<?3),0)
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)
       +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND j.earned_at>=?2 AND j.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=m.household_id AND tr.user_id=m.user_id AND tr.visibility='household' AND tr.awarded_at>=?2 AND tr.awarded_at<?3),0)
       +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0)
       +${contributionWeeklySql('m.household_id','m.user_id','?2','?3')}
       +${contributionAssignmentDeltaSql('m.household_id','m.user_id','?2','?3')}
@@ -89,11 +91,13 @@ export async function pointsRoute(request,db,session){
     db.prepare(`SELECT
       COALESCE(SUM(points),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private'),0) AS privatePoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private'),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=?1 AND tr.user_id=?2 AND tr.visibility='private'),0) AS privatePoints,
       COALESCE(SUM(CASE WHEN earned_at>=?3 AND earned_at<?4
         THEN points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private' AND a.earned_at>=?3 AND a.earned_at<?4),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private' AND s.earned_at>=?3 AND s.earned_at<?4),0) AS privateMonthPoints
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private' AND s.earned_at>=?3 AND s.earned_at<?4),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=?1 AND tr.user_id=?2 AND tr.visibility='private' AND tr.awarded_at>=?3 AND tr.awarded_at<?4),0) AS privateMonthPoints
       FROM completion_points WHERE household_id=?1 AND earner_user_id=?2
         AND visibility='private'`).bind(h,u,begin,end).first(),
     db.prepare(`SELECT
@@ -102,19 +106,22 @@ export async function pointsRoute(request,db,session){
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2)
       + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2)
       + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2) AS earned,
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2)
+      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2) AS earned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
           AND visibility='household')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
       + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
       + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household') AS householdEarned,
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household')
+      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND visibility='household') AS householdEarned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
+      (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2) AS travelBonus,
       (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
       (SELECT COALESCE(SUM(prize_points-cost_points),0) FROM household_lottery_draws
         WHERE household_id=?1 AND user_id=?2) AS lotteryNetPoints,
@@ -177,7 +184,7 @@ export async function pointsRoute(request,db,session){
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
-    pointRules:{shopping:2,routine:5,goal:0,goalPeriodMet:50,wish:0,onceUnassigned:10,onceAssigned:5},
+    pointRules:{shopping:2,routine:5,goal:0,goalPeriodMet:50,wish:0,onceUnassigned:10,onceAssigned:5,travelPerPersonPerDay:10},
     members:(members.results||[]).map(row=>({
       userId:row.userId,displayName:row.displayName,
       sharedPoints:Number(row.sharedPoints)||0,
@@ -189,7 +196,7 @@ export async function pointsRoute(request,db,session){
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
     experience,earnedPoints:earned,weeklyBonusPoints:bonus,
-    savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,
+    savingsBonusPoints:savingsBonus,travelBonusPoints:Number(totals?.travelBonus||0),achievementBonusPoints:achievementBonus,
     lotteryNetPoints:Number(totals?.lotteryNetPoints||0),spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
     householdEarnedPoints:Number((members.results||[]).find(row=>row.userId===u)?.sharedPoints||0),
