@@ -28,7 +28,7 @@ watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
 const items=ref<Row[]>([]),other=ref<Row[]>([]),goals=ref<Row[]>([]),trips=ref<Row[]>([]),routines=ref<Row[]>([])
-const error=ref(''),busy=ref(false),pushBusyId=ref(''),pushTarget=ref(''),pushMessage=ref('')
+const error=ref(''),busy=ref(false),pushBusyId=ref(''),pushTarget=ref(''),pushMessage=ref(''),pushError=ref('')
 const listLoading=ref(false)
 // Keep the current plan list mounted while a refresh is pending, including when
 // an editor closes or another household member triggers a sync.
@@ -133,32 +133,48 @@ function openTaskPush(kind:'task'|'routine'|'shopping',item:Row){
  const key=kind+':'+item.id
  if(pushTarget.value===key){pushTarget.value='';pushMessage.value=''}
  else {pushTarget.value=key;pushMessage.value=''}
+ pushError.value=''
  expandedTaskMenu.value=null
+}
+function closeTaskPush(){
+ if(pushBusyId.value)return
+ pushTarget.value='';pushMessage.value='';pushError.value=''
 }
 async function notifyHandler(kind:'task'|'routine'|'shopping',item:Row){
  if(pushBusyId.value)return
- pushBusyId.value=item.id;error.value=''
+ pushBusyId.value=item.id;pushError.value=''
  try{
   const response=await fetch('/api/push/send-task',{method:'POST',
-    credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
-    body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim(),
-      ...(kind==='routine'&&(item.currentAssignment?.assigneeUserId||item.nextAssignment?.assigneeUserId)?
-        {periodOn:routineAssignmentPeriod(item)}:{})})})
+   credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json'},
+   body:JSON.stringify({kind,id:item.id,message:pushMessage.value.trim(),
+    ...(kind==='routine'&&(item.currentAssignment?.assigneeUserId||item.nextAssignment?.assigneeUserId)?
+      {periodOn:routineAssignmentPeriod(item)}:{})})})
   const data=await response.json().catch(()=>({}))
-  if(!response.ok){
+  if(!response.ok||data.ok===false){
    const hints:Record<string,string>={
-    recipient_not_subscribed:'处理人尚未开启推送，请让对方在自己的手机开启通知',
-    task_not_shareable:'只有发起人能发送已指派的家庭共享任务',
-    recipient_is_self:'处理人是自己，无需发给其他账号',
-    push_rate_limited:'这项任务刚刚发送过，请稍后再试',
-    push_not_configured:'推送尚未配置'
+    task_not_shareable:'本期指派可能已变化，请重新打开任务核对处理人和日期',
+    recipient_is_self:'没有其他可通知的处理人',
+    recipient_not_subscribed:'处理人尚未启用设备推送',
+    push_rate_limited:'刚发送过此任务，请稍后再试',
+    push_not_configured:'设备推送尚未配置',
+    not_authenticated:'登录已失效，请重新登录',
+    origin_forbidden:'安全验证未通过，请从 HomeFlow 应用中重新打开',
+    invalid_input:'任务参数无效，请重新打开再试',
+    notification_inbox_unavailable:'无法写入今日通知，请稍后重试',
+    server_error:'服务器暂时发生错误'
    }
-   throw Error(hints[data.error]||'任务推送失败，请稍后重试')
+   const code=String(data.error||'http_'+response.status)
+   throw Error((hints[code]||'任务通知发送失败')+'（'+code+'）')
   }
-  pushTarget.value='';pushMessage.value=''
-  notify(data.inAppOnly?'已发送到处理人的今日通知':'已通知处理人（'+data.sent+' 台设备）')
- }catch(e){error.value=(e as Error).message}
- finally{pushBusyId.value=''}
+  pushTarget.value='';pushMessage.value='';pushError.value=''
+  if(data.inAppOnly||Number(data.sent||0)===0){
+   notify(Number(data.failed||0)>0?
+    '已保存至对方今日通知，但设备推送失败（'+data.failed+' 台）':
+    '已保存至对方今日通知；尚未成功推送至设备')
+  }else notify('已通知处理人（'+data.sent+' 台设备）')
+ }catch(e){
+  pushError.value=(e as Error).message||'通知发送失败，请重试'
+ }finally{pushBusyId.value=''}
 }
 function toggleTaskMenu(key:string){
  // A row never exposes both swipe edit/delete and the contextual menu.
@@ -1200,14 +1216,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <button v-if="r.currentPeriodOn&&r.currentStatus==='pending'" type="button"
                   :disabled="busy" @click="expandedTaskMenu=null;completeCurrentRoutine(r,'skipped')">跳过本期</button>
               </div>
-              <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+              <EditBottomSheet v-if="pushTarget==='routine:'+r.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="closeTaskPush">
 <form class="task-push-form" @submit.prevent="notifyHandler('routine',r)">
                 <label>给 {{ assignedMembers(r.currentAssignment||r.nextAssignment,r.assigned_to).map(memberName).join('、')||'未指派' }} 留言（可选）
                   <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：今天方便的话帮我处理一下哦"/>
                 </label>
+                <p v-if="pushError" role="alert" class="task-push-error">{{ pushError }}</p>
                 <div class="task-push-actions">
-                  <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
-                  <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
+                  <button type="button" :disabled="!!pushBusyId" @click="closeTaskPush">取消</button>
+                  <button type="button" :disabled="!!pushBusyId" :aria-busy="!!pushBusyId"
+                   @click.stop="notifyHandler('routine',r)">{{ pushBusyId===r.id?'发送中…':'发送任务通知' }}</button>
                 </div>
               </form>
 </EditBottomSheet>
@@ -1304,14 +1322,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId&&!t.completedAt" type="button"
                 :disabled="!!pushBusyId" @click="openTaskPush('task',t)">{{ pushBusyId===t.id?'发送中…':'通知处理人' }}</button>
             </div>
-            <EditBottomSheet v-if="pushTarget==='task:'+t.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+            <EditBottomSheet v-if="pushTarget==='task:'+t.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="closeTaskPush">
 <form class="task-push-form" @submit.prevent="notifyHandler('task',t)">
               <label>给 {{ [t.assigneeUserId,t.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2" placeholder="例如：下班顺路买一下，记得买原来的牌子"/>
               </label>
-              <div class="task-push-actions">
-                <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
-                <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
+              <p v-if="pushError" role="alert" class="task-push-error">{{ pushError }}</p>
+                <div class="task-push-actions">
+                <button type="button" :disabled="!!pushBusyId" @click="closeTaskPush">取消</button>
+                <button type="button" :disabled="!!pushBusyId" :aria-busy="!!pushBusyId"
+                   @click.stop="notifyHandler('task',t)">{{ pushBusyId===t.id?'发送中…':'发送任务通知' }}</button>
               </div>
             </form>
 </EditBottomSheet>
@@ -1571,16 +1591,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   [s.assigned_to,s.second_assignee_user_id].some(id=>id&&id!==props.userId)&&!s.completed_at"
                 type="button" :disabled="!!pushBusyId" @click="openTaskPush('shopping',s)">通知处理人</button>
             </div>
-            <EditBottomSheet v-if="pushTarget==='shopping:'+s.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="pushTarget='';pushMessage=''">
+            <EditBottomSheet v-if="pushTarget==='shopping:'+s.id" title="通知处理人" :close-disabled="!!pushBusyId" @close="closeTaskPush">
 <form class="task-push-form"
               @submit.prevent="notifyHandler('shopping',s)">
               <label>给 {{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、') }} 留言（可选）
                 <textarea v-model.trim="pushMessage" maxlength="120" rows="2"
                   placeholder="例如：下班顺路买一下哦"/>
               </label>
-              <div class="task-push-actions">
-                <button type="button" :disabled="!!pushBusyId" @click="pushTarget='';pushMessage=''">取消</button>
-                <button type="submit" :disabled="!!pushBusyId">{{ pushBusyId===s.id?'发送中…':'发送购物通知' }}</button>
+              <p v-if="pushError" role="alert" class="task-push-error">{{ pushError }}</p>
+                <div class="task-push-actions">
+                <button type="button" :disabled="!!pushBusyId" @click="closeTaskPush">取消</button>
+                <button type="button" :disabled="!!pushBusyId" :aria-busy="!!pushBusyId"
+                   @click.stop="notifyHandler('shopping',s)">{{ pushBusyId===s.id?'发送中…':'发送购物通知' }}</button>
               </div>
             </form>
 </EditBottomSheet>
@@ -2109,6 +2131,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .task-push-actions button{border:1px solid #ccdcd0;border-radius:8px;background:#fff;padding:8px 12px;color:#3b7054;font-weight:650;font-size:12px}
 .task-push-actions button[type=submit]{background:#43866a;color:#fff;border-color:#43866a}
 .task-push-actions button:disabled{opacity:.6}
+.task-push-error{margin:0;padding:10px 12px;border:1px solid #f1d3cd;border-radius:10px;
+ background:#fff2ef;color:#a13e34;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.task-push-form button[aria-busy="true"]{opacity:.65;cursor:progress}
+
 
 /* One-time task editor lives in LifePanel; sibling component scoped CSS does
    not reach it. Keep every field in its own bounded mobile row. */
