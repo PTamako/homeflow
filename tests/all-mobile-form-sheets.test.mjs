@@ -9,7 +9,7 @@ const plan=src('components/PlanCreator.vue')
 const finance=src('components/FinancePanel.vue')
 
 test('creation and one-time input controls use a bottom sheet, not expanding inline cards',()=>{
- assert.match(app,/<EditBottomSheet v-if="showProfileForm"/)
+ assert.match(app,/<EditBottomSheet v-if="user.role==='owner'&&showProfileForm"/)
  assert.match(app,/<EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key"/)
  assert.match(life,/<EditBottomSheet v-if="showAnniversaryForm"/)
  assert.match(life,/<EditBottomSheet v-if="showMemoryForm"/)
