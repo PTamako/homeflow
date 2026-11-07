@@ -1037,7 +1037,7 @@ test('direct plan detail fetches a record beyond five pages without broadening v
 test('completion-anchored interval stays checked on its due date and recurs normally',async()=>{
  const {db,sqlite}=makeDb()
  const env={APP_ENV:'preview',DB:db,HOMEFLOW_BOOTSTRAP_SECRET:'example-secret-for-test-012345678901234'}
- const ask=(path,method='GET',body,cookie)=>send(env,path,method,body,cookie)
+ const ask=(path,method='GET',body,cookie)=>sendAtMarkDate(env,path,method,body,cookie)
  const ownerRegistered=await ask('/api/auth/bootstrap','POST',{
    loginName:'routine-owner',password:'another-long-test-password-123',
    displayName:'主人',householdName:'小家',bootstrapSecret:env.HOMEFLOW_BOOTSTRAP_SECRET})
