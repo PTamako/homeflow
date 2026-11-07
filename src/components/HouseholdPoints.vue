@@ -9,7 +9,7 @@ type Level={level:number;title:string;progress:number;nextLevelIn:number}
 type Badge={id:string;label:string;icon:string;unlocked:boolean}
 type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
  ownPrivatePoints:number;ownPrivateMonthPoints:number;experience:number;
- earnedPoints:number;weeklyBonusPoints:number;spentPoints:number;availablePoints:number;
+ earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;spentPoints:number;availablePoints:number;
  ownLevel:Level;badges:Badge[];challenge:{weekOn:string;completed:number;target:number;bonus:number;achieved:boolean}}
 type Reward={id:string;title:string;description:string;icon:string;points:number;
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
@@ -215,7 +215,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      aria-controls="points-expanded" @click="openDetails">
      <span class="points-entry-icon" aria-hidden="true"><AppIcon name="gift" :size="21"/></span>
      <span class="points-entry-main"><strong>家庭成长积分</strong>
-       <small v-if="data">Lv.{{ data.ownLevel.level }} · 可用 {{ fmt(points) }} 分</small>
+       <small v-if="data">Lv.{{ data.ownLevel.level }} · 家庭可用 {{ fmt(points) }} 分</small>
        <small v-else>{{ loading?'正在读取积分…':'积分商店 · 合力兑换 · 成就' }}</small>
      </span>
      <span class="points-entry-right">查看 <AppIcon name="chevron-down" :size="16" class="points-chevron-right"/></span>
@@ -230,7 +230,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。</p>
+           <p>普通待办和周期任务每期都计分；同一期不重复，跳过无分，撤销扣回。私人积分不可兑换家庭奖励。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
@@ -250,7 +250,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <strong>{{ fmt(myTotal) }} XP</strong>
        <span>{{ data.ownLevel.title }} · Lv.{{ data.ownLevel.level }}</span>
      </div>
-     <div><small>可用积分</small><strong>{{ fmt(points) }}</strong><span>已兑换 {{ fmt(data.spentPoints) }} 分</span></div>
+     <div><small>家庭可用积分</small><strong>{{ fmt(points) }}</strong><span>已兑换 {{ fmt(data.spentPoints) }} 分</span></div>
    </div>
    <div v-if="data" class="own-level-line" :aria-label="'再获得'+data.ownLevel.nextLevelIn+'经验升级'">
      <span :style="{width:data.ownLevel.progress+'%'}"></span>
@@ -265,7 +265,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </article>
    </div>
    <p v-if="data" class="points-private">我的贡献：共享 {{ own?.sharedPoints||0 }} + 私人 {{ data.ownPrivatePoints }}
-     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务不进入共享榜</small>
+     <small> · 每周挑战奖励 {{ data.weeklyBonusPoints }}；私人任务不进入共享榜，只计成长经验，不可兑换家庭奖励或合力出资</small>
    </p>
    <div class="points-tabs" role="group" aria-label="积分功能">
      <button type="button" :class="{chosen:view==='shop'}" @click="view='shop'"><AppIcon name="gift" :size="16"/> 积分商店</button>
@@ -275,7 +275,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <div class="challenge-card">
        <div><b>本周家庭挑战</b><span>{{ data.challenge.completed }}/{{ data.challenge.target }} 次</span></div>
        <div class="challenge-bar"><span :style="{width:Math.min(100,data.challenge.completed/data.challenge.target*100)+'%'}"></span></div>
-       <small>{{ data.challenge.achieved?'本周已达成，自动获得 +30 积分':'本周完成 10 次普通或周期任务，自动奖励 30 分' }}</small>
+       <small>{{ data.challenge.achieved?'本周已达成，自动获得 +30 积分':'本周完成 10 次家庭共享任务，自动奖励 30 分' }}</small>
      </div>
      <div class="badges-grid">
        <div v-for="badge in data.badges" :key="badge.id" class="achievement" :class="{locked:!badge.unlocked}">

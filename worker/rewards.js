@@ -131,7 +131,7 @@ export async function rewardsRoute(request,db,path,session){
             WHERE c.order_id=g.id)
         AND ?3<=(
           COALESCE((SELECT SUM(points) FROM completion_points c
-            WHERE c.household_id=?7 AND c.earner_user_id=?2),0)
+            WHERE c.household_id=?7 AND c.earner_user_id=?2 AND c.visibility='household'),0)
           +COALESCE((SELECT SUM(points) FROM weekly_challenge_awards w
             WHERE w.household_id=?7 AND w.user_id=?2),0)
           -COALESCE((SELECT SUM(points_spent) FROM reward_redemptions r
@@ -218,7 +218,7 @@ export async function rewardsRoute(request,db,path,session){
           x.household_id=?6 AND x.redeemed_by=?2 AND x.client_request_id=?3)
         AND r.points<=(
           COALESCE((SELECT SUM(points) FROM completion_points c WHERE
-            c.household_id=?6 AND c.earner_user_id=?2),0)
+            c.household_id=?6 AND c.earner_user_id=?2 AND c.visibility='household'),0)
           +COALESCE((SELECT SUM(points) FROM weekly_challenge_awards w WHERE
             w.household_id=?6 AND w.user_id=?2),0)
           -COALESCE((SELECT SUM(points_spent) FROM reward_redemptions x WHERE
