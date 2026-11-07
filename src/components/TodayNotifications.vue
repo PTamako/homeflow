@@ -174,9 +174,9 @@ async function showIncomingNotification(id:string){
  view.value='received'
  // Load the actual scoped row first; never auto-read an unseen replacement
  // simply because a historical Push still points to the same inbox ID.
+ const version=props.focusNotificationVersion
  const loaded=await load(true,id)
  const focused=loaded?notices.value.find(item=>item.id===id):null
- const version=props.focusNotificationVersion
  const versionMatches=version==null||
    (version==='scheduled'?!(focused?.lastCompletionKey):version===focused?.lastCompletionKey)
  if(focused&&versionMatches)await changeReadState(focused,true)
