@@ -8,7 +8,7 @@ import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/po
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
 const names=[...manifests.matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(m=>m[1])
-assert.equal(names.length,35)
+assert.equal(names.length,36)
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -61,7 +61,7 @@ test('migration creates four configurable household presets and strong foreign k
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_group_orders').get().n,0)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM pragma_foreign_key_check').get().n,0)
   const trig=sqlite.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND name LIKE 'rewards_%'").get().n
-  assert.equal(trig,4)
+  assert.equal(trig,5)
  }finally{sqlite.close()}
 })
 test('12 task completions earn 120 and weekly 30 bonus; experience and challenge are not spent',async()=>{
@@ -167,4 +167,54 @@ test('reward settings are household-scoped and redemptions cannot charge the oth
   assert.equal((await call(db,bob,'/api/rewards/redemptions/'+history[0].id,'PATCH',{status:'fulfilled'})).status,200)
   assert.equal((await call(db,bob,'/api/rewards')).body.redemptions[0].status,'fulfilled')
  }finally{sqlite.close()}
+})
+
+test('private completions grant XP but can neither buy nor cofund household rewards',async()=>{
+  const {sqlite,db}=fixture()
+  try{
+    earn(sqlite,'alice',12,'private')
+    const privateOnly=await balance(db,alice)
+    assert.equal(privateOnly.experience,120)
+    assert.equal(privateOnly.ownPrivatePoints,120)
+    assert.equal(privateOnly.availablePoints,0)
+    assert.equal(privateOnly.weeklyBonusPoints,0)
+    assert.equal(privateOnly.challenge.completed,0)
+    const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(x=>x.title==='请吃一次甜品')
+    assert.equal((await call(db,alice,'/api/rewards/redeem','POST',
+      {rewardId:dessert.id,requestId:id(100)})).status,409)
+    const pool=(await call(db,alice,'/api/rewards/pool','POST',
+      {rewardId:dessert.id,requestId:id(101)}))
+    assert.equal(pool.status,201)
+    assert.equal((await call(db,alice,'/api/rewards/pool/'+pool.body.id+'/contribute','POST',
+      {points:10,requestId:id(102)})).status,409)
+    earn(sqlite,'alice',9,'household')
+    const mixed=await balance(db,alice)
+    assert.equal(mixed.availablePoints,90)
+    assert.equal(mixed.experience,210)
+    assert.equal(mixed.challenge.completed,9)
+    assert.equal(mixed.weeklyBonusPoints,0)
+    assert.equal((await call(db,alice,'/api/rewards/redeem','POST',
+      {rewardId:dessert.id,requestId:id(103)})).status,409,
+      'private points must not top up the household wallet')
+    assert.equal((await call(db,alice,'/api/rewards/pool/'+pool.body.id+'/contribute','POST',
+      {points:90,requestId:id(104)})).status,201)
+    assert.equal((await balance(db,alice)).availablePoints,0)
+  }finally{sqlite.close()}
+})
+
+test('weekly household bonus is revoked if task visibility becomes private',async()=>{
+  const {sqlite,db}=fixture()
+  try{
+    earn(sqlite,'bob',10,'household')
+    assert.equal((await balance(db,bob)).availablePoints,130)
+    assert.equal((await balance(db,bob)).weeklyBonusPoints,30)
+    sqlite.prepare("UPDATE completion_points SET visibility='private' WHERE source_id='bob-0'").run()
+    const after=await balance(db,bob)
+    assert.equal(after.availablePoints,90)
+    assert.equal(after.weeklyBonusPoints,0)
+    assert.equal(after.ownPrivatePoints,10)
+    assert.equal(after.experience,100)
+    sqlite.prepare("UPDATE completion_points SET visibility='household' WHERE source_id='bob-0'").run()
+    assert.equal((await balance(db,bob)).availablePoints,130)
+  }finally{sqlite.close()}
 })
