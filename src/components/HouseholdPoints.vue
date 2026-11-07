@@ -22,12 +22,43 @@ type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:st
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
 type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
 type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
-type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];odds:{kind:string;rate:number;label:string}[]}
+type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];
+ historyPage:number;historyPageSize:number;historyTotal:number;historyTotalPages:number;
+ odds:{kind:string;rate:number;label:string}[]}
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
 const view=ref<'shop'|'achievements'|'lottery'>('shop')
 const lottery=ref<Lottery|null>(null)
+const lotteryPage=ref(1)
+const lotteryPageBusy=ref(false)
+const lotteryPageError=ref('')
+let lotteryPageRequest=0
+function resetLotteryPagination(){
+ ++lotteryPageRequest
+ lotteryPage.value=1
+ lotteryPageBusy.value=false
+ lotteryPageError.value=''
+}
+async function goToLotteryPage(page:number){
+ const current=lottery.value
+ if(!current||!props.active||!expanded.value||view.value!=='lottery'||
+   busy.value||lotteryPageBusy.value||page<1||page>current.historyTotalPages||
+   page===lotteryPage.value)return
+ const token=++lotteryPageRequest
+ lotteryPageBusy.value=true;lotteryPageError.value=''
+ try{
+  // Only query this page. No full-history download or extra wallet refresh.
+  const result=await fetchJSON('/lottery?page='+page) as Lottery
+  if(token!==lotteryPageRequest||!props.active||!expanded.value||view.value!=='lottery')return
+  lottery.value=result
+  lotteryPage.value=result.historyPage
+ }catch(e){
+  if(token===lotteryPageRequest)lotteryPageError.value=(e as Error).message
+ }finally{
+  if(token===lotteryPageRequest)lotteryPageBusy.value=false
+ }
+}
 const lotteryLastDraw=ref<LotteryDraw|null>(null)
 const LOTTERY_RESULT_DURATION_MS=3000
 let lotteryResultTimer:ReturnType<typeof setTimeout>|null=null
@@ -93,12 +124,18 @@ async function refresh(){
      data.value=pointsResult as Summary
    }else{
      const selectedView=view.value
+     const historyRequest=selectedView==='lottery'?++lotteryPageRequest:0
      const [pointsResult,secondary]=await Promise.all([
-       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery':'/rewards')])
+       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery?page='+lotteryPage.value:'/rewards')])
      if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
      data.value=pointsResult as Summary
-     if(selectedView==='lottery')lottery.value=secondary as Lottery
-     else shop.value=secondary as Shop
+     if(selectedView==='lottery'){
+       if(historyRequest===lotteryPageRequest){
+         lottery.value=secondary as Lottery
+         lotteryPage.value=(secondary as Lottery).historyPage
+         lotteryPageBusy.value=false
+       }
+     }else shop.value=secondary as Shop
    }
  }catch(e){if(current===generation)error.value=(e as Error).message}
  finally{if(current===generation)loading.value=false}
