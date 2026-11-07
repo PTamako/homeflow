@@ -28,6 +28,17 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
     '(m.completed_at>=? AND m.completed_at<?) OR '+
     '(m.occurrence_on>=? AND m.occurrence_on<=?)) ORDER BY m.occurrence_on DESC LIMIT 750'
   const {results}=await db.prepare(sql).bind(...ids,...dates,start,end,oldest,day).all()
+  const assignmentDates=[...new Set([...current.values(),...early.values(),
+    ...routines.map(r=>nextRoutineDue(r,day))].filter(Boolean))]
+  const assignments=assignmentDates.length
+    ? await db.prepare(`SELECT routine_id,occurrence_on,assignee_user_id AS assigneeUserId,
+         bonus_points AS bonusPoints FROM routine_occurrence_assignments
+       WHERE routine_id IN (${ids.map(()=>'?').join(',')})
+         AND occurrence_on IN (${assignmentDates.map(()=>'?').join(',')}) LIMIT 750`)
+      .bind(...ids,...assignmentDates).all()
+    : {results:[]}
+  const assignmentByPeriod=new Map((assignments.results||[]).map(a=>[
+    markerKey(a.routine_id,a.occurrence_on),a]))
   const marks=new Map((results||[]).map(m=>[markerKey(m.routine_id,m.occurrence_on),m]))
   const ruleById=new Map(routines.map(r=>[r.id,r]))
   const legacy=new Map()
@@ -52,6 +63,9 @@ export async function enrichRoutineList(db,routines,day=jstToday()){
       nextDueOn:activePending?period:(following||afterResolved||earlyOn||next),
       earlyPeriodOn:canEarly?earlyOn:null,
       completedToday:!!lastToday,
+      currentAssignment:period?assignmentByPeriod.get(markerKey(r.id,period))||null:null,
+      nextAssignment:assignmentByPeriod.get(markerKey(r.id,activePending?period:
+        (following||afterResolved||earlyOn||next)))||null,
       completedTodayMark:lastToday||null}
   })
 }
