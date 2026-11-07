@@ -98,7 +98,7 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0038_routine_occurrence_assignments.sql') AS required_migration_ready,
+       WHERE name='0039_monthly_achievements.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
@@ -113,6 +113,8 @@ export async function verifiedDatabase(env) {
        AND name='routine_occurrence_assignments') AS routine_assignments_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_routine_assignment_due') AS routine_assignment_index_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='monthly_achievement_awards') AS monthly_awards_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'monthly_achievement_%') AS monthly_triggers_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goal_completion_rewards') AS savings_rewards_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
         ('points_goal_met','points_goal_reopened','points_goal_hidden','points_goal_restored')) AS savings_triggers_ready,
@@ -140,6 +142,8 @@ export async function verifiedDatabase(env) {
       Number(identity.settlement_origin_ready)===1 &&
       Number(identity.routine_assignments_ready)===1 &&
       Number(identity.routine_assignment_index_ready)===1 &&
+      Number(identity.monthly_awards_ready)===1 &&
+      Number(identity.monthly_triggers_ready)===5 &&
       Number(identity.savings_rewards_ready)===1 &&
       Number(identity.savings_triggers_ready)===4 &&
       Number(identity.points_table_ready)===1 &&

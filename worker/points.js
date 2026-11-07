@@ -51,11 +51,13 @@ export async function pointsRoute(request,db,session){
         u.login_name) AS displayName,
       COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0) AS sharedPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0) AS sharedPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household'
         AND cp.earned_at>=?2 AND cp.earned_at<?3 THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.earned_at>=?2 AND a.earned_at<?3),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0) AS monthPoints,
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND s.earned_at>=?2 AND s.earned_at<?3),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND gr.awarded_at>=?2 AND gr.awarded_at<?3),0)
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_awards ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on=strftime('%Y-%m',?2,'+9 hours')),0) AS monthPoints,
       COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
         THEN cp.points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0) AS routinePoints
@@ -64,9 +66,9 @@ export async function pointsRoute(request,db,session){
       AND cp.earner_user_id=m.user_id
     WHERE m.household_id=?1
     GROUP BY m.user_id,u.login_name
-    ORDER BY sharedPoints DESC,monthPoints DESC,m.user_id`).bind(h,begin,end).all()
+    ORDER BY monthPoints DESC,sharedPoints DESC,m.user_id`).bind(h,begin,end).all()
   const week=tokyoWeekWindow()
-  const [own,totals,streakDays]=await Promise.all([
+  const [own,totals,streakDays,monthProgress,monthAwards]=await Promise.all([
     db.prepare(`SELECT
       COALESCE(SUM(points),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private'),0)
@@ -91,6 +93,7 @@ export async function pointsRoute(request,db,session){
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineEarned,
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
+      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_awards WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
@@ -120,19 +123,33 @@ export async function pointsRoute(request,db,session){
     db.prepare(`SELECT DISTINCT date(earned_at,'+9 hours') AS day
       FROM completion_points WHERE household_id=?1 AND earner_user_id=?2
         AND date(earned_at,'+9 hours')>=date('now','+9 hours','-90 days')
-      ORDER BY day DESC LIMIT 92`).bind(h,u).all()
+      ORDER BY day DESC LIMIT 92`).bind(h,u).all(),
+    db.prepare(`SELECT task_done AS taskDone,routine_done AS routineDone,
+      pet_care_done AS petCare,longest_streak AS longestStreak,
+      weekly_wins AS weeksWon FROM monthly_achievement_progress
+      WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
+      .bind(h,u,month).first(),
+    db.prepare(`SELECT badge_id AS badgeId,points FROM monthly_achievement_awards
+      WHERE household_id=?1 AND user_id=?2 AND month_on=?3`)
+      .bind(h,u,month).all()
   ])
   const earned=Number(totals?.earned||0),bonus=Number(totals?.bonus||0)
   const savingsBonus=Number(totals?.savingsBonus||0)
-  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0),experience=earned+bonus+savingsBonus
+  const achievementBonus=Number(totals?.achievementBonus||0)
+  const spent=Number(totals?.directSpent||0)+Number(totals?.groupSpent||0)
+  const experience=earned+bonus+savingsBonus+achievementBonus
+  const awarded=new Set((monthAwards.results||[]).map(row=>row.badgeId))
+  const badge=(id,label,icon,target,progress,rewardPoints)=>({
+    id,label,icon,target,progress:Math.max(0,Number(progress)||0),
+    rewardPoints,unlocked:awarded.has(id)
+  })
   const badges=[
-    {id:'first',label:'初次出发',icon:'🌱',unlocked:earned>=2},
-    {id:'routines',label:'周期达人',icon:'🔁',unlocked:Number(totals?.routineDone||0)>=5},
-    {id:'master',label:'家务达人',icon:'🏅',unlocked:earned>=300},
-    {id:'pet',label:'毛孩子守护者',icon:'🐱',unlocked:Number(totals?.petCare||0)>=10},
-    {id:'challenge',label:'每周挑战王',icon:'🏆',unlocked:Number(totals?.weeksWon||0)>=1},
-    {id:'streak',label:'连续七天',icon:'🔥',
-      unlocked:longestStreak((streakDays.results||[]).map(row=>row.day))>=7}
+    badge('first','初次出发','🌱',1,monthProgress?.taskDone,5),
+    badge('routines','周期达人','🔁',5,monthProgress?.routineDone,15),
+    badge('challenge','每周挑战王','🏆',1,monthProgress?.weeksWon,20),
+    badge('master','家务达人','🏅',20,monthProgress?.taskDone,35),
+    badge('pet','毛孩子守护者','🐱',10,monthProgress?.petCare,45),
+    badge('streak','连续七天','🔥',7,monthProgress?.longestStreak,60)
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
@@ -147,7 +164,7 @@ export async function pointsRoute(request,db,session){
     ownPrivatePoints:Number(own?.privatePoints)||0,
     ownPrivateMonthPoints:Number(own?.privateMonthPoints)||0,
     experience,earnedPoints:earned,weeklyBonusPoints:bonus,
-    savingsBonusPoints:savingsBonus,spentPoints:spent,
+    savingsBonusPoints:savingsBonus,achievementBonusPoints:achievementBonus,spentPoints:spent,
     availablePoints:Math.max(0,Number(totals?.availableNow||0)),
     householdEarnedPoints:Number(totals?.householdEarned||0),
     ownLevel:pointLevel(experience),badges,
