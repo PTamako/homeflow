@@ -31,7 +31,8 @@ test('less prominent file chooser remains accessible and shows the chosen filena
 
 test('essential recovery warnings remain available without flooding the main UI',()=>{
  assert.match(template,/<details class="backup-notes">/)
- assert.match(template,/<summary>备份与恢复说明<\/summary>/)
+ assert.match(template,/<summary>备份与恢复说明<AppIcon name="chevron-down" :size="16" class="backup-chevron"\/><\/summary>/)
+ assert.match(style,/\.backup-notes\[open\] \.backup-chevron\{transform:rotate\(180deg\)\}/)
  assert.match(template,/恢复不会覆盖原记录/)
  assert.match(template,/两位家庭成员需各自备份/)
  assert.match(template,/不含密码、未同步任务和云端照片/)

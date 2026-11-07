@@ -188,7 +188,7 @@ async function restore(){
       </div>
     </div>
     <details class="backup-notes">
-      <summary>备份与恢复说明</summary>
+      <summary>备份与恢复说明<AppIcon name="chevron-down" :size="16" class="backup-chevron"/></summary>
       <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
       <p>备份仅包含当前账号及本机照片；不含密码、未同步任务和云端照片。请妥善保存 ZIP 文件。</p>
     </details>
@@ -235,8 +235,8 @@ async function restore(){
 .backup-notes summary{width:fit-content;min-height:44px;display:flex;align-items:center;
   gap:6px;color:#547664;font-size:12px;font-weight:650;cursor:pointer;list-style:none}
 .backup-notes summary::-webkit-details-marker{display:none}
-.backup-notes summary::after{content:'⌄';font-size:15px;line-height:1}
-.backup-notes[open] summary::after{transform:rotate(180deg)}
+.backup-notes .backup-chevron{flex:none;transition:transform .15s}
+.backup-notes[open] .backup-chevron{transform:rotate(180deg)}
 .backup-notes p{margin:5px 0;color:#78887c;font-size:11px;line-height:1.65}
 .backup .error,.backup .success{margin:8px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .backup .error{color:#a94d37}.backup .success{color:#3c8566}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,onMounted,ref,nextTick,watch} from 'vue'
 import {activeSwipeId} from '../swipe-state'
+import AppIcon from './AppIcon.vue'
 import {swipeHelpLearned,swipeHelpOwner,claimSwipeHelp,releaseSwipeHelp,acknowledgeSwipeHelp} from '../swipe-discovery'
 
 // One open row across the app, including different sections and pages.
@@ -135,7 +136,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
       :aria-label="'左滑或点击展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'和':'')+(allowDelete?deleteLabel:'')"
       :aria-expanded="opened" :title="'左滑'+(allowEdit?editLabel:'')+(allowDelete?'/'+deleteLabel:'')"
       @click.stop="toggle">
-      <span class="swipe-chevron" aria-hidden="true">‹</span>
+      <span class="swipe-chevron" aria-hidden="true"><AppIcon name="chevron-down" :size="19" class="swipe-chevron-icon"/></span>
     </button>
   </div>
   <slot v-else/>
@@ -158,7 +159,8 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
   height:44px;width:44px;display:grid;place-items:center;background:transparent;
   border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
 .swipe-chevron{display:grid;place-items:center;width:26px;height:28px;
-  border-radius:9px;background:#f0f4f0;color:#789182;font-size:25px;line-height:1;font-weight:500}
+  border-radius:9px;background:#f0f4f0;color:#789182}
+.swipe-chevron-icon{transform:rotate(90deg)}
 .swipe-trigger:active .swipe-chevron{background:#e6eee7}
 .swipe-discovery{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   padding:7px 10px;margin:0 0 5px;border:1px solid #dce9df;

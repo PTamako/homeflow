@@ -1287,7 +1287,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <button type="button" class="goal-finance-action"
                       :aria-label="'查看“'+g.title+'”的账目与调整额'"
                       @click="toggleFinance('goal',g.id)">
-                      账目与调整额 <span aria-hidden="true">›</span>
+                      账目与调整额 <AppIcon name="chevron-down" :size="16" class="goal-finance-chevron"/>
                     </button>
                   </div>
                 </div>
@@ -1748,7 +1748,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   flex:none;gap:4px;min-height:44px;padding:0 2px;border:0;border-radius:7px;
   background:transparent;color:var(--ui-brand,#357b5c);
   font-size:12px;font-weight:700;line-height:1.4;white-space:nowrap;touch-action:manipulation}
-.goal-finance-action span{font-size:19px;font-weight:400;line-height:1}
+.goal-finance-chevron{transform:rotate(-90deg)}
 .goal-plan-row :is(.goal-wish-link,.goal-finance-action):focus-visible{
   outline:2px solid #43866a;outline-offset:2px}
 @media(max-width:380px){.goal-amount-line{column-gap:5px}
