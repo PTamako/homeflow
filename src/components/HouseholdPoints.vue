@@ -648,7 +648,15 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-name b{font-size:13px;color:#344f3e;min-width:0;flex:0 1 auto;
  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .points-me{flex:none;font-size:10px;color:#739680}
-.points-member--champion{border-color:#d9e7d7;background:#fcfdf8}
+/* Contribution leader: luminous lime-green gradient, keeping the trophy beside
+   the name. Wallet leader styles below intentionally take priority if both win. */
+.points-member--champion{
+ border:2px solid transparent;
+ background:
+  linear-gradient(145deg,#fbfff7 0%,#fffefa 55%,#f0ffe1 100%) padding-box,
+  linear-gradient(125deg,#b6ff62 0%,#6cf03a 27%,#c7ff85 51%,#42df33 77%,#a9ff57 100%) border-box;
+ box-shadow:0 0 0 1px #a5f26b96,0 0 15px #89f64a66,0 5px 14px #4cae4f26,inset 0 0 0 1px #f5ffe8;
+}
 /* Wealthiest household wallet: metallic gold frame, with no extra title badge or
    icon. Keep the gold treatment separate from the contribution trophy. */
 .points-member--wealthy{
