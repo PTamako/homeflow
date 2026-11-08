@@ -192,7 +192,7 @@ function toggleReminderEditor(kind:ReminderKind,id:string){
 }
 function planRequestKinds(type:PlanType){
  if(type==='routine')return ['routines','tasks']
- if(type==='unscheduled')return ['tasks']
+ if(type==='unscheduled')return ['tasks','shopping']
  if(type==='wish')return ['wishes','goals']
  if(type==='goal')return ['goals']
  if(type==='shopping')return ['shopping']
@@ -430,7 +430,7 @@ function listPath(kind:string,cursor?:string|null){
       if(anniversaryMonth.value)q.set('month',anniversaryMonth.value)
     }
   }else{
-    q.set('scope',kind==='tasks'&&planType.value==='unscheduled'?'unscheduled':planScope.value)
+    q.set('scope',planType.value==='unscheduled'&&['tasks','shopping'].includes(kind)?'unscheduled':planScope.value)
     if(planScope.value==='history'&&planYear.value){
       q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)
     }
@@ -1465,7 +1465,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </div>
           </template>
           </template>
-          <p v-if="!routines.length&&!oneTimePlans.length" class="life-empty">{{ planType==='unscheduled'?'没有待安排事项':planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
+          <p v-if="!routines.length&&!oneTimePlans.length&&(planType!=='unscheduled'||!visibleShopping.length)" class="life-empty">{{ planType==='unscheduled'?'没有待安排事项':planScope==='active'?'还没有任务计划':'暂无历史任务计划' }}</p>
           <nav v-if="taskPage>0||canNextTaskPage" class="task-list-pager" aria-label="任务列表分页">
             <button type="button" :disabled="taskPage===0||pageBusy.routines||pageBusy.tasks"
               @click="taskPage--">上一页</button>
@@ -1624,7 +1624,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="loadMore('goals')">加载更多目标</button>
 
         </section>
-        <section v-if="planType==='all'||planType==='shopping'" class="life-card shopping-plans-card">
+        <section v-if="planType==='all'||planType==='shopping'||planType==='unscheduled'" class="life-card shopping-plans-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
@@ -1647,7 +1647,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       </div>
                     </div>
                     <div class="shopping-meta-row">
-                      <small class="shopping-creator">发起人：{{ memberName(s.created_by) }}</small>
+                      <small class="shopping-plan-date">{{ s.due_on?'计划日期：'+s.due_on:'待安排' }}</small>
                       <button v-if="planScope==='active'&&!s.completed_at&&(!!s.due_on||
                         (canEdit(s)&&s.visibility==='household'&&s.assigned_to&&
                            [s.assigned_to,s.second_assignee_user_id].some(id=>id!==props.userId)))"
@@ -1705,7 +1705,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <button v-if="isFocused(s)&&props.focusPlanFromToday" type="button" class="life-return" @click="emit('backToToday')">返回今天</button>
             </div>
           </template>
-          <p v-if="!visibleShopping.length" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
+          <p v-if="!visibleShopping.length&&planType!=='unscheduled'" class="life-empty">{{ planScope==='active'?'没有待购买的东西':'没有已完成的购物记录' }}</p>
           <button v-if="listCursors.shopping" class="life-more" type="button" :disabled="pageBusy.shopping"
             @click="loadMore('shopping')">加载更多购物记录</button>
 
@@ -2339,7 +2339,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   outline:2px solid #43866a;outline-offset:2px}
 .shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
   gap:7px;min-width:0;margin-top:0}
-.shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
+.shopping-meta-row>.shopping-plan-date{flex:1;min-width:0;margin:0;
   line-height:1.4;overflow-wrap:anywhere}
 .shopping-meta-row .shopping-more-trigger{flex:none;position:relative;
   width:24px;min-width:24px;height:24px;min-height:24px;
