@@ -22,6 +22,7 @@ import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 import {pointsRoute} from './points.js'
+import {pointsHistoryRoute} from './points-history.js'
 import {rewardsRoute,expireOldRewardPools} from './rewards.js'
 import {lotteryRoute} from './lottery.js'
 import {sendLotteryDrawNotification} from './webpush.js'
@@ -65,6 +66,7 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/search')return searchRoute(request,env.DB,session)
         if(path==='/api/sync/state')return syncStateRoute(request,env.DB,session)
         if(path==='/api/points')return pointsRoute(request,env.DB,session)
+        if(path==='/api/points/history')return pointsHistoryRoute(request,env.DB,session)
         if(path==='/api/lottery'||path==='/api/lottery/draw'){
           const onDraw=draw=>{
             const job=sendLotteryDrawNotification(env,session,draw)
