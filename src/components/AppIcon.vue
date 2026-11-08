@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   name: 'sun'|'clipboard-check'|'images'|'house'|'paw'|'users'|'calendar-heart'|'repeat'|
-    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'|'gift'|'award'|'handshake'|'ticket'|'link'
+    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'|'gift'|'award'|'handshake'|'ticket'|'history'|'link'
   size?: number
 }>(), {size:22})
 </script>
@@ -78,6 +78,9 @@ withDefaults(defineProps<{
     <template v-else-if="name==='ticket'">
       <path d="M4 5h16v4a3 3 0 0 0 0 6v4H4v-4a3 3 0 0 0 0-6V5z"/>
       <path d="M12 5v3m0 3v2m0 3v3"/>
+    </template>
+    <template v-else-if="name==='history'">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2M3 12H1m2-4L1 12l2 4"/>
     </template>
     <template v-else-if="name==='handshake'">
       <path d="m11 17 2 2a1 1 0 1 0 3-3"/>

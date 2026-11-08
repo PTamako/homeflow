@@ -1,0 +1,188 @@
+import {householdWalletSql} from './points-wallet.js'
+import {json} from './security.js'
+
+// Read-only reconstruction of the original points ledger, including prior years.
+// No client-supplied SQL fragments, no new tables, and no destructive reset job.
+const source=(table,a,user,visibility,amount,category,label,stamp,extra='')=>
+ `SELECT ${user} AS userId,${visibility} AS visibility,${amount} AS amount,
+   CASE WHEN ${visibility}='household' THEN ${amount} ELSE 0 END AS contribution,
+   '${category}' AS category,${label} AS label,${stamp} AS stamp
+   FROM ${table} ${a} WHERE ${a}.household_id=?1 ${extra}`
+
+export const annualPointLedgerSql=()=>{
+ const lines=[
+  source('completion_points','c','c.earner_user_id','c.visibility','c.points','complete',
+   "CASE WHEN c.kind='routine' THEN COALESCE((SELECT title FROM routines WHERE id=c.source_id AND household_id=c.household_id),'周期任务') ELSE COALESCE((SELECT title FROM tasks WHERE id=c.source_id AND household_id=c.household_id),'一次性任务') END",'c.earned_at'),
+  source('completion_point_adjustments','a','a.earner_user_id','a.visibility','a.delta','adjustment',"'任务积分调整'",'a.earned_at'),
+  source('dual_completion_splits','d','d.user_id','d.visibility','d.points','split',"'双人任务平分'",'d.earned_at'),
+  source('shopping_completion_points','s','s.earner_user_id','s.visibility','s.points','shopping',
+   "COALESCE((SELECT title FROM shopping_items WHERE id=s.shopping_id AND household_id=s.household_id),'购物计划完成')",'s.earned_at'),
+  source('shopping_joint_credits','j','j.user_id','j.visibility','j.points','split',"'双人购物平分'",'j.earned_at'),
+  source('weekly_challenge_awards','w','w.user_id',"'household'",'w.points','weekly',"'每周挑战奖励'",'w.awarded_at'),
+  source('goal_completion_rewards','g','g.user_id',"'household'",'g.points','savings',"'储值计划达标'",'g.awarded_at'),
+  source('trip_completion_rewards','t','t.user_id','t.visibility','t.points','trip',"'旅行完成奖励'",'t.awarded_at'),
+  source('monthly_achievement_credits','a','a.user_id',"'household'",'a.points','achievement',"'月度成就奖励'",'a.awarded_at'),
+  source('household_lottery_draws','l','l.user_id',"'household'",'l.prize_points','lottery_prize',"'抽奖中奖'",'l.created_at','AND l.prize_points>0'),
+  // Prize and ticket cost are separate so spent totals and yearly balance reconcile.
+  `SELECT l.user_id AS userId,'household' AS visibility,-l.cost_points AS amount,
+    0 AS contribution,'lottery_cost' AS category,'抽奖消耗' AS label,l.created_at AS stamp
+    FROM household_lottery_draws l WHERE l.household_id=?1`,
+  `SELECT r.redeemed_by AS userId,'household' AS visibility,-r.points_spent AS amount,
+    0 AS contribution,'redeem' AS category,'兑换：'||r.title_snapshot AS label,r.created_at AS stamp
+    FROM reward_redemptions r WHERE r.household_id=?1`,
+  `SELECT c.user_id AS userId,'household' AS visibility,-c.points AS amount,
+    0 AS contribution,'pool' AS category,'合力兑换：'||g.title_snapshot AS label,c.created_at AS stamp
+    FROM reward_group_contributions c
+    JOIN reward_group_orders g ON g.id=c.order_id AND g.household_id=c.household_id
+    WHERE c.household_id=?1 AND
+      (g.status<>'cancelled' OR datetime(g.cancelled_at)>=datetime(?3))`,
+  // Assignment reservations affect the wallet before a task is completed.
+  // Contribution only changes after a qualifying completion in the same year.
+  `SELECT t.assignee_user_id AS userId,'household' AS visibility,t.bonus_points AS amount,
+    CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
+      THEN t.bonus_points ELSE 0 END AS contribution,
+    'bounty' AS category,'指定任务奖励：'||t.title AS label,t.created_at AS stamp
+    FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
+      AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NULL
+      AND t.assignee_user_id IS NOT NULL AND t.assignee_user_id<>t.creator_user_id
+      AND t.completed_at IS NOT NULL AND t.completed_by=t.assignee_user_id`,
+  `SELECT t.creator_user_id AS userId,'household' AS visibility,-t.bonus_points AS amount,
+    CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
+      THEN -t.bonus_points ELSE 0 END AS contribution,
+    'reserved' AS category,'指定任务积分：'||t.title AS label,t.created_at AS stamp
+    FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
+      AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NULL
+      AND t.assignee_user_id IS NOT NULL AND t.assignee_user_id<>t.creator_user_id
+      AND (t.completed_at IS NULL OR t.completed_by=t.assignee_user_id)`,
+  `SELECT a.userId AS userId,'household' AS visibility,t.bonus_points/2.0 AS amount,
+    CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
+      THEN t.bonus_points/2.0 ELSE 0 END AS contribution,
+    'bounty' AS category,'双人指定奖励：'||t.title AS label,t.created_at AS stamp
+    FROM tasks t JOIN (
+      SELECT id,household_id,assignee_user_id AS userId FROM tasks
+      UNION ALL SELECT id,household_id,second_assignee_user_id AS userId FROM tasks
+    ) a ON a.id=t.id AND a.household_id=t.household_id
+    WHERE t.household_id=?1 AND t.visibility='household' AND t.deleted_at IS NULL
+      AND t.bonus_points>0 AND t.second_assignee_user_id IS NOT NULL
+      AND t.completed_at IS NOT NULL
+      AND t.completed_by IN(t.assignee_user_id,t.second_assignee_user_id)`,
+  `SELECT t.creator_user_id AS userId,'household' AS visibility,-t.bonus_points AS amount,
+    CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
+      THEN -t.bonus_points ELSE 0 END AS contribution,
+    'reserved' AS category,'双人指定积分：'||t.title AS label,t.created_at AS stamp
+    FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
+      AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NOT NULL
+      AND (t.completed_at IS NULL OR t.completed_by IN(t.assignee_user_id,t.second_assignee_user_id))`,
+  `SELECT a.assignee_user_id AS userId,'household' AS visibility,a.bonus_points AS amount,
+    CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
+      THEN a.bonus_points ELSE 0 END AS contribution,
+    'bounty' AS category,'周期指派奖励：'||r.title AS label,a.created_at AS stamp
+    FROM routine_occurrence_assignments a
+    JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
+    JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
+    WHERE a.household_id=?1 AND r.visibility='household' AND r.deleted_at IS NULL
+      AND a.bonus_points>0 AND a.second_assignee_user_id IS NULL AND r.created_by<>a.assignee_user_id
+      AND m.completed_at IS NOT NULL AND m.completed_by=a.assignee_user_id`,
+  `SELECT r.created_by AS userId,'household' AS visibility,-a.bonus_points AS amount,
+    CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
+      THEN -a.bonus_points ELSE 0 END AS contribution,
+    'reserved' AS category,'周期指派积分：'||r.title AS label,a.created_at AS stamp
+    FROM routine_occurrence_assignments a
+    JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
+    LEFT JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
+    WHERE a.household_id=?1 AND r.visibility='household' AND r.deleted_at IS NULL
+      AND a.bonus_points>0 AND a.second_assignee_user_id IS NULL AND r.created_by<>a.assignee_user_id
+      AND ((m.completed_at IS NULL AND m.skipped_at IS NULL) OR
+           (m.completed_at IS NOT NULL AND m.completed_by=a.assignee_user_id))`,
+  `SELECT a.userId AS userId,'household' AS visibility,rp.bonus_points/2.0 AS amount,
+    CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
+      THEN rp.bonus_points/2.0 ELSE 0 END AS contribution,
+    'bounty' AS category,'双人周期奖励：'||r.title AS label,rp.created_at AS stamp
+    FROM routine_occurrence_assignments rp
+    JOIN routines r ON r.id=rp.routine_id AND r.household_id=rp.household_id
+    JOIN routine_marks m ON m.routine_id=rp.routine_id AND m.occurrence_on=rp.occurrence_on
+    JOIN (
+      SELECT routine_id,household_id,occurrence_on,assignee_user_id AS userId FROM routine_occurrence_assignments
+      UNION ALL SELECT routine_id,household_id,occurrence_on,second_assignee_user_id AS userId FROM routine_occurrence_assignments
+    ) a ON a.routine_id=rp.routine_id AND a.household_id=rp.household_id AND a.occurrence_on=rp.occurrence_on
+    WHERE rp.household_id=?1 AND r.visibility='household' AND r.deleted_at IS NULL
+      AND rp.bonus_points>0 AND rp.second_assignee_user_id IS NOT NULL
+      AND m.completed_at IS NOT NULL AND m.completed_by IN(rp.assignee_user_id,rp.second_assignee_user_id)`,
+  `SELECT r.created_by AS userId,'household' AS visibility,-a.bonus_points AS amount,
+    CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
+      THEN -a.bonus_points ELSE 0 END AS contribution,
+    'reserved' AS category,'双人周期积分：'||r.title AS label,a.created_at AS stamp
+    FROM routine_occurrence_assignments a
+    JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
+    LEFT JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
+    WHERE a.household_id=?1 AND r.visibility='household' AND r.deleted_at IS NULL
+      AND a.bonus_points>0 AND a.second_assignee_user_id IS NOT NULL
+      AND ((m.completed_at IS NULL AND m.skipped_at IS NULL) OR
+           (m.completed_at IS NOT NULL AND m.completed_by IN(a.assignee_user_id,a.second_assignee_user_id)))`
+ ]
+ return lines.join(' UNION ALL ')
+}
+
+const validYear=(text,current)=>/^\d{4}$/.test(text)&&Number(text)>=2026&&Number(text)<=current
+export function jstYearWindow(year){
+ const start=new Date(Date.UTC(year-1,11,31,15)).toISOString()
+ const end=new Date(Date.UTC(year,11,31,15)).toISOString()
+ return {start,end}
+}
+
+export async function pointsHistoryRoute(request,db,session){
+ if(request.method!=='GET')return json({error:'method_not_allowed'},405)
+ const url=new URL(request.url)
+ const current=new Date(Date.now()+9*3600000).getUTCFullYear()
+ const selected=url.searchParams.get('year')||String(current)
+ const pageText=url.searchParams.get('page')||'1'
+ const requestedMember=url.searchParams.get('member')||''
+ if(!validYear(selected,current)||!/^\d{1,5}$/.test(pageText)||
+   Number(pageText)<1||Number(pageText)>9999||
+   (requestedMember.length>100))return json({error:'invalid_input'},400)
+ const year=Number(selected),page=Number(pageText),{start,end}=jstYearWindow(year)
+ const h=session.household_id,u=session.user_id
+ const raw=annualPointLedgerSql()
+ const period=`datetime(stamp)>=datetime(?2) AND datetime(stamp)<datetime(?3)
+    AND (visibility='household' OR userId=?4)`
+ const [members,totals,history,count]=await Promise.all([
+  db.prepare(`SELECT m.user_id AS userId,
+    COALESCE((SELECT fp.display_name FROM family_profiles fp
+      WHERE fp.household_id=m.household_id AND fp.member_user_id=m.user_id
+        AND fp.archived_at IS NULL ORDER BY fp.created_at DESC LIMIT 1),users.login_name) AS displayName,
+    MAX(0,${householdWalletSql('m.household_id','m.user_id','?2','?3')}) AS endingPoints
+    FROM household_members m JOIN users ON users.id=m.user_id
+    WHERE m.household_id=?1 ORDER BY m.user_id`).bind(h,start,end).all(),
+  db.prepare(`WITH ledger AS (${raw})
+    SELECT userId,
+      COALESCE(SUM(CASE WHEN amount>0 THEN amount ELSE 0 END),0) AS earned,
+      COALESCE(-SUM(CASE WHEN amount<0 THEN amount ELSE 0 END),0) AS spent,
+      COALESCE(SUM(CASE WHEN visibility='household' THEN contribution ELSE 0 END),0) AS contribution,
+      COALESCE(SUM(CASE WHEN visibility='private' THEN amount ELSE 0 END),0) AS privatePoints,
+      COALESCE(SUM(CASE WHEN category IN('lottery_cost','lottery_prize') THEN amount ELSE 0 END),0) AS lotteryNet
+    FROM ledger WHERE ${period} GROUP BY userId`).bind(h,start,end,u).all(),
+  db.prepare(`WITH ledger AS (${raw})
+    SELECT userId,visibility,amount,contribution,category,label,stamp
+    FROM ledger WHERE ${period} AND (?5='' OR userId=?5)
+    ORDER BY datetime(stamp) DESC,category DESC,label DESC
+    LIMIT 10 OFFSET ?6`).bind(h,start,end,u,requestedMember,(page-1)*10).all(),
+  db.prepare(`WITH ledger AS (${raw})
+    SELECT COUNT(*) AS total FROM ledger WHERE ${period} AND (?5='' OR userId=?5)`)
+      .bind(h,start,end,u,requestedMember).first()
+ ])
+ const byUser=new Map((totals.results||[]).map(x=>[x.userId,x]))
+ const rows=(members.results||[]).map(member=>{
+  const t=byUser.get(member.userId)||{}
+  return {userId:member.userId,displayName:member.displayName,
+    contributionPoints:Number(t.contribution)||0,
+    earnedPoints:Number(t.earned)||0,spentPoints:Number(t.spent)||0,
+    lotteryNetPoints:Number(t.lotteryNet)||0,
+    privatePoints:member.userId===u?Number(t.privatePoints)||0:null,
+    endingPoints:Math.max(0,Number(member.endingPoints)||0),
+    expiredPoints:year<current?Math.max(0,Number(member.endingPoints)||0):null}
+ })
+ const total=Number(count?.total)||0
+ return json({year,currentYear:current,members:rows,memberFilter:requestedMember,
+   entries:(history.results||[]).map(x=>({...x,amount:Number(x.amount),contribution:Number(x.contribution)})),
+   page,pageSize:10,total,totalPages:Math.max(1,Math.ceil(total/10))})
+}

@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {rewardsRoute} from '../worker/rewards.js'
 import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/points.js'
+import {pointsHistoryRoute,jstYearWindow} from '../worker/points-history.js'
 
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
@@ -231,4 +232,70 @@ test('weekly household bonus is revoked if task visibility becomes private',asyn
     sqlite.prepare("UPDATE completion_points SET visibility='household' WHERE source_id='bob-0'").run()
     assert.equal((await balance(db,bob)).availablePoints,150)
   }finally{sqlite.close()}
+})
+
+test('multi-quantity checkout is atomic, replay-safe, stock-aware and fulfilled as a group',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',25)
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(x=>x.points===100)
+  await call(db,alice,'/api/rewards/'+encodeURIComponent(dessert.id),'PATCH',{
+   title:dessert.title,description:dessert.description,icon:dessert.icon,points:100,stock:2,active:true})
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',{
+   rewardId:dessert.id,requestId:id(501),quantity:3})).status,409,'no partial stock charge')
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',{
+   rewardId:dessert.id,requestId:id(502),quantity:0})).status,400)
+  const walletBefore=(await balance(db,alice)).availablePoints
+  const paid=await call(db,alice,'/api/rewards/redeem','POST',{
+   rewardId:dessert.id,requestId:id(503),quantity:2})
+  assert.equal(paid.status,201)
+  assert.equal(paid.body.quantity,2)
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',{
+   rewardId:dessert.id,requestId:id(503),quantity:2})).body.replayed,true)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_redemptions').get().n,2)
+  assert.equal((await balance(db,alice)).availablePoints,walletBefore-200)
+  const shop=(await call(db,alice,'/api/rewards')).body
+  assert.equal(shop.rewards.find(x=>x.id===dessert.id).redeemedCount,2)
+  assert.equal(shop.redemptions.length,1)
+  assert.equal(shop.redemptions[0].quantity,2)
+  assert.equal(shop.redemptions[0].points,200)
+  assert.equal((await call(db,bob,'/api/rewards/redemptions/'+shop.redemptions[0].id,
+   'PATCH',{status:'fulfilled'})).status,200)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reward_redemptions WHERE status='fulfilled'").get().n,2)
+  assert.equal((await call(db,bob,'/api/rewards/redeem','POST',{
+   rewardId:dessert.id,requestId:id(504),quantity:1})).status,409)
+ }finally{sqlite.close()}
+})
+
+test('annual points history lists credits, spending, privacy and pre-reset balance',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const {start,end}=jstYearWindow(year)
+  assert.equal(new Date(start).getUTCHours(),15)
+  assert.equal(new Date(end).getUTCHours(),15)
+  earn(sqlite,'alice',12)
+  earn(sqlite,'bob',2,'private')
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(x=>x.points===100)
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',
+   {rewardId:dessert.id,requestId:id(601),quantity:1})).status,201)
+  const history=async(session,y=year,member='')=>{
+   const response=await pointsHistoryRoute(new Request(
+    'https://homeflow.invalid/api/points/history?year='+y+'&page=1&member='+encodeURIComponent(member)),db,session)
+   return {status:response.status,body:await response.json()}
+  }
+  const own=await history(alice)
+  assert.equal(own.status,200)
+  const mine=own.body.members.find(x=>x.userId==='alice')
+  assert.equal(mine.endingPoints,(await balance(db,alice)).availablePoints)
+  assert.equal(mine.contributionPoints,(await balance(db,alice)).householdEarnedPoints)
+  assert.equal(mine.spentPoints,100)
+  assert.equal(own.body.entries.some(x=>x.category==='redeem'&&x.amount===-100),true)
+  assert.equal(own.body.entries.some(x=>x.userId==='bob'&&x.visibility==='private'),false)
+  assert.equal(own.body.members.find(x=>x.userId==='bob').privatePoints,null)
+  const otherView=await history(bob,year,'bob')
+  assert.equal(otherView.body.members.find(x=>x.userId==='bob').privatePoints,20)
+  assert.equal(otherView.body.entries.some(x=>x.userId==='bob'&&x.visibility==='private'),true)
+  assert.equal((await history(alice,2025)).status,400)
+ }finally{sqlite.close()}
 })

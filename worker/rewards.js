@@ -51,15 +51,20 @@ export async function rewardsRoute(request,db,path,session){
   if(path==='/api/rewards'&&request.method==='GET'){
     const [rewards,history,orders,contributions]=await Promise.all([
       getList(db,h),
-      db.prepare(`SELECT x.id,x.reward_id AS rewardId,x.redeemed_by AS redeemedBy,
+      db.prepare(`SELECT MIN(x.id) AS id,x.reward_id AS rewardId,x.redeemed_by AS redeemedBy,
         COALESCE((SELECT p.display_name FROM family_profiles p
           WHERE p.household_id=x.household_id AND p.member_user_id=x.redeemed_by
             AND p.archived_at IS NULL ORDER BY p.created_at DESC LIMIT 1),
           m.login_name) AS redeemedByName,
-        x.title_snapshot AS title,x.icon_snapshot AS icon,x.points_spent AS points,
-        x.status,x.created_at AS createdAt,x.fulfilled_at AS fulfilledAt
+        x.title_snapshot AS title,x.icon_snapshot AS icon,
+        SUM(x.points_spent) AS points,COUNT(*) AS quantity,
+        CASE WHEN SUM(x.status='requested')>0 THEN 'requested' ELSE 'fulfilled' END AS status,
+        MAX(x.created_at) AS createdAt,MAX(x.fulfilled_at) AS fulfilledAt
         FROM reward_redemptions x JOIN users m ON m.id=x.redeemed_by
-        WHERE x.household_id=?1 ORDER BY x.created_at DESC,x.id DESC LIMIT 30`)
+        WHERE x.household_id=?1
+        GROUP BY x.household_id,x.redeemed_by,SUBSTR(x.client_request_id,1,36),
+          x.reward_id,x.title_snapshot,x.icon_snapshot
+        ORDER BY MAX(x.created_at) DESC,MIN(x.id) DESC LIMIT 30`)
         .bind(h).all(),
       db.prepare(`SELECT o.id,o.reward_id AS rewardId,o.created_by AS createdBy,
         o.title_snapshot AS title,o.icon_snapshot AS icon,o.points_required AS points,
@@ -210,34 +215,38 @@ export async function rewardsRoute(request,db,path,session){
   }
   if(path==='/api/rewards/redeem'&&request.method==='POST'){
     const b=await readBody(request)
-    if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId))
+    if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId)||
+      (b.quantity!==undefined&&(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>99)))
       return json({error:'invalid_input'},400)
+    const quantity=b.quantity??1
     // Per-request idempotency also handles double taps / connection retries.
     const previous=await db.prepare(`SELECT id FROM reward_redemptions
       WHERE household_id=?1 AND redeemed_by=?2 AND client_request_id=?3`)
       .bind(h,u,b.requestId).first()
     if(previous)return json({ok:true,id:previous.id,replayed:true})
-    const id=crypto.randomUUID()
-    // The credit, inventory and active checks occur INSIDE one serializable D1 write.
-    // A stale client balance or two simultaneous redemptions cannot overspend.
-    const sql=`INSERT INTO reward_redemptions
+    const ids=Array.from({length:quantity},()=>crypto.randomUUID())
+    // Each unit stays a normal redemption row: no D1 migration is needed.
+    // All rows are inserted in ONE SQLite statement, guarded by total stock
+    // and total wallet checks. First child holds the base idempotency token.
+    const values=ids.map((_,i)=>`(${i+1},?${7+i})`).join(',')
+    const sql=`WITH units(n,unit_id) AS (VALUES ${values})
+      INSERT INTO reward_redemptions
         (id,household_id,reward_id,redeemed_by,title_snapshot,icon_snapshot,
           points_spent,client_request_id,status,created_at)
-      SELECT ?1,r.household_id,r.id,?2,r.title,r.icon,r.points,?3,'requested',?4
-      FROM reward_items r
-      WHERE r.id=?5 AND r.household_id=?6 AND r.active=1
-        AND (r.stock IS NULL OR r.stock>(
-          (SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)
-          +(SELECT COUNT(*) FROM reward_group_orders g
-            WHERE g.reward_id=r.id AND g.status<>'cancelled')))
+      SELECT units.unit_id,r.household_id,r.id,?1,r.title,r.icon,r.points,
+        CASE WHEN units.n=1 THEN ?2 ELSE ?2||':'||units.n END,'requested',?3
+      FROM reward_items r CROSS JOIN units
+      WHERE r.id=?4 AND r.household_id=?5 AND r.active=1
+        AND (r.stock IS NULL OR r.stock >= ?6+
+          (SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)+
+          (SELECT COUNT(*) FROM reward_group_orders g
+            WHERE g.reward_id=r.id AND g.status<>'cancelled'))
         AND NOT EXISTS (SELECT 1 FROM reward_redemptions x WHERE
-          x.household_id=?6 AND x.redeemed_by=?2 AND x.client_request_id=?3)
-        AND r.points<=(
-          ${householdWalletSql('?6','?2')}
-        )`
+          x.household_id=?5 AND x.redeemed_by=?1 AND x.client_request_id=?2)
+        AND r.points*?6 <= ${householdWalletSql('?5','?1')}`
     try{
-      const result=await db.prepare(sql).bind(id,u,b.requestId,iso(),b.rewardId,h).run()
-      if(result.meta?.changes)return json({ok:true,id},201)
+      const result=await db.prepare(sql).bind(u,b.requestId,iso(),b.rewardId,h,quantity,...ids).run()
+      if(Number(result.meta?.changes)===quantity)return json({ok:true,id:ids[0],quantity},201)
     }catch{
       const replay=await db.prepare(`SELECT id FROM reward_redemptions WHERE
         household_id=?1 AND redeemed_by=?2 AND client_request_id=?3`)
@@ -253,7 +262,10 @@ export async function rewardsRoute(request,db,path,session){
     if(b?.status!=='fulfilled')return json({error:'invalid_input'},400)
     const result=await db.prepare(`UPDATE reward_redemptions SET
       status='fulfilled',fulfilled_at=?1,fulfilled_by=?2
-      WHERE id=?3 AND household_id=?4 AND status='requested'`)
+      WHERE household_id=?4 AND status='requested'
+        AND redeemed_by=(SELECT redeemed_by FROM reward_redemptions WHERE id=?3 AND household_id=?4)
+        AND SUBSTR(client_request_id,1,36)=
+          (SELECT SUBSTR(client_request_id,1,36) FROM reward_redemptions WHERE id=?3 AND household_id=?4)`)
       .bind(iso(),u,mark[1],h).run()
     if(!result.meta?.changes){
       const prior=await db.prepare(`SELECT status FROM reward_redemptions

@@ -15,12 +15,18 @@ type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
 type Reward={id:string;title:string;description:string;icon:string;points:number;
  stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
 type Redemption={id:string;rewardId:string;redeemedBy:string;redeemedByName:string;
- title:string;icon:string;points:number;status:string;createdAt:string;fulfilledAt:string|null}
+ title:string;icon:string;points:number;quantity:number;status:string;createdAt:string;fulfilledAt:string|null}
 type Contribution={userId:string;displayName:string;points:number}
 type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:string;
  points:number;fundedPoints:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
 type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
+type YearMember={userId:string;displayName:string;contributionPoints:number;earnedPoints:number;
+ spentPoints:number;lotteryNetPoints:number;privatePoints:number|null;endingPoints:number;expiredPoints:number|null}
+type YearEntry={userId:string;visibility:'household'|'private';amount:number;contribution:number;
+ category:string;label:string;stamp:string}
+type YearHistory={year:number;currentYear:number;members:YearMember[];entries:YearEntry[];
+ page:number;pageSize:number;total:number;totalPages:number}
 type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
 type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];
  historyPage:number;historyPageSize:number;historyTotal:number;historyTotalPages:number;
@@ -28,7 +34,40 @@ type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryD
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
-const view=ref<'shop'|'achievements'|'lottery'>('shop')
+const view=ref<'shop'|'achievements'|'lottery'|'history'>('shop')
+const quantityChoice=ref<Record<string,number>>({})
+const history=ref<YearHistory|null>(null)
+const historyYear=ref(new Date(Date.now()+9*3600000).getUTCFullYear())
+const historyMember=ref('')
+const historyPage=ref(1)
+const historyBusy=ref(false)
+const historyError=ref('')
+let historyRequest=0
+const availableYears=computed(()=>{
+ const latest=new Date(Date.now()+9*3600000).getUTCFullYear()
+ return Array.from({length:Math.max(1,latest-2025)},(_,i)=>latest-i)
+})
+const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===id)?.displayName||'家庭成员'
+const quantityFor=(item:Reward)=>Math.max(1,Math.min(99,Math.trunc(quantityChoice.value[item.id]||1)))
+function stepQuantity(item:Reward,delta:number){
+ const remaining=item.stock===null?99:Math.max(1,item.stock-item.redeemedCount)
+ quantityChoice.value={...quantityChoice.value,
+  [item.id]:Math.max(1,Math.min(99,remaining,quantityFor(item)+delta))}
+}
+const historyPath=()=>'/points/history?year='+historyYear.value+
+ '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)
+async function goToHistory(page:number,year=historyYear.value,member=historyMember.value){
+ if(!props.active||!expanded.value||view.value!=='history'||busy.value)return
+ const token=++historyRequest
+ historyPage.value=page;historyYear.value=year;historyMember.value=member
+ historyBusy.value=true;historyError.value=''
+ try{
+  const next=await fetchJSON(historyPath()) as YearHistory
+  if(token!==historyRequest||!props.active||!expanded.value||view.value!=='history')return
+  history.value=next
+ }catch(e){if(token===historyRequest)historyError.value=(e as Error).message}
+ finally{if(token===historyRequest)historyBusy.value=false}
+}
 const lottery=ref<Lottery|null>(null)
 const lotteryPage=ref(1)
 const lotteryPageBusy=ref(false)
@@ -127,16 +166,23 @@ async function refresh(){
      data.value=pointsResult as Summary
    }else{
      const selectedView=view.value
-     const historyRequest=selectedView==='lottery'?++lotteryPageRequest:0
+     const lotteryToken=selectedView==='lottery'?++lotteryPageRequest:0
+     const historyToken=selectedView==='history'?++historyRequest:0
      const [pointsResult,secondary]=await Promise.all([
-       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery?page='+lotteryPage.value:'/rewards')])
+       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery?page='+lotteryPage.value:
+         selectedView==='history'?historyPath():'/rewards')])
      if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
      data.value=pointsResult as Summary
      if(selectedView==='lottery'){
-       if(historyRequest===lotteryPageRequest){
+       if(lotteryToken===lotteryPageRequest){
          lottery.value=secondary as Lottery
          lotteryPage.value=(secondary as Lottery).historyPage
          lotteryPageBusy.value=false
+       }
+     }else if(selectedView==='history'){
+       if(historyToken===historyRequest){
+        history.value=secondary as YearHistory
+        historyBusy.value=false
        }
      }else shop.value=secondary as Shop
    }
@@ -154,6 +200,9 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    shop.value=null
    lottery.value=null
    resetLotteryPagination()
+   historyRequest++
+   history.value=null
+   historyBusy.value=false
    clearLotteryResult()
  }
 },{immediate:true})
@@ -163,6 +212,9 @@ watch(()=>props.userId,()=>{
  shop.value=null
  lottery.value=null
  resetLotteryPagination()
+ historyRequest++
+ history.value=null
+ historyBusy.value=false
  clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
@@ -192,6 +244,7 @@ onBeforeUnmount(()=>{
  document.removeEventListener('pointerdown',dismissRulesOutside)
  document.removeEventListener('keydown',dismissRulesKey)
  resetLotteryPagination()
+ historyRequest++
  clearLotteryResult()
 })
 function openDetails(){
@@ -202,6 +255,8 @@ function openDetails(){
 function closeDetails(){
  resetLotteryPagination()
  clearLotteryResult()
+ historyRequest++
+ historyBusy.value=false
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
@@ -221,13 +276,14 @@ function editReward(reward:Reward){
  formActive.value=reward.active;formOpen.value=true
 }
 function openCreate(){resetForm();formOpen.value=true}
-function selectView(next:'shop'|'achievements'|'lottery'){
+function selectView(next:'shop'|'achievements'|'lottery'|'history'){
  if(view.value===next)return
  resetLotteryPagination()
  clearLotteryResult()
+ historyRequest++
  lotteryHelpOpen.value=false
  view.value=next
- if(next==='lottery'||next==='shop'&&!shop.value)void refresh()
+ if(next==='lottery'||next==='shop'&&!shop.value||next==='history')void refresh()
 }
 const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
  draw.kind==='double'?'积分翻倍 +'+fmt(draw.points):'+'+fmt(draw.points)+' 积分'
@@ -277,12 +333,15 @@ async function toggleActive(item:Reward){
   item.active?'已下架':'已重新上架')
 }
 async function redeem(item:Reward){
- if(points.value<item.points){error.value='可用积分不足';return}
- if(!window.confirm('确定花费 '+item.points+' 积分兑换「'+item.title+'」吗？\n兑换后无法自动退款，经验值不会扣除。'))return
- // One UUID for this attempt; server enforces unique request replay and atomic balance.
+ const quantity=quantityFor(item),total=quantity*item.points
+ if(item.stock!==null&&item.redeemedCount+quantity>item.stock){error.value='商品剩余数量不足';return}
+ if(points.value<total){error.value='可用积分不足';return}
+ if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+' 吗？\n兑换后无法自动退款，经验值不会扣除。'))return
+ // All units share one purchase token; the server either charges all or none.
  const requestId=crypto.randomUUID()
- await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId}),
-  '兑换成功！已添加到待兑现记录')
+ await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId,quantity}),
+  '已成功兑换 '+quantity+' 件！')
+ if(!error.value)quantityChoice.value={...quantityChoice.value,[item.id]:1}
 }
 async function startPool(item:Reward){
  if(!window.confirm('创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
@@ -394,6 +453,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <button type="button" :class="{chosen:view==='shop'}" @click="selectView('shop')"><AppIcon name="gift" :size="16"/> 积分商店</button>
      <button type="button" :class="{chosen:view==='achievements'}" @click="selectView('achievements')"><AppIcon name="award" :size="16"/> 成就挑战</button>
      <button type="button" :class="{chosen:view==='lottery'}" @click="selectView('lottery')"><AppIcon name="ticket" :size="16"/> 抽奖</button>
+     <button type="button" :class="{chosen:view==='history'}" @click="selectView('history')"><AppIcon name="history" :size="16"/> 明细</button>
    </div>
    <template v-if="view==='achievements'&&data">
      <div class="challenge-card">
@@ -496,6 +556,52 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <p v-if="lotteryPageError" role="alert" class="lottery-page-error">{{ lotteryPageError }}</p>
      </div>
    </template>
+   <template v-if="view==='history'">
+     <div class="annual-history-head">
+       <b>年度积分明细</b>
+       <div class="annual-filters">
+         <label>年度
+           <select :value="historyYear" @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
+             <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+           </select>
+         </label>
+         <label>成员
+           <select :value="historyMember" @change="goToHistory(1,historyYear,($event.target as HTMLSelectElement).value)">
+             <option value="">全部</option>
+             <option v-for="person in history?.members||[]" :key="person.userId" :value="person.userId">{{ person.displayName }}</option>
+           </select>
+         </label>
+       </div>
+     </div>
+     <div v-if="history" class="annual-members">
+       <article v-for="person in history.members" :key="person.userId" class="annual-member">
+         <b>{{ person.displayName }}</b>
+         <div><span>年度贡献</span><strong>{{ fmt(person.contributionPoints) }}</strong></div>
+         <div><span>年度入账 / 扣减</span><span>{{ fmt(person.earnedPoints) }} / {{ fmt(person.spentPoints) }}</span></div>
+         <div><span>{{ history.year<history.currentYear?'年末未用清零':'当前可用积分' }}</span>
+           <strong :class="{'annual-expired':history.year<history.currentYear}">{{ fmt(person.endingPoints) }}</strong></div>
+         <div v-if="person.privatePoints!==null"><span>私人积分</span><span>{{ fmt(person.privatePoints) }}</span></div>
+       </article>
+     </div>
+     <p class="annual-note">{{ history&&history.year<history.currentYear?
+      '年末未用积分已经清零，仅供历史回顾，不能继续兑换。':'当前年度积分将于12月31日结束，次年1月1日清零。' }}</p>
+     <div class="annual-ledger">
+       <div class="annual-ledger-title"><b>积分流水</b><small v-if="history">共 {{ history.total }} 条 · 每页10条</small></div>
+       <p v-if="historyBusy&&!history" class="points-loading">正在加载明细…</p>
+       <p v-else-if="history&&!history.entries.length" class="points-loading">该年度暂无积分记录</p>
+       <div v-for="(entry,i) in history?.entries||[]" :key="entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
+         <div><b>{{ entry.label }}</b><small>{{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} ·
+           {{ new Date(entry.stamp).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }}</small></div>
+         <strong :class="{negative:entry.amount<0}">{{ entry.amount>0?'+':'' }}{{ fmt(entry.amount) }}</strong>
+       </div>
+       <div v-if="history&&history.totalPages>1" class="annual-pagination">
+         <button type="button" :disabled="historyBusy||historyPage<=1" @click="goToHistory(historyPage-1)">上一页</button>
+         <span>{{ historyPage }} / {{ history.totalPages }}</span>
+         <button type="button" :disabled="historyBusy||historyPage>=history.totalPages" @click="goToHistory(historyPage+1)">下一页</button>
+       </div>
+       <p v-if="historyError" class="points-error" role="alert">{{ historyError }}</p>
+     </div>
+   </template>
    <template v-if="view==='shop'">
      <div class="shop-title">
        <b>家庭奖励</b><button type="button" class="small-outline" :disabled="busy" @click="openCreate">+ 自定义奖励</button>
@@ -504,11 +610,19 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <article v-for="item in visibleRewards" :key="item.id" class="reward-row">
          <span class="reward-emoji">{{ item.icon }}</span>
          <div class="reward-details"><b>{{ item.title }}</b><small>{{ item.description }}</small>
-           <span>{{ fmt(item.points) }} 积分 <small v-if="item.stock!==null"> · 剩余 {{ Math.max(0,item.stock-item.redeemedCount) }}</small></span>
+           <span>{{ fmt(item.points) }} 分/件 <small v-if="item.stock!==null"> · 剩余 {{ Math.max(0,item.stock-item.redeemedCount) }}</small></span>
+           <small v-if="quantityFor(item)>1">合计 {{ fmt(item.points*quantityFor(item)) }} 分</small>
          </div>
-         <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<item.points||(item.stock!==null&&item.redeemedCount>=item.stock)"
+         <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<item.points*quantityFor(item)||(item.stock!==null&&item.redeemedCount+quantityFor(item)>item.stock)"
            @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
          <div class="reward-actions">
+           <div class="quantity-stepper" aria-label="兑换数量">
+             <button type="button" :disabled="busy||quantityFor(item)<=1" :aria-label="'减少'+item.title+'数量'"
+               @click="stepQuantity(item,-1)">−</button>
+             <span :aria-label="'数量'+quantityFor(item)">{{ quantityFor(item) }}</span>
+             <button type="button" :disabled="busy||quantityFor(item)>=99||(item.stock!==null&&quantityFor(item)>=item.stock-item.redeemedCount)"
+               :aria-label="'增加'+item.title+'数量'" @click="stepQuantity(item,1)">+</button>
+           </div>
            <button type="button" class="link-btn" :disabled="busy||(item.stock!==null&&item.redeemedCount>=item.stock)"
              @click="startPool(item)"><AppIcon name="handshake" :size="15"/> 合力</button>
            <button type="button" class="link-btn" :disabled="busy" @click="editReward(item)">编辑</button>
@@ -577,7 +691,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <b>兑换记录</b>
        <div v-for="record in shop.redemptions" :key="record.id" class="history-row">
          <span>{{ record.icon }}</span>
-         <div><strong>{{ record.title }}</strong><small>{{ record.redeemedByName }} · {{ record.points }}分 · {{ dateText(record.createdAt) }}</small></div>
+         <div><strong>{{ record.title }}</strong><small>{{ record.redeemedByName }} · {{ record.quantity||1 }}件 · {{ record.points }}分 · {{ dateText(record.createdAt) }}</small></div>
          <span class="history-status" :class="{fulfilled:record.status==='fulfilled'}">{{ record.status==='fulfilled'?'已兑现':'待兑现' }}</span>
          <button v-if="record.status==='requested'" type="button" :disabled="busy" @click="fulfill(record)">确认兑现</button>
        </div>
@@ -688,7 +802,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-private-chevron{flex:none;color:#758c7b;transition:transform .2s}
 .points-private[open] .points-private-chevron{transform:rotate(180deg)}
 .points-bonus-breakdown{margin:5px 0 0;color:#758c7b;font-size:11px;line-height:1.5}
-.points-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
+.points-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
 .points-tabs button{min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
  .lottery-card{display:grid;gap:12px;border:1px solid #e4ede6;border-radius:13px;padding:12px;background:#fbfdfa}
@@ -890,6 +1004,10 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .reward-buy{grid-column:3;grid-row:1;min-height:32px;white-space:nowrap}
 .reward-actions{grid-column:2/-1;grid-row:2;display:flex;gap:6px;justify-content:flex-end;
   align-items:center;min-width:0;flex-wrap:wrap}
+.quantity-stepper{display:inline-flex;align-items:center;flex:none;gap:0;border:1px solid #d7e8da;border-radius:8px;background:#f7faf7;overflow:hidden}
+.quantity-stepper button{display:grid;place-items:center;min-width:29px;min-height:30px;border:0;background:none;color:#478466;font-size:17px;line-height:1}
+.quantity-stepper button:disabled{opacity:.35}
+.quantity-stepper span{min-width:19px;text-align:center;font-size:12px;color:#466d55;font-variant-numeric:tabular-nums;font-weight:700}
 .redeem-btn,.save-btn{border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
 .redeem-btn:disabled,.save-btn:disabled{opacity:.45}
 .link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:6px 5px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
@@ -929,6 +1047,31 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .history-status{font-size:10px;color:#b1793c;white-space:nowrap}
 .history-status.fulfilled{color:#589175}
 .history-row button{font-size:11px;color:#467a59;background:#f3f8f3;border:0;border-radius:7px;padding:7px;white-space:nowrap}
+.annual-history-head{display:grid;gap:8px}
+.annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
+.annual-filters{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
+.annual-filters label{display:grid;gap:3px;min-width:0;font-size:11px;color:#748778}
+.annual-filters select{min-width:105px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
+.annual-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.annual-member{display:grid;align-content:start;gap:7px;padding:10px;min-width:0;background:#f7faf6;border:1px solid #e2ece3;border-radius:11px}
+.annual-member>b{font-size:13px;color:#355f47;overflow-wrap:anywhere}
+.annual-member>div{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:3px;font-size:10px;color:#718776}
+.annual-member strong{font-size:14px;color:#367e55;font-variant-numeric:tabular-nums}
+.annual-member strong.annual-expired{color:#af6155}
+.annual-note{margin:0;font-size:11px;color:#8a9189;line-height:1.5}
+.annual-ledger{display:grid;gap:4px}
+.annual-ledger-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:5px}
+.annual-ledger-title small{font-size:10px;color:#8a998c}
+.annual-ledger-row{display:flex;align-items:center;justify-content:space-between;min-width:0;gap:10px;padding:9px 0;border-bottom:1px solid #edf0ed}
+.annual-ledger-row>div{display:grid;gap:4px;min-width:0;flex:1}
+.annual-ledger-row b{font-size:12px;color:#456b52;overflow-wrap:anywhere}
+.annual-ledger-row small{font-size:10px;color:#829586;line-height:1.35}
+.annual-ledger-row>strong{flex:none;font-size:13px;color:#33845f;font-variant-numeric:tabular-nums}
+.annual-ledger-row>strong.negative{color:#b97461}
+.annual-pagination{display:flex;justify-content:center;align-items:center;gap:12px;padding:9px}
+.annual-pagination button{min-height:34px;border:1px solid #d5e8da;background:#f8fcf8;color:#4b8364;border-radius:7px;padding:5px 9px;font-size:12px}
+.annual-pagination button:disabled{opacity:.4}
+.annual-pagination span{font-size:11px;color:#7a8c7d}
 .points-loading,.points-error{margin:0;font-size:12px;color:#7c8c80}
 .points-error{color:#a34b3d}
 .points-retry{background:none;border:0;color:#438669;font-size:12px}
