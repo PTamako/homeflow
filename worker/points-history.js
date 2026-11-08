@@ -120,7 +120,13 @@ export const annualPointLedgerSql=()=>{
       AND ((m.completed_at IS NULL AND m.skipped_at IS NULL) OR
            (m.completed_at IS NOT NULL AND m.completed_by IN(a.assignee_user_id,a.second_assignee_user_id)))`
  ]
- return lines.join(' UNION ALL ')
+ // Cloudflare D1 limits the number of terms in each compound SELECT.
+ // Group the ledger sources into small subqueries to keep every UNION under
+ // D1's limit, while preserving all entries and original row-level filters.
+ const groups=[]
+ for(let i=0;i<lines.length;i+=5)
+   groups.push('SELECT * FROM ('+lines.slice(i,i+5).join(' UNION ALL ')+')')
+ return groups.join(' UNION ALL ')
 }
 
 const validYear=(text,current)=>/^\d{4}$/.test(text)&&Number(text)>=2026&&Number(text)<=current
