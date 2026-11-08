@@ -550,7 +550,9 @@ async function completeCurrentRoutine(r:Row,status:'completed'|'skipped'){
 }
 async function undoRoutineHistory(r:Row){
   if(!r.periodOn||r.status==='missed'||busy.value)return
-  if(!confirm('撤销这一期的记录？对应的自动护理记录也会撤销。'))return
+  if(!confirm(r.periodOn<today()?
+    '撤销后本期已过期，将记录为「未完成」，不返回今日待办。对应的自动护理记录也会撤销。确定吗？':
+    '撤销这一期的记录？如果日期仍有效，可重新在今日待办勾选。对应的自动护理记录也会撤销。'))return
   await update(()=>api('/routines/'+r.id+'/mark','POST',
     {date:today(),periodOn:r.periodOn,recordOn:r.markOccurrenceOn||r.periodOn,status:'open'}),'已撤销本期记录')
   if(!error.value)emit('tasksChanged')
@@ -558,6 +560,17 @@ async function undoRoutineHistory(r:Row){
 async function completeOnce(t:Row){
   if(busy.value||t.completedAt||!taskCompletable(t))return
   await update(()=>api('/tasks/'+t.id,'PATCH',{completed:true}),'一次性任务已完成')
+  if(!error.value)emit('tasksChanged')
+}
+function canUndoOnce(t:Row){return canEdit(t)||taskCompletable(t)}
+async function undoOnce(t:Row){
+  if(!t.completedAt||busy.value||!canUndoOnce(t))return
+  const expired=!!t.dueOn&&t.dueOn<today()
+  if(!confirm(expired?
+    '撤销后已过计划日期，将记录为「未完成」，不返回今日待办。确定撤销吗？':
+    '撤销完成？计划日期仍有效时，将重新回到相应日期的待办。'))return
+  await update(()=>api('/tasks/'+t.id,'PATCH',{completed:false}),
+    expired?'已撤销，任务记为未完成':'已撤销完成')
   if(!error.value)emit('tasksChanged')
 }
 function routineLabel(r:Row){
@@ -1351,8 +1364,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     <b class="detail-name">{{ t.title }}</b>
                     <div class="plan-task-heading-actions">
                       <StatusBadge class="plan-task-status"
-                        :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'overdue':t.dueOn?'pending':'unscheduled'"
-                        :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'逾期':t.dueOn?'待处理':'待安排'" />
+                        :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'missed':t.dueOn?'pending':'unscheduled'"
+                        :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'未完成':t.dueOn?'待处理':'待安排'" />
 
                     </div>
                   </div>
@@ -1383,7 +1396,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <span class="plan-task-next">{{ t.dueOn?'计划 '+t.dueOn:'尚未安排日期' }}</span>
               <button v-if="!t.completedAt&&t.dueOn&&taskCompletable(t)" type="button" class="routine-text-action"
                 :disabled="busy" @click="completeOnce(t)">{{ t.dueOn>today()?'提前完成':'完成' }}</button>
-              
+            </div>
+            <div v-if="planScope==='history'" class="plan-task-footer">
+              <span class="plan-task-next">{{ t.dueOn?'计划 '+t.dueOn:'无截止日期' }}</span>
+              <button v-if="t.completedAt&&canUndoOnce(t)" type="button" class="routine-text-action"
+                :disabled="busy" @click="undoOnce(t)">撤销</button>
             </div>
             </SwipeActions>
             <div v-if="expandedTaskMenu==='task:'+t.id" :id="'task-actions-'+t.id"

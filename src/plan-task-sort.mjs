@@ -7,7 +7,7 @@ function tokyoDay(timestamp){
 }
 export function taskUrgencyKey(kind,item,scope='active'){
   const raw=scope==='history'
-    ?kind==='routine'?item.periodOn:tokyoDay(item.completedAt)
+    ?kind==='routine'?item.periodOn:(tokyoDay(item.completedAt)||item.dueOn)
     :kind==='routine'?(item.currentStatus==='pending'&&item.currentPeriodOn||item.nextDueOn||item.next_due_on):item.dueOn
   return date.test(String(raw||''))?String(raw):scope==='history'?'0000-01-01':'9999-12-31'
 }

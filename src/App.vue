@@ -582,13 +582,14 @@ function canFinishEntry(row:TodayEntry){
  return true
 }
 async function toggleRoutine(r:Routine){
-  if(routineBusy.value)return
+  // Completed occurrences can only be reopened from Plans history.
+  if(routineBusy.value||r.mark?.completed_at)return
   routineBusy.value=true
   try{
-    const status=r.mark?.completed_at?'open':'completed'
+    const status='completed'
     await api('/routines/'+r.id+'/mark','POST',{date:tokyoToday(),periodOn:r.occurrenceOn||r.currentPeriodOn,recordOn:r.recordOn||undefined,status})
     await loadTodayPage(true)
-    notify(status==='completed'?'定期事项已完成':'已撤销完成')
+    notify('定期事项已完成')
   }catch(e){error.value=(e as Error).message}
   finally{routineBusy.value=false}
 }
@@ -693,9 +694,11 @@ function syncTick(){
  void checkRemoteChanges()
 }
 async function toggleTask(t:Task){
+  // A completed Today checkbox is locked: use 查看计划 to undo.
+  if(t.completedAt)return
   try{
-    await api('/tasks/'+t.id,'PATCH',{completed:!t.completedAt});await loadTodayPage(true)
-    notify(t.completedAt?'已撤销完成':'任务已完成')
+    await api('/tasks/'+t.id,'PATCH',{completed:true});await loadTodayPage(true)
+    notify('任务已完成')
   }catch(e){error.value=(e as Error).message}
 }
 async function addProfile(){
@@ -850,8 +853,8 @@ onBeforeUnmount(()=>{
               @edit="openPostpone(row)" @delete="skipToday(row)">
               <div class="task-row today-unified-row">
                 <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
-                  :disabled="!canFinishEntry(row)||!!row.routine&&routineBusy"
-                  :aria-label="(row.done?'撤销完成 ':'完成 ')+row.title"
+                  :disabled="row.done||!canFinishEntry(row)||!!row.routine&&routineBusy"
+                  :aria-label="(row.done?'已完成，请到查看计划撤销：':'完成 ')+row.title"
                   @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
                 <AppIcon v-else :name="row.plan?.kind==='shopping'?'shopping':
                   row.plan?.kind==='wish'?'heart':row.plan?.kind==='goal'?'wallet':'plane'" :size="19" />
