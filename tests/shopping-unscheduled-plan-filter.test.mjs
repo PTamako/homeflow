@@ -22,7 +22,7 @@ test('shopping list uses the planned purchase date instead of the creator',()=>{
  assert.match(shopping, /<small class="shopping-plan-date">{{ s.due_on\?'计划日期：'\+s.due_on:'待安排' }}<\/small>/)
  assert.doesNotMatch(shopping, /发起人：{{ memberName\(s.created_by\) }}/)
  assert.match(shopping, /class="shopping-handler-row"/)
- assert.match(shopping, /class="shopping-more-trigger"/)
+ assert.match(shopping, /class="routine-more-trigger shopping-more-trigger"/)
 })
 
 test('unscheduled tab fetches only one-time tasks plus undated shopping',()=>{
