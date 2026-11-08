@@ -2097,7 +2097,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
    their outer vertical breathing room. The colored rails follow the full height
    instead of stopping after the old hard 72px limit. */
 .plan-tasks-card .plan-task-item[data-swipe-item]{padding-block:0}
-.plan-task-item[data-swipe-item] :deep(.swipe-content){padding-block:8px}
+.plan-task-item[data-swipe-item] :deep(.swipe-content){padding-block:5px}
 .plan-task-item[data-swipe-item] :deep(.swipe-actions){align-items:stretch;background:#fff}
 .plan-task-item[data-swipe-item] :deep(.swipe-actions button){
   align-self:stretch;height:auto;min-height:0;flex:0 0 72px

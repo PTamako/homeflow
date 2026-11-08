@@ -47,18 +47,18 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
 /* Task/recurrence list: reserve full 44px tap areas but don't let their
    boxes create large vertical gaps between title, metadata and next date. */
 .shell .plan-tasks-card .plan-task-item{padding-block:8px}
-.shell .plan-tasks-card .routine-compact{gap:2px}
+.shell .plan-tasks-card .routine-compact{gap:1px}
 .shell .plan-tasks-card .plan-task-head{align-items:center}
 .shell .plan-tasks-card .plan-task-head .routine-more-trigger{
  margin-block:-6px;
 }
 .shell .plan-tasks-card .plan-task-item .life-details small{
- margin-top:2px;line-height:1.45;
+ margin-top:1px;line-height:1.45;
 }
 .shell .plan-tasks-card .once-task-identity{row-gap:2px}
 .shell .plan-tasks-card .routine-meta{line-height:1.45}
 .shell .plan-tasks-card .plan-task-footer{
- margin-top:2px;min-height:32px;gap:6px;flex-wrap:nowrap;
+ margin-top:1px;min-height:30px;gap:6px;flex-wrap:nowrap;
 }
 .shell .plan-tasks-card .plan-task-footer .routine-text-action{
  margin-block:-6px;
