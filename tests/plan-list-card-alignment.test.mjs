@@ -10,8 +10,11 @@ const trips=life.slice(life.indexOf('<template v-for="t in trips"'),life.indexOf
 test('trip participants and status stay together on a dedicated full-width row',()=>{
   assert.match(trips, /class="life-row trip-plan-row"/)
   assert.match(trips, /class="trip-summary-line"/)
-  assert.match(trips, /<div class="trip-participant-status">\s*<span>参与 {{ tripParticipantNames\(t\) }}<\/span>\s*<StatusBadge :code="t.status"/)
-  assert.match(life, /\.trip-participant-status\{grid-column:1\/-1;display:flex/)
+  assert.match(trips, /<div class="trip-title-row">\s*<b class="detail-name">{{ t.title }}<\/b>\s*<StatusBadge :code="t.status"/)
+  assert.match(trips, /<div class="trip-participant-actions">\s*<span class="trip-participant-names"[\s\S]*?<div class="trip-card-actions">/)
+  assert.match(life, /\.trip-participant-actions\{display:flex;align-items:center;justify-content:space-between/)
+  assert.match(life, /\.trip-plan-row \.trip-card-actions\{[^}]*margin-left:auto/)
+  assert.match(life, /\.trip-participant-names\{[^}]*text-overflow:ellipsis/)
   assert.match(trips, /@click.stop="selectTrip\(t.id\)"/)
   assert.match(trips, /@click.stop="toggleFinance\('trip',t.id\)"/)
 })
