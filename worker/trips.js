@@ -329,6 +329,16 @@ export async function tripsRoute(request,db,path,session){
         return json({error:'invalid_input'},400)
       if(b.status==='completed'&&(!start||!end))return json({error:'trip_dates_required_for_completion'},400)
       if(b.status==='completed'&&end>todayJst())return json({error:'trip_not_finished'},400)
+      // Client UI confirms completion, then asks again for journeys over 30 days.
+      // Enforce the extra acknowledgement on every API entry point (including edit).
+      // Re-saving an already completed trip must not require re-confirmation.
+      if(b.status==='completed'&&trip.status!=='completed'){
+        const days=Math.round((Date.parse(end+'T00:00:00Z')-
+          Date.parse(start+'T00:00:00Z'))/86400000)+1
+        if(days>30&&b.longTripConfirmed!==true)
+          return json({error:'trip_long_confirmation_required',days,
+            pointsPerPerson:days*10},409)
+      }
        // Never silently rewrite already-settled dates or the paid participant list.
        if(trip.status==='completed'&&trip.trip_rewarded_at&&b.status==='completed'&&
          (start!==trip.start_on||end!==trip.end_on||
