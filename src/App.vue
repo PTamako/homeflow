@@ -877,7 +877,7 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ [row.routine.currentAssignment?.assigneeUserId||row.routine.assigned_to,row.routine.currentAssignment?.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.plan">
-                      <StatusBadge :code="row.done?'completed':'pending'" :label="row.done?'今天已完成':'今天到期'" /> · {{ row.plan.dueOn }}
+                      <StatusBadge :code="row.done?'completed':'pending'" :label="row.done?'已完成':'今天到期'" /> · {{ row.plan.dueOn }}
                       <template v-if="row.plan.kind==='goal'&&row.plan.periodKey&&row.plan.periodKey!=='once'">
                         · {{ row.plan.periodKey }}{{ row.plan.periodKey.length===7?'月':'年' }}目标
                       </template>
