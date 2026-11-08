@@ -332,11 +332,19 @@ export async function scheduledNotificationId(recipientId,day,logicalKey){
   const hex=[...b].map(x=>x.toString(16).padStart(2,'0')).join('')
   return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20)
 }
+// Every December 31, every member gets this warning, even with no other reminders.
+export function annualPointsExpiryEvent(day){
+  return /^\\d{4}-12-31$/.test(day)?{
+    kind:'system',id:'annual-points-expiry',dueOn:day,daysBefore:0,
+    title:'年度积分即将清零',message:'请在今日内用完所有积分',priority:'important'
+  }:null
+}
 export async function runPushSchedule(env,now=Date.now()){
   const pushConfigured=vapidReady(env)
   const db=env.DB
   const jst=new Date(now+9*3600000)
   const day=jst.toISOString().slice(0,10),hour=jst.getUTCHours()
+  const annualExpiry=annualPointsExpiryEvent(day)
   const {results:subscriptions=[]}=pushConfigured
     ?await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
       FROM push_subscriptions ORDER BY user_id LIMIT 20`).all():{results:[]}
@@ -352,10 +360,12 @@ export async function runPushSchedule(env,now=Date.now()){
   for(const member of members){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
-    if(!response.ok)continue
-    const data=await response.json()
-    remindersCache.set(member.user_id,data)
-    for(const event of (data.items||[]).slice(0,100)){
+    if(!response.ok&&!annualExpiry)continue
+    const data=response.ok?await response.json():{items:[],quietHours:null}
+    const scheduledData={...data,items:annualExpiry?
+      [annualExpiry,...(data.items||[])]:data.items||[]}
+    remindersCache.set(member.user_id,scheduledData)
+    for(const event of scheduledData.items.slice(0,100)){
       const key=reminderDeliveryKey(event)
       const logicalKey=member.user_id+':'+key
       const notificationId=await scheduledNotificationId(member.user_id,day,logicalKey)
@@ -366,7 +376,7 @@ export async function runPushSchedule(env,now=Date.now()){
       scheduledNotices.set(logicalKey,{
         id:notificationId,householdId:member.household_id,recipientId:member.user_id,
         kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
-        sourceId:event.id,title:event.title,message,localDay:day,dedupeKey:'scheduled:'+key
+        sourceId:event.id==='annual-points-expiry'?null:event.id,title:event.title,message,localDay:day,dedupeKey:'scheduled:'+key
       })
     }
   }
@@ -383,8 +393,10 @@ export async function runPushSchedule(env,now=Date.now()){
     const data=remindersCache.get(sub.user_id)
     // No push during user quiet hours. In-app reminders remain visible.
     // The default is disabled so the requested 06:00 JST push is delivered.
-    if(quietAtHour(data.quietHours,hour))continue
-    const events=(data.items||[]).slice(0,20)
+    const muted=quietAtHour(data.quietHours,hour)
+    // Expiring points are time-critical; quiet hours still silence ordinary reminders.
+    const events=(data.items||[]).filter(event=>!muted||
+      event.id==='annual-points-expiry').slice(0,20)
     for(const event of events){
       const key=reminderDeliveryKey(event)
       const logicalKey=sub.user_id+':'+key
