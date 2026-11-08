@@ -5,9 +5,11 @@ import {readFileSync} from 'node:fs'
 const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
 const today=app.slice(app.indexOf('<template v-for="row in visibleToday"'),app.indexOf('</template>',app.indexOf('<template v-for="row in visibleToday"')+3000))
 
-test('completed recurring tasks have the same concise badge as one-time tasks',()=>{
+test('all Today completion badges for tasks, routines and other plans use 已完成',()=>{
  assert.match(app, /:label="row.routine.mark\?\.completed_at\?'已完成':'今天到期'"/)
  assert.match(app, /:label="row.done\?'已完成':row.task.dueOn/)
+ assert.match(app, /:label="row.done\?'已完成':'今天到期'"/)
+ assert.doesNotMatch(app, /:label="row.done\?'今天已完成':'今天到期'"/)
  assert.doesNotMatch(app, /:label="row.routine.mark\?\.completed_at\?'本期已完成'/)
  assert.match(app, /<span class="today-kind-label">{{ todayKindLabels\[row.kind\] }}<\/span>/)
 })
