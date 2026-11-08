@@ -93,25 +93,28 @@ test('sole assignee must complete; publisher needs reassignment to receive compl
   assert.equal((await balances(db)).bob.earnedPoints,5)
  }finally{sqlite.close()}
 })
-test('two assignees can both complete once, split base plus integer bounty exactly, and undo reverses it',async()=>{
+test('two assignees share only base points on one-time task; extra bonus is forbidden',async()=>{
  const {sqlite,db}=fixture()
  try{
   const seed=(await (await task(db,alice,'/tasks','POST',{title:'积分种子',visibility:'household'})).json()).id
   await task(db,alice,'/tasks/'+seed,'PATCH',{completed:true})
   const old=await balances(db)
   const before=old.alice.availablePoints
-  const made=await task(db,alice,'/tasks','POST',{title:'两人合力',visibility:'household',
+  const rejected=await task(db,alice,'/tasks','POST',{title:'不能额外奖励',visibility:'household',
     assigneeUserId:'alice',secondAssigneeUserId:'bob',bonusPoints:3})
+  assert.equal(rejected.status,400,'two assignees cannot receive a funded bonus')
+  const made=await task(db,alice,'/tasks','POST',{title:'两人合力',visibility:'household',
+    assigneeUserId:'alice',secondAssigneeUserId:'bob',bonusPoints:0})
   assert.equal(made.status,201)
   const id=(await made.json()).id
-  assert.equal((await balances(db)).alice.availablePoints,before-3,'publisher funds bounty before completion')
+  assert.equal((await balances(db)).alice.availablePoints,before,'joint assignment never reserves publisher points')
   assert.equal((await task(db,charlie,'/tasks/'+id,'PATCH',{completed:true})).status,403)
   assert.equal((await task(db,bob,'/tasks/'+id,'PATCH',{completed:true})).status,200)
   let data=await balances(db)
   assert.equal(data.alice.earnedPoints,12.5,'creator receives half of base 5')
   assert.equal(data.bob.earnedPoints,2.5,'other assignee also receives half of base')
-  assert.equal(data.alice.availablePoints,before-3+2.5+1.5,'publisher receives own bounty share after settlement')
-  assert.equal(data.bob.availablePoints,2.5+1.5+5,'second assignee gets base, bounty and first badge')
+  assert.equal(data.alice.availablePoints,before+2.5,'publisher receives half of the base only')
+  assert.equal(data.bob.availablePoints,2.5+5,'second assignee gets base plus first-completion badge only')
   assert.equal((await task(db,alice,'/tasks/'+id,'PATCH',{completed:true})).status,200)
   data=await balances(db)
   assert.equal(data.alice.earnedPoints,12.5,'second completion cannot create another credit')
@@ -120,10 +123,10 @@ test('two assignees can both complete once, split base plus integer bounty exact
   data=await balances(db)
   assert.equal(data.alice.earnedPoints,10)
   assert.equal(data.bob.earnedPoints,0)
-  assert.equal(data.alice.availablePoints,before-3,'undo returns to reserved state')
+  assert.equal(data.alice.availablePoints,before,'undo restores balance with no extra reservation')
  }finally{sqlite.close()}
 })
-test('two routine assignees share 5 base and funded bounty per occurrence, nonmembers cannot complete',async()=>{
+test('two routine assignees split 5 base only and reject extra bonuses',async()=>{
  const {sqlite,db}=fixture()
  try{
   const seed=(await (await task(db,alice,'/tasks','POST',{title:'积分种子',visibility:'household'})).json()).id
@@ -131,7 +134,12 @@ test('two routine assignees share 5 base and funded bounty per occurrence, nonme
   const on=jst(),routineId='44444444-4444-4444-8444-444444444444'
   sqlite.prepare(`INSERT INTO routines(id,household_id,created_by,title,visibility,repeat_type,repeat_config,anchor_date,enabled)
     VALUES(?1,'house','alice','倒垃圾','household','daily','{}',?2,1)`).run(routineId,on)
-  assert.equal((await assign(db,alice,routineId,on,'alice','bob',3)).status,200)
+  const invalid=await assign(db,alice,routineId,on,'alice','bob',3)
+  assert.equal(invalid.status,400,'two assigned people cannot receive extra reward')
+  assert.equal((await (invalid).json()).error,'dual_assignee_bonus_not_allowed')
+  const before=(await balances(db)).alice.availablePoints
+  assert.equal((await assign(db,alice,routineId,on,'alice','bob',0)).status,200)
+  assert.equal((await balances(db)).alice.availablePoints,before,'no extra reward is reserved')
   assert.equal((await routine(db,charlie,routineId,'completed',on)).status,403)
   assert.equal((await routine(db,bob,routineId,'completed',on)).status,200)
   const data=await balances(db)
