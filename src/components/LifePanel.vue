@@ -1230,7 +1230,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </template>
           <template v-else-if="entry.kind==='routine'">
             <div v-for="r in [entry.item]" :key="r.id"
-              :id="'plan-item-'+r.id" class="plan-task-item" :class="{'focused-plan-entry':isFocused(r)}">
+              :id="'plan-item-'+r.id" class="plan-task-item" data-swipe-item :class="{'focused-plan-entry':isFocused(r)}">
               <SwipeActions :id="r.id" scope="routines" :allow-edit="canEdit(r)" :allow-delete="canEdit(r)"
                 @open="expandedTaskMenu=null" @edit="edit('routines',r)" @delete="removeItem('routines',r)">
                 <div class="routine-compact">
@@ -1342,7 +1342,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </template>
           <template v-else>
           <div v-for="t in [entry.item]" :key="t.id" :id="'plan-item-'+t.id"
-            class="plan-task-item" :class="{'focused-plan-entry':isFocused(t)}">
+            class="plan-task-item" data-swipe-item :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="one-time-plans" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @open="expandedTaskMenu=null" @edit="editOnce(t)" @delete="deleteOnce(t)">
               <div class="life-row" :class="{'detail-completed':!!t.completedAt}">
@@ -2093,10 +2093,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   border:0;box-shadow:none;margin:0;
 }
 .plan-task-item :deep(.swipe-content){background:#fff}
-.plan-task-item :deep(.swipe-actions){align-items:flex-start;background:#fff}
-.plan-task-item :deep(.swipe-actions button){height:min(72px,100%);flex:0 0 72px}
-/* An opaque movable surface masks the rail below the rest of the row, while
-   compact Edit / Delete buttons stay aligned at the top of tall tasks. */
+/* Active routine and one-time rows are one complete swipe surface, including
+   their outer vertical breathing room. The colored rails follow the full height
+   instead of stopping after the old hard 72px limit. */
+.plan-tasks-card .plan-task-item[data-swipe-item]{padding-block:0}
+.plan-task-item[data-swipe-item] :deep(.swipe-content){padding-block:8px}
+.plan-task-item[data-swipe-item] :deep(.swipe-actions){align-items:stretch;background:#fff}
+.plan-task-item[data-swipe-item] :deep(.swipe-actions button){
+  align-self:stretch;height:auto;min-height:0;flex:0 0 72px
+}
+/* The opaque moving content continues to mask rails until swiped. */
 .plan-task-item .routine-compact{width:100%;min-width:0;overflow-wrap:anywhere}
 .plan-task-item .life-details .detail-name{display:block;font-size:14px;line-height:1.45}
 .plan-task-item .life-details small{font-size:11px;line-height:1.55;margin-top:4px}

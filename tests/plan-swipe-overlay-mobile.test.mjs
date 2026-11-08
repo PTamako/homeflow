@@ -17,9 +17,10 @@ test('all plan task swipe surfaces are opaque so action rails cannot show behind
  assert.match(life,/\.plan-task-item \.routine-compact\{width:100%;min-width:0;overflow-wrap:anywhere\}/)
 })
 
-test('recurring and one-off task edit/delete rails stay top-aligned and short on tall rows',()=>{
- assert.match(life,/\.plan-task-item :deep\(\.swipe-actions\)\{align-items:flex-start;background:#fff\}/)
- assert.match(life,/\.plan-task-item :deep\(\.swipe-actions button\)\{height:min\(72px,100%\);flex:0 0 72px\}/)
+test('recurring and one-off task edit/delete rails fill complete tall rows',()=>{
+ assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions\)\{align-items:stretch;background:#fff\}/)
+ assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions button\)\{\s*align-self:stretch;height:auto;min-height:0;flex:0 0 72px/)
+ assert.match(life,/\.plan-tasks-card \.plan-task-item\[data-swipe-item\]\{padding-block:0\}/)
  assert.match(swipe,/\.swipe-actions\{[\s\S]*?visibility:hidden/)
  assert.match(swipe,/\.swipe-actions \.edit\{background:#558bc9\}/)
  assert.match(swipe,/\.swipe-actions \.delete\{background:#d76178\}/)
