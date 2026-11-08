@@ -21,7 +21,7 @@ export function oneTimeTaskPayload(draft:OneTimeTaskDraft,isPet:boolean){
     dueOn:draft.dueOn||null,remindEnabled:!!draft.dueOn&&draft.remindEnabled,
     assigneeUserId:draft.assigneeUserId||null,
     secondAssigneeUserId:draft.secondAssigneeUserId||null,
-    bonusPoints:draft.assigneeUserId&&draft.assigneeUserId!==''?draft.bonusPoints||0:0,
+    bonusPoints:draft.assigneeUserId&&!draft.secondAssigneeUserId?draft.bonusPoints||0:0,
     subjectProfileId:draft.subjectProfileId||null,
     healthRecordType:isPet?(draft.healthRecordType||null):null
   }
