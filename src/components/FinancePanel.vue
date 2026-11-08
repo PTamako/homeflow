@@ -340,7 +340,7 @@ onMounted(()=>{
             <small>状态：<StatusBadge :code="periodDisplay.status.startsWith('未开始')?'not_started':periodDisplay.status.startsWith('进行中')?'active':'verification_pending'" :label="periodDisplay.status.split(' · ')[0]" /><template v-if="periodDisplay.status.includes(' · ')"> · {{ periodDisplay.status.split(' · ').slice(1).join(' · ') }}</template></small>
           </div>
         </div>
-        <div v-else class="fields">
+        <div v-else-if="owner||kind==='goal'" class="fields">
           <label>起始日期<DateField v-model="start" :min="kind==='goal'?goalStartOn||undefined:undefined" /></label>
           <label>结束日期<DateField v-model="end" :min="start||undefined" /></label>
         </div>
