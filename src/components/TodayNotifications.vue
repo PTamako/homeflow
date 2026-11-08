@@ -16,7 +16,7 @@ const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntr
 const emit=defineEmits<{unreadChange:[number];openPlan:[string,string,string,boolean];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
-const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null)
+const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null),bulkReading=ref(false)
 const highlightedId=ref('')
 const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
@@ -102,7 +102,7 @@ async function load(reset=true,focusId=''):Promise<boolean>{
  }
 }
 async function changeReadState(item:Notice,markAsRead:boolean){
- if(item.recipientUserId!==props.userId||reading.value||
+ if(item.recipientUserId!==props.userId||reading.value||bulkReading.value||
    (markAsRead?!!item.readAt:!item.readAt))return
  // Capture identity and revision BEFORE awaiting a network request. Do not
  // mutate an old Vue row reference after a background refresh replaces it.
@@ -141,6 +141,36 @@ async function changeReadState(item:Notice,markAsRead:boolean){
   emit('unreadChange',unread.value)
  }catch(e){error.value=(e as Error).message}
  finally{if(reading.value===id)reading.value=null}
+}
+async function markAllRead(){
+ if(!props.active||view.value!=='received'||unread.value===0||
+   bulkReading.value||reading.value)return
+ const account=props.userId,day=props.todayDate
+ bulkReading.value=true
+ error.value=''
+ try{
+  const response=await fetch('/api/notifications/today/read-all',{
+   method:'POST',credentials:'same-origin',cache:'no-store'
+  })
+  if(!response.ok)throw Error('一键已读失败，请重试')
+  const data=await response.json()
+  if(data.ok!==true||!Number.isInteger(data.unreadCount)||data.unreadCount<0)
+   throw Error('未读数量同步失败，请刷新重试')
+  if(account!==props.userId||day!==props.todayDate)return
+  // Ignore any list response initiated before the write completed.
+  generation++
+  loading.value=false
+  moreBusy.value=false
+  const now=new Date().toISOString()
+  notices.value=notices.value.map(row=>
+   row.recipientUserId===account&&!row.readAt?{...row,readAt:now}:row)
+  unread.value=data.unreadCount
+  emit('unreadChange',unread.value)
+  if(unread.value>0)void load(true)
+ }catch(e){
+  if(account===props.userId&&day===props.todayDate)
+   error.value=(e as Error).message
+ }finally{bulkReading.value=false}
 }
 async function readClicked(item:Notice,markAsRead:boolean){
  const touchedId=pressedReadId
@@ -214,6 +244,10 @@ defineExpose({refresh:()=>load(true)})
       @click="view='received'">我收到的</button>
     <button type="button" :aria-pressed="view==='sent'" :class="{active:view==='sent'}"
       @click="view='sent'">我发送的</button>
+    <button v-if="view==='received'&&unread>0" type="button" class="notice-read-all"
+      aria-label="将今天收到的所有未读通知标记为已读"
+      :disabled="loading||bulkReading||!!reading"
+      @click="markAllRead">{{ bulkReading?'处理中…':'一键已读' }}</button>
    </div>
    <div v-if="view==='pending'" class="notice-reminder-list">
     <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys"
@@ -249,9 +283,9 @@ defineExpose({refresh:()=>load(true)})
      <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
-        type="button" :disabled="!!reading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
+        type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
       <button v-if="view==='received'&&item.readAt"
-        type="button" :disabled="!!reading" @pointerdown="pressedReadId=item.id" @click="markUnread(item)">标记未读</button>
+        type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markUnread(item)">标记未读</button>
       <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item))"
         type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
      </div>
@@ -277,6 +311,8 @@ defineExpose({refresh:()=>load(true)})
 .notice-reminder-list{padding-top:5px}
 .notice-tabs button{background:#f5f8f5;border:1px solid #dfebe2;border-radius:9px;padding:6px 12px;font-size:12px;color:#60766a}
 .notice-tabs button.active{background:#e6f1e9;color:#35795e;border-color:#b7d7c3;font-weight:700}
+.notice-tabs .notice-read-all{margin-left:auto;padding:6px 4px;background:transparent;border:0;color:#43866a;font-size:12px;font-weight:700;white-space:nowrap}
+.notice-tabs .notice-read-all:disabled{opacity:.5;cursor:default}
 .notice-item{padding:12px 0;border-top:1px solid #edf1ec;scroll-margin-top:24px}
 .notice-item.notice-focused{background:#f2f8f2;border-radius:9px;padding:12px 9px}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
