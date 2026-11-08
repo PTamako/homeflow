@@ -868,7 +868,7 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ [row.task.assigneeUserId,row.task.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.routine">
-                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'本期已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
+                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ [row.routine.currentAssignment?.assigneeUserId||row.routine.assigned_to,row.routine.currentAssignment?.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
