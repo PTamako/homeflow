@@ -34,7 +34,7 @@ test('itinerary removes duplicated time and never prints internal packing owner 
 })
 
 test('many travel expense links are supported without duplicate ledger writes',()=>{
-  assert.match(finance, /已关联支出 · \{\{ links\.filter/)
+  assert.match(finance, /已关联支出 · \{\{ linkedTripCount/)
   assert.match(finance, /v-for="row in visibleLinks"/)
   assert.match(finance, /@click="linkEntry\(row\)"/)
   assert.match(financeApi, /INSERT OR IGNORE INTO finance_links/)
