@@ -279,9 +279,9 @@ test('annual points history lists credits, spending, privacy and pre-reset balan
   const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(x=>x.points===100)
   assert.equal((await call(db,alice,'/api/rewards/redeem','POST',
    {rewardId:dessert.id,requestId:id(601),quantity:1})).status,201)
-  const history=async(session,y=year)=>{
+  const history=async(session,y=year,member='')=>{
    const response=await pointsHistoryRoute(new Request(
-    'https://homeflow.invalid/api/points/history?year='+y+'&page=1'),db,session)
+    'https://homeflow.invalid/api/points/history?year='+y+'&page=1&member='+encodeURIComponent(member)),db,session)
    return {status:response.status,body:await response.json()}
   }
   const own=await history(alice)
@@ -293,7 +293,7 @@ test('annual points history lists credits, spending, privacy and pre-reset balan
   assert.equal(own.body.entries.some(x=>x.category==='redeem'&&x.amount===-100),true)
   assert.equal(own.body.entries.some(x=>x.userId==='bob'&&x.visibility==='private'),false)
   assert.equal(own.body.members.find(x=>x.userId==='bob').privatePoints,null)
-  const otherView=await history(bob)
+  const otherView=await history(bob,year,'bob')
   assert.equal(otherView.body.members.find(x=>x.userId==='bob').privatePoints,20)
   assert.equal(otherView.body.entries.some(x=>x.userId==='bob'&&x.visibility==='private'),true)
   assert.equal((await history(alice,2025)).status,400)
