@@ -1624,7 +1624,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="loadMore('goals')">加载更多目标</button>
 
         </section>
-        <section v-if="planType==='all'||planType==='shopping'" class="life-card">
+        <section v-if="planType==='all'||planType==='shopping'" class="life-card shopping-plans-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
@@ -2313,35 +2313,37 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   flex:none;margin-top:2px}
 .goal-plan-row .goal-dates{flex:1;min-width:0;overflow-wrap:anywhere}
 .goal-row-footer{justify-content:flex-end;gap:8px}
-.shopping-plan-entry .shopping-line{display:block;min-width:0;padding:6px 0}
+.shopping-plans-card>.life-heading{margin-bottom:5px}
+.shopping-plan-entry .shopping-line{display:block;min-width:0;padding:4px 0}
 .shopping-plan-content{width:100%;min-width:0}
+.shopping-title-row{align-items:center}
 .shopping-title-row>.detail-name{display:block;font-size:14px;line-height:1.45}
 .shopping-title-row>.detail-name>small{display:inline;font-size:11px;margin:0}
 .shopping-heading-end{display:flex;align-items:center;justify-content:flex-end;
   flex:none;gap:9px;margin-left:auto;min-width:0}
 .shopping-heading-end :deep(.hf-status){flex:none;margin-top:0}
 .shopping-heading-end .shopping-ledger-icon{display:inline-grid;place-items:center;
-  position:relative;flex:none;width:32px;height:32px;min-width:32px;min-height:32px;
+  position:relative;flex:none;width:24px;height:24px;min-width:24px;min-height:24px;
   padding:0;border:0;border-radius:8px;background:transparent;
   color:#789487;box-shadow:none;touch-action:manipulation}
 .shopping-heading-end .shopping-ledger-icon.is-linked{color:var(--ui-brand,#357b5c)}
 .shopping-heading-end .shopping-ledger-icon::before{
-  content:'';position:absolute;inset:-6px}
+  content:'';position:absolute;inset:-10px}
 .shopping-heading-end .shopping-ledger-icon:focus-visible{
   outline:2px solid #43866a;outline-offset:2px}
 .shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
-  gap:7px;min-width:0;margin-top:2px}
+  gap:7px;min-width:0;margin-top:0}
 .shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
-  line-height:1.5;overflow-wrap:anywhere}
+  line-height:1.4;overflow-wrap:anywhere}
 .shopping-meta-row .shopping-more-trigger{flex:none;position:relative;
-  width:28px;min-width:28px;height:28px;min-height:28px;
+  width:24px;min-width:24px;height:24px;min-height:24px;
   padding:0;margin-left:auto;border-radius:6px}
 .shopping-meta-row .shopping-more-trigger::before{
-  content:'';position:absolute;inset:-8px}
+  content:'';position:absolute;inset:-10px}
 .shopping-handler-row{display:flex;align-items:center;justify-content:space-between;
   gap:6px;min-width:0;margin-top:0}
 .shopping-handler-row>.shopping-assignees{display:block;flex:1;min-width:0;
-  margin:0;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  margin:0;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
   justify-content:flex-end;flex:none;max-width:none;gap:5px;
   flex-wrap:nowrap;margin-left:auto}
