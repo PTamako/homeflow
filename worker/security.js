@@ -98,8 +98,12 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0042_shopping_dual_assignee.sql') AS required_migration_ready,
+       WHERE name='0044_trip_reward_snapshot.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='trip_completion_rewards') AS travel_view_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trip_reward_events') AS travel_events_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
+       ('trip_reward_award_on_completion','trip_reward_reverse_on_reopen')) AS travel_triggers_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
        AND name='idx_today_actions_original') AS action_index_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
@@ -144,6 +148,9 @@ export async function verifiedDatabase(env) {
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
       Number(identity.lottery_migration_ready)===1 &&
+      Number(identity.travel_view_ready)===1 &&
+      Number(identity.travel_events_ready)===1 &&
+      Number(identity.travel_triggers_ready)===2 &&
       Number(identity.joint_credits_ready)===1 &&
       Number(identity.shopping_joint_ready)===1 &&
       Number(identity.shopping_second_ready)===1 &&
