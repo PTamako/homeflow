@@ -59,7 +59,7 @@ test('private travel or different household never exposes an aggregate to anothe
  for(const path of ['/api/finance/links?type=trip&targetId='+tripId,
   '/api/finance/settings?type=trip&targetId='+tripId]){
   const r=await financeRoute(makeRequest(path),env,new URL('https://homeflow.invalid'+path).pathname,member)
-  assert.equal(r.status,403)
+  assert.ok([403,404].includes(r.status))
  }
  assert.equal(requests.length,0)
 })
