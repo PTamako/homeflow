@@ -98,7 +98,7 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0044_trip_reward_snapshot.sql') AS required_migration_ready,
+       WHERE name='0045_trip_rewards_no_cap.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='trip_completion_rewards') AS travel_view_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trip_reward_events') AS travel_events_ready,

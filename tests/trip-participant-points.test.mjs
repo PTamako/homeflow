@@ -107,14 +107,43 @@ test('private travel is creator-only and counts as private experience, never fam
  }finally{sqlite.close()}
 })
 
-test('year-long travel is capped at 120 reward days per person',async()=>{
+test('a trip lasting 30 days completes normally; 31 days requires explicit second confirmation',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  const thirty=await call(db,owner,'/api/trips','POST',{
+   title:'30天旅程',startDate:'2026-10-01',endDate:'2026-10-30',visibility:'household'})
+  const thirtyPath='/api/trips/'+thirty.body.id
+  assert.equal((await call(db,owner,thirtyPath,'PATCH',{status:'completed'})).status,200)
+  assert.equal((await points(db,owner)).travelBonusPoints,300)
+  const thirtyOne=await call(db,owner,'/api/trips','POST',{
+   title:'31天旅程',startDate:'2026-10-01',endDate:'2026-10-31',visibility:'household'})
+  const path='/api/trips/'+thirtyOne.body.id
+  const blocked=await call(db,owner,path,'PATCH',{status:'completed'})
+  assert.equal(blocked.status,409)
+  assert.deepEqual(blocked.body,{error:'trip_long_confirmation_required',days:31,pointsPerPerson:310})
+  assert.equal((await points(db,owner)).travelBonusPoints,300,'first prompt must not credit points')
+  assert.equal((await call(db,owner,path,'PATCH',{status:'completed',longTripConfirmed:'true'})).status,409,
+    'string is not an explicit boolean acknowledgement')
+  assert.equal((await call(db,owner,path,'PATCH',{status:'completed',longTripConfirmed:true})).status,200)
+  assert.equal((await points(db,owner)).travelBonusPoints,610)
+  assert.equal((await points(db,partner)).travelBonusPoints,610)
+  assert.equal((await call(db,owner,path,'PATCH',{status:'completed'})).status,200,
+    're-saving an already completed trip must not prompt again')
+  assert.equal((await points(db,owner)).travelBonusPoints,610,'retry is idempotent')
+ }finally{sqlite.close()}
+})
+test('a 365-day trip earns all 3650 points per member after explicit confirmation',async()=>{
  const {db,sqlite}=fixture()
  try{
   const created=await call(db,owner,'/api/trips','POST',{
    title:'长期旅行',startDate:'2025-01-01',endDate:'2025-12-31',visibility:'household'})
-  assert.equal((await call(db,owner,'/api/trips/'+created.body.id,'PATCH',{status:'completed'})).status,200)
-  assert.equal((await points(db,owner)).travelBonusPoints,1200)
-  assert.equal((await points(db,partner)).travelBonusPoints,1200)
+  const path='/api/trips/'+created.body.id
+  assert.equal((await call(db,owner,path,'PATCH',{status:'completed'})).status,409)
+  assert.equal((await call(db,owner,path,'PATCH',{status:'completed',longTripConfirmed:true})).status,200)
+  assert.equal((await points(db,owner)).travelBonusPoints,3650)
+  assert.equal((await points(db,partner)).travelBonusPoints,3650)
+  assert.equal(sqlite.prepare('SELECT points FROM trip_reward_events WHERE trip_id=? LIMIT 1')
+    .get(created.body.id).points,3650)
  }finally{sqlite.close()}
 })
 test('trip cannot be reopened or deleted after members have spent the credited points',async()=>{

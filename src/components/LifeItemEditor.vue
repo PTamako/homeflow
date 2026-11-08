@@ -3,6 +3,7 @@ import DateField from './DateField.vue'
 import MoneyInput from './MoneyInput.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import {reactive,ref,computed,watch} from 'vue'
+import {tripDurationDays,longTripNeedsConfirmation,longTripWarning} from '../trip-reward-confirmation.mjs'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
 const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string}>()
@@ -90,9 +91,20 @@ async function save(){
   error.value='指派给其他家庭账号时，请选择家庭共享';busy.value=false;return
  }
  try{
+  const completingTrip=props.kind==='trips'&&form.status==='completed'&&data.status!=='completed'
+  let longTripConfirmed=false
+  if(completingTrip){
+    if(!confirm('确定旅行已结束并结算参与人积分吗？'))return
+    const days=tripDurationDays(form.startOn,form.endOn)
+    if(longTripNeedsConfirmation(days)){
+      if(!confirm(longTripWarning(days)))return
+      longTripConfirmed=true
+    }
+  }
   const response=await fetch('/api/'+props.kind+'/'+encodeURIComponent(props.item.id),{
    method:'PATCH',headers:{'content-type':'application/json'},credentials:'same-origin',
-   body:JSON.stringify({...values(),expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null,
+   body:JSON.stringify({...values(),...(longTripConfirmed?{longTripConfirmed:true}:{}),
+    expectedUpdatedAt:props.item.updated_at||props.item.updatedAt||null,
     ...(['shopping','memories'].includes(props.kind)?{
       expectedSnapshot:JSON.stringify((props.kind==='shopping'?
         ['title','quantity','due_on','completed_at','ledger_entry_id','assigned_to','second_assignee_user_id']:
@@ -105,6 +117,7 @@ async function save(){
        forbidden:'只能编辑自己创建的项目',
        trip_reward_locked_reopen_first:'旅行已结算积分。如需修改日期或参与人，请先撤销完成；已消费的积分可能需要先补足。',
        trip_reward_insufficient_balance:'积分已消费，余额不足以撤销旅行结算。请先补足可用积分。',
+       trip_long_confirmation_required:'旅行超过30天，请重新确认旅行日期后再完成。',
        trip_edit_conflict:'该旅行在其他设备已修改，请刷新后重试'
      }
      throw Error(messages[String(result.error)]||result.error||'保存失败')
