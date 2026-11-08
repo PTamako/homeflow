@@ -134,14 +134,19 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     if(filters?.invalid)return json({error:'invalid_input'},400)
     if(filters){
       const dueSort=filters.scope==='active'&&new URL(request.url).searchParams.get('order')==='due'
-      const column=filters.scope==='history'?'completed_at':'created_at'
+      // Completed tasks and expired incomplete tasks share one history timeline.
+      // Missing a deadline is a virtual missed state, not a second database write.
+      const historySort="COALESCE(completed_at,due_on||'T23:59:59Z')"
+      const column=filters.scope==='history'?historySort:'created_at'
       const sortColumn=dueSort?"COALESCE(due_on,'9999-12-31')":column
       const where=["household_id=?1","deleted_at IS NULL",
         "(visibility='household' OR creator_user_id=?2)"]
       const args=[household,who]
-      if(filters.scope==='active')where.push("completed_at IS NULL")
+      // Once a deadline has elapsed, an unfinished or reopened task is missed.
+      // It no longer belongs to Active and must not be checked again from Today.
+      if(filters.scope==='active')where.push("completed_at IS NULL AND (due_on IS NULL OR due_on>=date('now','+9 hours'))")
       if(filters.scope==='unscheduled')where.push('completed_at IS NULL AND due_on IS NULL')
-      if(filters.scope==='history')where.push("completed_at IS NOT NULL")
+      if(filters.scope==='history')where.push("(completed_at IS NOT NULL OR (completed_at IS NULL AND due_on<date('now','+9 hours')))")
       const window=monthWindow(filters.year,filters.month)
       if(window){
         where.push(column+'>=?'+(args.length+1)+' AND '+column+'<?'+(args.length+2))
@@ -158,12 +163,15 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
         bonus_points AS bonusPoints,
         subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
         completed_at AS completedAt,remind_enabled AS remindEnabled,
-        created_at AS createdAt,updated_at AS updatedAt FROM tasks
+        created_at AS createdAt,updated_at AS updatedAt,
+        `+(filters.scope==='history'?historySort+' AS historySortAt':'NULL AS historySortAt')+` FROM tasks
         WHERE `+where.join(' AND ')+' ORDER BY '+sortColumn+(dueSort?' ASC,id ASC':' DESC,id DESC')+' LIMIT ?'+(args.length+1)
       const {results}=await db.prepare(sql).bind(...args,filters.limit+1).all()
-      const rows=results||[],items=rows.slice(0,filters.limit),last=items[items.length-1]
+      const rows=results||[],items=rows.slice(0,filters.limit).map(row=>({
+        ...row,missed:!row.completedAt&&!!row.dueOn
+      })),last=rows[items.length-1]
       return json({items,nextCursor:rows.length>filters.limit&&last?
-        (dueSort?last.dueOn||'9999-12-31':filters.scope==='history'?last.completedAt:last.createdAt)+'|'+last.id:null})
+        (dueSort?last.dueOn||'9999-12-31':filters.scope==='history'?last.historySortAt:last.createdAt)+'|'+last.id:null})
     }
     const url=new URL(request.url)
     const mode=url.searchParams.get('status')||'open'
