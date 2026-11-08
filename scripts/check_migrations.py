@@ -49,7 +49,8 @@ MIGRATIONS=[
     "0041_dual_assignees.sql",
     "0042_shopping_dual_assignee.sql",
     "0043_trip_participant_rewards.sql",
-    "0044_trip_reward_snapshot.sql"
+    "0044_trip_reward_snapshot.sql",
+    "0045_trip_rewards_no_cap.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
