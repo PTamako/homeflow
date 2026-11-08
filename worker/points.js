@@ -99,7 +99,7 @@ export async function pointsRoute(request,db,session){
       +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private' AND s.earned_at>=?3 AND s.earned_at<?4),0)
       +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=?1 AND tr.user_id=?2 AND tr.visibility='private' AND tr.awarded_at>=?3 AND tr.awarded_at<?4),0) AS privateMonthPoints
       FROM completion_points WHERE household_id=?1 AND earner_user_id=?2
-        AND visibility='private'`).bind(h,u,begin,end).first(),
+        AND visibility='private' AND ${pointYearPredicate('earned_at')}`).bind(h,u,begin,end).first(),
     db.prepare(`SELECT
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND ${pointYearPredicate('earned_at')})
@@ -115,7 +115,7 @@ export async function pointsRoute(request,db,session){
       + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
       + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
       + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
-      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')}) AS householdEarned,
+      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('awarded_at')}) AS householdEarned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')})
       + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')})
@@ -124,18 +124,18 @@ export async function pointsRoute(request,db,session){
       (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS travelBonus,
       (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2 AND month_on>=strftime('%Y-01','now','+9 hours')) AS achievementBonus,
       (SELECT COALESCE(SUM(prize_points-cost_points),0) FROM household_lottery_draws
-        WHERE household_id=?1 AND user_id=?2) AS lotteryNetPoints,
+        WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('created_at')}) AS lotteryNetPoints,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')}) AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
-        WHERE household_id=?1 AND user_id=?2) AS bonus,
+        WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS bonus,
       (SELECT COUNT(*) FROM weekly_challenge_awards
-        WHERE household_id=?1 AND user_id=?2) AS weeksWon,
+        WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS weeksWon,
       (SELECT COALESCE(SUM(points_spent),0) FROM reward_redemptions
-        WHERE household_id=?1 AND redeemed_by=?2) AS directSpent,
+        WHERE household_id=?1 AND redeemed_by=?2 AND ${pointYearPredicate('created_at')}) AS directSpent,
       (SELECT COALESCE(SUM(c.points),0) FROM reward_group_contributions c
         JOIN reward_group_orders g ON g.id=c.order_id
         WHERE c.household_id=?1 AND c.user_id=?2
-          AND g.status<>'cancelled') AS groupSpent,
+          AND g.status<>'cancelled' AND ${pointYearPredicate('c.created_at')}) AS groupSpent,
       (SELECT COUNT(*) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
         AND visibility='household' AND earned_at>=?3 AND earned_at<?4 AND ${pointYearPredicate('earned_at')}) AS weekDone,
