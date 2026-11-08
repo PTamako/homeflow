@@ -622,7 +622,7 @@ function tripDays(item:Row){
  const days=Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000)+1
  return Math.max(0,days)
 }
-function tripRewardPerPerson(item:Row){return tripDays(item)*10}
+function tripRewardPerPerson(item:Row){return Math.min(120,tripDays(item))*10}
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
@@ -936,7 +936,7 @@ async function completeTrip(){
   tripDetail.value=null
   await fetchMode()
   notify('旅行已完成，参与人积分已结算，可在历史查看')
- }catch(e){const code=(e as Error).message;error.value=code==='trip_not_finished'?'请在旅行结束日期当天或之后确认完成':code==='trip_dates_required_for_completion'?'请先填写旅行的开始和结束日期':code}
+ }catch(e){const code=(e as Error).message;error.value=code==='trip_not_finished'?'请在旅行结束日期当天或之后确认完成':code==='trip_dates_required_for_completion'?'请先填写旅行的开始和结束日期':code==='trip_reward_insufficient_balance'?'旅行奖励已用于兑换或抽奖，余额不足以撤销本次结算':code==='trip_reward_locked_reopen_first'?'积分已结算，请先撤销完成再修改参与人或旅行日期':code}
  finally{busy.value=false}
 }
 function editTripItem(item:Row){
@@ -1700,7 +1700,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · 参与 {{ tripParticipantNames(t) }} · <StatusBadge :code="t.status" /></small></div>
                 <div class="trip-card-actions">
                   <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
-                  <button v-if="isOwner" type="button" class="life-link trip-finance-trigger"
+                  <button v-if="isOwner||t.visibility==='household'" type="button" class="life-link trip-finance-trigger"
                     @click.stop="toggleFinance('trip',t.id)">费用</button>
                   <button v-if="canEdit(t)&&t.status==='completed'"
                     type="button" class="routine-more-trigger"
@@ -1740,7 +1740,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 </EditBottomSheet>
             <LifeItemEditor v-if="editing?.kind==='trips'&&editing.item.id===t.id"
               kind="trips" :item="t" :profiles="props.profiles" :members="props.members" :user-id="props.userId" @saved="changed" @cancel="editing=null"/>
-            <EditBottomSheet v-if="isOwner&&financeDetail?.kind==='trip'&&financeDetail.id===t.id" title="旅行 · 费用与调整额" @close="financeDetail=null">
+            <EditBottomSheet v-if="(isOwner||t.visibility==='household')&&financeDetail?.kind==='trip'&&financeDetail.id===t.id" title="旅行 · 费用与调整额" @close="financeDetail=null">
 <FinancePanel
               :key="'trip-finance-'+t.id" :trips="trips" :goals="goals" :owner="isOwner"
               embedded-kind="trip" :embedded-id="t.id"/>

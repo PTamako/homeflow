@@ -1,5 +1,6 @@
 import {iso,json,readBody,sha256,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
+import {householdWalletSql} from './points-wallet.js'
 const idOk=x=>typeof x==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,99}$/.test(x)
 const textOk=(x,n=500)=>typeof x==='string'&&x.length>0&&x.length<=n
 const dateOk=x=>typeof x==='string'&&x!==''&&validDate(x)
@@ -7,6 +8,17 @@ const amountOk=x=>Number.isSafeInteger(x)&&x>=0&&x<=100000000000
 const list=(x,max)=>Array.isArray(x)&&x.length<=max
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x)
 const todayJst=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
+// Rewards are immutable snapshots; prevent reversals that would overdraw the wallet.
+const canReverseTrip=async(db,tripId)=>{
+  const {results}=await db.prepare(`SELECT e.points,
+    ${householdWalletSql('e.household_id','e.user_id')} AS available
+    FROM trip_reward_events e WHERE e.trip_id=?1 AND e.reversed_at IS NULL`)
+    .bind(tripId).all()
+  return (results||[]).every(row=>Number(row.available)>=Number(row.points))
+}
+const reverseGuard=` AND NOT EXISTS (SELECT 1 FROM trip_reward_events e
+  WHERE e.trip_id=trips.id AND e.reversed_at IS NULL
+    AND (${householdWalletSql('e.household_id','e.user_id')})<e.points)`
 const readParticipants=row=>JSON.parse(row.participant_user_ids||row.participantJson||'[]')
 const exposeTrip=row=>{
   const {participantJson,...rest}=row
@@ -317,6 +329,14 @@ export async function tripsRoute(request,db,path,session){
         return json({error:'invalid_input'},400)
       if(b.status==='completed'&&(!start||!end))return json({error:'trip_dates_required_for_completion'},400)
       if(b.status==='completed'&&end>todayJst())return json({error:'trip_not_finished'},400)
+       // Never silently rewrite already-settled dates or the paid participant list.
+       if(trip.status==='completed'&&trip.trip_rewarded_at&&b.status==='completed'&&
+         (start!==trip.start_on||end!==trip.end_on||
+          JSON.stringify(participants)!==JSON.stringify(readParticipants(trip))))
+         return json({error:'trip_reward_locked_reopen_first'},409)
+       const reversing=trip.status==='completed'&&b.status!=='completed'
+       if(reversing&&!await canReverseTrip(db,id))
+         return json({error:'trip_reward_insufficient_balance'},409)
       let plan=trip.plan_json,hash=trip.import_hash
       if(plan){
         try{
@@ -332,7 +352,7 @@ export async function tripsRoute(request,db,path,session){
       const rewardedAt=b.status==='completed'?(trip.status==='completed'?trip.trip_rewarded_at:timestamp):null
       const updated=await db.prepare(`UPDATE trips SET title=?1,destination=?2,start_on=?3,end_on=?4,budget_amount=?5,
         status=?6,plan_json=?7,import_hash=?8,updated_at=?9,participant_user_ids=?14,trip_rewarded_at=?15
-        WHERE id=?10 AND household_id=?11 AND created_by=?12 AND updated_at=?13`)
+        WHERE id=?10 AND household_id=?11 AND created_by=?12 AND updated_at=?13${reversing?reverseGuard:''}`)
         .bind(title,destination,start,end,budget,b.status,plan,hash,timestamp,id,h,u,trip.updated_at,JSON.stringify(participants),rewardedAt).run()
       if(!updated.meta?.changes)return json({error:'trip_edit_conflict'},409)
       if(trip.wish_id&&b.status==='completed'){
@@ -349,7 +369,10 @@ export async function tripsRoute(request,db,path,session){
     }
     if(request.method==='DELETE'){
       if(trip.created_by!==u)return json({error:'forbidden'},403)
-      const result=await db.prepare('UPDATE trips SET deleted_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4 AND deleted_at IS NULL')
+      if(trip.status==='completed'&&!await canReverseTrip(db,id))
+         return json({error:'trip_reward_insufficient_balance'},409)
+       const result=await db.prepare('UPDATE trips SET deleted_at=?1 WHERE id=?2 AND household_id=?3 AND created_by=?4 AND deleted_at IS NULL'+
+         (trip.status==='completed'?reverseGuard:''))
         .bind(iso(),id,h,u).run()
       return result.meta?.changes?json({ok:true,trashed:true}):json({error:'not_found'},404)
     }

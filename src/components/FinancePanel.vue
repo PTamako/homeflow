@@ -20,7 +20,11 @@ const {toast,notify,clear:clearToast}=usePageToast()
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const canModify=computed(()=>props.owner||props.canAdjust===true)
-const total=computed(()=>links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
+const sanitizedTripTotal=ref(0),sanitizedTripCount=ref(0)
+const total=computed(()=>!props.owner&&kind.value==='trip'
+  ?sanitizedTripTotal.value:links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
+const linkedTripCount=computed(()=>!props.owner&&kind.value==='trip'
+  ?sanitizedTripCount.value:links.value.filter(x=>x.entry).length)
 const adjustment=ref(0),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
 const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
@@ -131,7 +135,7 @@ async function settleRecurringGoal(){
  finally{confirmBusy.value=false}
 }
 async function detect(){
-  if(!props.owner&&props.embeddedKind!=='goal')return
+  if(!props.owner&&!['goal','trip'].includes(props.embeddedKind||''))return
   try{
     const status=await api('/finance/status')
     available.value=!!status.connected;checked.value=true
@@ -197,11 +201,12 @@ async function saveSettings(){
   finally{busy.value=false}
 }
 async function refreshLinks(){
-  links.value=[]
+  links.value=[];sanitizedTripTotal.value=0;sanitizedTripCount.value=0
   if(!available.value||!target.value||kind.value!=='trip')return
   try{
     const data=await api('/finance/links?type='+encodeURIComponent(kind.value)+'&targetId='+encodeURIComponent(target.value))
     links.value=data.items||[]
+    if(data.summaryOnly){sanitizedTripTotal.value=Number(data.total||0);sanitizedTripCount.value=Number(data.linkedCount||0)}
   }catch(e){error.value=(e as Error).message}
 }
 async function loadCandidates(more=false){
@@ -277,7 +282,7 @@ onMounted(()=>{
 })
 </script>
 <template>
-  <section v-if="owner||embeddedKind==='goal'" class="finance-card" :class="{embedded:!!embeddedId}">
+  <section v-if="owner||embeddedKind==='goal'||embeddedKind==='trip'" class="finance-card" :class="{embedded:!!embeddedId}">
     <h2 class="finance-title"><AppIcon name="wallet" :size="20" /> {{ embeddedId?(kind==='trip'?'旅行支出':'储值收支'):'记账本收支' }}</h2>
     <div v-if="!checked" class="hint">正在检查连接状态…</div>
     <p v-else-if="!available" class="hint">
@@ -296,7 +301,7 @@ onMounted(()=>{
       </div>
       <template v-if="target">
         <div v-if="kind==='trip'" class="summary trip-finance-summary">
-          <div class="trip-finance-stat"><span>已关联支出 · {{ links.filter(x=>x.entry).length }} 笔</span><strong>{{ fmt(total) }}</strong></div>
+          <div class="trip-finance-stat"><span>已关联支出 · {{ linkedTripCount }} 笔</span><strong>{{ fmt(total) }}</strong></div>
           <div class="trip-finance-stat"><span>手动调整</span><b>{{ signed(Number(adjustment)||0) }}</b></div>
           <div class="trip-finance-stat trip-finance-total"><span>旅行实际开销</span><strong>{{ fmt(actualWithAdjustment) }}</strong></div>
         </div>
@@ -310,7 +315,8 @@ onMounted(()=>{
           <small v-if="periodFuture"><StatusBadge code="not_started" label="期间尚未开始" /></small>
           <small v-else>仅为收支估算，不代表实际存款。</small>
         </div>
-        <label class="adjustment-label">调整额（日元，可为负数）
+        <small v-if="kind==='trip'&&!owner" class="hint">共享旅行只显示已关联消费的合计，原始账单仍仅管理员可查看。</small>
+        <label v-if="canModify" class="adjustment-label">调整额（日元，可为负数）
           <MoneyInput v-model="adjustment" :min="-100000000000" :max="100000000000" allow-negative :disabled="!canModify" />
         </label>
         <div v-if="recurringGoal" class="fields">
@@ -334,7 +340,7 @@ onMounted(()=>{
             <small>状态：<StatusBadge :code="periodDisplay.status.startsWith('未开始')?'not_started':periodDisplay.status.startsWith('进行中')?'active':'verification_pending'" :label="periodDisplay.status.split(' · ')[0]" /><template v-if="periodDisplay.status.includes(' · ')"> · {{ periodDisplay.status.split(' · ').slice(1).join(' · ') }}</template></small>
           </div>
         </div>
-        <div v-else class="fields">
+        <div v-else-if="owner||kind==='goal'" class="fields">
           <label>起始日期<DateField v-model="start" :min="kind==='goal'?goalStartOn||undefined:undefined" /></label>
           <label>结束日期<DateField v-model="end" :min="start||undefined" /></label>
         </div>
@@ -343,7 +349,7 @@ onMounted(()=>{
           <button v-if="kind==='goal'" type="button" :disabled="netBusy||busy" @click="loadGoalNet">
             {{ netBusy?'读取中…':'刷新收支差额' }}
           </button>
-          <button v-else type="button" :disabled="busy" @click="loadCandidates(false)">{{ busy?'查询中…':'选择家計簿账单' }}</button>
+          <button v-else-if="owner" type="button" :disabled="busy" @click="loadCandidates(false)">{{ busy?'查询中…':'选择家計簿账单' }}</button>
         </div>
         <div v-if="kind==='goal'&&owner" class="goal-completion-panel">
           <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="已确认达标" /></p>
@@ -355,7 +361,7 @@ onMounted(()=>{
           </button>
           <small class="hint">请先保存调整，再核验。</small>
         </div>
-        <template v-if="kind==='trip'">
+        <template v-if="kind==='trip'&&owner">
           <h3 v-if="links.length" class="trip-finance-list-title">已关联 · {{ links.length }} 笔</h3>
           <div v-for="row in visibleLinks" :key="row.linkId" class="line">
             <span><template v-if="row.entry">{{ row.entry.date }}</template><StatusBadge v-else code="deleted" label="原账目已删除" /> · {{ row.entry?.merchant||('明细 #'+row.entryId) }}

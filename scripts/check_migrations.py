@@ -48,7 +48,8 @@ MIGRATIONS=[
     "0041_household_lottery.sql",
     "0041_dual_assignees.sql",
     "0042_shopping_dual_assignee.sql",
-    "0043_trip_participant_rewards.sql"
+    "0043_trip_participant_rewards.sql",
+    "0044_trip_reward_snapshot.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -64,6 +65,7 @@ assert "monthly_achievement_credits" in views, "Monthly effective payout view mi
 assert "dual_completion_splits" in views, "Dual assignee point sharing view missing"
 assert "shopping_joint_credits" in views, "Shopping joint credits view missing"
 assert "trip_completion_rewards" in views, "Travel completion rewards view missing"
+assert "trip_reward_events" in {x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}, "Travel immutable settlement table missing"
 tables={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 required={"users","households","household_members","family_profiles","tasks","anniversaries","routines",
           "routine_marks","wishes","trips","goals","shopping_items","memories","media_assets","finance_links","push_subscriptions","notification_deliveries","pet_health_records","finance_target_settings","goal_period_adjustments","plan_completion_marks","goal_period_settlements","account_recovery_codes","shopping_expense_links","reminder_snoozes","reminder_preferences","reminder_item_preferences","today_dismissals","notification_inbox","today_plan_actions","household_revisions","member_revisions","completion_points","reward_items","reward_redemptions",
@@ -86,7 +88,7 @@ secondary_indexes={
   "idx_goal_settlements_goal_period","idx_completion_points_member","idx_reward_items_household",
   "idx_reward_redemptions_user","idx_reward_redemptions_stock",
   "idx_weekly_challenge_member","idx_reward_group_household",
-  "idx_reward_group_reward","idx_reward_group_contributions_order","idx_point_adjustments_user","idx_shopping_points_user","idx_goal_rewards_member","idx_routine_assignment_due","idx_routine_assignment_user","idx_monthly_achievements_member","idx_tasks_second_assignee","idx_routine_second_assignee","idx_shopping_second_assignee","idx_lottery_member_month","idx_lottery_household_history","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
+  "idx_reward_group_reward","idx_reward_group_contributions_order","idx_point_adjustments_user","idx_shopping_points_user","idx_goal_rewards_member","idx_routine_assignment_due","idx_routine_assignment_user","idx_monthly_achievements_member","idx_tasks_second_assignee","idx_routine_second_assignee","idx_shopping_second_assignee","idx_lottery_member_month","idx_lottery_household_history","idx_trip_reward_events_member","idx_trip_reward_events_trip_active","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
@@ -105,7 +107,7 @@ triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shoppin
           "points_goal_met","points_goal_reopened","points_goal_hidden","points_goal_restored",
           "monthly_achievement_task_added","monthly_achievement_task_removed",
           "monthly_achievement_task_visibility","monthly_achievement_week_won",
-          "monthly_achievement_week_revoked"}
+          "monthly_achievement_week_revoked","trip_reward_award_on_completion","trip_reward_reverse_on_reopen"}
 existing_triggers={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
 assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existing_triggers}"
 added_columns={

@@ -99,7 +99,7 @@ test('shared history actions are available to both users; private edits and sett
  assert.match(life,/const results=await Promise\.allSettled\(/)
  assert.match(life,/const goalArchivePath=planScope\.value==='history'/)
  assert.match(life,/<button type="button" class="goal-finance-action"/)
- assert.match(finance,/<section v-if="owner\|\|embeddedKind==='goal'"/)
+ assert.match(finance,/<section v-if="owner\|\|embeddedKind==='goal'\|\|embeddedKind==='trip'"/)
  assert.match(finance,/v-if="canModify" type="button" :disabled="busy" @click="saveSettings"/)
  assert.match(finance,/v-if="kind==='goal'&&owner" class="goal-completion-panel"/)
 })

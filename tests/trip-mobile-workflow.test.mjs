@@ -34,12 +34,12 @@ test('itinerary removes duplicated time and never prints internal packing owner 
 })
 
 test('many travel expense links are supported without duplicate ledger writes',()=>{
-  assert.match(finance, /已关联支出 · \{\{ links\.filter/)
+  assert.match(finance, /已关联支出 · \{\{ linkedTripCount/)
   assert.match(finance, /v-for="row in visibleLinks"/)
   assert.match(finance, /@click="linkEntry\(row\)"/)
   assert.match(financeApi, /INSERT OR IGNORE INTO finance_links/)
   assert.doesNotMatch(financeApi, /INSERT INTO entries|INSERT INTO ledger_entries/)
-  assert.match(financeApi, /if\(!owner&&path!=='\/api\/finance\/status'&&\!sharedGoalRead\)/)
+  assert.match(financeApi, /if\(!owner&&path!=='\/api\/finance\/status'&&!sharedGoalRead&&!sharedTripRead\)/)
 })
 
 test('mobile participant choices remain compact and readable on iPhone in both sheets',()=>{
