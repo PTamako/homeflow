@@ -30,6 +30,19 @@ test('leaderboards show separate first-place honors on their respective member t
  assert.match(section,/累计贡献/)
 })
 
+test('contribution leader glows green, while wallet leader gold has visual priority',()=>{
+ const css=panel.slice(panel.indexOf('.points-name{'),panel.indexOf('.points-score{'))
+ const champion=css.slice(css.indexOf('.points-member--champion{'),css.indexOf('.points-member--wealthy{'))
+ const gold=css.slice(css.indexOf('.points-member--wealthy{'),css.indexOf('.points-member--wealthy .points-available{'))
+ assert.match(champion,/border:2px solid transparent;/)
+ assert.match(champion,/linear-gradient\(125deg,[^;]*#6cf03a[^;]*#42df33[^;]*\) border-box;/)
+ assert.match(champion,/box-shadow:[^;]*#89f64a66/)
+ assert.match(gold,/linear-gradient\(125deg,[^;]*#b48129[^;]*\) border-box;/)
+ assert.match(gold,/box-shadow:/)
+ assert.ok(css.indexOf('.points-member--champion{')<css.indexOf('.points-member--wealthy{'),
+  'equal-specificity gold frame must be defined after the green frame to win for a double leader')
+})
+
 test('wallet shown for every member uses the exact spending wallet SQL',()=>{
  assert.match(points,/householdWalletSql\('m\.household_id','m\.user_id'\)/)
  assert.match(points,/availablePoints:Math\.max\(0,Number\(row\.availablePoints\)\|\|0\)/)
