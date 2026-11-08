@@ -21,9 +21,11 @@ test('unassigned and self-assigned periods never reserve bonuses',()=>{
  assert.deepEqual(parseRoutineAssignmentBonus(99,false),{valid:true,bonus:0})
 })
 
-test('period assignment uses explicit tap handler and numeric-safe parsing',()=>{
+test('period assignment only requires extra points for a sole other assignee',()=>{
  const source=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
- assert.match(source,/parseRoutineAssignmentBonus\(routineAssignBonus\.value,other\)/)
+ assert.match(source,/parseRoutineAssignmentBonus\(routineAssignBonus\.value,other&&!routineAssignSecond\.value\)/)
  assert.doesNotMatch(source,/routineAssignBonus\.value\.trim\(\)/)
  assert.match(source,/@click\.stop="saveRoutineAssignment"/)
+ assert.match(source,/v-if="routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId"/)
+ assert.match(source,/if\(routineAssignSecond.value\|\|!routineAssignMember.value\|\|routineAssignMember.value===props.userId\)/)
 })

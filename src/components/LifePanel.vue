@@ -88,8 +88,7 @@ async function openRoutineAssignment(r:Row){
 function routineAssignMemberChanged(){
  routineAssignError.value=''
  if(!routineAssignMember.value||routineAssignSecond.value===routineAssignMember.value)routineAssignSecond.value=''
- if((!routineAssignMember.value||routineAssignMember.value===props.userId)&&
-    (!routineAssignSecond.value||routineAssignSecond.value===props.userId))
+ if(routineAssignSecond.value||!routineAssignMember.value||routineAssignMember.value===props.userId)
    routineAssignBonus.value=''
 }
 async function saveRoutineAssignment(){
@@ -100,9 +99,9 @@ async function saveRoutineAssignment(){
    (routineAssignSecond.value&&routineAssignSecond.value!==props.userId))
  // Vue v-model on an input[type=number] produces a number at runtime.
  // Calling .trim() on that number used to throw before the request began.
- const parsedBonus=parseRoutineAssignmentBonus(routineAssignBonus.value,other)
+ const parsedBonus=parseRoutineAssignmentBonus(routineAssignBonus.value,other&&!routineAssignSecond.value)
  if(!parsedBonus.valid){
-  routineAssignError.value='指定其他家人时，请填写 1～10000 的额外奖励积分';return
+  routineAssignError.value='仅指定一名其他家人时，请填写 1～10000 的额外奖励积分';return
  }
  const bonus=parsedBonus.bonus
  if(routineAssignSecond.value&&routineAssignSecond.value===routineAssignMember.value){
@@ -122,7 +121,8 @@ async function saveRoutineAssignment(){
   const code=(e as Error).message
   const hints:Record<string,string>={
    insufficient_points_or_period_resolved:'家庭可用积分不足，或本期已完成／跳过',
-   positive_integer_bonus_required:'指定其他家人时，额外奖励积分必须大于 0',
+   positive_integer_bonus_required:'仅指定一名其他家人时，额外奖励积分必须大于 0',
+    dual_assignee_bonus_not_allowed:'两人共同处理时不支持额外奖励积分',
    period_expired:'本期已过期，无法再指派',
    period_already_resolved:'本期已经完成或跳过，无法再指派',
    invalid_period:'本期日期已变化，请重新打开指派',
@@ -336,7 +336,7 @@ async function planCreated(kind:PlanType,id:string,unscheduled=false){
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
-  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceSecondAssignee.value=t.secondAssigneeUserId||'';onceBonus.value=Number(t.bonusPoints||0);onceVisibility.value=t.visibility
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceSecondAssignee.value=t.secondAssigneeUserId||'';onceBonus.value=t.secondAssigneeUserId?0:Number(t.bonusPoints||0);onceVisibility.value=t.visibility
 }
 async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
   await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
@@ -348,14 +348,14 @@ async function saveOnce(){
   await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:onceVisibility.value,
     dueOn:onceDate.value||null,assigneeUserId:onceAssignee.value||null,
     secondAssigneeUserId:onceSecondAssignee.value||null,
-    bonusPoints:((onceAssignee.value&&onceAssignee.value!==props.userId)||(onceSecondAssignee.value&&onceSecondAssignee.value!==props.userId))?onceBonus.value:0,
+    bonusPoints:onceVisibility.value==='household'&&onceAssignee.value&&!onceSecondAssignee.value&&onceAssignee.value!==props.userId?onceBonus.value:0,
     subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
     remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
   if(!error.value)onceEditing.value=null
 }
 async function scheduleUnplanned(t:Row){
  await onceChange(t,{title:t.title,notes:t.notes||'',visibility:t.visibility,dueOn:today(),
-   assigneeUserId:t.assigneeUserId||null,secondAssigneeUserId:t.secondAssigneeUserId||null,bonusPoints:Number(t.bonusPoints||0),subjectProfileId:t.subjectProfileId||null,
+   assigneeUserId:t.assigneeUserId||null,secondAssigneeUserId:t.secondAssigneeUserId||null,bonusPoints:t.secondAssigneeUserId?0:Number(t.bonusPoints||0),subjectProfileId:t.subjectProfileId||null,
    healthRecordType:t.healthRecordType||null,remindEnabled:t.remindEnabled!==false,
    expectedUpdatedAt:t.updatedAt})
 }
@@ -1316,15 +1316,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <option v-for="member in (props.members||[])" :key="member.id" :value="member.id"
                         :disabled="member.id===routineAssignMember">{{ memberName(member.id) }}</option>
                     </select>
-                    <small v-if="routineAssignSecond">两人中任一人完成，双方积分各一半。</small>
+                    <small v-if="routineAssignSecond">两人中任一人完成，双方平分基础积分，不设置额外奖励。</small>
                   </label>
-                  <label v-if="(routineAssignMember&&routineAssignMember!==props.userId)||(routineAssignSecond&&routineAssignSecond!==props.userId)">
+                  <label v-if="routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">
                     额外奖励积分（由发布人支付）
                     <input v-model.trim="routineAssignBonus" type="number" inputmode="numeric"
                       min="1" max="10000" step="1" required aria-label="本期额外奖励正整数"
                       placeholder="1～10000" :aria-invalid="!!routineAssignError" @input="routineAssignError=''"/>
                   </label>
-                  <small v-if="routineAssignMember&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
+                  <small v-if="routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
                   <p v-if="routineAssignError" role="alert" class="routine-assignment-error">{{ routineAssignError }}</p>
                   <div class="task-push-actions routine-assignment-actions">
                     <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
@@ -1427,7 +1427,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <label class="once-edit-field">
                 <span>处理人</span>
                 <select v-model="onceAssignee" aria-label="修改任务处理人"
-                  @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null;onceSecondAssignee===onceAssignee?onceSecondAssignee='':null">
+                  @change="onceAssignee&&onceAssignee!==props.userId?onceVisibility='household':null;onceSecondAssignee===onceAssignee?onceSecondAssignee='':null;onceSecondAssignee||onceAssignee===props.userId?onceBonus=0:null">
                   <option value="">未指派</option>
                   <option v-for="member in (props.members||[])" :key="member.id" :value="member.id"
                     :disabled="onceVisibility==='private'&&member.id!==props.userId">
@@ -1437,13 +1437,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               </label>
               <label v-if="onceAssignee&&onceVisibility==='household'" class="once-edit-field">
                 <span>共同处理人（可选）</span>
-                <select v-model="onceSecondAssignee" aria-label="修改第二位处理人">
+                <select v-model="onceSecondAssignee" aria-label="修改第二位处理人" @change="onceSecondAssignee?onceBonus=0:null">
                   <option value="">仅一人负责</option>
                   <option v-for="member in (props.members||[])" :key="member.id" :value="member.id"
                     :disabled="member.id===onceAssignee">{{ memberName(member.id) }}</option>
                 </select>
               </label>
-              <label v-if="onceAssignee&&((onceAssignee!==props.userId)||(onceSecondAssignee&&onceSecondAssignee!==props.userId))&&onceVisibility==='household'" class="once-edit-field">
+              <label v-if="onceAssignee&&!onceSecondAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
                 <span>额外奖励（由发布人积分预留）</span>
                 <input v-model.number="onceBonus" type="number" inputmode="numeric" min="1" max="10000" step="1" required aria-label="额外奖励积分"/>
               </label>

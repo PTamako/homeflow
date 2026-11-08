@@ -48,8 +48,12 @@ export async function routineAssignmentRoute(request,db,session,id,options={}){
      second&&(typeof second!=='string'||second.length>60||second===assignee))
      return json({error:'invalid_assignee'},400)
  const other=assignee!==session.user_id||!!second&&second!==session.user_id
- if((other&&(!Number.isSafeInteger(bonus)||bonus<1||bonus>10000))||
-    (!other&&bonus!==0))
+ if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)
+   return json({error:'positive_integer_bonus_required'},400)
+ // With two assignees, only the ordinary completion points are split.
+ // Extra funded bonuses apply to a single assignee outside the publisher.
+ if(second&&bonus!==0)return json({error:'dual_assignee_bonus_not_allowed'},400)
+ if(!second&&(other?bonus<1:bonus!==0))
    return json({error:'positive_integer_bonus_required'},400)
  if(second){
    const secondary=await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')

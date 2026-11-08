@@ -16,7 +16,10 @@ function validated(body,session) {
   const bonus=body?.bonusPoints??0
   if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)return null
   const assignedOther=!!assignee&&assignee!==session.user_id||!!second&&second!==session.user_id
-  if(assignedOther?(visibility!=='household'||bonus<1):bonus!==0)return null
+  // Joint tasks only split the standard completion points. Extra funded rewards
+  // are reserved solely for a single assignee who is not the publisher.
+  if(second?(visibility!=='household'||bonus!==0):
+    assignedOther?(visibility!=='household'||bonus<1):bonus!==0)return null
   if(reminder!==null&&typeof reminder!=='boolean')return null
   if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
