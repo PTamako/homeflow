@@ -43,8 +43,10 @@ const historyPage=ref(1)
 const historyBusy=ref(false)
 const historyError=ref('')
 let historyRequest=0
-const availableYears=computed(()=>Array.from({length:Math.max(1,historyYear.value-2025)},
- (_,i)=>historyYear.value-i))
+const availableYears=computed(()=>{
+ const latest=new Date(Date.now()+9*3600000).getUTCFullYear()
+ return Array.from({length:Math.max(1,latest-2025)},(_,i)=>latest-i)
+})
 const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===id)?.displayName||'家庭成员'
 const quantityFor=(item:Reward)=>Math.max(1,Math.min(99,Math.trunc(quantityChoice.value[item.id]||1)))
 function stepQuantity(item:Reward,delta:number){
