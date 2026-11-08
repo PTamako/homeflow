@@ -39,7 +39,7 @@ test('many travel expense links are supported without duplicate ledger writes',(
   assert.match(finance, /@click="linkEntry\(row\)"/)
   assert.match(financeApi, /INSERT OR IGNORE INTO finance_links/)
   assert.doesNotMatch(financeApi, /INSERT INTO entries|INSERT INTO ledger_entries/)
-  assert.match(financeApi, /if\(!owner&&path!=='\/api\/finance\/status'&&\!sharedGoalRead\)/)
+  assert.match(financeApi, /if\(!owner&&path!=='\/api\/finance\/status'&&!sharedGoalRead&&!sharedTripRead\)/)
 })
 
 test('mobile participant choices remain compact and readable on iPhone in both sheets',()=>{
