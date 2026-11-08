@@ -11,7 +11,7 @@ test('both current routines and one-time tasks expose full-height swipe surfaces
   const items=[...active.matchAll(/class="plan-task-item" data-swipe-item/g)]
   assert.equal(items.length,2,'only the two active task types receive full height rails')
   assert.match(life,/\.plan-tasks-card \.plan-task-item\[data-swipe-item\]\{padding-block:0\}/)
-  assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-content\)\{padding-block:8px\}/)
+  assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-content\)\{padding-block:5px\}/)
   assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions\)\{align-items:stretch/)
   assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions button\)\{\s*align-self:stretch;height:auto;min-height:0;flex:0 0 72px/)
   assert.doesNotMatch(life,/\.plan-task-item :deep\(\.swipe-actions button\)\{height:min\(72px,100%\)/)
