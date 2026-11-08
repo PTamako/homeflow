@@ -1203,7 +1203,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button v-if="skippedActionCursor" type="button" class="outline" :disabled="skippedActionBusy"
             @click="loadMoreSkippedActions">加载更多</button>
         </section>
-        <section v-if="planType==='all'||planType==='routine'||planType==='unscheduled'" class="life-card plan-tasks-card">
+        <section v-if="planType==='all'||planType==='routine'||(planType==='unscheduled'&&(!visibleShopping.length||visibleTaskRows.length>0))" class="life-card plan-tasks-card">
           <h2 class="life-heading"><AppIcon name="repeat" :size="21" /> {{ planType==='unscheduled'?'待安排事项':'任务／定期计划' }}</h2>
 
           <template v-for="entry in visibleTaskRows" :key="entry.kind+':'+entry.item.id+':'+(entry.item.periodOn||'')">
@@ -1624,7 +1624,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="loadMore('goals')">加载更多目标</button>
 
         </section>
-        <section v-if="planType==='all'||planType==='shopping'||planType==='unscheduled'" class="life-card shopping-plans-card">
+        <section v-if="planType==='all'||planType==='shopping'||(planType==='unscheduled'&&visibleShopping.length>0)" class="life-card shopping-plans-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
