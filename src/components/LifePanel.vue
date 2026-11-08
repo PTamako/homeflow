@@ -20,6 +20,7 @@ import {sortPlanTasks} from '../plan-task-sort.mjs'
 import {activeSwipeId} from '../swipe-state'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
+import {tripDurationDays,longTripNeedsConfirmation,tripPointsPerPerson,longTripWarning} from '../trip-reward-confirmation.mjs'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean;syncRevision?:number}>()
 const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[];planFocusSettled:[requestId:number]}>()
@@ -617,12 +618,10 @@ function tripParticipantNames(item:Row){
    props.members?.find(m=>m.id===id)?.loginName||'家庭成员').join('、')||'未指定'
 }
 function tripDays(item:Row){
- const start=String(item.startOn||item.start_on||''),end=String(item.endOn||item.end_on||'')
- if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end))return 0
- const days=Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000)+1
- return Math.max(0,days)
+ return tripDurationDays(String(item.startOn||item.start_on||''),
+   String(item.endOn||item.end_on||''))
 }
-function tripRewardPerPerson(item:Row){return Math.min(120,tripDays(item))*10}
+function tripRewardPerPerson(item:Row){return tripPointsPerPerson(tripDays(item))}
 let photoUrls:string[]=[]
 let lastTodayValue=''
 function refreshOnResume(){
@@ -930,13 +929,17 @@ async function completeTrip(){
  if(!confirm(unfinished>0
    ?'还有 '+unfinished+' 项行程未勾选，但不影响旅行完成和积分。确定旅行已结束并结算参与人积分吗？'
    :'确定旅行已结束并结算参与人积分吗？'))return
+ const days=tripDays(trip)
+ const needsExtraConfirmation=longTripNeedsConfirmation(days)
+ if(needsExtraConfirmation&&!confirm(longTripWarning(days)))return
  busy.value=true;error.value=''
  try{
-  await api('/trips/'+encodeURIComponent(trip.id),'PATCH',{status:'completed'})
+  await api('/trips/'+encodeURIComponent(trip.id),'PATCH',
+    {status:'completed',...(needsExtraConfirmation?{longTripConfirmed:true}:{})})
   tripDetail.value=null
   await fetchMode()
   notify('旅行已完成，参与人积分已结算，可在历史查看')
- }catch(e){const code=(e as Error).message;error.value=code==='trip_not_finished'?'请在旅行结束日期当天或之后确认完成':code==='trip_dates_required_for_completion'?'请先填写旅行的开始和结束日期':code==='trip_reward_insufficient_balance'?'旅行奖励已用于兑换或抽奖，余额不足以撤销本次结算':code==='trip_reward_locked_reopen_first'?'积分已结算，请先撤销完成再修改参与人或旅行日期':code}
+ }catch(e){const code=(e as Error).message;error.value=code==='trip_not_finished'?'请在旅行结束日期当天或之后确认完成':code==='trip_dates_required_for_completion'?'请先填写旅行的开始和结束日期':code==='trip_reward_insufficient_balance'?'旅行奖励已用于兑换或抽奖，余额不足以撤销本次结算':code==='trip_reward_locked_reopen_first'?'积分已结算，请先撤销完成再修改参与人或旅行日期':code==='trip_long_confirmation_required'?'超过30天的旅行需要再次确认，请重新点击完成':code}
  finally{busy.value=false}
 }
 function editTripItem(item:Row){
