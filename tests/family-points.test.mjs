@@ -27,7 +27,7 @@ function fixture(){
   CREATE TABLE family_profiles (household_id TEXT,member_user_id TEXT,display_name TEXT,archived_at TEXT,created_at TEXT,type TEXT NOT NULL DEFAULT 'person',id TEXT);
   CREATE TABLE tasks (id TEXT PRIMARY KEY,household_id TEXT NOT NULL,creator_user_id TEXT,
     completed_at TEXT,completed_by TEXT,visibility TEXT NOT NULL,deleted_at TEXT,subject_profile_id TEXT,
-    assignee_user_id TEXT,due_on TEXT);
+    assignee_user_id TEXT,due_on TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE shopping_items(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,
     completed_at TEXT,completed_by TEXT,deleted_at TEXT,assigned_to TEXT,due_on TEXT);
   CREATE TABLE goals(id TEXT PRIMARY KEY,household_id TEXT NOT NULL,visibility TEXT NOT NULL,

@@ -343,7 +343,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；旅行结束并确认完成后，每位参与人每天 +10（含出发与结束当天）；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入贡献榜，也不能兑换家庭奖励。贡献分不包括抽奖中奖和抽奖消耗；抽奖只影响可用家庭积分。</p>
+           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；旅行结束并确认完成后，每位参与人每天 +10（含出发与结束当天）；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入贡献榜，也不能兑换家庭奖励。贡献分不包括抽奖中奖和抽奖消耗；抽奖只影响可用家庭积分。每年 1 月 1 日 00:00（日本时间）所有积分、贡献分与 XP 清零，历史兑换记录保留。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
@@ -382,8 +382,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        </div>
        <div class="points-score"><strong>{{ fmt(item.monthPoints) }}</strong><span>本月贡献分</span></div>
        <div class="points-available"><span>可用家庭积分</span><strong>{{ fmt(item.availablePoints) }}</strong></div>
-       <div class="points-level">累计贡献 · Lv.{{ item.level }}</div>
-       <small class="points-details">累计贡献 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
+       <div class="points-level">本年贡献 · Lv.{{ item.level }}</div>
+       <small class="points-details">本年贡献 {{ fmt(item.sharedPoints) }} · 周期 {{ item.routinePoints }}</small>
      </article>
    </div>
    <details v-if="data" class="points-private">
@@ -403,7 +403,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
      <div class="monthly-achievement-heading">
        <b>{{ data.month.replace('-', ' 年 ') }} 月 · 月度成就</b>
-       <small>每月 1 日重置 · 六项全达成共 +100 分，积分与 XP 保留</small>
+       <small>每月 1 日重置成就 · 六项全达成共 +100 分；积分与 XP 每年元旦清零</small>
      </div>
      <div class="badges-grid">
        <div v-for="badge in data.badges" :key="badge.id" class="achievement" :class="{locked:!badge.unlocked}">

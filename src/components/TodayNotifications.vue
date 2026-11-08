@@ -236,6 +236,10 @@ defineExpose({refresh:()=>load(true)})
    </button>
    <button type="button" class="notice-text-button" @click="expanded=!expanded">{{ expanded?'收起':'查看' }}</button>
   </div>
+  <p v-if="todayDate.endsWith('-12-31')" class="annual-points-warning" role="alert">
+    <strong>请在今日内用完所有积分</strong>
+    <small>明日 00:00（日本时间）所有积分、贡献分与成长经验将清零。</small>
+  </p>
   <div v-if="expanded" class="notice-content">
    <div class="notice-tabs" role="group" aria-label="通知分类">
     <button type="button" :aria-pressed="view==='pending'" :class="{active:view==='pending'}"
@@ -259,7 +263,8 @@ defineExpose({refresh:()=>load(true)})
    <p v-else-if="error" class="notice-error" role="alert">{{ error }} <button type="button" @click="load(true)">重试</button></p>
    <p v-else-if="!notices.length" class="notice-empty">今天暂无通知</p>
    <div v-for="item in notices" :id="'today-notification-'+item.id" :key="item.id"
-     :class="['notice-item',{'notice-focused':highlightedId===item.id}]">
+     :class="['notice-item',{'notice-focused':highlightedId===item.id,
+        'notice-item--annual':item.dedupeKey?.startsWith('scheduled:system:annual-points-expiry:')}]">
     <div class="notice-item-top">
      <div class="notice-item-heading">
       <b>{{ notificationTitle(item) }}</b>
@@ -299,6 +304,11 @@ defineExpose({refresh:()=>load(true)})
 </template>
 <style scoped>
 .today-notifications{margin:12px 0;padding:15px 18px;min-width:0}
+.annual-points-warning{display:flex;flex-direction:column;gap:2px;border-left:3px solid #d12d39;
+  background:#fff3f3;border-radius:6px;padding:9px 12px;margin:11px 0 0;color:#b42332;line-height:1.5}
+.annual-points-warning strong{font-size:14px;color:#b42332}
+.annual-points-warning small{font-size:11px;color:#b42332}
+.notice-item--annual .notice-item-heading b,.notice-item--annual p{color:#b42332;font-weight:700}
 .notice-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .notice-expand{display:flex;align-items:center;gap:9px;min-width:0;padding:0;border:0;background:transparent;color:#304a3c;font-size:15px}
 .notice-expand b{white-space:nowrap}

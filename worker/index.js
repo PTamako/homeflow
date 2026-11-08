@@ -22,7 +22,7 @@ import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 import {pointsRoute} from './points.js'
-import {rewardsRoute} from './rewards.js'
+import {rewardsRoute,expireOldRewardPools} from './rewards.js'
 import {lotteryRoute} from './lottery.js'
 import {sendLotteryDrawNotification} from './webpush.js'
 
@@ -131,7 +131,7 @@ export default {
   async scheduled(controller,env,ctx){
     if(!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
-      const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env)])
+      const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env),expireOldRewardPools(env.DB)])
       // These automated writes bypass fetch(); only touched households advance.
       const changed=new Set(jobs.flatMap(job=>job.status==='fulfilled'?
         (job.value?.changedHouseholds||[]):[]))
@@ -143,8 +143,8 @@ export default {
       try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
       // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
-        {job:index===0?'push':'savings',...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
-        {job:index===0?'push':'savings',failed:1,reason:'unexpected'})
+        {job:['push','savings','annual-points-expiry'][index],...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
+        {job:['push','savings','annual-points-expiry'][index],failed:1,reason:'unexpected'})
       console.info('homeflow_daily_jobs',JSON.stringify(summary))
     })())
   }

@@ -1,6 +1,25 @@
-import {householdWalletSql} from './points-wallet.js'
+import {householdWalletSql,pointYearPredicate,pointYearStartSql} from './points-wallet.js'
 import {iso,json,readBody,shortText} from './security.js'
 
+// Prior-year partially funded joint orders are closed without reviving expired balances.
+export async function expireOldRewardPools(db){
+  const {results=[]}=await db.prepare(`SELECT DISTINCT household_id AS householdId
+    FROM reward_group_orders WHERE status='collecting'
+      AND datetime(created_at)<${pointYearStartSql} LIMIT 500`).all()
+  let expiredPools=0
+  const changedHouseholds=[]
+  for(const row of results){
+    const updated=await db.prepare(`UPDATE reward_group_orders
+      SET status='cancelled',cancelled_at=CURRENT_TIMESTAMP
+      WHERE household_id=?1 AND status='collecting'
+        AND datetime(created_at)<${pointYearStartSql}`).bind(row.householdId).run()
+    if(updated.meta?.changes){
+      expiredPools+=Number(updated.meta.changes)
+      changedHouseholds.push(row.householdId)
+    }
+  }
+  return {expiredPools,changedHouseholds}
+}
 const icons=new Set(['🎁','🍦','🎬','🍖','🛋️','🐱','☕','🌸','🎮','🎟️','🧹','🎉'])
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const getList=async(db,household)=>{
@@ -49,6 +68,7 @@ export async function rewardsRoute(request,db,path,session){
           WHERE c.order_id=o.id),0) AS fundedPoints
         FROM reward_group_orders o WHERE o.household_id=?1
           AND o.status<>'cancelled'
+           AND (o.status<>'collecting' OR ${pointYearPredicate('o.created_at')})
         ORDER BY o.created_at DESC,o.id DESC LIMIT 25`).bind(h).all(),
       db.prepare(`SELECT c.order_id AS orderId,c.user_id AS userId,
         COALESCE((SELECT p.display_name FROM family_profiles p
@@ -129,6 +149,7 @@ export async function rewardsRoute(request,db,path,session){
       SELECT ?1,g.household_id,g.id,?2,?3,?4,?5
       FROM reward_group_orders g
       WHERE g.id=?6 AND g.household_id=?7 AND g.status='collecting'
+         AND ${pointYearPredicate('g.created_at')}
         AND ?3<=g.points_required-
           (SELECT COALESCE(SUM(c.points),0) FROM reward_group_contributions c
             WHERE c.order_id=g.id)

@@ -27,7 +27,7 @@ test('leaderboards show separate first-place honors on their respective member t
  assert.match(css,/\.points-member--wealthy \.points-available strong\{[^}]*color:/)
  assert.match(section,/可用家庭积分/)
  assert.match(section,/本月贡献分/)
- assert.match(section,/累计贡献/)
+ assert.match(section,/本年贡献/)
 })
 
 test('contribution leader glows green, while wallet leader gold has visual priority',()=>{
@@ -52,7 +52,7 @@ test('wallet shown for every member uses the exact spending wallet SQL',()=>{
 test('lottery only affects wallet, never contribution SQL or leaderboard rank',()=>{
  const leaderSql=points.slice(points.indexOf('const members='),points.indexOf('const week='))
  assert.doesNotMatch(leaderSql,/household_lottery_draws/)
- assert.match(leaderSql,/ORDER BY monthPoints DESC,sharedPoints DESC/)
+ assert.match(leaderSql,/ORDER BY sharedPoints DESC,monthPoints DESC/)
  const fullSql=points.slice(points.indexOf('const [own,totals'),points.indexOf('const earned='))
  assert.match(fullSql,/household_lottery_draws/)
  assert.match(panel,/抽奖只影响可用家庭积分/)
