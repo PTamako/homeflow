@@ -2265,6 +2265,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .trip-plan-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto;
   align-items:center;column-gap:10px;row-gap:5px}
 .trip-plan-row>.life-details{min-width:0}
+.trip-plan-row .trip-card-actions{max-width:none;justify-self:end}
 .trip-plan-row .trip-summary-line{display:block;margin-top:4px;line-height:1.5}
 .trip-participant-status{grid-column:1/-1;display:flex;align-items:center;
   gap:8px;min-width:0;line-height:1.45;color:#718578;font-size:12px}
