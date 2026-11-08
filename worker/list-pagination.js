@@ -78,7 +78,7 @@ export async function listPage(db,table,session,filters,options={}){
     // Filter before keyset paging so an unseen item cannot be skipped by a
     // client-side filter of only the first 5 results.
     if(filters.scope==='unscheduled')
-      clauses.push('completed_at IS NULL','due_on IS NULL')
+      clauses.push('completed_at IS NULL',"(due_on IS NULL OR due_on='')")
   }else if(table==='anniversaries'){
     // Recurring annual/monthly events always have a future occurrence.
     // Only one-off events in the past belong to this archive.
