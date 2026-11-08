@@ -254,9 +254,9 @@ function openDetails(){
 }
 function closeDetails(){
  resetLotteryPagination()
+ clearLotteryResult()
  historyRequest++
  historyBusy.value=false
- clearLotteryResult()
  expanded.value=false
  ruleHelpOpen.value=false
  experienceHelpOpen.value=false
