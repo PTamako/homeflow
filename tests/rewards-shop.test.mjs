@@ -245,6 +245,7 @@ test('multi-quantity checkout is atomic, replay-safe, stock-aware and fulfilled 
    rewardId:dessert.id,requestId:id(501),quantity:3})).status,409,'no partial stock charge')
   assert.equal((await call(db,alice,'/api/rewards/redeem','POST',{
    rewardId:dessert.id,requestId:id(502),quantity:0})).status,400)
+  const walletBefore=(await balance(db,alice)).availablePoints
   const paid=await call(db,alice,'/api/rewards/redeem','POST',{
    rewardId:dessert.id,requestId:id(503),quantity:2})
   assert.equal(paid.status,201)
@@ -252,7 +253,7 @@ test('multi-quantity checkout is atomic, replay-safe, stock-aware and fulfilled 
   assert.equal((await call(db,alice,'/api/rewards/redeem','POST',{
    rewardId:dessert.id,requestId:id(503),quantity:2})).body.replayed,true)
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_redemptions').get().n,2)
-  assert.equal((await balance(db,alice)).availablePoints,100)
+  assert.equal((await balance(db,alice)).availablePoints,walletBefore-200)
   const shop=(await call(db,alice,'/api/rewards')).body
   assert.equal(shop.rewards.find(x=>x.id===dessert.id).redeemedCount,2)
   assert.equal(shop.redemptions.length,1)
