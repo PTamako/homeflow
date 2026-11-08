@@ -1635,7 +1635,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <div class="shopping-plan-content">
                     <div class="shopping-title-row">
                       <b class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small></b>
-                      <StatusBadge :code="s.completed_at?'completed':'to_buy'" />
+                      <div class="shopping-heading-end">
+                        <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
+                          class="shopping-ledger-icon" :class="{'is-linked':!!s.ledger_entry_id}"
+                          :aria-label="(s.ledger_entry_id?'查看关联账单：':'关联账单：')+s.title"
+                          :title="s.ledger_entry_id?'查看关联账单':'关联账单'"
+                          @click.stop="toggleLedger(s.id)">
+                          <AppIcon name="link" :size="17"/>
+                        </button>
+                        <StatusBadge :code="s.completed_at?'completed':'to_buy'" />
+                      </div>
                     </div>
                     <div class="shopping-meta-row">
                       <small class="shopping-creator">发起人：{{ memberName(s.created_by) }}</small>
@@ -1652,13 +1661,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     </div>
                     <div class="shopping-handler-row">
                       <small class="shopping-assignees" :title="'处理人：'+([s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派')">处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
-                      <div class="shopping-row-actions">
-                  <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                    class="shopping-ledger-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
-                  <button v-if="!s.completed_at&&s.ledger_entry_id&&shoppingCompletable(s)"
-                    type="button" class="life-link" :disabled="busy"
-                    @click="confirmShopping(s)">确认完成</button>
-
+                      <div v-if="!s.completed_at&&s.ledger_entry_id&&shoppingCompletable(s)" class="shopping-row-actions">
+                        <button type="button" class="life-link" :disabled="busy"
+                          @click="confirmShopping(s)">确认完成</button>
                       </div>
                     </div>
                     <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
@@ -2312,6 +2317,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-plan-content{width:100%;min-width:0}
 .shopping-title-row>.detail-name{display:block;font-size:14px;line-height:1.45}
 .shopping-title-row>.detail-name>small{display:inline;font-size:11px;margin:0}
+.shopping-heading-end{display:flex;align-items:center;justify-content:flex-end;
+  flex:none;gap:9px;margin-left:auto;min-width:0}
+.shopping-heading-end :deep(.hf-status){flex:none;margin-top:0}
+.shopping-heading-end .shopping-ledger-icon{display:inline-grid;place-items:center;
+  position:relative;flex:none;width:32px;height:32px;min-width:32px;min-height:32px;
+  padding:0;border:0;border-radius:8px;background:transparent;
+  color:#789487;box-shadow:none;touch-action:manipulation}
+.shopping-heading-end .shopping-ledger-icon.is-linked{color:var(--ui-brand,#357b5c)}
+.shopping-heading-end .shopping-ledger-icon::before{
+  content:'';position:absolute;inset:-6px}
+.shopping-heading-end .shopping-ledger-icon:focus-visible{
+  outline:2px solid #43866a;outline-offset:2px}
 .shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
   gap:7px;min-width:0;margin-top:2px}
 .shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
@@ -2328,16 +2345,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
   justify-content:flex-end;flex:none;max-width:none;gap:5px;
   flex-wrap:nowrap;margin-left:auto}
-/* Ledger navigation remains a real accessible control but looks like inline text. */
-.shopping-handler-row .shopping-ledger-link{display:inline-flex;align-items:center;
-  position:relative;flex:none;min-height:28px;padding:0 2px;border:0;border-radius:0;
-  background:transparent;color:var(--ui-brand,#357b5c);box-shadow:none;
-  font-size:12px;font-weight:650;line-height:1.4;white-space:nowrap;
-  touch-action:manipulation}
-.shopping-handler-row .shopping-ledger-link::before{
-  content:'';position:absolute;inset:-8px -3px}
-.shopping-handler-row .shopping-ledger-link:focus-visible{
-  outline:2px solid #43866a;outline-offset:1px;border-radius:3px}
 .shopping-handler-row .shopping-row-actions .life-link{min-height:32px;
   padding:4px 7px;font-size:11px}
 @media(max-width:380px){
@@ -2346,7 +2353,6 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
  .trip-plan-row .trip-card-actions .life-link{padding-inline:7px}
  .shopping-handler-row{gap:4px}
  .shopping-handler-row .shopping-row-actions{gap:3px}
- .shopping-handler-row .shopping-ledger-link{font-size:11px;padding:0}
  .shopping-handler-row .shopping-row-actions .life-link{padding:4px 5px}
 }
 
