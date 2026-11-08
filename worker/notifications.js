@@ -75,6 +75,22 @@ export async function notificationsRoute(request,db,path,session){
         AND read_at IS NULL`).bind(session.household_id,session.user_id,day).first()
     return json({day,unreadCount:Number(summary?.count||0)})
   }
+  // One click marks every unread notice in today's inbox, including unloaded pages.
+  // Never change a sender-only copy or another household member's read state.
+  if(path==='/api/notifications/today/read-all'){
+    if(request.method!=='POST')return json({error:'method_not_allowed'},405)
+    const updated=await db.prepare(`UPDATE notification_inbox
+      SET read_at=CURRENT_TIMESTAMP
+      WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+        AND read_at IS NULL`)
+      .bind(session.household_id,session.user_id,day).run()
+    const remaining=await db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
+      WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+        AND read_at IS NULL`)
+      .bind(session.household_id,session.user_id,day).first()
+    return json({ok:true,markedCount:Number(updated.meta?.changes||0),
+      unreadCount:Number(remaining?.count||0)})
+  }
   if(path==='/api/notifications/today'&&request.method==='GET'){
     const params=new URL(request.url).searchParams
     const view=params.get('view')||'received'
