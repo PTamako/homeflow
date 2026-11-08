@@ -1243,6 +1243,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                         :label="r.currentPeriodOn<today()?'逾期':'待处理'" />
                       <StatusBadge v-else-if="r.completedToday"
                         class="plan-task-status" code="completed" label="今天已完成" />
+
+                    </div>
+                  </div>
+                  <div class="routine-description-row">
+                    <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template><template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
                       <button type="button" class="routine-more-trigger"
                         :aria-label="'更多操作：'+r.title"
                         :aria-expanded="expandedTaskMenu==='routine:'+r.id"
@@ -1250,9 +1255,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                         @click.stop="toggleTaskMenu('routine:'+r.id)">
                         <AppIcon name="ellipsis" :size="19"/>
                       </button>
-                    </div>
                   </div>
-                  <small class="routine-meta">{{ routineLabel(r) }}<template v-if="profileName(r.subject_profile_id)"> · {{ profileName(r.subject_profile_id) }}</template><template v-if="r.health_record_type"> · 完成后记护理</template><template v-if="r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints"> · 本期额外 {{ r.currentAssignment?.bonusPoints||r.nextAssignment?.bonusPoints }} 分</template></small>
                   <small class="once-task-identity routine-meta">
                     <span>发起人：{{ memberName(r.created_by) }}</span>
                     <span>处理人：{{ assignedMembers(r.currentAssignment||r.nextAssignment,r.assigned_to).map(memberName).join('、')||'未指派' }}</span>
@@ -1711,25 +1714,27 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @open="expandedTaskMenu=null" @edit="edit('trips',t)" @delete="removeItem('trips',t)">
               <div class="life-row trip-plan-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
                 <div class="life-details">
-                  <b class="detail-name">{{ t.title }}</b>
+                  <div class="trip-title-row">
+                    <b class="detail-name">{{ t.title }}</b>
+                    <StatusBadge :code="t.status" />
+                  </div>
                   <small class="trip-summary-line">{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small>
                 </div>
-                <div class="trip-card-actions">
-                  <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
-                  <button v-if="isOwner||t.visibility==='household'" type="button" class="life-link trip-finance-trigger"
-                    @click.stop="toggleFinance('trip',t.id)">费用</button>
-                  <button v-if="canEdit(t)&&t.status==='completed'"
-                    type="button" class="routine-more-trigger"
-                    :aria-label="'更多操作：'+t.title"
-                    :aria-expanded="expandedTaskMenu==='trip:'+t.id"
-                    :aria-controls="'trip-actions-'+t.id"
-                    @click.stop="toggleTaskMenu('trip:'+t.id)">
-                    <AppIcon name="ellipsis" :size="19"/>
-                  </button>
-                </div>
-                <div class="trip-participant-status">
-                  <span>参与 {{ tripParticipantNames(t) }}</span>
-                  <StatusBadge :code="t.status" />
+                <div class="trip-participant-actions">
+                  <span class="trip-participant-names" :title="'参与 '+tripParticipantNames(t)">参与 {{ tripParticipantNames(t) }}</span>
+                  <div class="trip-card-actions">
+                    <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
+                    <button v-if="isOwner||t.visibility==='household'" type="button" class="life-link trip-finance-trigger"
+                      @click.stop="toggleFinance('trip',t.id)">费用</button>
+                    <button v-if="canEdit(t)&&t.status==='completed'"
+                      type="button" class="routine-more-trigger"
+                      :aria-label="'更多操作：'+t.title"
+                      :aria-expanded="expandedTaskMenu==='trip:'+t.id"
+                      :aria-controls="'trip-actions-'+t.id"
+                      @click.stop="toggleTaskMenu('trip:'+t.id)">
+                      <AppIcon name="ellipsis" :size="19"/>
+                    </button>
+                  </div>
                 </div>
               </div>
             </SwipeActions>
@@ -2265,15 +2270,21 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 }
 
 /* Unified compact mobile list hierarchy for travel, savings and shopping. */
-.trip-plan-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto;
-  align-items:center;column-gap:10px;row-gap:5px}
-.trip-plan-row>.life-details{min-width:0}
-.trip-plan-row .trip-card-actions{max-width:none;justify-self:end}
+.trip-plan-row{display:block!important;min-width:0;padding-block:9px}
+.trip-plan-row>.life-details{min-width:0;width:100%}
+.trip-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0}
+.trip-title-row>.detail-name{min-width:0;flex:1;overflow-wrap:anywhere}
+.trip-title-row :deep(.hf-status){flex:none;margin-top:2px}
 .trip-plan-row .trip-summary-line{display:block;margin-top:4px;line-height:1.5}
-.trip-participant-status{grid-column:1/-1;display:flex;align-items:center;
-  gap:8px;min-width:0;line-height:1.45;color:#718578;font-size:12px}
-.trip-participant-status>span{min-width:0;overflow-wrap:anywhere}
-.trip-participant-status :deep(.hf-status){flex:none}
+.trip-participant-actions{display:flex;align-items:center;justify-content:space-between;
+  gap:6px;min-width:0;margin-top:5px;color:#718578;font-size:12px;line-height:1.45}
+.trip-participant-names{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trip-plan-row .trip-card-actions{max-width:none;flex:none;justify-content:flex-end;flex-wrap:nowrap;gap:5px;margin-left:auto}
+.trip-plan-row .trip-card-actions .life-link{min-height:38px;padding:8px 10px}
+.routine-description-row{display:flex;align-items:center;justify-content:space-between;
+  gap:6px;min-width:0}
+.routine-description-row>.routine-meta{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
+.routine-description-row>.routine-more-trigger{flex:none;margin-left:auto;margin-block:-6px}
 .goal-title-row,.shopping-title-row{display:flex;align-items:flex-start;
   justify-content:space-between;gap:10px;min-width:0}
 .goal-title-row>.detail-name,.shopping-title-row>.detail-name{
@@ -2310,8 +2321,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-handler-row .shopping-row-actions .life-link{min-height:36px;
   padding:5px 7px;font-size:11px}
 @media(max-width:380px){
- .trip-plan-row{column-gap:6px}
- .trip-plan-row .trip-card-actions{max-width:none}
+ .trip-participant-actions{gap:4px}
+ .trip-plan-row .trip-card-actions{max-width:none;gap:3px}
+ .trip-plan-row .trip-card-actions .life-link{padding-inline:7px}
  .shopping-handler-row{gap:4px}
  .shopping-handler-row .shopping-row-actions{gap:3px}
  .shopping-handler-row .shopping-ledger-link{font-size:11px;padding:0}
