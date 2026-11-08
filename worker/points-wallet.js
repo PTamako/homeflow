@@ -61,6 +61,6 @@ export function householdWalletSql(h,u,from=null,to=null){
  const lotteryWinnings=sum(`l.prize_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
  const lotteryCosts=sum(`l.cost_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
  const direct=sum(`r.points_spent) FROM reward_redemptions r WHERE r.household_id=${h} AND r.redeemed_by=${u} AND ${inPeriod('r.created_at')}`)
- const group=sum(`c.points) FROM reward_group_contributions c JOIN reward_group_orders g ON g.id=c.order_id WHERE c.household_id=${h} AND c.user_id=${u} AND g.status<>'cancelled' AND ${inPeriod('c.created_at')}`)
+ const group=sum(`c.points) FROM reward_group_contributions c JOIN reward_group_orders g ON g.id=c.order_id WHERE c.household_id=${h} AND c.user_id=${u} AND (g.status<>'cancelled'${from&&to?` OR datetime(g.cancelled_at)>=datetime(${to})`:''}) AND ${inPeriod('c.created_at')}`)
  return `(${earned} + ${adjust} + ${jointBase} + ${shopping} + ${shoppingSplit} + ${weekly} + ${savings} + ${trips} + ${achievements} + ${incoming} + ${routineIncoming} + ${duoTaskIn} + ${duoRoutineIn} - ${outgoing} - ${routineOutgoing} - ${duoTaskOut} - ${duoRoutineOut} - ${direct} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
 }
