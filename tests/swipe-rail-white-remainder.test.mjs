@@ -13,13 +13,11 @@ test('the shared swipe rail has a white remainder beneath compact actions',()=>{
  assert.match(swipe,/\.swipe-row\.is-open \.swipe-actions/)
 })
 
-test('both recurring plans and timeline override rail colors consistently',()=>{
- for(const selector of ['plan-task-item','memory']){
-  const escaped=selector.replaceAll('-','\\-')
-  assert.match(life,new RegExp('\\.'+escaped+' :deep\\(\\.swipe-actions\\)\\{align-items:flex-start;background:#fff\\}'))
-  assert.doesNotMatch(life,new RegExp('\\.'+escaped+' :deep\\(\\.swipe-actions\\)\\{align-items:flex-start;background:#f4f7f4\\}'))
- }
- assert.match(life,/\.plan-task-item :deep\(\.swipe-actions button\)\{height:min\(72px,100%\);flex:0 0 72px\}/)
+test('task actions stretch to the full row, while timeline keeps compact actions',()=>{
+ assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions\)\{align-items:stretch;background:#fff\}/)
+ assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions button\)\{\s*align-self:stretch;height:auto;min-height:0;flex:0 0 72px/)
+ assert.doesNotMatch(life,/\.plan-task-item :deep\(\.swipe-actions\)\{align-items:flex-start/)
+ assert.match(life,/\.memory :deep\(\.swipe-actions\)\{align-items:flex-start;background:#fff\}/)
  assert.match(life,/\.memory :deep\(\.swipe-actions button\)\{height:72px;flex:0 0 72px\}/)
 })
 
