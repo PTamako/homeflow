@@ -142,9 +142,16 @@ let generation=0
 async function fetchJSON(path:string,method='GET',body?:unknown){
  const response=await fetch('/api'+path,{method,credentials:'same-origin',cache:'no-store',
   ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
- const result=await response.json()
+ // A proxy/Worker failure can return an HTML error page. On iOS Safari,
+ // response.json() otherwise displays the opaque "string did not match" error.
+ if(!(response.headers.get('content-type')||'').includes('application/json'))
+   throw Error('积分服务暂时不可用（HTTP '+response.status+'），请刷新重试')
+ let result
+ try{result=await response.json()}
+ catch{throw Error('积分服务返回了无效数据（HTTP '+response.status+'），请刷新重试')}
  if(!response.ok)throw Error(({
    invalid_reward:'请检查名称、价格及库存',
+   server_error:'积分服务暂时出现异常，请刷新重试',
    reward_unavailable_or_insufficient:'积分不足、商品已售罄或已经下架',
    pool_closed_or_insufficient:'本单已结束、金额超过剩余需求，或你的可用积分不足',
    pool_not_cancellable:'只有未凑齐积分的合力兑换可以取消',
