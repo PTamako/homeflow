@@ -100,7 +100,15 @@ async function save(){
         .map(key=>data[key]??null))
     }:{})})})
   const result=await response.json()
-  if(!response.ok)throw Error(result.error==='forbidden'?'只能编辑自己创建的项目':result.error||'保存失败')
+  if(!response.ok){
+     const messages:Record<string,string>={
+       forbidden:'只能编辑自己创建的项目',
+       trip_reward_locked_reopen_first:'旅行已结算积分。如需修改日期或参与人，请先撤销完成；已消费的积分可能需要先补足。',
+       trip_reward_insufficient_balance:'积分已消费，余额不足以撤销旅行结算。请先补足可用积分。',
+       trip_edit_conflict:'该旅行在其他设备已修改，请刷新后重试'
+     }
+     throw Error(messages[String(result.error)]||result.error||'保存失败')
+   }
   emit('saved')
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
