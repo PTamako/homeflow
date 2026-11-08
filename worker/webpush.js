@@ -334,7 +334,7 @@ export async function scheduledNotificationId(recipientId,day,logicalKey){
 }
 // Every December 31, every member gets this warning, even with no other reminders.
 export function annualPointsExpiryEvent(day){
-  return /^\\d{4}-12-31$/.test(day)?{
+  return /^[0-9]{4}-12-31$/.test(day)?{
     kind:'system',id:'annual-points-expiry',dueOn:day,daysBefore:0,
     title:'年度积分即将清零',message:'请在今日内用完所有积分',priority:'important'
   }:null
