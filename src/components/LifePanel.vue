@@ -2284,7 +2284,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .routine-description-row{display:flex;align-items:center;justify-content:space-between;
   gap:6px;min-width:0}
 .routine-description-row>.routine-meta{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
-.routine-description-row>.routine-more-trigger{flex:none;margin-left:auto;margin-block:-6px}
+.routine-description-row>.routine-more-trigger{flex:none;margin-left:auto;margin-block:0;
+  position:relative;width:28px;height:28px;min-width:28px;min-height:28px;
+  padding:0;border:0;border-radius:6px;background:transparent;color:#789487}
+.routine-description-row>.routine-more-trigger[aria-expanded="true"]{
+  background:transparent;color:#397e5f}
+.routine-description-row>.routine-more-trigger::before{
+  content:'';position:absolute;inset:-8px}
+.routine-description-row>.routine-more-trigger:focus-visible{
+  outline:2px solid #43866a;outline-offset:2px}
 .goal-title-row,.shopping-title-row{display:flex;align-items:flex-start;
   justify-content:space-between;gap:10px;min-width:0}
 .goal-title-row>.detail-name,.shopping-title-row>.detail-name{
@@ -2293,18 +2301,21 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   flex:none;margin-top:2px}
 .goal-plan-row .goal-dates{flex:1;min-width:0;overflow-wrap:anywhere}
 .goal-row-footer{justify-content:flex-end;gap:8px}
-.shopping-plan-entry .shopping-line{display:block;min-width:0;padding:10px 0}
+.shopping-plan-entry .shopping-line{display:block;min-width:0;padding:6px 0}
 .shopping-plan-content{width:100%;min-width:0}
 .shopping-title-row>.detail-name{display:block;font-size:14px;line-height:1.45}
 .shopping-title-row>.detail-name>small{display:inline;font-size:11px;margin:0}
 .shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
-  gap:8px;min-width:0;margin-top:4px}
+  gap:7px;min-width:0;margin-top:2px}
 .shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
   line-height:1.5;overflow-wrap:anywhere}
-.shopping-meta-row .shopping-more-trigger{flex:none;width:36px;min-width:36px;
-  height:36px;min-height:36px;margin-left:auto}
+.shopping-meta-row .shopping-more-trigger{flex:none;position:relative;
+  width:28px;min-width:28px;height:28px;min-height:28px;
+  padding:0;margin-left:auto;border-radius:6px}
+.shopping-meta-row .shopping-more-trigger::before{
+  content:'';position:absolute;inset:-8px}
 .shopping-handler-row{display:flex;align-items:center;justify-content:space-between;
-  gap:6px;min-width:0;margin-top:2px}
+  gap:6px;min-width:0;margin-top:0}
 .shopping-handler-row>.shopping-assignees{display:block;flex:1;min-width:0;
   margin:0;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
@@ -2312,14 +2323,16 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   flex-wrap:nowrap;margin-left:auto}
 /* Ledger navigation remains a real accessible control but looks like inline text. */
 .shopping-handler-row .shopping-ledger-link{display:inline-flex;align-items:center;
-  flex:none;min-height:44px;padding:0 2px;border:0;border-radius:0;
+  position:relative;flex:none;min-height:28px;padding:0 2px;border:0;border-radius:0;
   background:transparent;color:var(--ui-brand,#357b5c);box-shadow:none;
   font-size:12px;font-weight:650;line-height:1.4;white-space:nowrap;
   touch-action:manipulation}
+.shopping-handler-row .shopping-ledger-link::before{
+  content:'';position:absolute;inset:-8px -3px}
 .shopping-handler-row .shopping-ledger-link:focus-visible{
   outline:2px solid #43866a;outline-offset:1px;border-radius:3px}
-.shopping-handler-row .shopping-row-actions .life-link{min-height:36px;
-  padding:5px 7px;font-size:11px}
+.shopping-handler-row .shopping-row-actions .life-link{min-height:32px;
+  padding:4px 7px;font-size:11px}
 @media(max-width:380px){
  .trip-participant-actions{gap:4px}
  .trip-plan-row .trip-card-actions{max-width:none;gap:3px}
