@@ -2321,14 +2321,15 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   padding:0;margin-left:auto;border-radius:6px}
 .shopping-meta-row .shopping-more-trigger::before{
   content:'';position:absolute;inset:-8px}
-.shopping-handler-row{display:flex;align-items:center;justify-content:space-between;
-  gap:6px;min-width:0;margin-top:0}
-.shopping-handler-row>.shopping-assignees{display:block;flex:1;min-width:0;
+.shopping-handler-row{display:flex;align-items:center;justify-content:flex-start;
+  gap:6px;min-width:0;margin-top:0;padding-right:52px}
+.shopping-handler-row>.shopping-assignees{display:block;flex:0 1 auto;min-width:0;
   margin:0;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
-  justify-content:flex-end;flex:none;max-width:none;gap:5px;
-  flex-wrap:nowrap;margin-left:auto}
-/* Ledger navigation remains a real accessible control but looks like inline text. */
+  justify-content:flex-start;flex:none;max-width:none;gap:5px;
+  flex-wrap:nowrap;margin-left:0}
+/* Keep ledger inline with assignees, with a reserved trailing 52px lane
+   so its expanded tap area cannot collide with the More button above. */
 .shopping-handler-row .shopping-ledger-link{display:inline-flex;align-items:center;
   position:relative;flex:none;min-height:28px;padding:0 2px;border:0;border-radius:0;
   background:transparent;color:var(--ui-brand,#357b5c);box-shadow:none;
