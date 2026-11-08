@@ -22,7 +22,7 @@ test('creation and one-time input controls use a bottom sheet, not expanding inl
 test('financial details and linking screens share mobile modal patterns',()=>{
  assert.match(life,/<EditBottomSheet v-if="historicalGoalDetail\?\.goal.id===period.goalId/)
  assert.match(life,/<EditBottomSheet v-if="financeDetail\?\.kind==='goal'/)
- assert.match(life,/<EditBottomSheet v-if="isOwner&&financeDetail\?\.kind==='trip'/)
+ assert.match(life,/<EditBottomSheet v-if="\(isOwner\|\|t\.visibility==='household'\)&&financeDetail\?\.kind==='trip'/)
  assert.match(src('components/ShoppingLedgerPicker.vue'),/<EditBottomSheet title="查看关联账单"/)
  assert.match(finance,/@click="saveSettings"/)
  assert.match(finance,/@click="settleRecurringGoal"/)
