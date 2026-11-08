@@ -18,10 +18,10 @@ test('annual points are scoped to January 1 00:00 JST without wiping ledger rows
   assert.ok(sql.includes("ma.month_on>=strftime('%Y-01','now','+9 hours')"))
   assert.ok(sql.includes(pointYearPredicate('a.created_at')))
   assert.ok(sql.includes(pointYearPredicate('c.created_at')))
-  assert.doesNotMatch(sql,/DELETE\\s+FROM|DROP\\s+TABLE/i)
+  assert.doesNotMatch(sql,/DELETE\s+FROM|DROP\s+TABLE/i)
   assert.match(contributionAssignmentDeltaSql('?1','?2'),
-    /datetime\\(t\\.completed_at\\)/)
-  assert.match(contributionWeeklySql('?1','?2'),/datetime\\(w\\.awarded_at\\)/)
+    /datetime\(t\.completed_at\)/)
+  assert.match(contributionWeeklySql('?1','?2'),/datetime\(w\.awarded_at\)/)
 })
 
 test('New Year changes at JST midnight, not UTC midnight',()=>{
@@ -56,6 +56,6 @@ test('cross-year collecting orders are cancelled without refunding new-year poin
   const result=await expireOldRewardPools(db)
   assert.deepEqual(result,{expiredPools:2,changedHouseholds:['household-1']})
   assert.match(commands.join(' '),/status='cancelled'/)
-  assert.match(commands.join(' '),/datetime\\(created_at\\)</)
-  assert.doesNotMatch(commands.join(' '),/reward_group_contributions\\s+SET|INSERT\\s+INTO\\s+completion_points/i)
+  assert.match(commands.join(' '),/datetime\(created_at\)</)
+  assert.doesNotMatch(commands.join(' '),/reward_group_contributions\s+SET|INSERT\s+INTO\s+completion_points/i)
 })
