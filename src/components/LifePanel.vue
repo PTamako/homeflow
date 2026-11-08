@@ -1576,7 +1576,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @edit="edit('goals',g)" @delete="removeItem('goals',g)">
               <div class="life-row goal-plan-row">
                 <div class="life-details">
-                  <b class="detail-name">{{ g.title }}</b>
+                  <div class="goal-title-row">
+                    <b class="detail-name">{{ g.title }}</b>
+                    <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
+                  </div>
                   <small class="goal-amount-line">
                     <span v-if="(g.goal_mode||'once')==='once'">累计目标 ¥{{ Number(g.target_amount).toLocaleString() }} · 期初 ¥{{ Number(g.reserved_amount).toLocaleString() }}</span>
                     <span v-else>{{ g.goal_mode==='monthly'?'每月':'每年' }}目标 ¥{{ Number(g.target_amount).toLocaleString() }}</span>
@@ -1586,9 +1589,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <AppIcon name="heart" :size="13" />已关联心愿
                     </button>
                   </small>
-                  <small v-if="g.start_on" class="goal-dates">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
                   <div class="goal-row-footer">
-                    <StatusBadge :code="g.start_on&&g.start_on>today()?'not_started':'active'" />
+                    <small v-if="g.start_on" class="goal-dates">开始：{{ g.start_on }}<template v-if="g.target_on"> · 结束：{{ g.target_on }}</template></small>
                     <button type="button" class="goal-finance-action"
                       :aria-label="'查看“'+g.title+'”的账目与调整额'"
                       @click="toggleFinance('goal',g.id)">
@@ -1624,12 +1626,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @open="expandedTaskMenu=null" @edit="edit('shopping',s)" @delete="removeItem('shopping',s)">
               <div class="life-row shopping-line" :class="{'detail-completed':!!s.completed_at}">
                 <div class="shopping-check">
-                  <span class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small>
-                    <small><StatusBadge :code="s.completed_at?'completed':'to_buy'" /></small>
-                    <small>发起人：{{ memberName(s.created_by) }} · 处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
-                    <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
-                  </span>
-                </div>
+                  <div class="shopping-plan-content">
+                    <div class="shopping-title-row">
+                      <b class="detail-name">{{ s.title }} <small v-if="s.quantity>1">× {{ s.quantity }}</small></b>
+                      <StatusBadge :code="s.completed_at?'completed':'to_buy'" />
+                    </div>
+                    <div class="shopping-meta-row">
+                      <small class="shopping-creator">发起人：{{ memberName(s.created_by) }}</small>
                 <div class="shopping-row-actions">
                   <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
                     class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
@@ -1646,6 +1649,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     @click.stop="toggleTaskMenu('shopping:'+s.id)">
                     <AppIcon name="ellipsis" :size="19"/>
                   </button>
+                </div>
+                    </div>
+                    <small class="shopping-assignees">处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
+                    <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
+                  </div>
                 </div>
               </div>
             </SwipeActions>
@@ -1698,9 +1706,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <div :id="'plan-item-'+t.id" :class="{'focused-plan-entry':isFocused(t)}">
             <SwipeActions :id="t.id" scope="trips" :allow-edit="canEdit(t)" :allow-delete="canEdit(t)"
               @open="expandedTaskMenu=null" @edit="edit('trips',t)" @delete="removeItem('trips',t)">
-              <div class="life-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
-                <div class="life-details"><b class="detail-name">{{ t.title }}</b>
-                  <small>{{ t.destination }} · {{ t.startOn||'日期待确定' }} · 参与 {{ tripParticipantNames(t) }} · <StatusBadge :code="t.status" /></small></div>
+              <div class="life-row trip-plan-row" :class="{'detail-completed':t.status==='completed'||t.status==='cancelled'}">
+                <div class="life-details">
+                  <b class="detail-name">{{ t.title }}</b>
+                  <small class="trip-summary-line">{{ t.destination }} · {{ t.startOn||'日期待确定' }}</small>
+                </div>
                 <div class="trip-card-actions">
                   <button type="button" class="life-link" @click.stop="selectTrip(t.id)">行程</button>
                   <button v-if="isOwner||t.visibility==='household'" type="button" class="life-link trip-finance-trigger"
@@ -1713,6 +1723,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     @click.stop="toggleTaskMenu('trip:'+t.id)">
                     <AppIcon name="ellipsis" :size="19"/>
                   </button>
+                </div>
+                <div class="trip-participant-status">
+                  <span>参与 {{ tripParticipantNames(t) }}</span>
+                  <StatusBadge :code="t.status" />
                 </div>
               </div>
             </SwipeActions>
@@ -2246,6 +2260,47 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   .plan-tasks-card .plan-task-item{padding:10px 0}
   .plan-task-head .routine-more-trigger{width:30px;height:30px}
 }
+
+/* Unified compact mobile list hierarchy for travel, savings and shopping. */
+.trip-plan-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;column-gap:10px;row-gap:5px}
+.trip-plan-row>.life-details{min-width:0}
+.trip-plan-row .trip-card-actions{max-width:none;justify-self:end}
+.trip-plan-row .trip-summary-line{display:block;margin-top:4px;line-height:1.5}
+.trip-participant-status{grid-column:1/-1;display:flex;align-items:center;
+  gap:8px;min-width:0;line-height:1.45;color:#718578;font-size:12px}
+.trip-participant-status>span{min-width:0;overflow-wrap:anywhere}
+.trip-participant-status :deep(.hf-status){flex:none}
+.goal-title-row,.shopping-title-row{display:flex;align-items:flex-start;
+  justify-content:space-between;gap:10px;min-width:0}
+.goal-title-row>.detail-name,.shopping-title-row>.detail-name{
+  flex:1;min-width:0;overflow-wrap:anywhere}
+.goal-title-row :deep(.hf-status),.shopping-title-row :deep(.hf-status){
+  flex:none;margin-top:2px}
+.goal-plan-row .goal-dates{flex:1;min-width:0;overflow-wrap:anywhere}
+.goal-row-footer{justify-content:flex-end;gap:8px}
+.shopping-plan-entry .shopping-line{display:block;min-width:0;padding:10px 0}
+.shopping-plan-content{width:100%;min-width:0}
+.shopping-title-row>.detail-name{display:block;font-size:14px;line-height:1.45}
+.shopping-title-row>.detail-name>small{display:inline;font-size:11px;margin:0}
+.shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
+  gap:6px;min-width:0;margin-top:4px}
+.shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
+  line-height:1.5;overflow-wrap:anywhere}
+.shopping-meta-row .shopping-row-actions{flex:none;max-width:none;
+  gap:5px;flex-wrap:nowrap;margin-left:auto}
+.shopping-meta-row .shopping-row-actions .life-link{min-height:36px;
+  padding:5px 7px;font-size:11px}
+.shopping-meta-row .shopping-row-actions .routine-more-trigger{width:36px;height:36px}
+.shopping-plan-content>.shopping-assignees{margin-top:2px;line-height:1.45;
+  overflow-wrap:anywhere}
+@media(max-width:380px){
+ .trip-plan-row{column-gap:6px}
+ .trip-plan-row .trip-card-actions{max-width:none}
+ .shopping-meta-row{gap:4px}
+ .shopping-meta-row .shopping-row-actions .life-link{padding:4px 5px}
+}
+
 </style>
 
 <style scoped>
