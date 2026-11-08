@@ -5,6 +5,7 @@ import {contributionAssignmentDeltaSql,contributionWeeklySql} from '../worker/co
 import {annualPointsExpiryEvent} from '../worker/webpush.js'
 import {jstNotificationDay} from '../worker/notifications.js'
 import {expireOldRewardPools} from '../worker/rewards.js'
+import {annualPointLedgerSql} from '../worker/points-history.js'
 
 test('annual points are scoped to January 1 00:00 JST without wiping ledger rows',()=>{
   assert.equal(pointYearStartSql,"datetime('now','+9 hours','start of year','-9 hours')")
@@ -58,4 +59,18 @@ test('cross-year collecting orders are cancelled without refunding new-year poin
   assert.match(commands.join(' '),/status='cancelled'/)
   assert.match(commands.join(' '),/datetime\(created_at\)</)
   assert.doesNotMatch(commands.join(' '),/reward_group_contributions\s+SET|INSERT\s+INTO\s+completion_points/i)
+})
+
+test('D1 annual history avoids oversized compound SELECTs',()=>{
+ const query=annualPointLedgerSql()
+ // D1's compound SELECT limit is lower than local Node SQLite's. Nested
+ // groups cap each compound at five ledger sources while keeping all sources.
+ const groups=query.split(') UNION ALL SELECT * FROM (')
+ assert.equal(groups.length,5)
+ assert.match(query,/^SELECT \* FROM \(/)
+ assert.ok(groups.every(group=>group.split(' UNION ALL ').length<=7))
+ for(const source of ['completion_points','reward_redemptions','household_lottery_draws',
+   'reward_group_contributions','routine_occurrence_assignments','monthly_achievement_credits']){
+  assert.ok(query.includes(source),source)
+ }
 })
