@@ -27,6 +27,15 @@ test('history combines routine period dates and one-off completion dates latest 
   [{id:uuid(3),completedAt:'2026-11-04T17:00:00Z'}],'history')
  assert.deepEqual(rows.map(x=>x.item.id),[2,3,1].map(uuid))
 })
+test('expired undone single tasks remain in the right historical date order',()=>{
+ const tasks=[
+  {id:uuid(1),dueOn:'2026-11-06',completedAt:null,missed:true},
+  {id:uuid(2),dueOn:'2026-11-08',completedAt:'2026-11-08T14:00:00Z'}
+ ]
+ const rows=sortPlanTasks([{id:uuid(3),periodOn:'2026-11-07'}],tasks,'history')
+ assert.deepEqual(rows.map(x=>x.item.id),[uuid(2),uuid(3),uuid(1)])
+ assert.equal(taskUrgencyKey('task',tasks[0],'history'),'2026-11-06')
+})
 test('active task endpoint performs date-ascending keyset paging',async()=>{
  const statements=[]
  const db={prepare(sql){
