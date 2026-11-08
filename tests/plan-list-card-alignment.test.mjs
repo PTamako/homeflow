@@ -23,12 +23,15 @@ test('savings status is right of title and dates share row with finance action',
   assert.match(goals, /@click="toggleFinance\('goal',g.id\)"/)
 })
 
-test('shopping status sits on title row; creator and ledger action share right-aligned row',()=>{
+test('shopping ledger is a plain-text affordance next to assignees on one row',()=>{
   assert.match(shopping, /<div class="shopping-title-row">[\s\S]*?<StatusBadge :code="s.completed_at/)
-  assert.match(shopping, /<div class="shopping-meta-row">\s*<small class="shopping-creator">发起人：[\s\S]*?<div class="shopping-row-actions">/)
-  assert.match(shopping, /class="shopping-assignees">处理人：/)
-  assert.match(shopping, /@click="toggleLedger\(s.id\)"/)
+  assert.match(shopping, /<div class="shopping-meta-row">\s*<small class="shopping-creator">发起人：/)
+  assert.match(shopping, /<div class="shopping-handler-row">\s*<small class="shopping-assignees"[\s\S]*?<div class="shopping-row-actions">/)
+  assert.match(shopping, /class="shopping-ledger-link" @click="toggleLedger\(s.id\)"/)
+  assert.doesNotMatch(shopping, /class="life-link" @click="toggleLedger\(s.id\)"/)
+  assert.match(life, /\.shopping-handler-row \.shopping-ledger-link\{[^}]*background:transparent/)
+  assert.match(life, /\.shopping-handler-row>\.shopping-assignees\{[^}]*white-space:nowrap/)
+  assert.match(life, /\.shopping-handler-row \.shopping-row-actions\{[^}]*margin-left:auto/)
   assert.match(shopping, /@click="confirmShopping\(s\)"/)
   assert.match(shopping, /@click.stop="toggleTaskMenu\('shopping:'\+s.id\)"/)
-  assert.match(life, /\.shopping-meta-row \.shopping-row-actions\{[^}]*margin-left:auto/)
 })

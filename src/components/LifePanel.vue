@@ -1633,9 +1633,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     </div>
                     <div class="shopping-meta-row">
                       <small class="shopping-creator">发起人：{{ memberName(s.created_by) }}</small>
-                <div class="shopping-row-actions">
+                    </div>
+                    <div class="shopping-handler-row">
+                      <small class="shopping-assignees" :title="'处理人：'+([s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派')">处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
+                      <div class="shopping-row-actions">
                   <button v-if="isOwner&&(canEdit(s)||s.visibility==='household')" type="button"
-                    class="life-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
+                    class="shopping-ledger-link" @click="toggleLedger(s.id)">{{ s.ledger_entry_id?'查看关联账单':'关联账单' }}</button>
                   <button v-if="!s.completed_at&&s.ledger_entry_id&&shoppingCompletable(s)"
                     type="button" class="life-link" :disabled="busy"
                     @click="confirmShopping(s)">确认完成</button>
@@ -1649,9 +1652,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                     @click.stop="toggleTaskMenu('shopping:'+s.id)">
                     <AppIcon name="ellipsis" :size="19"/>
                   </button>
-                </div>
+                      </div>
                     </div>
-                    <small class="shopping-assignees">处理人：{{ [s.assigned_to,s.second_assignee_user_id].filter(Boolean).map(memberName).join('、')||'未指派' }}</small>
                     <small v-if="s.ledger_entry_id&&!s.completed_at">已验证账单 · 待指定人确认</small>
                   </div>
                 </div>
@@ -2283,22 +2285,34 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-plan-content{width:100%;min-width:0}
 .shopping-title-row>.detail-name{display:block;font-size:14px;line-height:1.45}
 .shopping-title-row>.detail-name>small{display:inline;font-size:11px;margin:0}
-.shopping-meta-row{display:flex;align-items:center;justify-content:space-between;
-  gap:6px;min-width:0;margin-top:4px}
-.shopping-meta-row>.shopping-creator{flex:1;min-width:0;margin:0;
-  line-height:1.5;overflow-wrap:anywhere}
-.shopping-meta-row .shopping-row-actions{flex:none;max-width:none;
-  gap:5px;flex-wrap:nowrap;margin-left:auto}
-.shopping-meta-row .shopping-row-actions .life-link{min-height:36px;
+.shopping-meta-row{min-width:0;margin-top:4px}
+.shopping-meta-row>.shopping-creator{margin:0;line-height:1.5;overflow-wrap:anywhere}
+.shopping-handler-row{display:flex;align-items:center;justify-content:space-between;
+  gap:6px;min-width:0;margin-top:2px}
+.shopping-handler-row>.shopping-assignees{display:block;flex:1;min-width:0;
+  margin:0;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
+  justify-content:flex-end;flex:none;max-width:none;gap:5px;
+  flex-wrap:nowrap;margin-left:auto}
+/* Ledger navigation remains a real accessible control but looks like inline text. */
+.shopping-handler-row .shopping-ledger-link{display:inline-flex;align-items:center;
+  flex:none;min-height:44px;padding:0 2px;border:0;border-radius:0;
+  background:transparent;color:var(--ui-brand,#357b5c);box-shadow:none;
+  font-size:12px;font-weight:650;line-height:1.4;white-space:nowrap;
+  touch-action:manipulation}
+.shopping-handler-row .shopping-ledger-link:focus-visible{
+  outline:2px solid #43866a;outline-offset:1px;border-radius:3px}
+.shopping-handler-row .shopping-row-actions .life-link{min-height:36px;
   padding:5px 7px;font-size:11px}
-.shopping-meta-row .shopping-row-actions .routine-more-trigger{width:36px;height:36px}
-.shopping-plan-content>.shopping-assignees{margin-top:2px;line-height:1.45;
-  overflow-wrap:anywhere}
+.shopping-handler-row .shopping-row-actions .routine-more-trigger{
+  flex:none;width:34px;height:44px}
 @media(max-width:380px){
  .trip-plan-row{column-gap:6px}
  .trip-plan-row .trip-card-actions{max-width:none}
- .shopping-meta-row{gap:4px}
- .shopping-meta-row .shopping-row-actions .life-link{padding:4px 5px}
+ .shopping-handler-row{gap:4px}
+ .shopping-handler-row .shopping-row-actions{gap:3px}
+ .shopping-handler-row .shopping-ledger-link{font-size:11px;padding:0}
+ .shopping-handler-row .shopping-row-actions .life-link{padding:4px 5px}
 }
 
 </style>
