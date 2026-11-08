@@ -1353,6 +1353,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                       <StatusBadge class="plan-task-status"
                         :code="t.completedAt?'completed':t.dueOn&&t.dueOn<today()?'overdue':t.dueOn?'pending':'unscheduled'"
                         :label="t.completedAt?'已完成':t.dueOn&&t.dueOn<today()?'逾期':t.dueOn?'待处理':'待安排'" />
+
+                    </div>
+                  </div>
+                  <div class="routine-description-row once-task-description-row">
+                    <small class="once-task-summary">一次性任务 · {{ t.dueOn||'无截止日期' }}
+                      <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
+                    </small>
                       <button v-if="planScope==='active'&&(!!t.dueOn||(canEdit(t)&&t.visibility==='household'&&t.assigneeUserId&&t.assigneeUserId!==props.userId))" type="button" class="routine-more-trigger"
                         :aria-label="'更多操作：'+t.title"
                         :aria-expanded="expandedTaskMenu==='task:'+t.id"
@@ -1360,11 +1367,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                         @click.stop="toggleTaskMenu('task:'+t.id)">
                         <AppIcon name="ellipsis" :size="19"/>
                       </button>
-                    </div>
                   </div>
-                  <small class="once-task-summary">一次性任务 · {{ t.dueOn||'无截止日期' }}
-                    <template v-if="profileName(t.subjectProfileId)"> · {{ profileName(t.subjectProfileId) }}</template>
-                  </small>
                   <small class="once-task-identity">
                     <span>发起人：{{ memberName(t.creatorUserId) }}</span>
                     <span>处理人：{{ [t.assigneeUserId,t.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
@@ -2293,6 +2296,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   content:'';position:absolute;inset:-8px}
 .routine-description-row>.routine-more-trigger:focus-visible{
   outline:2px solid #43866a;outline-offset:2px}
+.once-task-description-row>.once-task-summary{flex:1;min-width:0;margin:0;
+  line-height:1.45;overflow-wrap:anywhere}
+.once-task-description-row>.routine-more-trigger{flex:none;margin-left:auto;
+  width:28px;height:28px;min-width:28px;min-height:28px}
 .goal-title-row,.shopping-title-row{display:flex;align-items:flex-start;
   justify-content:space-between;gap:10px;min-width:0}
 .goal-title-row>.detail-name,.shopping-title-row>.detail-name{
