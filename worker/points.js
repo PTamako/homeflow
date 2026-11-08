@@ -85,7 +85,7 @@ export async function pointsRoute(request,db,session){
       AND cp.earner_user_id=m.user_id
     WHERE m.household_id=?1
     GROUP BY m.user_id,u.login_name
-    ORDER BY monthPoints DESC,sharedPoints DESC,m.user_id`).bind(h,begin,end).all()
+    ORDER BY sharedPoints DESC,monthPoints DESC,m.user_id`).bind(h,begin,end).all()
   const week=tokyoWeekWindow()
   const [own,totals,streakDays,monthProgress,monthAwards]=await Promise.all([
     db.prepare(`SELECT
