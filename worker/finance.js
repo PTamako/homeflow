@@ -119,7 +119,10 @@ export async function financeRoute(request,env,path,session,onComplete=null){
   const owner=session.role==='owner'
   const sharedGoalRead=path==='/api/finance/goal/net'&&request.method==='GET'
     ||path==='/api/finance/settings'&&['GET','PUT'].includes(request.method)
-  if(!owner&&path!=='/api/finance/status'&&!sharedGoalRead)
+  // Shared travelers can see a sanitized total, not Kakebo account details.
+  const sharedTripRead=path==='/api/finance/links'&&request.method==='GET'
+    ||path==='/api/finance/settings'&&request.method==='GET'
+  if(!owner&&path!=='/api/finance/status'&&!sharedGoalRead&&!sharedTripRead)
     return json({error:'forbidden'},403)
   const db=env.DB
   if(path==='/api/finance/status'&&request.method==='GET'){
@@ -192,10 +195,14 @@ export async function financeRoute(request,env,path,session,onComplete=null){
   }
   if(path==='/api/finance/settings'&&request.method==='GET'){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
-    if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
+    if(!owner&&kind!=='goal'&&kind!=='trip')return json({error:'forbidden'},403)
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
-    if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
+    if(!owner&&kind==='trip'){
+      const shared=await db.prepare("SELECT 1 AS ok FROM trips WHERE id=?1 AND household_id=?2 AND visibility='household' AND deleted_at IS NULL")
+        .bind(id,h).first()
+      if(!shared)return json({error:'forbidden'},403)
+    }
     if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
       const window=goalPeriod(item,url.searchParams.get('periodKey'))
       if(!window)return json({error:'invalid_range'},400)
@@ -314,6 +321,25 @@ export async function financeRoute(request,env,path,session,onComplete=null){
   if(path==='/api/finance/links'&&request.method==='GET'){
     const kind=url.searchParams.get('type'),id=url.searchParams.get('targetId')
     if(!await target(db,h,user,kind,id))return json({error:'not_found'},404)
+    if(!owner){
+      if(kind!=='trip')return json({error:'forbidden'},403)
+      const shared=await db.prepare("SELECT 1 AS ok FROM trips WHERE id=?1 AND household_id=?2 AND visibility='household' AND deleted_at IS NULL")
+        .bind(id,h).first()
+      if(!shared)return json({error:'forbidden'},403)
+      // The household owner explicitly links these receipts. Never reveal
+      // account-wide income, transaction IDs, dates or merchant names.
+      const {results:rows}=await db.prepare(`SELECT DISTINCT external_entry_id AS entryId
+        FROM finance_links WHERE household_id=?1 AND target_type='trip' AND target_id=?2
+        ORDER BY external_entry_id LIMIT 51`).bind(h,id).all()
+      if(rows.length>50)return json({error:'too_many_links'},409)
+      try{
+        const data=rows.length?await ledger(env,{ids:rows.map(x=>x.entryId).join(',')}):{entries:[]}
+        const valid=data.entries.filter(x=>x.type==='expense'&&
+          Number.isSafeInteger(x.amount)&&rows.some(r=>String(r.entryId)===String(x.id)))
+        return json({summaryOnly:true,linkedCount:valid.length,
+          total:valid.reduce((sum,x)=>sum+x.amount,0),readOnly:true})
+      }catch(error){return financeError(error)}
+    }
     const {results}=await db.prepare('SELECT id,external_entry_id AS entryId FROM finance_links '+
        'WHERE household_id=?1 AND created_by=?2 AND target_type=?3 AND target_id=?4 '+
        'ORDER BY created_at DESC LIMIT 100')
