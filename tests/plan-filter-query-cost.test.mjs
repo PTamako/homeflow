@@ -23,7 +23,9 @@ test('All replaces the duplicate task tab without hiding task and routine entrie
  assert.ok(filterSection.includes("{id:'unscheduled',label:'待安排'}"))
  assert.match(source,/planType\.value=unscheduled\?'unscheduled':kind==='routine'\?'all':kind/)
  assert.match(source,/if\(type==='task'\|\|type==='routine'\)planType\.value='all'/)
- assert.match(source,/planType==='all'\|\|planType==='routine'\|\|planType==='unscheduled'/)
+ assert.match(source,/planType==='all'\|\|planType==='routine'\|\|\(planType==='unscheduled'&&\(!visibleShopping.length\|\|visibleTaskRows.length>0\)\)/)
+ assert.match(source,/if\(type==='unscheduled'\)return \['tasks','shopping'\]/)
+ assert.match(source,/planType==='all'\|\|planType==='shopping'\|\|\(planType==='unscheduled'&&visibleShopping.length>0\)/)
  assert.match(source,/return \['wishes','goals','shopping','trips','routines','tasks'\]/)
 })
 

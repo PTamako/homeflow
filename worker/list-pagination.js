@@ -74,6 +74,11 @@ export async function listPage(db,table,session,filters,options={}){
     // Never defer the status transition until the next JST calendar day.
     if(filters.scope==='active')clauses.push('completed_at IS NULL')
     if(filters.scope==='history')clauses.push('completed_at IS NOT NULL')
+    // The "待安排" tab includes shopping items without a planned purchase date.
+    // Filter before keyset paging so an unseen item cannot be skipped by a
+    // client-side filter of only the first 5 results.
+    if(filters.scope==='unscheduled')
+      clauses.push('completed_at IS NULL',"(due_on IS NULL OR due_on='')")
   }else if(table==='anniversaries'){
     // Recurring annual/monthly events always have a future occurrence.
     // Only one-off events in the past belong to this archive.

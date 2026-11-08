@@ -31,7 +31,7 @@ test('shopping ledger icon is on title row before status; More remains by creato
   assert.match(shopping, /:aria-label="\(s.ledger_entry_id\?'查看关联账单：':'关联账单：'\)\+s.title"/)
   assert.match(shopping, /@click.stop="toggleLedger\(s.id\)"/)
   assert.doesNotMatch(shopping, /class="shopping-ledger-link"/)
-  assert.match(shopping, /<div class="shopping-meta-row">\s*<small class="shopping-creator">发起人：[\s\S]*?<button v-if="planScope===/)
+  assert.match(shopping, /<div class="shopping-meta-row">\s*<small class="shopping-plan-date">{{ s.due_on\?'计划日期：'\+s.due_on:'待安排' }}<\/small>[\s\S]*?<button v-if="planScope===/)
   assert.match(shopping, /class="routine-more-trigger shopping-more-trigger"/)
   assert.match(shopping, /@click.stop="toggleTaskMenu\('shopping:'\+s.id\)"/)
   assert.match(shopping, /<div class="shopping-handler-row">\s*<small class="shopping-assignees"[\s\S]*?<div v-if="!s.completed_at&&s.ledger_entry_id&&shoppingCompletable\(s\)" class="shopping-row-actions">/)
