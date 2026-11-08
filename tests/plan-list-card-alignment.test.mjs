@@ -34,7 +34,7 @@ test('shopping ledger is a plain-text affordance next to assignees on one row',(
   assert.doesNotMatch(shopping, /class="life-link" @click="toggleLedger\(s.id\)"/)
   assert.match(life, /\.shopping-handler-row \.shopping-ledger-link\{[^}]*background:transparent/)
   assert.match(life, /\.shopping-handler-row>\.shopping-assignees\{[^}]*white-space:nowrap/)
-  assert.match(life, /\.shopping-handler-row \.shopping-row-actions\{[^}]*margin-left:auto/)
+  assert.match(life, /\.shopping-handler-row \.shopping-row-actions\{[^}]*margin-left:0/)
   assert.match(shopping, /@click="confirmShopping\(s\)"/)
   assert.match(shopping, /<div class="shopping-meta-row">\s*<small class="shopping-creator">发起人：[\s\S]*?<button v-if="planScope===/)
   assert.match(shopping, /class="routine-more-trigger shopping-more-trigger"/)
