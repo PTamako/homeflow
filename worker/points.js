@@ -1,4 +1,4 @@
-import {householdWalletSql} from './points-wallet.js'
+import {householdWalletSql,pointYearPredicate} from './points-wallet.js'
 import {contributionAssignmentDeltaSql,contributionWeeklySql} from './contribution.js'
 import {json} from './security.js'
 
@@ -52,13 +52,13 @@ export async function pointsRoute(request,db,session){
         WHERE p.household_id=m.household_id AND p.member_user_id=m.user_id
           AND p.archived_at IS NULL ORDER BY p.created_at DESC LIMIT 1),
         u.login_name) AS displayName,
-      COALESCE(SUM(CASE WHEN cp.visibility='household' THEN cp.points ELSE 0 END),0)
-      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household'),0)
-      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household'),0)
-      +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household'),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id),0)
-      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=m.household_id AND tr.user_id=m.user_id AND tr.visibility='household'),0)
-      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id),0)
+      COALESCE(SUM(CASE WHEN cp.visibility='household' AND ${pointYearPredicate('cp.earned_at')} THEN cp.points ELSE 0 END),0)
+      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND ${pointYearPredicate('a.earned_at')}),0)
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND ${pointYearPredicate('j.earned_at')}),0)
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=m.household_id AND s.earner_user_id=m.user_id AND s.visibility='household' AND ${pointYearPredicate('s.earned_at')}),0)
+      +COALESCE((SELECT SUM(j.points) FROM shopping_joint_credits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.visibility='household' AND ${pointYearPredicate('j.earned_at')}),0)  +COALESCE((SELECT SUM(gr.points) FROM goal_completion_rewards gr WHERE gr.household_id=m.household_id AND gr.user_id=m.user_id AND ${pointYearPredicate('gr.awarded_at')}),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=m.household_id AND tr.user_id=m.user_id AND tr.visibility='household' AND ${pointYearPredicate('tr.awarded_at')}),0)
+      +COALESCE((SELECT SUM(ma.points) FROM monthly_achievement_credits ma WHERE ma.household_id=m.household_id AND ma.user_id=m.user_id AND ma.month_on>=strftime('%Y-01','now','+9 hours')),0)
       +${contributionWeeklySql('m.household_id','m.user_id')}
       +${contributionAssignmentDeltaSql('m.household_id','m.user_id')}
       AS sharedPoints,
@@ -73,10 +73,10 @@ export async function pointsRoute(request,db,session){
       +${contributionWeeklySql('m.household_id','m.user_id','?2','?3')}
       +${contributionAssignmentDeltaSql('m.household_id','m.user_id','?2','?3')}
       AS monthPoints,
-      COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine'
+      COALESCE(SUM(CASE WHEN cp.visibility='household' AND cp.kind='routine' AND ${pointYearPredicate('cp.earned_at')}
         THEN cp.points ELSE 0 END),0)
-      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine'),0)
-      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.kind='routine' AND j.visibility='household'),0) AS routinePoints,
+      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=m.household_id AND a.earner_user_id=m.user_id AND a.visibility='household' AND a.kind='routine' AND ${pointYearPredicate('a.earned_at')}),0)
+      +COALESCE((SELECT SUM(j.points) FROM dual_completion_splits j WHERE j.household_id=m.household_id AND j.user_id=m.user_id AND j.kind='routine' AND j.visibility='household' AND ${pointYearPredicate('j.earned_at')}),0) AS routinePoints,
       -- Each member's spendable wallet is the exact same ledger expression
       -- used by redemptions; lottery changes wallet, never contribution scores.
       MAX(0,${householdWalletSql('m.household_id','m.user_id')}) AS availablePoints
@@ -90,9 +90,9 @@ export async function pointsRoute(request,db,session){
   const [own,totals,streakDays,monthProgress,monthAwards]=await Promise.all([
     db.prepare(`SELECT
       COALESCE(SUM(points),0)
-      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private'),0)
-      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private'),0)
-      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=?1 AND tr.user_id=?2 AND tr.visibility='private'),0) AS privatePoints,
+      +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private' AND ${pointYearPredicate('a.earned_at')}),0)
+      +COALESCE((SELECT SUM(s.points) FROM shopping_completion_points s WHERE s.household_id=?1 AND s.earner_user_id=?2 AND s.visibility='private' AND ${pointYearPredicate('s.earned_at')}),0)
+      +COALESCE((SELECT SUM(tr.points) FROM trip_completion_rewards tr WHERE tr.household_id=?1 AND tr.user_id=?2 AND tr.visibility='private' AND ${pointYearPredicate('tr.awarded_at')}),0) AS privatePoints,
       COALESCE(SUM(CASE WHEN earned_at>=?3 AND earned_at<?4
         THEN points ELSE 0 END),0)
       +COALESCE((SELECT SUM(a.delta) FROM completion_point_adjustments a WHERE a.household_id=?1 AND a.earner_user_id=?2 AND a.visibility='private' AND a.earned_at>=?3 AND a.earned_at<?4),0)
@@ -102,30 +102,30 @@ export async function pointsRoute(request,db,session){
         AND visibility='private'`).bind(h,u,begin,end).first(),
     db.prepare(`SELECT
       (SELECT COALESCE(SUM(points),0) FROM completion_points
-        WHERE household_id=?1 AND earner_user_id=?2)
-      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2)
-      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2) AS earned,
+        WHERE household_id=?1 AND earner_user_id=?2 AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS earned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
-          AND visibility='household')
-      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household')
-      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND visibility='household') AS householdEarned,
+          AND visibility='household' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_completion_points WHERE household_id=?1 AND earner_user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM shopping_joint_credits WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND visibility='household' AND ${pointYearPredicate('earned_at')}) AS householdEarned,
       (SELECT COALESCE(SUM(points),0) FROM completion_points
-        WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
-      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine')
-      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND kind='routine') AS routineEarned,
-      (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2) AS savingsBonus,
-      (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2) AS travelBonus,
-      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2) AS achievementBonus,
+        WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(delta),0) FROM completion_point_adjustments WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')})
+      + (SELECT COALESCE(SUM(points),0) FROM dual_completion_splits WHERE household_id=?1 AND user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')}) AS routineEarned,
+      (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS savingsBonus,
+      (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS travelBonus,
+      (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2 AND month_on>=strftime('%Y-01','now','+9 hours')) AS achievementBonus,
       (SELECT COALESCE(SUM(prize_points-cost_points),0) FROM household_lottery_draws
         WHERE household_id=?1 AND user_id=?2) AS lotteryNetPoints,
-      (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine') AS routineDone,
+      (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')}) AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
         WHERE household_id=?1 AND user_id=?2) AS bonus,
       (SELECT COUNT(*) FROM weekly_challenge_awards
@@ -138,7 +138,7 @@ export async function pointsRoute(request,db,session){
           AND g.status<>'cancelled') AS groupSpent,
       (SELECT COUNT(*) FROM completion_points
         WHERE household_id=?1 AND earner_user_id=?2
-        AND visibility='household' AND earned_at>=?3 AND earned_at<?4) AS weekDone,
+        AND visibility='household' AND earned_at>=?3 AND earned_at<?4 AND ${pointYearPredicate('earned_at')}) AS weekDone,
       (SELECT COUNT(*) FROM completion_points cp
         LEFT JOIN tasks t ON cp.kind='task' AND cp.source_id=t.id
           AND t.household_id=cp.household_id
