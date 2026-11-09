@@ -13,14 +13,15 @@ type Summary={month:string;pointsPerCompletion:number;members:MemberPoints[];
  earnedPoints:number;householdEarnedPoints:number;weeklyBonusPoints:number;savingsBonusPoints:number;achievementBonusPoints:number;lotteryNetPoints:number;spentPoints:number;availablePoints:number;
  ownLevel:Level;badges:Badge[];challenge:{weekOn:string;completed:number;target:number;bonus:number;achieved:boolean}}
 type Reward={id:string;title:string;description:string;icon:string;points:number;
- stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null}
+ stock:number|null;active:boolean;builtin:boolean;redeemedCount:number;createdBy:string|null;goalCreditYen:number}
 type Redemption={id:string;rewardId:string;redeemedBy:string;redeemedByName:string;
- title:string;icon:string;points:number;quantity:number;status:string;createdAt:string;fulfilledAt:string|null}
+ title:string;icon:string;points:number;quantity:number;status:string;createdAt:string;fulfilledAt:string|null;creditedYen:number;wishTitle:string|null}
 type Contribution={userId:string;displayName:string;points:number}
 type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:string;
- points:number;fundedPoints:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
+ points:number;fundedPoints:number;wishTitle:string|null;goalCreditYen:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
 type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
+type WishGoalOption={wishId:string;wishTitle:string;goalId:string;goalTitle:string;targetAmount:number}
 type YearMember={userId:string;displayName:string;contributionPoints:number;earnedPoints:number;
  spentPoints:number;lotteryNetPoints:number;privatePoints:number|null;endingPoints:number;expiredPoints:number|null}
 type YearEntry={userId:string;visibility:'household'|'private';amount:number;contribution:number;
@@ -122,7 +123,27 @@ const lotteryRulesAnchor=ref<HTMLElement|null>(null)
 const lotteryOddsOpen=ref(false)
 const formOpen=ref(false),editId=ref('')
 const formIcon=ref('🎁'),formTitle=ref(''),formDescription=ref('')
-const formCost=ref('100'),formStock=ref(''),formActive=ref(true)
+const formCost=ref('100'),formStock=ref(''),formActive=ref(true),formCredit=ref('0')
+const wishRewardDraft=ref<{item:Reward;action:'redeem'|'pool';quantity:number}|null>(null)
+const wishGoalOptions=ref<WishGoalOption[]>([])
+const wishGoalSelected=ref('')
+const wishGoalLoading=ref(false)
+const wishGoalError=ref('')
+const wishGoalChoice=computed(()=>wishGoalOptions.value.find(g=>g.goalId===wishGoalSelected.value)||null)
+function closeWishReward(){if(!busy.value&&!wishGoalLoading.value)wishRewardDraft.value=null}
+async function askLinkedWish(item:Reward,action:'redeem'|'pool',quantity=1){
+ if(busy.value||wishGoalLoading.value)return
+ wishRewardDraft.value={item,action,quantity}
+ wishGoalOptions.value=[];wishGoalSelected.value='';wishGoalError.value=''
+ wishGoalLoading.value=true
+ try{
+  const result=await fetchJSON('/rewards/wish-goals') as {items:WishGoalOption[]}
+  if(!wishRewardDraft.value||wishRewardDraft.value.item.id!==item.id)return
+  wishGoalOptions.value=result.items||[]
+  if(wishGoalOptions.value.length===1)wishGoalSelected.value=wishGoalOptions.value[0].goalId
+ }catch(e){wishGoalError.value=(e as Error).message}
+ finally{wishGoalLoading.value=false}
+}
 const poolAmount=ref<Record<string,string>>({})
 const poolContributionOpen=ref('')
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
@@ -271,15 +292,17 @@ function closeDetails(){
  generation++
  view.value='shop'
  resetForm()
+ wishRewardDraft.value=null
 }
 function resetForm(){
  formOpen.value=false;editId.value='';formIcon.value='🎁';formTitle.value=''
- formDescription.value='';formCost.value='100';formStock.value='';formActive.value=true
+ formDescription.value='';formCost.value='100';formStock.value='';formActive.value=true;formCredit.value='0'
 }
 function editReward(reward:Reward){
  editId.value=reward.id;formIcon.value=reward.icon;formTitle.value=reward.title
  formDescription.value=reward.description;formCost.value=String(reward.points)
  formStock.value=reward.stock===null?'':String(reward.stock)
+ formCredit.value=String(reward.goalCreditYen||0)
  formActive.value=reward.active;formOpen.value=true
 }
 function openCreate(){resetForm();formOpen.value=true}
@@ -290,6 +313,7 @@ function selectView(next:'shop'|'achievements'|'lottery'|'history'){
  historyRequest++
  lotteryHelpOpen.value=false
  view.value=next
+ wishRewardDraft.value=null
  if(next==='lottery'||next==='shop'&&!shop.value||next==='history')void refresh()
 }
 const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
@@ -321,12 +345,14 @@ async function mutate(work:()=>Promise<unknown>,success:string){
 }
 async function saveReward(){
  const cost=Number(formCost.value),stock=formStock.value.trim()===''?null:Number(formStock.value)
+ const credit=Number(formCredit.value.trim()||0)
  if(!formTitle.value.trim()||!Number.isInteger(cost)||cost<10||cost>10000||
-    (stock!==null&&(!Number.isInteger(stock)||stock<0||stock>9999))){
+    (stock!==null&&(!Number.isInteger(stock)||stock<0||stock>9999))||
+    !Number.isSafeInteger(credit)||credit<0||credit>100000){
   error.value='请填写名称（1～60字）、10～10000积分和有效库存';return
  }
  const payload={title:formTitle.value.trim(),description:formDescription.value,
-  icon:formIcon.value,points:cost,stock,active:formActive.value}
+  icon:formIcon.value,points:cost,stock,active:formActive.value,goalCreditYen:credit}
  const endpoint=editId.value?'/rewards/'+encodeURIComponent(editId.value):'/rewards'
  const method=editId.value?'PATCH':'POST'
  await mutate(()=>fetchJSON(endpoint,method,payload),'奖励已保存')
@@ -335,7 +361,7 @@ async function saveReward(){
 async function toggleActive(item:Reward){
  if(!window.confirm(item.active?'下架「'+item.title+'」？已有兑换记录会保留。':'重新上架「'+item.title+'」？'))return
  const payload={title:item.title,description:item.description,icon:item.icon,
-  points:item.points,stock:item.stock,active:!item.active}
+  points:item.points,stock:item.stock,active:!item.active,goalCreditYen:item.goalCreditYen||0}
  await mutate(()=>fetchJSON('/rewards/'+encodeURIComponent(item.id),'PATCH',payload),
   item.active?'已下架':'已重新上架')
 }
@@ -343,18 +369,43 @@ async function redeem(item:Reward){
  const quantity=quantityFor(item),total=quantity*item.points
  if(item.stock!==null&&item.redeemedCount+quantity>item.stock){error.value='商品剩余数量不足';return}
  if(points.value<total){error.value='可用积分不足';return}
+ if(item.goalCreditYen>0){await askLinkedWish(item,'redeem',quantity);return}
  if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+' 吗？\n兑换后无法自动退款，经验值不会扣除。'))return
- // All units share one purchase token; the server either charges all or none.
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId,quantity}),
   '已成功兑换 '+quantity+' 件！')
  if(!error.value)quantityChoice.value={...quantityChoice.value,[item.id]:1}
 }
 async function startPool(item:Reward){
+ if(item.goalCreditYen>0){await askLinkedWish(item,'pool');return}
  if(!window.confirm('创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool','POST',{rewardId:item.id,requestId}),
   '合力兑换已创建，请在下方选择出资金额')
+}
+async function submitWishReward(){
+ const draft=wishRewardDraft.value,choice=wishGoalChoice.value
+ if(!draft||!choice||busy.value||wishGoalLoading.value)return
+ const {item,action,quantity}=draft
+ const yen=item.goalCreditYen*quantity
+ const message=action==='redeem'?
+  '花费 '+item.points*quantity+' 积分，兑换「'+item.title+'」×'+quantity+
+    '，并将 ¥'+yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？':
+  '创建「'+item.title+'」的合力兑换，凑齐后将 ¥'+
+    yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？'
+ if(!window.confirm(message+'\n奖励额度不代表实际存款，也不会写入家計簿。'))return
+ const requestId=crypto.randomUUID()
+ const payload={rewardId:item.id,requestId,wishId:choice.wishId,goalId:choice.goalId}
+ if(action==='redeem')
+  await mutate(()=>fetchJSON('/rewards/redeem','POST',{...payload,quantity}),
+   '兑换成功！'+choice.wishTitle+'的储值奖励额度增加 ¥'+yen.toLocaleString('ja-JP'))
+ else
+  await mutate(()=>fetchJSON('/rewards/pool','POST',payload),
+   '合力兑换已创建，积分凑齐后将自动计入所选心愿的储值额度')
+ if(!error.value){
+  wishRewardDraft.value=null
+  if(action==='redeem')quantityChoice.value={...quantityChoice.value,[item.id]:1}
+ }
 }
 async function contributePool(item:GroupOrder){
  const amount=Number(poolAmount.value[item.id]??Math.ceil(item.points/2))
