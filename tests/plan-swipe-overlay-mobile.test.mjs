@@ -32,7 +32,7 @@ test('recurring and one-off task edit/delete rails fill complete tall rows',()=>
 })
 
 test('opening Edit/Delete on a list entry closes contextual More, without losing real action handlers',()=>{
- assert.match(swipe,/defineEmits<\{open:\[\];edit:\[\];delete:\[\]\}>/)
+ assert.match(swipe,/defineEmits<\{open:\[\];edit:\[\];archive:\[\];delete:\[\]\}>/)
  assert.match(swipe,/activeSwipeId\.value=key\.value\s*\/\/ A contextual More menu must close/)
  assert.match(swipe,/emit\('open'\)/)
  for(const scope of ['routines','one-time-plans','shopping','wishes','trips']){

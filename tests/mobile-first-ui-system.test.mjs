@@ -59,7 +59,7 @@ test('swipe controls have 44px affordance and accessible keyboard focus',()=>{
  assert.match(swipe,/ref="firstAction"/)
  assert.match(swipe,/ref="deleteAction"/)
  assert.match(swipe,/ref="triggerRef"/)
- assert.match(swipe,/nextTick\(\(\)=>\(firstAction\.value\|\|deleteAction\.value\)\?\.focus\(\)\)/)
+ assert.match(swipe,/nextTick\(\(\)=>\(firstAction\.value\|\|archiveAction\.value\|\|deleteAction\.value\)\?\.focus\(\)\)/)
  assert.match(swipe,/@keydown\.esc\.stop="closeFromKeyboard"/)
  assert.match(swipe,/touch-action:pan-y/)
  assert.match(swipe,/\.swipe-actions\{[\s\S]*?visibility:hidden/)

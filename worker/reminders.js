@@ -134,7 +134,7 @@ export async function remindersRoute(request,db,session) {
   const pendingOnly=url.searchParams.get('pending')==='1'
   const includeGoals=pendingOnly||url.searchParams.get('goals')==='1'
   const [events,rules,marks,tasks,shopping,trips,tripProgress,birthdayProfiles,snoozes,preference,itemPrefs,deliveredNotices]=await db.batch([
-    db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
+    db.prepare("SELECT id,title,event_date,repeat_mode,advance_days_json,subject_profile_id,archived_at FROM anniversaries WHERE household_id=?1 AND deleted_at IS NULL AND (visibility='household' OR created_by=?2) LIMIT 200").bind(hid,u),
     db.prepare(`SELECT r.id,r.title,r.anchor_date,r.repeat_type,r.repeat_config,
       r.next_due_on,r.assigned_to,
       (SELECT json_group_array(json_object('on',a.occurrence_on,'user',a.assignee_user_id,'user2',a.second_assignee_user_id))
@@ -190,6 +190,7 @@ export async function remindersRoute(request,db,session) {
   }
   const announcements=[]
   for(const e of mergeProfileBirthdays(events.results,birthdayProfiles.results)){
+    if(e.archived_at)continue
     const next=nextAnniversary(e.event_date,e.repeat_mode,date)
     if(!next)continue
     let leads=[]
