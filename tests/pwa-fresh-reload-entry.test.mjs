@@ -28,9 +28,11 @@ test('management footer keeps only sign out, without a redundant manual refresh 
   assert.match(management,/\.management-app-actions>button\{flex:1 1 0;/)
 })
 
-test('production lottery history retains compact standalone list',()=>{
-  assert.ok(points.includes('<ul v-else class="lottery-history-list" :aria-busy="lotteryPageBusy">'))
-  assert.ok(points.includes('class="lottery-history-row"'))
-  assert.ok(points.includes('.lottery-history-list{display:flex'))
-  assert.ok(points.includes('.lottery-history-row{display:flex'))
+test('lottery stays a game card and the single point ledger owns historical records',()=>{
+ assert.ok(points.includes('class="lottery-card"'))
+ assert.ok(points.includes('class="lottery-box"'))
+ assert.ok(!points.includes('近一年抽奖明细'))
+ assert.ok(!points.includes('class="lottery-history-row"'))
+ assert.ok(points.includes('v-for="(entry,i) in visibleHistoryEntries"'))
+ assert.ok(points.includes('<option value="lottery">抽奖</option>'))
 })
