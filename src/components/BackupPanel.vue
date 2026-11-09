@@ -12,7 +12,13 @@ const lastExportAt=ref('')
 try{lastExportAt.value=localStorage.getItem(backupStorageKey)||''}catch{}
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
-  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','reminderSnoozes','reminderPreferences','reminderItemPreferences']
+  'petHealth','routineAssignments','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','todayPlanActions','reminderSnoozes','reminderPreferences','reminderItemPreferences']
+// An immutable audit attachment is kept for manual verification and D1 recovery,
+ // never re-imported as awards, which would duplicate family points.
+const auditOrder=['rewardItems','rewardRedemptions','rewardGroupOrders',
+ 'rewardGroupContributions','lotteryDraws','completionPoints',
+ 'completionAdjustments','dualSplits','shoppingPoints','shoppingJoint',
+ 'weeklyChallenges','goalRewards','tripRewards','monthlyAchievements']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const restoreSheetOpen=ref(false)
 const helpOpen=ref(false)
@@ -75,8 +81,30 @@ async function exportArchive(){
       snapshot.records[key]=records
     }
     if(!bodyOk(snapshot))throw Error('备份内容校验失败')
-    const files:Record<string,Uint8Array>={'homeflow.json':strToU8(JSON.stringify(snapshot))}
-    let size=files['homeflow.json'].byteLength,count=0
+    const audit:Record<string,Record<string,unknown>[]>={}
+    for(const key of auditOrder){
+      const entries:Record<string,unknown>[]=[]
+      let cursor:string|null=null
+      do{
+        const page=await api('/portable/audit?dataset='+encodeURIComponent(key)+
+          (cursor?'&cursor='+encodeURIComponent(cursor):''))
+        if(page.dataset!==key||!Array.isArray(page.items))throw Error('积分历史归档读取失败')
+        entries.push(...page.items)
+        if(entries.length>50000)throw Error('积分历史过多，请联系管理员使用 D1 数据库备份')
+        cursor=typeof page.nextCursor==='string'?page.nextCursor:null
+      }while(cursor)
+      audit[key]=entries
+    }
+    const files:Record<string,Uint8Array>={
+      'homeflow.json':strToU8(JSON.stringify(snapshot)),
+      'points-and-rewards-audit.json':strToU8(JSON.stringify({
+        format:'homeflow.points-audit',schemaVersion:1,exportedAt:snapshot.exportedAt,
+        scope:'shared-family-and-own-private',restorePolicy:'audit-only-no-replay',
+        records:audit
+      }))
+    }
+    let size=Object.values(files).reduce((total,part)=>total+part.byteLength,0),count=0
+    if(size>50*1024*1024)throw Error('备份内容超过 50MB，请使用 D1 数据库备份')
     // Photos are only available on this device; other devices have separate local photo caches.
     for(const m of snapshot.records.memories||[]){
       const id=String(m.id)
@@ -184,7 +212,8 @@ async function restore(){
         <div v-if="helpOpen" id="backup-help-popover" class="backup-help-popover" role="note">
           <strong>备份与恢复说明</strong>
           <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
-          <p>备份仅包含当前账号及本机照片；不含密码、未同步任务和云端照片。请妥善保存 ZIP 文件。</p>
+          <p>ZIP 另含积分、抽奖、商城历史的只读核对档案。为避免重复发分，恢复操作不会重新导入这类流水；完整账本灾难恢复需使用 D1 备份。</p>
+          <p>不含密码、未同步任务和云端照片；其他设备的本机照片须分别备份。请妥善保存 ZIP 文件。</p>
         </div>
       </span>
     </div>
@@ -193,7 +222,7 @@ async function restore(){
         <h3>下载备份</h3>
         <small v-if="lastExportAt">上次：{{ lastExportAt.slice(0,10) }}</small>
       </div>
-      <p class="backup-caption">仅备份当前账号与本机照片；请先同步待办，其他设备需分别备份。</p>
+      <p class="backup-caption">仅备份当前账号与本机照片，另附家庭积分只读历史档案；请先同步待办，其他设备需分别备份。</p>
       <button type="button" class="backup-download" :disabled="pending" @click="exportArchive">
         {{ pending?'处理中…':'下载备份' }}
       </button>

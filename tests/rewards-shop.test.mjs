@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {rewardsRoute} from '../worker/rewards.js'
+import {tasksRoute} from '../worker/tasks.js'
 import {goalRewardCreditAmount} from '../worker/reward-goal-credits.js'
 import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/points.js'
 import {annualPointLedgerSql,pointsHistoryRoute,jstYearWindow} from '../worker/points-history.js'
@@ -40,7 +41,7 @@ const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0')
 const call=async(db,session,path,method='GET',body)=> {
  const request=new Request('https://homeflow.invalid'+path,{method,
   ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
- const response=await rewardsRoute(request,db,path,session)
+ const response=await rewardsRoute(request,db,path.split('?')[0],session)
  return {status:response.status,body:await response.json()}
 }
 const balance=async(db,user)=>await (await pointsRoute(
@@ -513,5 +514,68 @@ test('poolled voucher credits its selected wish only after full funding',async()
   assert.equal(open.status,201)
   assert.equal((await call(db,alice,'/api/rewards/pool/'+open.body.id+'/cancel','POST')).status,200)
   assert.equal(await goalRewardCreditAmount(db,'h',goalId),1000,'cancelled unfunded order cannot grant credit')
+ }finally{sqlite.close()}
+})
+
+
+test('shop history uses real five-entry pages and keeps multi-unit redemptions merged',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',60)
+  const reward=(await call(db,alice,'/api/rewards','POST',{
+   title:'分页测试',description:'历史',icon:'🎁',points:10,stock:null,active:true})).body.id
+  for(let n=0;n<12;n++){
+   const result=await call(db,alice,'/api/rewards/redeem','POST',{
+    rewardId:reward,requestId:id(910+n),quantity:n%2?2:1})
+   assert.equal(result.status,201,'redeem '+n)
+  }
+  const first=await call(db,alice,'/api/rewards?redemptionPage=1')
+  const second=await call(db,alice,'/api/rewards?redemptionPage=2')
+  const third=await call(db,alice,'/api/rewards?redemptionPage=3')
+  assert.equal(first.status,200)
+  assert.equal(first.body.pageSize,5)
+  assert.equal(first.body.redemptionTotal,12)
+  assert.equal(first.body.redemptionPages,3)
+  assert.equal(first.body.redemptions.length,5)
+  assert.equal(second.body.redemptions.length,5)
+  assert.equal(third.body.redemptions.length,2)
+  const all=[...first.body.redemptions,...second.body.redemptions,...third.body.redemptions]
+  assert.equal(new Set(all.map(x=>x.id)).size,12)
+  assert.ok(all.some(x=>x.quantity===2),'two-unit orders stay one history event')
+  assert.equal((await call(db,alice,'/api/rewards?redemptionPage=0')).status,400)
+ }finally{sqlite.close()}
+})
+
+test('previous-year assigned bounty pays from current-year creator funds only at completion',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const prior=String(year-1)+'-12-31T14:00:00.000Z'
+  const task=id(990)
+  sqlite.prepare(`INSERT INTO tasks(id,household_id,creator_user_id,assignee_user_id,
+    visibility,title,bonus_points,created_at) VALUES(?,?,?,?,?,?,?,?)`)
+    .run(task,'h','alice','bob','household','跨年指定奖励',20,prior)
+  const request=()=>new Request('https://homeflow.invalid/api/tasks/'+task,{
+   method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({completed:true})})
+  const before=await tasksRoute(request(),db,'/api/tasks/'+task,bob)
+  assert.equal(before.status,409)
+  assert.equal((await before.json()).error,'cross_year_bounty_insufficient')
+  assert.equal(sqlite.prepare('SELECT completed_at FROM tasks WHERE id=?').get(task).completed_at,null)
+  earn(sqlite,'alice',3)
+  const after=await tasksRoute(request(),db,'/api/tasks/'+task,bob)
+  assert.equal(after.status,200,await after.text())
+  const bobWallet=(await balance(db,bob)).availablePoints
+  assert.ok(bobWallet>=25,'5 base + 20 bounty credited in completion year')
+  const aliceWallet=(await balance(db,alice)).availablePoints
+  assert.ok(aliceWallet>=0,'creator cannot overdraw year-end reset wallet')
+  const hist=await pointsHistoryRoute(new Request(
+   'https://homeflow.invalid/api/points/history?year='+year+'&member=bob'),db,bob)
+  assert.equal(hist.status,200)
+  const history=await hist.json()
+  assert.ok(history.entries.some(e=>e.userId==='bob'&&e.category==='bounty'&&e.amount===20))
+  const aliceHistory=await pointsHistoryRoute(new Request(
+   'https://homeflow.invalid/api/points/history?year='+year+'&member=alice'),db,alice)
+  const aliceRows=(await aliceHistory.json()).entries
+  assert.ok(aliceRows.some(e=>e.userId==='alice'&&e.category==='reserved'&&e.amount===-20))
  }finally{sqlite.close()}
 })

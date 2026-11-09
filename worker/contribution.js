@@ -18,7 +18,7 @@ export function contributionAssignmentDeltaSql(h,u,from=null,to=null){
     ) FROM tasks t
     WHERE t.household_id=${h} AND t.visibility='household'
       AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.completed_at IS NOT NULL
-       AND ${pointYearPredicate('t.created_at')} AND ${pointYearPredicate('t.completed_at')}
+       AND ${pointYearPredicate('t.completed_at')}
       AND t.completed_by IN(t.assignee_user_id,t.second_assignee_user_id)
       AND (${u}=t.creator_user_id OR ${u} IN(t.assignee_user_id,t.second_assignee_user_id))
       ${period('t.completed_at')}),0)`
@@ -35,7 +35,7 @@ export function contributionAssignmentDeltaSql(h,u,from=null,to=null){
       AND m.occurrence_on=a.occurrence_on
     WHERE a.household_id=${h} AND r.visibility='household'
       AND r.deleted_at IS NULL AND a.bonus_points>0 AND m.completed_at IS NOT NULL
-       AND ${pointYearPredicate('a.created_at')} AND ${pointYearPredicate('m.completed_at')}
+       AND ${pointYearPredicate('m.completed_at')}
       AND m.completed_by IN(a.assignee_user_id,a.second_assignee_user_id)
       AND (${u}=r.created_by OR ${u} IN(a.assignee_user_id,a.second_assignee_user_id))
       ${period('m.completed_at')}),0)`

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
-import {portableRoute,RESTORE_ORDER} from '../worker/portable.js'
+import {portableRoute,RESTORE_ORDER,POINTS_AUDIT_SOURCES} from '../worker/portable.js'
 import {tasksRoute} from '../worker/tasks.js'
 import {lifeRoute} from '../worker/life.js'
 import {petsRoute} from '../worker/pets.js'
@@ -26,7 +26,9 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0012_savings_goal_cadence.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
   '0029_household_revisions.sql','0030_member_revisions.sql','0031_completion_event_read_state.sql',
   '0032_settlement_origin.sql','0033_completion_points.sql','0034_rewards_shop.sql',
-  '0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql']
+  '0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql',
+  '0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql',
+  '0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -683,4 +685,132 @@ test('global eight-category search uses D1-safe groups and preserves cross-kind 
   assert.deepEqual(all.map(x=>x.event_date),[7,6,5,4,3,2,1].map(x=>'2026-11-'+String(x).padStart(2,'0')))
   assert.equal((await ask('','task')).items.length,3)
  }finally{sqlite.close()}
+})
+
+
+test('portable ZIP roundtrip preserves dual assignments, travel participants and funded task settings',async()=>{
+ const source=database(),target=database()
+ const second='77777777-7777-4777-8777-777777777777'
+ const third='88888888-8888-4888-8888-888888888888'
+ const trip='99999999-9999-4999-8999-999999999999'
+ const task='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ try{
+  for(const fixture of [source,target]){
+   for(const uid of [second,third]){
+    fixture.sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)').run(uid,uid,'s','v')
+    fixture.sqlite.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)').run('primary',uid,'member')
+   }
+  }
+  const db=source.sqlite
+  db.prepare('INSERT INTO trips(id,household_id,created_by,visibility,title,start_on,end_on,participant_user_ids) VALUES(?,?,?,?,?,?,?,?)')
+   .run(trip,'primary','u1','household','旅行','2026-12-10','2026-12-12',JSON.stringify(['u1',second]))
+  db.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,assignee_user_id,bonus_points) VALUES(?,?,?,?,?,?,?)')
+   .run(task,'primary','u1','household','指定积分任务',second,30)
+  db.prepare('INSERT INTO routines(id,household_id,created_by,visibility,title,repeat_type,anchor_date) VALUES(?,?,?,?,?,?,?)')
+   .run(routine,'primary','u1','household','周期','daily','2026-11-01')
+  db.prepare('INSERT INTO routine_occurrence_assignments(household_id,routine_id,occurrence_on,assignee_user_id,second_assignee_user_id,bonus_points) VALUES(?,?,?,?,?,?)')
+   .run('primary',routine,'2026-12-10',second,third,0)
+  db.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity,assigned_to,second_assignee_user_id) VALUES(?,?,?,?,?,?,?,?)')
+   .run(shop,'primary','u1','household','共享采购',2,second,third)
+  const response=await portableRoute(new Request('https://homeflow.invalid/api/portable'),source.db,'/api/portable',session)
+  assert.equal(response.status,200)
+  const snapshot=await response.json()
+  assert.equal(snapshot.records.routineAssignments.length,1)
+  for(const dataset of RESTORE_ORDER){
+   const items=snapshot.records[dataset]
+   if(!items?.length)continue
+   const request=new Request('https://homeflow.invalid/api/portable/restore',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({dataset,items,confirm:true})
+   })
+   const result=await portableRoute(request,target.db,'/api/portable/restore',session)
+   assert.equal(result.status,200,dataset+': '+await result.text())
+  }
+  const t=target.sqlite.prepare('SELECT assignee_user_id,bonus_points FROM tasks WHERE id=?').get(task)
+  assert.equal(t.assignee_user_id,second)
+  assert.equal(t.bonus_points,30)
+  const a=target.sqlite.prepare('SELECT assignee_user_id,second_assignee_user_id,bonus_points FROM routine_occurrence_assignments WHERE routine_id=?').get(routine)
+  assert.equal(a.assignee_user_id,second)
+  assert.equal(a.second_assignee_user_id,third)
+  assert.equal(a.bonus_points,0)
+  const s=target.sqlite.prepare('SELECT assigned_to,second_assignee_user_id FROM shopping_items WHERE id=?').get(shop)
+  assert.equal(s.assigned_to,second)
+  assert.equal(s.second_assignee_user_id,third)
+  const p=target.sqlite.prepare('SELECT participant_user_ids FROM trips WHERE id=?').get(trip)
+  assert.deepEqual(new Set(JSON.parse(p.participant_user_ids)),new Set(['u1',second]))
+  assert.equal(target.sqlite.prepare('PRAGMA foreign_key_check').all().length,0)
+ }finally{source.sqlite.close();target.sqlite.close()}
+})
+
+test('mobile ZIP export and restore enumerate every server-side portable dataset',()=>{
+ const component=readFileSync(new URL('../src/components/BackupPanel.vue',import.meta.url),'utf8')
+ const match=component.match(/const order=\[([\s\S]*?)\]/)
+ assert.ok(match)
+ const keys=[...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1])
+ assert.deepEqual(keys,RESTORE_ORDER)
+})
+
+
+test('portable points audit is complete but read-only and isolates other members private events',async()=>{
+ const source=database()
+ const second='77777777-7777-4777-8777-777777777777'
+ try{
+  const sqlite=source.sqlite
+  sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)').run(second,'other','s','v')
+  sqlite.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)').run('primary',second,'member')
+  for(const [key,member,visibility] of [['self','u1','private'],['shared',second,'household'],['secret',second,'private']]){
+   sqlite.prepare('INSERT INTO completion_points(household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at) VALUES(?,?,?,?,?,?,10,?)')
+    .run('primary','task',key,'',member,visibility,new Date().toISOString())
+  }
+  const read=async(dataset,cursor='0')=>{
+   const res=await portableRoute(new Request('https://homeflow.invalid/api/portable/audit?dataset='+dataset+'&cursor='+cursor),
+    source.db,'/api/portable/audit',session)
+   assert.equal(res.status,200)
+   return res.json()
+  }
+  const points=await read('completionPoints')
+  assert.deepEqual(new Set(points.items.map(item=>item.source_id)),new Set(['self','shared']))
+  assert.equal(points.nextCursor,null)
+  for(const [dataset] of POINTS_AUDIT_SOURCES){
+    const result=await read(dataset)
+    assert.ok(Array.isArray(result.items),dataset)
+  }
+  const shop=await read('rewardRedemptions')
+  assert.ok(Array.isArray(shop.items))
+  // A shared point/stock history must not expose another member's private wish.
+  const redemptionId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const poolId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  sqlite.prepare(`INSERT INTO reward_redemptions
+    (id,household_id,reward_id,redeemed_by,title_snapshot,icon_snapshot,
+      points_spent,client_request_id,created_at,wish_title_snapshot)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(redemptionId,'primary','primary:dessert',second,
+      '秘密礼物','🎁',100,'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      new Date().toISOString(),'另一位成员的私人心愿')
+  sqlite.prepare(`INSERT INTO reward_group_orders
+    (id,household_id,reward_id,created_by,client_request_id,
+     title_snapshot,icon_snapshot,points_required,created_at,wish_title_snapshot)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(poolId,'primary','primary:dessert',second,
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd','私人合力','🎁',100,
+      new Date().toISOString(),'对方的私人梦想')
+  const r=await read('rewardRedemptions')
+  const p=await read('rewardGroupOrders')
+  assert.equal(r.items.find(x=>x.id===redemptionId)?.wish_title_snapshot,null)
+  assert.equal(p.items.find(x=>x.id===poolId)?.wish_title_snapshot,null)
+  assert.equal((await portableRoute(new Request('https://homeflow.invalid/api/portable/audit?dataset=users'),
+   source.db,'/api/portable/audit',session)).status,400)
+  const restore=await portableRoute(new Request('https://homeflow.invalid/api/portable/restore',{
+   method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({dataset:'completionPoints',items:points.items,confirm:true})
+  }),source.db,'/api/portable/restore',session)
+  assert.equal(restore.status,400,'audit records cannot mint new credits via portable restore')
+ }finally{source.sqlite.close()}
+})
+
+test('points audit backup includes all whitelisted source tables and no credential tables',()=>{
+ const portable=readFileSync(new URL('../worker/portable.js',import.meta.url),'utf8')
+ const client=readFileSync(new URL('../src/components/BackupPanel.vue',import.meta.url),'utf8')
+ assert.match(client,/points-and-rewards-audit\.json/)
+ assert.match(client,/audit-only-no-replay/)
+ assert.match(portable,/POINTS_AUDIT_SOURCES/)
+ assert.doesNotMatch(portable.slice(portable.indexOf('export const POINTS_AUDIT_SOURCES='),portable.indexOf('function normalized')),/sessions|password|login_limits|push_subscriptions/)
 })

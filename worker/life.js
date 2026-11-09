@@ -8,6 +8,7 @@ import {enrichRoutineList,routineHistory,routinePeriodDetail} from './routine-hi
 import {isJapaneseWorkday} from './jp-holidays.js'
 import {readTodayRows} from './today-source-read.js'
 import {routineAssignmentRoute} from './routine-assignments.js'
+import {householdWalletSql,pointYearStartSql} from './points-wallet.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
@@ -161,7 +162,6 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       .map(e=>({...e,nextOn:nextAnniversary(e.event_date,e.repeat_mode,now)}))
       .filter(e=>e.nextOn).sort((a,b)=>a.nextOn.localeCompare(b.nextOn))})
   }
-
   // An archived anniversary is preserved independently of recycle deletion.
   if(table==='anniversaries'&&id&&['archive','restore'].includes(parts[3])&&request.method==='POST'){
     const action=parts[3],stamp=iso()
@@ -262,7 +262,7 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       return bad()
     const early=body.early===true&&body.status==='completed'&&actual===jstToday()&&
       earlyOn===periodOn
-    const assignment=await db.prepare(`SELECT assignee_user_id,second_assignee_user_id,bonus_points
+    const assignment=await db.prepare(`SELECT assignee_user_id,second_assignee_user_id,bonus_points,created_at
       FROM routine_occurrence_assignments WHERE household_id=?1 AND routine_id=?2
       AND occurrence_on=?3`).bind(session.household_id,id,periodOn).first()
     const effectiveAssignee=assignment?.assignee_user_id||rule.assigned_to
@@ -298,6 +298,16 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       (body.status==='skipped'&&!existing?.skipped_at)))
       return json({error:'completion_date_must_be_today'},409)
     if(body.status==='completed'&&existing?.completed_at)return json({ok:true,unchanged:true})
+    if(body.status==='completed'&&Number(assignment?.bonus_points)>0&&
+       rule.created_by!==assignment?.assignee_user_id){
+      // A reserved bounty from a previous JST year expired on January 1.
+      // Re-fund it from the dispatcher's *new-year* wallet before completion.
+      const funding=await db.prepare(`SELECT ${householdWalletSql('?1','?2')} AS wallet
+        WHERE datetime(?3)<${pointYearStartSql}`)
+        .bind(session.household_id,rule.created_by,assignment.created_at).first()
+      if(funding&&Number(funding.wallet)<Number(assignment.bonus_points))
+        return json({error:'cross_year_bounty_insufficient'},409)
+    }
     if(body.status==='skipped'&&existing?.skipped_at)return json({ok:true,unchanged:true})
     if(body.status==='open'&&!existing)return json({ok:true,unchanged:true})
     if(early&&!existing){
