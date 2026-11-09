@@ -77,7 +77,10 @@ const historyTime=(stamp:string)=>new Date(stamp).toLocaleString('zh-CN',{
  hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false
 })
 const drawOutcome=(kind:string|null)=>kind==='empty'?'空手而归':
- kind==='double'?'最高奖 · 积分翻倍':'中奖'
+ kind==='double'?'传说大奖 · 保底80封顶200':
+ kind==='six'?'幸运小赚 +6 分':
+ kind==='ticket'?'免费抽奖券':
+ kind==='shop'?'商城95折券':kind==='wish'?'心愿加速券':'中奖'
 const signedPoints=(amount:number)=>(amount>0?'+':'')+fmt(amount)
 const quantityFor=(item:Reward)=>Math.max(1,Math.min(99,Math.trunc(quantityChoice.value[item.id]||1)))
 function stepQuantity(item:Reward,delta:number){
@@ -650,9 +653,19 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <small>每次消耗 5 家庭积分</small>
            <small>本月已抽 {{ lottery.used }}/{{ lottery.limit }} 次 · 剩余 {{ lotteryRemaining }} 次</small>
            <button type="button" class="redeem-btn lottery-spin"
-             :disabled="busy||lotteryRemaining===0||points<5"
-             @click="drawLottery">{{ busy?'正在抽奖…':lotteryRemaining===0?'本月机会已用完':points<5?'积分不足':'抽一次 · 5 分' }}</button>
+             :disabled="busy||lotteryRemaining===0||(!usingTicket&&points<5)"
+             @click="drawLottery">{{ busy?'正在抽奖…':lotteryRemaining===0?'本月机会已用完':!usingTicket&&points<5?'积分不足':usingTicket?'使用免费券抽一次':'抽一次 · 5 分' }}</button>
          </div>
+       </div>
+       <div class="lottery-coupon-select">
+         <label v-if="availableTicket" class="lottery-ticket-choice">
+           <input v-model="useFreeTicket" type="checkbox" :disabled="busy"/>
+           <span>🎟 使用免费抽奖券 <small>有效至 {{ couponDay(availableTicket.expiresOn) }} · 不扣积分，仍占每月次数</small></span>
+         </label>
+         <small v-else class="lottery-no-ticket">免费券不会自动使用，中奖后在「我的奖励券」查看。</small>
+         <button type="button" class="small-outline" @click="openCouponSheet">
+           我的奖励券 · {{ activeCoupons.length }} 张
+         </button>
        </div>
        <div ref="lotteryRulesAnchor" class="lottery-odds">
          <div class="lottery-odds-heading">
@@ -673,7 +686,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div v-if="lotteryHelpOpen" id="lottery-rule-popover" role="tooltip"
            class="points-rule-popover lottery-rule-popover">
            <b>抽奖规则</b>
-           <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。翻倍奖励以扣除本次 5 分后的家庭可用积分为基数；私人积分不参与。抽奖结果自动发送到家庭成员的今日消息并推送。</p>
+           <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。35% 空手、40% 返还 6 分、25% 中奖。传说奖按本次费用扣除后的余额计算奖励，保底 80 分、封顶 200 分。免费券需手动选择，不扣 5 分但仍占次数。奖励券分别有效 60/90/90 天，允许跨年；私人积分不参与。抽奖结果发送到今日消息。</p>
          </div>
        </div>
      </div>
@@ -728,8 +741,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <b>{{ entry.label }}</b>
            <small class="annual-ledger-meta">{{ categoryNames[entry.category]||'积分调整' }} · {{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} · {{ historyTime(entry.stamp) }}</small>
            <small v-if="entry.category==='lottery'" class="annual-ledger-breakdown">
-             {{ drawOutcome(entry.prizeKind) }} · 消耗 {{ fmt(entry.ticketCost||0) }} 分 · 中奖 {{ fmt(entry.prizePoints||0) }} 分 · 净变化 {{ signedPoints(entry.amount) }} 分
+             {{ drawOutcome(entry.prizeKind) }} · 消耗 {{ fmt(entry.ticketCost||0) }} 分 ·
+             <template v-if="['ticket','shop','wish'].includes(entry.prizeKind||'')">获得奖励券 · </template>
+             <template v-else>中奖 {{ fmt(entry.prizePoints||0) }} 分 · </template>
+             净变化 {{ signedPoints(entry.amount) }} 分
            </small>
+           <small v-else-if="entry.category==='coupon_use'||entry.category==='coupon_expire'"
+             class="annual-ledger-breakdown">奖励券{{ entry.category==='coupon_use'?'已核销':'已过期' }} · 保留永久记录</small>
            <small v-else class="annual-ledger-breakdown">
              {{ entry.amount<0?'扣减':'获得' }} {{ fmt(Math.abs(entry.amount)) }} 分 · 贡献变化 {{ signedPoints(entry.contribution) }} 分
            </small>
@@ -745,6 +763,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
    </template>
    <template v-if="view==='shop'">
+     <div v-if="availableShopCoupon" class="shop-coupon-choice">
+       <label><input v-model="useShopCoupon" type="checkbox" :disabled="busy"/>
+         使用商城95折券 <small>最高优惠50分 · 有效至 {{ couponDay(availableShopCoupon.expiresOn) }}</small>
+       </label>
+       <button type="button" class="small-outline" @click="openCouponSheet">我的奖励券</button>
+     </div>
      <div class="shop-title">
        <b>家庭奖励</b><button type="button" class="small-outline" :disabled="busy" @click="openCreate">+ 自定义奖励</button>
      </div>
@@ -753,10 +777,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <span class="reward-emoji">{{ item.icon }}</span>
          <div class="reward-details"><b>{{ item.title }}</b><small>{{ item.description }}</small>
            <span>{{ fmt(item.points) }} 分/件 <small v-if="item.stock!==null"> · 剩余 {{ Math.max(0,item.stock-item.redeemedCount) }}</small></span>
-           <small v-if="quantityFor(item)>1">合计 {{ fmt(item.points*quantityFor(item)) }} 分</small>
+           <small v-if="quantityFor(item)>1||selectedCouponDiscount(item,quantityFor(item))">
+             合计 {{ fmt(redeemCost(item,quantityFor(item))) }} 分
+             <template v-if="selectedCouponDiscount(item,quantityFor(item))"> · 优惠 {{ selectedCouponDiscount(item,quantityFor(item)) }} 分</template>
+           </small>
            <small v-if="item.goalCreditYen>0" class="reward-goal-note">可关联心愿储值 · ¥{{ Number(item.goalCreditYen).toLocaleString('ja-JP') }}/件</small>
          </div>
-         <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<item.points*quantityFor(item)||(item.stock!==null&&item.redeemedCount+quantityFor(item)>item.stock)"
+         <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<redeemCost(item,quantityFor(item))||(item.stock!==null&&item.redeemedCount+quantityFor(item)>item.stock)"
            @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
          <div class="reward-actions">
            <div class="quantity-stepper" aria-label="兑换数量">
@@ -777,7 +804,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
         :close-disabled="busy||wishGoalLoading" @close="closeWishReward">
         <div class="wish-reward-sheet">
           <p><b>{{ wishRewardDraft.item.title }}</b> · {{ wishRewardDraft.quantity }} 件 ·
-            {{ wishRewardDraft.item.points*wishRewardDraft.quantity }} 积分</p>
+            {{ wishRewardDraft.action==='redeem'?redeemCost(wishRewardDraft.item,wishRewardDraft.quantity):wishRewardDraft.item.points*wishRewardDraft.quantity }} 积分</p>
           <p class="wish-reward-credit">将获得 ¥{{ (wishRewardDraft.item.goalCreditYen*wishRewardDraft.quantity).toLocaleString('ja-JP') }} 的奖励抵扣额度</p>
           <p v-if="wishGoalLoading">读取可关联心愿…</p>
           <template v-else>
@@ -883,6 +910,53 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        </nav>
      </div>
    </template>
+   <EditBottomSheet v-if="couponSheetOpen" title="我的奖励券" :close-disabled="busy" @close="couponSheetOpen=false">
+     <div class="lottery-coupon-sheet">
+       <label>记录状态
+         <select :value="couponStatus" @change="changeCouponStatus(($event.target as HTMLSelectElement).value as 'available'|'used'|'expired')">
+           <option value="available">可使用</option>
+           <option value="used">已使用</option>
+           <option value="expired">已过期</option>
+         </select>
+       </label>
+       <p v-if="!visibleCoupons.length" class="lottery-no-ticket">暂无该状态的奖励券。</p>
+       <article v-for="coupon in visibleCoupons" :key="coupon.id" class="lottery-coupon-row">
+         <div><b>{{ couponTitle(coupon.kind) }}</b>
+           <small>{{ couponStatusName(coupon.status) }} · 获得 {{ couponDay(coupon.createdAt) }} · 到期 {{ coupon.expiresOn }}
+           <template v-if="coupon.usedAt"> · 使用 {{ couponDay(coupon.usedAt) }}</template></small>
+           <small v-if="coupon.wishTitle">关联心愿：{{ coupon.wishTitle }}</small>
+         </div>
+         <button v-if="coupon.status==='available'" type="button" class="small-outline"
+           @click="applyCouponFromSheet(coupon)">{{ coupon.kind==='wish'?'选择心愿':'选择使用' }}</button>
+       </article>
+       <nav v-if="couponTotalPages>1" class="annual-pagination">
+         <button type="button" :disabled="couponPage<=1" @click="couponPage--">上一页</button>
+         <span>{{ couponPage }} / {{ couponTotalPages }}</span>
+         <button type="button" :disabled="couponPage>=couponTotalPages" @click="couponPage++">下一页</button>
+       </nav>
+       <small class="lottery-coupon-help">全部奖励券允许跨年；只有本人使用时才会核销，过期记录永久保留。</small>
+     </div>
+   </EditBottomSheet>
+   <EditBottomSheet v-if="wishCouponDraft" title="心愿加速券 · ¥100" :close-disabled="busy||wishCouponBusy"
+     @close="wishCouponDraft=null">
+     <div class="wish-reward-sheet">
+       <p>选择本次要增加 ¥100 虚拟储值奖励的心愿。不会生成真实存款或家計簿支出。</p>
+       <p v-if="wishCouponBusy">正在读取心愿…</p>
+       <label v-else-if="wishCouponOptions.length">关联心愿储值计划
+         <select v-model="wishCouponGoal">
+           <option value="">请选择心愿</option>
+           <option v-for="option in wishCouponOptions" :key="option.goalId" :value="option.goalId">
+             {{ option.wishTitle }} · {{ option.goalTitle }}
+           </option>
+         </select>
+       </label>
+       <p v-else class="lottery-no-ticket">暂无可关联的有效心愿及一次性储值计划。</p>
+       <button type="button" class="redeem-btn wish-reward-confirm"
+         :disabled="busy||wishCouponBusy||!wishCouponGoal" @click="redeemWishCoupon">
+         {{ busy?'正在核销…':'确认核销 +¥100' }}
+       </button>
+     </div>
+   </EditBottomSheet>
    <p v-if="!data&&loading" class="points-loading">正在读取积分与奖励…</p>
    <p v-if="error" role="alert" class="points-error">{{ error }}
      <button type="button" class="points-retry" @click="refresh">刷新</button>
@@ -1219,6 +1293,20 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .history-status{font-size:10px;color:#b1793c;white-space:nowrap}
 .history-status.fulfilled{color:#589175}
 .history-row button{font-size:11px;color:#467a59;background:#f3f8f3;border:0;border-radius:7px;padding:7px;white-space:nowrap}
+.lottery-coupon-select,.shop-coupon-choice{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+ justify-content:space-between;padding:8px;border-radius:9px;background:#f5faf5}
+.lottery-ticket-choice,.shop-coupon-choice label{display:flex;align-items:center;gap:7px;min-width:0;color:#416c51;font-size:12px}
+.lottery-ticket-choice input,.shop-coupon-choice input{width:16px;height:16px;accent-color:#458d62;flex:none}
+.lottery-ticket-choice span{display:grid;gap:3px}
+.lottery-ticket-choice small,.shop-coupon-choice small,.lottery-no-ticket{font-size:10px;color:#7b8b7e}
+.lottery-coupon-sheet{display:grid;gap:10px}
+.lottery-coupon-sheet label{display:grid;gap:5px;color:#537360;font-size:12px}
+.lottery-coupon-sheet select{min-height:42px;border:1px solid #cfe1d3;border-radius:8px;padding:8px;background:#fff}
+.lottery-coupon-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e8eee8}
+.lottery-coupon-row>div{display:grid;gap:4px;min-width:0}
+.lottery-coupon-row b{font-size:12px;color:#476951}
+.lottery-coupon-row small,.lottery-coupon-help{font-size:10px;color:#7b8b7e;overflow-wrap:anywhere}
+.lottery-coupon-row button{flex:none}
 .annual-history-head{display:grid;gap:8px}
 .annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
 .annual-filters{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
