@@ -1,4 +1,4 @@
-import {householdWalletSql} from './points-wallet.js'
+import {householdWalletSql,pointYearStartSql} from './points-wallet.js'
 import {iso,json,readBody,shortText,validDate} from './security.js'
 import {listFilters,monthWindow} from './list-pagination.js'
 import {jstToday} from './routine-periods.js'
@@ -275,7 +275,11 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
           AND (visibility='household' OR creator_user_id=?2)
           AND (?6=0 OR assignee_user_id IS NULL OR
             ?2 IN (assignee_user_id,second_assignee_user_id))
-          AND ${b.completed?'completed_at IS NULL':'completed_at IS NOT NULL'}`)
+          AND ${b.completed?'completed_at IS NULL':'completed_at IS NOT NULL'}
+          AND (?6=0 OR bonus_points=0 OR second_assignee_user_id IS NOT NULL
+            OR assignee_user_id=creator_user_id
+            OR datetime(created_at)>=${pointYearStartSql}
+            OR ${householdWalletSql('household_id','creator_user_id')}>=bonus_points)`)
         .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household,b.completed?1:0)
       let changed=0
       if(b.completed && task.subject_profile_id && task.health_record_type){
@@ -300,7 +304,13 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
         const result=await update.run()
         changed=Number(result?.meta?.changes||0)
       }
-      if(!changed)return json({ok:true,unchanged:true})
+      if(!changed){
+        // A prior year's reserved points expired on January 1. A new-year bounty
+        // is paid only from the creator's current spendable wallet, atomically.
+        if(b.completed&&task.bonus_points>0)
+          return json({error:'cross_year_bounty_insufficient'},409)
+        return json({ok:true,unchanged:true})
+      }
       if(b.completed)onComplete?.({kind:'task',id:task.id,title:task.title,
         creatorId:task.creator_user_id,assigneeId:task.assignee_user_id,
         secondAssigneeId:task.second_assignee_user_id,
