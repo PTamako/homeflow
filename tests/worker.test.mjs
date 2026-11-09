@@ -9,7 +9,7 @@ function environment(name='preview',database='homeflow-preview',migration='0046_
     prepare(sql){return {
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
-         required_migration_ready:migration==='0046_reward_wish_savings_credit.sql'?1:0,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,
+         required_migration_ready:migration==='0046_reward_wish_savings_credit.sql'?1:0,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,
          action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1}:null,
       all:async()=>({results:[]}),
       run:async()=>({meta:{changes:1}})
@@ -33,7 +33,7 @@ test('health rejects a missing physical Today index even with a current migratio
   const env=environment()
   env.DB.prepare=()=>({first:async()=>({
    database_name:'homeflow-preview',latest_migration:'0046_reward_wish_savings_credit.sql',
-   required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+   required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
   assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
 })
 test('preview fails closed when attached to production',async()=>{
@@ -101,14 +101,14 @@ test('future migration must not break identity health if required schema remains
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({
   database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
-  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
 })
 
 test('health refuses a recorded 0032 migration whose provenance column is absent',async()=>{
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({
-  database_name:'homeflow-preview',required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,
+  database_name:'homeflow-preview',required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,
   action_index_ready:1,sync_table_ready:1,member_sync_ready:1,
   completion_read_ready:1,settlement_origin_ready:0,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
@@ -119,6 +119,8 @@ test('health requires latest settlement migration and column in one D1 read',()=
  assert.ok(source.includes("name='0041_household_lottery.sql'"))
  assert.ok(source.includes("name='0046_reward_wish_savings_credit.sql'"))
  assert.ok(source.includes("name='0047_anniversary_archive.sql'"))
+ assert.ok(source.includes("name='0048_oneoff_five_points.sql'"))
+ assert.ok(source.includes('oneoff_rule_ready'))
  assert.ok(source.includes("reward_credit_ready"))
  assert.ok(source.includes("pragma_table_info('goal_period_settlements')"))
  assert.ok(source.includes("Number(identity.settlement_origin_ready)===1"))
@@ -127,7 +129,7 @@ test('health requires latest settlement migration and column in one D1 read',()=
 test('health rejects a point table missing its secure completion triggers',async()=>{
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
-  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,action_index_ready:1,sync_table_ready:1,
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,
   member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
   points_table_ready:1,points_triggers_ready:9,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
@@ -142,7 +144,7 @@ test('new point feature only uses authenticated API routing',async()=>{
 test('health requires reward tables and pooling triggers',async()=>{
  const env=environment()
  env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
-  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,action_index_ready:1,sync_table_ready:1,
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,
   member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
   points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:4,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
