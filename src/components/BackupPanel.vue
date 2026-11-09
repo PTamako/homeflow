@@ -12,7 +12,7 @@ const lastExportAt=ref('')
 try{lastExportAt.value=localStorage.getItem(backupStorageKey)||''}catch{}
 type Snapshot={format:string;schemaVersion:number;records:Record<string,Record<string,unknown>[]>;exportedAt?:string}
 const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','routines','shopping','shoppingExpenseLinks','memories',
-  'petHealth','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','todayPlanActions','reminderSnoozes','reminderPreferences','reminderItemPreferences']
+  'petHealth','routineAssignments','routineMarks','tripProgress','financeLinks','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','todayPlanActions','reminderSnoozes','reminderPreferences','reminderItemPreferences']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
 const restoreSheetOpen=ref(false)
 const helpOpen=ref(false)
