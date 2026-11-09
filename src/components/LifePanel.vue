@@ -2393,7 +2393,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 }
 
 /* Family anniversaries: keep the filter and empty state tight on phones. */
-.anniversary-card .anniversary-controls{display:grid;gap:8px}
+.anniversary-card .anniversary-controls{display:grid;gap:14px}
 .anniversary-card .anniversary-filter-row{display:flex;justify-content:flex-end;min-width:0}
 .anniversary-card .anniversary-filter-row .life-filter-trigger{
  display:inline-flex;align-items:center;justify-content:center;gap:6px;
