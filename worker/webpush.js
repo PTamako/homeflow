@@ -545,13 +545,16 @@ export async function sendCompletionFeedback(env,session,event){
 }
 
 // One copy for iOS Web Push and Today's inbox; never include entry costs here.
-// The explicit 5-point draw cost remains visible at the lottery action itself.
+// Entry costs and free tickets remain visible at the lottery action itself.
 export function lotteryNotificationCopy(name,draw){
   const who=String(name||'家庭成员').slice(0,30)
   if(draw?.kind==='empty')return {
     title:'🎲 '+who+' 发起了抽奖',
     message:who+' 这次空手而归～下次继续加油！🍀'
   }
+  if(draw?.kind==='ticket')return {title:'🎟 恭喜 '+who+' 抽中了免费抽奖券！',message:'免费抽奖一次，有效期 60 天，使用时自己选择。'}
+  if(draw?.kind==='shop')return {title:'🛍 恭喜 '+who+' 抽中了商城优惠券！',message:'家庭商城 95 折，最多减 50 积分，有效期 90 天。'}
+  if(draw?.kind==='wish')return {title:'💖 恭喜 '+who+' 抽中了心愿加速券！',message:'给心愿增加 ¥100 虚拟储值奖励，有效期 90 天。'}
   if(draw?.kind==='double')return {
     title:'👑 恭喜 '+who+' 触发超级大奖！🎉',
     message:'欧皇附体！'+who+' 触发积分翻倍，获得 '+draw.points+' 积分！✨'
