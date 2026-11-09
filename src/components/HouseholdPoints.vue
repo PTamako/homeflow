@@ -390,6 +390,7 @@ function changeCouponStatus(status:'available'|'used'|'expired'){
 }
 async function startWishCoupon(coupon:Coupon){
  if(coupon.status!=='available'||coupon.kind!=='wish'||busy.value)return
+ couponSheetOpen.value=false
  wishCouponDraft.value=coupon
  wishCouponGoal.value='';wishCouponOptions.value=[];wishCouponBusy.value=true
  try{
