@@ -357,3 +357,48 @@ test('history nets task adjustments and dual shares and paginates five rows',asy
   assert.equal(all.some(x=>x.category==='adjustment'||x.category==='split'),false)
  }finally{sqlite.close()}
 })
+
+test('one multi-item redemption is one ledger row with total points, while later buys stay separate',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const {start,end}=jstYearWindow(year)
+  earn(sqlite,'alice',40)
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards
+   .find(x=>x.title==='请吃一次甜品')
+  const before=await balance(db,alice)
+  const beforeHistory=await pointsHistoryRoute(new Request(
+   `https://homeflow.invalid/api/points/history?year=${year}`),db,alice)
+  assert.equal(beforeHistory.status,200)
+  const initialCount=(await beforeHistory.json()).total
+  const first=await call(db,alice,'/api/rewards/redeem','POST',
+   {rewardId:dessert.id,requestId:id(801),quantity:3})
+  assert.equal(first.status,201)
+  assert.equal(first.body.quantity,3)
+  const second=await call(db,alice,'/api/rewards/redeem','POST',
+   {rewardId:dessert.id,requestId:id(802),quantity:1})
+  assert.equal(second.status,201)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_redemptions').get().n,4)
+  const lines=sqlite.prepare(`WITH ledger AS (${annualPointLedgerSql()})
+    SELECT userId,label,amount FROM ledger WHERE category='redeem'
+    ORDER BY amount`).all('h',start,end).map(x=>({
+     userId:x.userId,label:x.label,amount:x.amount
+    }))
+  assert.deepEqual(lines,[
+   {userId:'alice',label:'兑换：请吃一次甜品 ×3',amount:-300},
+   {userId:'alice',label:'兑换：请吃一次甜品',amount:-100}
+  ])
+  const wallet=await balance(db,alice)
+  assert.equal(wallet.availablePoints,before.availablePoints-400)
+  const response=await pointsHistoryRoute(new Request(
+   `https://homeflow.invalid/api/points/history?year=${year}`),db,alice)
+  assert.equal(response.status,200)
+  const after=await response.json()
+  assert.equal(after.pageSize,5)
+  assert.equal(after.entries.length,5)
+  assert.equal(after.total,initialCount+2,'batch uses one pagination slot')
+  assert.equal(after.members.find(x=>x.userId==='alice').endingPoints,wallet.availablePoints)
+  assert.equal(after.members.find(x=>x.userId==='alice').spentPoints,400)
+  assert.equal(after.totalPages,Math.ceil(after.total/5))
+ }finally{sqlite.close()}
+})

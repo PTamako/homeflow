@@ -54,9 +54,18 @@ export const annualPointLedgerSql=()=>{
   `SELECT l.user_id AS userId,'household' AS visibility,-l.cost_points AS amount,
     0 AS contribution,'lottery_cost' AS category,'抽奖消耗' AS label,l.created_at AS stamp
     FROM household_lottery_draws l WHERE l.household_id=?1`,
-  `SELECT r.redeemed_by AS userId,'household' AS visibility,-r.points_spent AS amount,
-    0 AS contribution,'redeem' AS category,'兑换：'||r.title_snapshot AS label,r.created_at AS stamp
-    FROM reward_redemptions r WHERE r.household_id=?1`,
+  // A multi-quantity redemption writes one row per unit for atomic inventory,
+  // but the ledger presents that purchase as ONE event (and one pagination slot).
+  // The stable first 36 characters identify the original request UUID; a later
+  // purchase of the same reward has a different UUID and remains separate.
+  `SELECT r.redeemed_by AS userId,'household' AS visibility,-SUM(r.points_spent) AS amount,
+    0 AS contribution,'redeem' AS category,
+    '兑换：'||r.title_snapshot||
+      CASE WHEN COUNT(*)>1 THEN ' ×'||COUNT(*) ELSE '' END AS label,
+    MAX(r.created_at) AS stamp
+    FROM reward_redemptions r WHERE r.household_id=?1
+    GROUP BY r.household_id,r.redeemed_by,SUBSTR(r.client_request_id,1,36),
+      r.reward_id,r.title_snapshot,r.icon_snapshot`,
   `SELECT c.user_id AS userId,'household' AS visibility,-c.points AS amount,
     0 AS contribution,'pool' AS category,'合力兑换：'||g.title_snapshot AS label,c.created_at AS stamp
     FROM reward_group_contributions c
