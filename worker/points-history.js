@@ -77,7 +77,7 @@ export const annualPointLedgerSql=()=>{
   `SELECT t.assignee_user_id AS userId,'household' AS visibility,t.bonus_points AS amount,
     CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
       THEN t.bonus_points ELSE 0 END AS contribution,
-    'bounty' AS category,'指定任务奖励：'||t.title AS label,t.created_at AS stamp
+    'bounty' AS category,'指定任务奖励：'||t.title AS label,CASE WHEN t.completed_at IS NOT NULL THEN t.completed_at ELSE t.created_at END AS stamp
     FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
       AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NULL
       AND t.assignee_user_id IS NOT NULL AND t.assignee_user_id<>t.creator_user_id
@@ -85,7 +85,7 @@ export const annualPointLedgerSql=()=>{
   `SELECT t.creator_user_id AS userId,'household' AS visibility,-t.bonus_points AS amount,
     CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
       THEN -t.bonus_points ELSE 0 END AS contribution,
-    'reserved' AS category,'指定任务积分：'||t.title AS label,t.created_at AS stamp
+    'reserved' AS category,'指定任务积分：'||t.title AS label,CASE WHEN t.completed_at IS NOT NULL THEN t.completed_at ELSE t.created_at END AS stamp
     FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
       AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NULL
       AND t.assignee_user_id IS NOT NULL AND t.assignee_user_id<>t.creator_user_id
@@ -93,7 +93,7 @@ export const annualPointLedgerSql=()=>{
   `SELECT a.userId AS userId,'household' AS visibility,t.bonus_points/2.0 AS amount,
     CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
       THEN t.bonus_points/2.0 ELSE 0 END AS contribution,
-    'bounty' AS category,'双人指定奖励：'||t.title AS label,t.created_at AS stamp
+    'bounty' AS category,'双人指定奖励：'||t.title AS label,CASE WHEN t.completed_at IS NOT NULL THEN t.completed_at ELSE t.created_at END AS stamp
     FROM tasks t JOIN (
       SELECT id,household_id,assignee_user_id AS userId FROM tasks
       UNION ALL SELECT id,household_id,second_assignee_user_id AS userId FROM tasks
@@ -105,14 +105,14 @@ export const annualPointLedgerSql=()=>{
   `SELECT t.creator_user_id AS userId,'household' AS visibility,-t.bonus_points AS amount,
     CASE WHEN datetime(t.completed_at)>=datetime(?2) AND datetime(t.completed_at)<datetime(?3)
       THEN -t.bonus_points ELSE 0 END AS contribution,
-    'reserved' AS category,'双人指定积分：'||t.title AS label,t.created_at AS stamp
+    'reserved' AS category,'双人指定积分：'||t.title AS label,CASE WHEN t.completed_at IS NOT NULL THEN t.completed_at ELSE t.created_at END AS stamp
     FROM tasks t WHERE t.household_id=?1 AND t.visibility='household'
       AND t.deleted_at IS NULL AND t.bonus_points>0 AND t.second_assignee_user_id IS NOT NULL
       AND (t.completed_at IS NULL OR t.completed_by IN(t.assignee_user_id,t.second_assignee_user_id))`,
   `SELECT a.assignee_user_id AS userId,'household' AS visibility,a.bonus_points AS amount,
     CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
       THEN a.bonus_points ELSE 0 END AS contribution,
-    'bounty' AS category,'周期指派奖励：'||r.title AS label,a.created_at AS stamp
+    'bounty' AS category,'周期指派奖励：'||r.title AS label,CASE WHEN m.completed_at IS NOT NULL THEN m.completed_at ELSE a.created_at END AS stamp
     FROM routine_occurrence_assignments a
     JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
     JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
@@ -122,7 +122,7 @@ export const annualPointLedgerSql=()=>{
   `SELECT r.created_by AS userId,'household' AS visibility,-a.bonus_points AS amount,
     CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
       THEN -a.bonus_points ELSE 0 END AS contribution,
-    'reserved' AS category,'周期指派积分：'||r.title AS label,a.created_at AS stamp
+    'reserved' AS category,'周期指派积分：'||r.title AS label,CASE WHEN m.completed_at IS NOT NULL THEN m.completed_at ELSE a.created_at END AS stamp
     FROM routine_occurrence_assignments a
     JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
     LEFT JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
@@ -147,7 +147,7 @@ export const annualPointLedgerSql=()=>{
   `SELECT r.created_by AS userId,'household' AS visibility,-a.bonus_points AS amount,
     CASE WHEN datetime(m.completed_at)>=datetime(?2) AND datetime(m.completed_at)<datetime(?3)
       THEN -a.bonus_points ELSE 0 END AS contribution,
-    'reserved' AS category,'双人周期积分：'||r.title AS label,a.created_at AS stamp
+    'reserved' AS category,'双人周期积分：'||r.title AS label,CASE WHEN m.completed_at IS NOT NULL THEN m.completed_at ELSE a.created_at END AS stamp
     FROM routine_occurrence_assignments a
     JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id
     LEFT JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
