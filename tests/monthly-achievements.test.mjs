@@ -60,7 +60,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
   assert.equal(current.badges.find(x=>x.id==='master').unlocked,false,
     'previous month completions do not carry into a new month')
   assert.equal(current.badges.find(x=>x.id==='first').rewardPoints,5)
-  assert.equal(current.members[0].monthPoints,15)
+  assert.equal(current.members[0].monthPoints,10)
   assert.equal(current.achievementBonusPoints,30)
   insert(db,{id:'current-0',day})
   assert.equal(awards(db).filter(x=>x.month_on===month&&x.badge_id==='first').length,1,
@@ -84,12 +84,12 @@ test('private completions earn XP, not monthly household awards, and weekly chal
   let data=await score(store)
   assert.equal(data.weeklyBonusPoints,30)
   assert.equal(data.achievementBonusPoints,20,'first 5 plus weekly-win 15')
-  assert.equal(data.availablePoints,150,'100 base +30 weekly +20 monthly')
+  assert.equal(data.availablePoints,100,'50 base +30 weekly +20 monthly')
   db.prepare("DELETE FROM completion_points WHERE source_id='shared-0'").run()
   data=await score(store)
   assert.equal(data.weeklyBonusPoints,0)
   assert.equal(data.achievementBonusPoints,5,'weekly badge is revoked below threshold')
-  assert.equal(data.availablePoints,95)
+  assert.equal(data.availablePoints,50)
   assert.equal((await score(store,'bob')).achievementBonusPoints,0)
  }finally{db.close()}
 })
