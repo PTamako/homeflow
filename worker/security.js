@@ -98,7 +98,7 @@ export async function verifiedDatabase(env) {
   try {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0045_trip_rewards_no_cap.sql') AS required_migration_ready,
+       WHERE name='0046_reward_wish_savings_credit.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='trip_completion_rewards') AS travel_view_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trip_reward_events') AS travel_events_ready,
@@ -121,6 +121,7 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='dual_completion_splits') AS joint_credits_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='shopping_joint_credits') AS shopping_joint_ready,
       (SELECT COUNT(*) FROM pragma_table_info('shopping_items') WHERE name='second_assignee_user_id') AS shopping_second_ready,
+      (SELECT COUNT(*) FROM pragma_table_info('reward_items') WHERE name='goal_credit_yen') AS reward_credit_ready,
       (SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='second_assignee_user_id') AS second_assignee_ready,
       (SELECT COUNT(*) FROM pragma_table_info('routine_occurrence_assignments') WHERE name='second_assignee_user_id') AS routine_second_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view'
@@ -154,6 +155,7 @@ export async function verifiedDatabase(env) {
       Number(identity.joint_credits_ready)===1 &&
       Number(identity.shopping_joint_ready)===1 &&
       Number(identity.shopping_second_ready)===1 &&
+      Number(identity.reward_credit_ready)===1 &&
       Number(identity.second_assignee_ready)===1 &&
       Number(identity.routine_second_ready)===1 &&
       Number(identity.action_index_ready)===1 &&
