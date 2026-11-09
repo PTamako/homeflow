@@ -11,18 +11,21 @@ const props=withDefaults(defineProps<{
   scope:string
   allowEdit?:boolean
   allowDelete?:boolean
+  allowArchive?:boolean
   showTrigger?:boolean
   editLabel?:string
+  archiveLabel?:string
   deleteLabel?:string
-}>(),{allowEdit:true,allowDelete:true,showTrigger:true,editLabel:'编辑',deleteLabel:'删除'})
-const emit=defineEmits<{open:[];edit:[];delete:[]}>()
+}>(),{allowEdit:true,allowDelete:true,allowArchive:false,showTrigger:true,editLabel:'编辑',archiveLabel:'归档',deleteLabel:'删除'})
+const emit=defineEmits<{open:[];edit:[];archive:[];delete:[]}>()
 const key=computed(()=>props.scope+':'+props.id)
 const opened=computed(()=>activeSwipeId.value===key.value)
-const count=computed(()=>Number(props.allowEdit)+Number(props.allowDelete))
+const count=computed(()=>Number(props.allowEdit)+Number(props.allowArchive)+Number(props.allowDelete))
 const actionWidth=computed(()=>count.value*72)
 const movement=ref(0)
 const dragging=ref(false)
 const firstAction=ref<HTMLButtonElement|null>(null)
+const archiveAction=ref<HTMLButtonElement|null>(null)
 const deleteAction=ref<HTMLButtonElement|null>(null)
 const triggerRef=ref<HTMLButtonElement|null>(null)
 const rowRef=ref<HTMLDivElement|null>(null)
@@ -43,7 +46,7 @@ function toggle(){
  if(opened.value){close();return}
  open()
  // The subtle neutral desktop trigger is a keyboard/mouse fallback, not More.
- void nextTick(()=>(firstAction.value||deleteAction.value)?.focus())
+ void nextTick(()=>(firstAction.value||archiveAction.value||deleteAction.value)?.focus())
 }
 function closeFromKeyboard(){close();void nextTick(()=>(triggerRef.value||rowRef.value)?.focus())}
 function activateRow(event:KeyboardEvent){
@@ -93,9 +96,10 @@ function tapContent(event:MouseEvent){
     event.preventDefault();event.stopPropagation();close()
   }
 }
-function run(action:'edit'|'delete'){
+function run(action:'edit'|'archive'|'delete'){
   close()
   if(action==='edit')emit('edit')
+  else if(action==='archive')emit('archive')
   else emit('delete')
 }
 onMounted(()=>{
@@ -111,11 +115,11 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
 <template>
   <div v-if="showHint" class="swipe-discovery" role="note">
     <span class="swipe-discovery-arrow" aria-hidden="true">←</span>
-    <span>向左滑动明细，可以编辑或删除</span>
+    <span>向左滑动明细，可以{{ allowArchive?'编辑、归档或删除':'编辑或删除' }}</span>
     <button type="button" @click.stop="dismissHint">知道了</button>
   </div>
   <div v-if="count" ref="rowRef" class="swipe-row" :class="{'is-open':opened,'is-dragging':dragging}"
-    role="group" :aria-label="'明细操作：向左滑动或按回车展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'、':'')+(allowDelete?deleteLabel:'')"
+    role="group" :aria-label="'明细操作：向左滑动或按回车展开'+[allowEdit?editLabel:'',allowArchive?archiveLabel:'',allowDelete?deleteLabel:''].filter(Boolean).join('、')"
     :aria-expanded="opened" :tabindex="coarsePointer?0:-1"
     @touchstart.passive="start" @touchmove.passive="move" @touchend="end" @touchcancel="cancel"
     @keydown.enter.self="activateRow" @keydown.space.self="activateRow"
@@ -123,6 +127,8 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
     <div class="swipe-actions" :style="{width:actionWidth+'px'}">
       <button v-if="allowEdit" ref="firstAction" type="button" class="edit" :tabindex="opened?0:-1"
         :aria-label="editLabel" @click.stop="run('edit')">{{ editLabel }}</button>
+      <button v-if="allowArchive" ref="archiveAction" type="button" class="archive" :tabindex="opened?0:-1"
+        :aria-label="archiveLabel" @click.stop="run('archive')">{{ archiveLabel }}</button>
       <button v-if="allowDelete" ref="deleteAction" type="button" class="delete" :tabindex="opened?0:-1"
         :aria-label="deleteLabel" @click.stop="run('delete')">{{ deleteLabel }}</button>
     </div>
@@ -133,8 +139,8 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
       <slot/>
     </div>
     <button v-if="showTriggerUi&&!opened" ref="triggerRef" type="button" class="swipe-trigger"
-      :aria-label="'左滑或点击展开'+(allowEdit?editLabel:'')+(allowEdit&&allowDelete?'和':'')+(allowDelete?deleteLabel:'')"
-      :aria-expanded="opened" :title="'左滑'+(allowEdit?editLabel:'')+(allowDelete?'/'+deleteLabel:'')"
+      :aria-label="'左滑或点击展开'+[allowEdit?editLabel:'',allowArchive?archiveLabel:'',allowDelete?deleteLabel:''].filter(Boolean).join('/')"
+      :aria-expanded="opened" :title="'左滑'+[allowEdit?editLabel:'',allowArchive?archiveLabel:'',allowDelete?deleteLabel:''].filter(Boolean).join('/')"
       @click.stop="toggle">
       <span class="swipe-chevron" aria-hidden="true"><AppIcon name="chevron-down" :size="19" class="swipe-chevron-icon"/></span>
     </button>
@@ -154,6 +160,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
 .swipe-actions button{border:0;border-radius:0;color:#fff;font-size:12px;font-weight:700;
   min-width:72px;max-width:72px;padding:0 5px}
 .swipe-actions .edit{background:#558bc9}
+.swipe-actions .archive{background:#51836b}
 .swipe-actions .delete{background:#d76178}
 .swipe-trigger{position:absolute;z-index:2;right:0;top:8px;
   height:44px;width:44px;display:grid;place-items:center;background:transparent;
