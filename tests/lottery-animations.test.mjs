@@ -7,7 +7,7 @@ const visual=readFileSync(new URL('../src/components/LotteryCelebration.vue',imp
 
 test('full-screen lottery animation is shown only for a successful draw and lasts three seconds',()=>{
  assert.match(board,/const LOTTERY_RESULT_DURATION_MS=3000/)
- assert.match(board,/const result=await fetchJSON\('\/lottery\/draw','POST',\{requestId\}\)/)
+ assert.match(board,/const result=await fetchJSON\('\/lottery\/draw','POST',\{requestId,ticketCouponId\}\)/)
  assert.match(board,/showLotteryResult\(result\.draw\)/)
  assert.match(board,/setTimeout\(\(\)=>\{lotteryLastDraw\.value=null;lotteryResultTimer=null\}/)
  assert.match(board,/clearTimeout\(lotteryResultTimer\)/)
