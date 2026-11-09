@@ -123,7 +123,8 @@ export async function pointsRoute(request,db,session){
       (SELECT COALESCE(SUM(points),0) FROM goal_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS savingsBonus,
       (SELECT COALESCE(SUM(points),0) FROM trip_completion_rewards WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('awarded_at')}) AS travelBonus,
       (SELECT COALESCE(SUM(points),0) FROM monthly_achievement_credits WHERE household_id=?1 AND user_id=?2 AND month_on>=strftime('%Y-01','now','+9 hours')) AS achievementBonus,
-      (SELECT COALESCE(SUM(prize_points-cost_points),0) FROM household_lottery_draws
+      (SELECT COALESCE(SUM(prize_points+COALESCE(prize_bonus_points,0)-
+        CASE WHEN ticket_coupon_id IS NULL THEN cost_points ELSE 0 END),0) FROM household_lottery_draws
         WHERE household_id=?1 AND user_id=?2 AND ${pointYearPredicate('created_at')}) AS lotteryNetPoints,
       (SELECT COUNT(*) FROM completion_points WHERE household_id=?1 AND earner_user_id=?2 AND kind='routine' AND ${pointYearPredicate('earned_at')}) AS routineDone,
       (SELECT COALESCE(SUM(points),0) FROM weekly_challenge_awards
@@ -184,7 +185,7 @@ export async function pointsRoute(request,db,session){
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
-    pointRules:{shopping:2,routine:5,goal:0,goalPeriodMet:50,wish:0,onceUnassigned:10,onceAssigned:5,travelPerPersonPerDay:10},
+    pointRules:{shopping:2,routine:5,goal:0,goalPeriodMet:50,wish:0,onceUnassigned:5,onceAssigned:5,travelPerPersonPerDay:10},
     members:(members.results||[]).map(row=>({
       userId:row.userId,displayName:row.displayName,
       sharedPoints:Number(row.sharedPoints)||0,
