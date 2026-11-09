@@ -611,6 +611,17 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
              <option v-for="person in history?.members||[]" :key="person.userId" :value="person.userId">{{ person.displayName }}</option>
            </select>
          </label>
+         <label>分类
+           <select :value="historyCategory" @change="goToHistory(1,historyYear,historyMember,($event.target as HTMLSelectElement).value)">
+             <option value="all">全部</option>
+             <option value="task">任务</option>
+             <option value="shopping">购物</option>
+             <option value="lottery">抽奖</option>
+             <option value="shop">商城</option>
+             <option value="achievement">挑战成就</option>
+             <option value="saving">储值旅行</option>
+           </select>
+         </label>
        </div>
      </div>
      <div v-if="history" class="annual-members">
@@ -626,15 +637,23 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <p class="annual-note">{{ history&&history.year<history.currentYear?
       '年末未用积分已经清零，仅供历史回顾，不能继续兑换。':'当前年度积分将于12月31日结束，次年1月1日清零。' }}</p>
      <div class="annual-ledger">
-       <div class="annual-ledger-title"><b>积分流水</b><small v-if="history">共 {{ history.total }} 条 · 每页5条</small></div>
-       <p v-if="historyBusy&&!history" class="points-loading">正在加载明细…</p>
-       <p v-else-if="history&&!history.entries.length" class="points-loading">该年度暂无积分记录</p>
-       <div v-for="(entry,i) in history?.entries||[]" :key="entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
-         <div><b>{{ entry.label }}</b><small>{{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} ·
-           {{ new Date(entry.stamp).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }}</small></div>
-         <strong :class="{negative:entry.amount<0}">{{ entry.amount>0?'+':'' }}{{ fmt(entry.amount) }}</strong>
+       <div class="annual-ledger-title"><b>积分流水</b><small v-if="historyMatchesFilters">共 {{ history?.total }} 条 · 每页5条</small></div>
+       <p v-if="historyBusy&&!historyMatchesFilters" class="points-loading">正在筛选明细…</p>
+       <p v-else-if="historyMatchesFilters&&!visibleHistoryEntries.length" class="points-loading">该条件下暂无积分记录</p>
+       <div v-for="(entry,i) in visibleHistoryEntries" :key="entry.eventId||entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
+         <div>
+           <b>{{ entry.label }}</b>
+           <small class="annual-ledger-meta">{{ categoryNames[entry.category]||'积分调整' }} · {{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} · {{ historyTime(entry.stamp) }}</small>
+           <small v-if="entry.category==='lottery'" class="annual-ledger-breakdown">
+             {{ drawOutcome(entry.prizeKind) }} · 消耗 {{ fmt(entry.ticketCost||0) }} 分 · 中奖 {{ fmt(entry.prizePoints||0) }} 分 · 净变化 {{ signedPoints(entry.amount) }} 分
+           </small>
+           <small v-else class="annual-ledger-breakdown">
+             {{ entry.amount<0?'扣减':'获得' }} {{ fmt(Math.abs(entry.amount)) }} 分 · 贡献变化 {{ signedPoints(entry.contribution) }} 分
+           </small>
+         </div>
+         <strong :class="{negative:entry.amount<0,neutral:entry.amount===0}">{{ entry.category==='lottery'?'净 ':'' }}{{ signedPoints(entry.amount) }}</strong>
        </div>
-       <div v-if="history&&history.totalPages>1" class="annual-pagination">
+       <div v-if="historyMatchesFilters&&history&&history.totalPages>1" class="annual-pagination">
          <button type="button" :disabled="historyBusy||historyPage<=1" @click="goToHistory(historyPage-1)">上一页</button>
          <span>{{ historyPage }} / {{ history.totalPages }}</span>
          <button type="button" :disabled="historyBusy||historyPage>=history.totalPages" @click="goToHistory(historyPage+1)">下一页</button>
@@ -1038,36 +1057,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-rule-popover{top:calc(26px + 9px)}
  .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
- /* A block list avoids implicit grid tracks stretching draw history items. */
- .lottery-history{display:block;align-self:start;min-width:0;padding-top:4px}
- .lottery-history-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
- .lottery-history-heading b{font-size:14px;line-height:1.3;color:#426b50}
- .lottery-history-heading small{flex:none;color:#89988d;font-size:10px;white-space:nowrap}
- .lottery-empty{margin:4px 0 0;padding:12px;font-size:12px;color:#829487;text-align:center}
- /* Fixed compact rows prevent an empty prize label from stretching into whitespace. */
- .lottery-history-list{display:flex;flex-direction:column;gap:0;list-style:none;margin:5px 0 0;padding:0;min-width:0}
- .lottery-history-row{display:flex;align-items:center;gap:8px;min-width:0;
-  flex:none;box-sizing:border-box;height:54px;min-height:54px;max-height:54px;
-  margin:0;padding:5px 0;border-bottom:1px solid #e8efe9;color:#5b846b}
- .lottery-history-row>.app-icon{flex:0 0 17px}
- .lottery-history-detail{display:flex;flex:1 1 auto;flex-direction:column;justify-content:center;gap:3px;
-  min-width:0;overflow:hidden}
- .lottery-history-detail strong{font-size:12px;line-height:1.25;color:#3f624c;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-detail small{font-size:10px;line-height:1.3;color:#849787;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-row>span{flex:0 0 auto;margin-left:auto;min-width:0;font-size:11px;line-height:1.3;
-  font-weight:700;color:#407f5c;text-align:right;max-width:43%;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
- .lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
+.lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
   padding:12px 0 2px;min-height:42px}
  .lottery-history-pagination button{flex:0 0 auto;min-height:38px;padding:7px 12px;border-radius:9px;
   border:1px solid #cfe2d3;background:#f5faf5;color:#3e805d;font-size:12px;font-weight:650}
  .lottery-history-pagination button:disabled{opacity:.42}
  .lottery-history-pagination span{font-size:11px;color:#768b7c;white-space:nowrap}
- .lottery-page-error{margin:6px 0 0;font-size:12px;color:#a34b3d;text-align:center}
- .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
+  .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
 .monthly-achievement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:3px 0 8px;color:#43674e;font-size:12px}.monthly-achievement-heading small{font-size:11px;color:#71867a}.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -1144,7 +1140,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
 .annual-filters{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
 .annual-filters label{display:grid;gap:3px;min-width:0;font-size:11px;color:#748778}
-.annual-filters select{min-width:105px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
+.annual-filters select{min-width:90px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
 .annual-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .annual-member{display:grid;align-content:start;gap:7px;padding:10px;min-width:0;background:#f7faf6;border:1px solid #e2ece3;border-radius:11px}
 .annual-member>b{font-size:13px;color:#355f47;overflow-wrap:anywhere}
@@ -1159,6 +1155,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .annual-ledger-row>div{display:grid;gap:4px;min-width:0;flex:1}
 .annual-ledger-row b{font-size:12px;color:#456b52;overflow-wrap:anywhere}
 .annual-ledger-row small{font-size:10px;color:#829586;line-height:1.35}
+.annual-ledger-meta,.annual-ledger-breakdown{display:block;overflow-wrap:anywhere}
+.annual-ledger-breakdown{color:#59816b!important;line-height:1.5!important}
+.annual-ledger-row>strong.neutral{color:#89998d}
 .annual-ledger-row>strong{flex:none;font-size:13px;color:#33845f;font-variant-numeric:tabular-nums}
 .annual-ledger-row>strong.negative{color:#b97461}
 .annual-pagination{display:flex;justify-content:center;align-items:center;gap:12px;padding:9px}
