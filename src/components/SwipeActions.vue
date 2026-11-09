@@ -115,7 +115,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
 <template>
   <div v-if="showHint" class="swipe-discovery" role="note">
     <span class="swipe-discovery-arrow" aria-hidden="true">←</span>
-    <span>向左滑动明细，可以{{ allowArchive?'编辑、归档或删除':'编辑或删除' }}</span>
+    <span>{{ allowArchive?'向左滑动明细，可以编辑、归档或删除':'向左滑动明细，可以编辑或删除' }}</span>
     <button type="button" @click.stop="dismissHint">知道了</button>
   </div>
   <div v-if="count" ref="rowRef" class="swipe-row" :class="{'is-open':opened,'is-dragging':dragging}"
