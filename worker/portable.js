@@ -74,6 +74,27 @@ const queries=[
 export const RESTORE_ORDER=queries.map(([key])=>key)
 const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
+ // Audit-only records are exported as a *separate* ZIP member, never replayed
+ // through portable restore: re-inserting point events would mint duplicate credit.
+ // All sources are static whitelisted tables/views and household-scoped; another
+ // member's private events are excluded from the requesting user's archive.
+export const POINTS_AUDIT_SOURCES=[
+ ['rewardItems','reward_items',"household_id=?1",'created_at,id'],
+ ['rewardRedemptions','reward_redemptions',"household_id=?1",'created_at,id'],
+ ['rewardGroupOrders','reward_group_orders',"household_id=?1",'created_at,id'],
+ ['rewardGroupContributions','reward_group_contributions',"household_id=?1",'created_at,id'],
+ ['lotteryDraws','household_lottery_draws',"household_id=?1",'created_at,id'],
+ ['completionPoints','completion_points',"household_id=?1 AND (visibility='household' OR earner_user_id=?2)",'earned_at,kind,source_id,occurrence_on'],
+ ['completionAdjustments','completion_point_adjustments',"household_id=?1 AND (visibility='household' OR earner_user_id=?2)",'earned_at,kind,source_id,occurrence_on'],
+ ['dualSplits','dual_completion_splits',"household_id=?1 AND (visibility='household' OR user_id=?2)",'earned_at,kind,source_id,occurrence_on,user_id'],
+ ['shoppingPoints','shopping_completion_points',"household_id=?1 AND (visibility='household' OR earner_user_id=?2)",'earned_at,shopping_id'],
+ ['shoppingJoint','shopping_joint_credits',"household_id=?1 AND (visibility='household' OR user_id=?2)",'earned_at,shopping_id,user_id'],
+ ['weeklyChallenges','weekly_challenge_awards',"household_id=?1",'awarded_at,week_on,user_id'],
+ ['goalRewards','goal_completion_rewards',"household_id=?1",'awarded_at,user_id'],
+ ['tripRewards','trip_reward_events',"household_id=?1 AND (visibility='household' OR user_id=?2)",'awarded_at,id'],
+ ['monthlyAchievements','monthly_achievement_credits',"household_id=?1",'month_on,user_id,badge_id']
+]
+
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
   const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','todayPlanActions','routineAssignments','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
@@ -365,6 +386,27 @@ function normalized(key,r,h,u) {
 }
 export async function portableRoute(request,db,path,session){
   const household=session.household_id,user=session.user_id
+  if(path==='/api/portable/audit'&&request.method==='GET'){
+    const params=new URL(request.url).searchParams
+    const key=params.get('dataset'),raw=params.get('cursor')||'0'
+    const source=POINTS_AUDIT_SOURCES.find(item=>item[0]===key)
+    if(!source||!/^(0|[1-9][0-9]{0,5})$/.test(raw)||
+      Number(raw)>50000||Number(raw)%100!==0)return json({error:'invalid_export_cursor'},400)
+    const [,table,where,order]=source
+    const offset=Number(raw)
+    // Page-size+1 sentinel ensures an archive never silently truncates history.
+    const sql=`SELECT * FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT 101 OFFSET ?3`
+    const args=where.includes('?2')?[household,user,offset]:[household,offset]
+    const statement=db.prepare(sql)
+    // When ?2 is not a user parameter, OFFSET uses ?2 rather than ?3.
+    const bound=where.includes('?2')?statement.bind(...args):
+      db.prepare(`SELECT * FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT 101 OFFSET ?2`)
+        .bind(...args)
+    const {results=[]}=await bound.all()
+    return json({dataset:key,items:results.slice(0,100),
+      nextCursor:results.length>100?String(offset+100):null})
+  }
+
   if(path==='/api/portable'&&request.method==='GET'){
     const params=new URL(request.url).searchParams
     if(params.has('dataset')){
