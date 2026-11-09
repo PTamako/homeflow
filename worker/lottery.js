@@ -1,7 +1,7 @@
 import {householdWalletSql} from './points-wallet.js'
 import {json,readBody} from './security.js'
 
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const COST=5
 const MONTHLY_LIMIT=7
 const HISTORY_PAGE_SIZE=5
@@ -21,8 +21,8 @@ export const lotteryOdds=[
 // Crypto randomness is independent of user-supplied requests and wallet balance.
 export function lotteryPrize(roll){
   if(typeof roll!=='number'||roll<0||roll>=1)return null
-  let p=roll*100
-  return lotteryOdds.find(item=>(p-=item.rate)<0)||lotteryOdds.at(-1)
+  let ticket=Math.floor(roll*1000)
+  return lotteryOdds.find(item=>(ticket-=Math.round(item.rate*10))<0)||lotteryOdds.at(-1)
 }
 const securePrize=()=>lotteryPrize(crypto.getRandomValues(new Uint32Array(1))[0]/4294967296)
 const jstMonth=(now=Date.now())=>new Date(now+9*3600000).toISOString().slice(0,7)
