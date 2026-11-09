@@ -67,7 +67,7 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/sync/state')return syncStateRoute(request,env.DB,session)
         if(path==='/api/points')return pointsRoute(request,env.DB,session)
         if(path==='/api/points/history')return pointsHistoryRoute(request,env.DB,session)
-        if(path==='/api/lottery'||path==='/api/lottery/draw'){
+        if(path==='/api/lottery'||path==='/api/lottery/draw'||path==='/api/lottery/coupons'||path==='/api/lottery/coupons/redeem-wish'){
           const onDraw=draw=>{
             const job=sendLotteryDrawNotification(env,session,draw)
               .then(()=>bumpHouseholdRevision(env.DB,session))
