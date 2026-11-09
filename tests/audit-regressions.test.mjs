@@ -749,3 +749,45 @@ test('mobile ZIP export and restore enumerate every server-side portable dataset
  const keys=[...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1])
  assert.deepEqual(keys,RESTORE_ORDER)
 })
+
+
+test('portable points audit is complete but read-only and isolates other members private events',async()=>{
+ const source=database()
+ const second='77777777-7777-4777-8777-777777777777'
+ try{
+  const sqlite=source.sqlite
+  sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)').run(second,'other','s','v')
+  sqlite.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)').run('primary',second,'member')
+  for(const [key,member,visibility] of [['self','u1','private'],['shared',second,'household'],['secret',second,'private']]){
+   sqlite.prepare('INSERT INTO completion_points(household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at) VALUES(?,?,?,?,?,?,10,?)')
+    .run('primary','task',key,'',member,visibility,new Date().toISOString())
+  }
+  const read=async(dataset,cursor='0')=>{
+   const res=await portableRoute(new Request('https://homeflow.invalid/api/portable/audit?dataset='+dataset+'&cursor='+cursor),
+    source.db,'/api/portable/audit',session)
+   assert.equal(res.status,200)
+   return res.json()
+  }
+  const points=await read('completionPoints')
+  assert.deepEqual(new Set(points.items.map(item=>item.source_id)),new Set(['self','shared']))
+  assert.equal(points.nextCursor,null)
+  const shop=await read('rewardRedemptions')
+  assert.ok(Array.isArray(shop.items))
+  assert.equal((await portableRoute(new Request('https://homeflow.invalid/api/portable/audit?dataset=users'),
+   source.db,'/api/portable/audit',session)).status,400)
+  const restore=await portableRoute(new Request('https://homeflow.invalid/api/portable/restore',{
+   method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({dataset:'completionPoints',items:points.items,confirm:true})
+  }),source.db,'/api/portable/restore',session)
+  assert.equal(restore.status,400,'audit records cannot mint new credits via portable restore')
+ }finally{source.sqlite.close()}
+})
+
+test('points audit backup includes all whitelisted source tables and no credential tables',()=>{
+ const portable=readFileSync(new URL('../worker/portable.js',import.meta.url),'utf8')
+ const client=readFileSync(new URL('../src/components/BackupPanel.vue',import.meta.url),'utf8')
+ assert.match(client,/points-and-rewards-audit\.json/)
+ assert.match(client,/audit-only-no-replay/)
+ assert.match(portable,/POINTS_AUDIT_SOURCES/)
+ assert.doesNotMatch(portable.slice(portable.indexOf('export const POINTS_AUDIT_SOURCES='),portable.indexOf('function normalized')),/sessions|password|login_limits|push_subscriptions/)
+})
