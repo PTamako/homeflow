@@ -44,9 +44,9 @@ async function call(db,session,method='GET',id,kind='empty',notify){
 }
 async function wallet(db,person){return (await pointsRoute(new Request('https://homeflow.invalid/api/points'),db,person)).json()}
 
-test('probability thresholds cover all 100% and put doubling at the top 1%',()=>{
+test('balanced 35/40/25 pool covers all outcomes and 0.2% capped jackpot',()=>{
  assert.equal(lotteryOdds.reduce((n,x)=>n+x.rate,0),100)
- for(const [roll,expected] of [[0,'empty'],[.499,'empty'],[.5,'five'],[.799,'five'],[.8,'ten'],[.899,'ten'],[.9,'twenty'],[.959,'twenty'],[.96,'fifty'],[.989,'fifty'],[.99,'double'],[.99999,'double']])
+ for(const [roll,expected] of [[0,'empty'],[.3499,'empty'],[.35,'six'],[.7499,'six'],[.75,'ten'],[.8899,'ten'],[.89,'twenty'],[.9099,'twenty'],[.91,'fifty'],[.9129,'fifty'],[.913,'double'],[.9149,'double'],[.915,'ticket'],[.9549,'ticket'],[.955,'shop'],[.9649,'shop'],[.965,'wish'],[.99999,'wish']])
    assert.equal(lotteryPrize(roll).kind,expected)
 })
 
@@ -56,7 +56,7 @@ test('seven draws per member per month; replay does not double-charge; private X
   earn(sqlite,'alice');earn(sqlite,'bob')
   const before=await wallet(db,alice)
   let net=0
-  for(const [index,kind] of ['empty','five','ten','twenty','fifty','empty','five'].entries()){
+  for(const [index,kind] of ['empty','six','ten','twenty','fifty','empty','six'].entries()){
    const id=crypto.randomUUID()
    const first=await call(db,alice,'POST',id,kind)
    assert.equal(first.status,201)
@@ -121,7 +121,7 @@ test('lottery history validates pages and keeps the family list scoped to the pa
  const {sqlite,db}=fixture()
  try{
   earn(sqlite,'alice',2);earn(sqlite,'bob',2)
-  for(const [person,kind] of [[alice,'empty'],[bob,'five'],[alice,'ten'],[bob,'twenty'],[alice,'empty'],[bob,'fifty']]){
+  for(const [person,kind] of [[alice,'empty'],[bob,'six'],[alice,'ten'],[bob,'twenty'],[alice,'empty'],[bob,'fifty']]){
    const response=await call(db,person,'POST',crypto.randomUUID(),kind)
    assert.equal(response.status,201)
   }
@@ -159,8 +159,8 @@ test('doubling uses balance AFTER five-point entry fee; private points cannot pa
   const before=(await wallet(db,alice)).availablePoints
   const res=await call(db,alice,'POST',crypto.randomUUID(),'double')
   assert.equal(res.status,201)
-  assert.equal(res.body.draw.points,before-5)
-  assert.equal((await wallet(db,alice)).availablePoints,(before-5)*2)
+  assert.equal(res.body.draw.points,80,'jackpot minimum is 80')
+  assert.equal((await wallet(db,alice)).availablePoints,before-5+80)
   assert.equal((await call(db,bob,'POST',crypto.randomUUID())).status,409)
   assert.equal((await call(db,bob)).body.used,0)
  }finally{sqlite.close()}
@@ -188,11 +188,14 @@ test('every lottery prize has playful push and inbox copy without displaying the
  const name='白ちゃん'
  const cases=[
   ['empty',0,'🎲','空手而归'],
-  ['five',5,'🎉','5 积分'],
+  ['six',6,'🎉','6 积分'],
   ['ten',10,'🎉','10 积分'],
   ['twenty',20,'🎉','20 积分'],
   ['fifty',50,'🎉','50 积分'],
-  ['double',85,'👑','积分翻倍']
+  ['double',85,'👑','积分翻倍'],
+  ['ticket',0,'🎟','60 天'],
+  ['shop',0,'🛍','95 折'],
+  ['wish',0,'💖','¥100']
  ]
  for(const [kind,points,emoji,expected] of cases){
   const {title,message}=lotteryNotificationCopy(name,{kind,points})
