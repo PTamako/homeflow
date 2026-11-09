@@ -28,6 +28,10 @@ const queries=[
     "WHERE l.household_id=?1 AND s.created_by=?2 ORDER BY l.shopping_id,l.external_entry_id LIMIT 501"],
   ['memories',"SELECT * FROM memories WHERE household_id=?1 AND created_by=?2 ORDER BY created_at LIMIT 501"],
   ['petHealth',"SELECT * FROM pet_health_records WHERE household_id=?1 AND created_by=?2 AND deleted_at IS NULL ORDER BY created_at LIMIT 501"],
+  // Preserve explicitly assigned individual occurrences (including dual participants).
+  ['routineAssignments',"SELECT a.routine_id,a.occurrence_on,a.assignee_user_id,a.second_assignee_user_id,a.bonus_points,a.created_at "+
+    "FROM routine_occurrence_assignments a JOIN routines r ON r.id=a.routine_id AND r.household_id=a.household_id "+
+    "WHERE a.household_id=?1 AND r.created_by=?2 ORDER BY a.occurrence_on,a.routine_id LIMIT 501"],
   ['routineMarks',"SELECT m.* FROM routine_marks m JOIN routines r ON r.id=m.routine_id "+
     "WHERE r.household_id=?1 AND r.created_by=?2 ORDER BY m.occurrence_on LIMIT 501"],
   ['tripProgress',"SELECT p.* FROM trip_progress p JOIN trips t ON t.id=p.trip_id "+
@@ -72,7 +76,7 @@ const exportMax=500
 const allowed=new Set(RESTORE_ORDER)
 function normalized(key,r,h,u) {
   if(!r||typeof r!=='object'||Array.isArray(r))return null
-  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','todayPlanActions','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
+  const common=['routineMarks','tripProgress','financeTargetSettings','goalPeriodAdjustments','goalPeriodSettlements','planCompletionMarks','shoppingExpenseLinks','todayPlanActions','routineAssignments','reminderSnoozes','reminderPreferences','reminderItemPreferences'].includes(key)?null:id(r.id)
   if(common===false)return null
   const v=vis(r.visibility)
   if(!optionalDeletion(r.deleted_at))return null
@@ -99,13 +103,20 @@ function normalized(key,r,h,u) {
          (r.end_on&&!date(r.end_on))||!amount(r.budget_amount)||
          !['planning','active','completed','cancelled'].includes(r.status)||
          (r.plan_json!=null&&str(r.plan_json,160000)===null))return null
+      let participants
+      try{participants=JSON.parse(r.participant_user_ids||'[]')}catch{return null}
+      if(!Array.isArray(participants)||participants.length>10||!participants.every(id))return null
+      if(v==='private')participants=[u]
+      else participants=[...new Set([u,...participants])]
       return ["INSERT OR IGNORE INTO trips(id,household_id,created_by,visibility,wish_id,title,destination,start_on,end_on,"+
-        "timezone,budget_amount,currency,status,import_source_key,import_hash,plan_json,deleted_at) "+
+        "timezone,budget_amount,currency,status,import_source_key,import_hash,plan_json,deleted_at,participant_user_ids) "+
         "VALUES(?1,?2,?3,?4,(SELECT id FROM wishes WHERE id=?5 AND household_id=?2 AND created_by=?3),"+
-        "?6,?7,?8,?9,?10,?11,'JPY',?12,?13,?14,?15,?16)",
+        "?6,?7,?8,?9,?10,?11,'JPY',?12,?13,?14,?15,?16,"+
+        "(SELECT json_group_array(m.user_id) FROM household_members m WHERE m.household_id=?2 "+
+        "AND (m.user_id=?3 OR m.user_id IN (SELECT value FROM json_each(?17)))))",
         [r.id,h,u,v,id(r.wish_id)?r.wish_id:null,r.title,r.destination||'',r.start_on||null,r.end_on||null,
          str(r.timezone,70)||'Asia/Tokyo',r.budget_amount,r.status||'planning',r.import_source_key||null,
-         r.import_hash||null,r.plan_json||null,r.deleted_at||null]]
+         r.import_hash||null,r.plan_json||null,r.deleted_at||null,JSON.stringify(participants)]]
     case 'goals':
       if(!str(r.title,150)||!Number.isSafeInteger(r.target_amount)||r.target_amount<1||
          !amount(r.reserved_amount)||!optionalDate(r.target_on)||!optionalDate(r.start_on)||
@@ -116,16 +127,24 @@ function normalized(key,r,h,u) {
         "VALUES(?1,?2,?3,?4,(SELECT id FROM wishes WHERE id=?5 AND household_id=?2 AND created_by=?3),?6,?7,?8,'JPY',?9,?10,?11,?12)",
         [r.id,h,u,v,id(r.wish_id)?r.wish_id:null,r.title,r.target_amount,r.reserved_amount,r.target_on||null,
          r.goal_mode||'once',r.start_on||null,r.deleted_at||null]]
-    case 'tasks':
+    case 'tasks': {
       if(!str(r.title,150)||str(r.notes||'',1000)===null||!optionalDate(r.due_on))return null
+      const bonus=r.bonus_points??0,first=id(r.assignee_user_id)?r.assignee_user_id:null
+      const second=id(r.second_assignee_user_id)?r.second_assignee_user_id:null
+      if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000||
+         (second&&(!first||second===first||v!=='household'||bonus!==0))||
+         (bonus>0&&(!first||first===u||v!=='household')))return null
       return ["INSERT OR IGNORE INTO tasks(id,household_id,creator_user_id,visibility,title,notes,due_on,completed_at,"+
-         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id,deleted_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,"+
+         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id,deleted_at,bonus_points,second_assignee_user_id) "+
+         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,"+
          "(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11,?12,?13,"+
-         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15)",
+         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15,?16,"+
+         "(SELECT user_id FROM household_members WHERE user_id=?17 AND household_id=?2))",
         [r.id,h,u,v,r.title,r.notes||'',r.due_on||null,r.completed_at||null,r.completed_at?u:null,
          id(r.subject_profile_id)?r.subject_profile_id:null,id(r.client_request_id)?r.client_request_id:null,
          ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
-         r.remind_enabled===0?0:1,id(r.assignee_user_id)?r.assignee_user_id:null,r.deleted_at||null]]
+         r.remind_enabled===0?0:1,first,r.deleted_at||null,bonus,second]]
+    }
     case 'anniversaries':
       if(!str(r.title,150)||!date(r.event_date)||!['once','yearly','monthly'].includes(r.repeat_mode))return null
       return ["INSERT OR IGNORE INTO anniversaries(id,household_id,created_by,visibility,title,event_date,repeat_mode,advance_days_json,note,subject_profile_id,deleted_at) "+
@@ -146,11 +165,16 @@ function normalized(key,r,h,u) {
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999||!optionalDate(r.due_on)||
          (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
-      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at,assigned_to) "+
-          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,(SELECT user_id FROM household_members WHERE user_id=?12 AND household_id=?2))",
+      const first=id(r.assigned_to)?r.assigned_to:null
+      const second=id(r.second_assignee_user_id)?r.second_assignee_user_id:null
+      if(second&&(!first||second===first||v!=='household'))return null
+      return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at,assigned_to,second_assignee_user_id) "+
+          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,"+
+          "(SELECT user_id FROM household_members WHERE user_id=?12 AND household_id=?2),"+
+          "(SELECT user_id FROM household_members WHERE user_id=?13 AND household_id=?2))",
           [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,r.completed_at?u:null,
            r.due_on||null,r.ledger_entry_id||null,r.deleted_at||null,
-           id(r.assigned_to)&&(v==='household'||r.assigned_to===u)?r.assigned_to:null]]
+           first&&(v==='household'||first===u)?first:null,second]]
     case 'memories':
       if(!str(r.title,150)||str(r.story||'',8000)===null||!date(r.happened_on))return null
       return ["INSERT OR IGNORE INTO memories(id,household_id,created_by,visibility,title,story,happened_on,linked_type,linked_id,deleted_at) "+
@@ -172,6 +196,23 @@ function normalized(key,r,h,u) {
           id(r.source_routine_id)&&date(r.source_occurrence_on)?r.source_routine_id:null,
           date(r.source_occurrence_on)?r.source_occurrence_on:null,
           id(r.source_task_id)?r.source_task_id:null]]
+    case 'routineAssignments': {
+      if(!id(r.routine_id)||!date(r.occurrence_on)||!id(r.assignee_user_id)||
+         !Number.isSafeInteger(r.bonus_points)||r.bonus_points<0||r.bonus_points>10000||
+         (r.second_assignee_user_id!=null&&(!id(r.second_assignee_user_id)||
+           r.second_assignee_user_id===r.assignee_user_id||r.bonus_points!==0)))return null
+      const created=typeof r.created_at==='string'&&Number.isFinite(Date.parse(r.created_at))?
+        r.created_at:new Date().toISOString()
+      return ["INSERT OR IGNORE INTO routine_occurrence_assignments "+
+        "(household_id,routine_id,occurrence_on,assignee_user_id,second_assignee_user_id,bonus_points,created_at) "+
+        "SELECT ?1,r.id,?3,a.user_id,b.user_id,?6,?7 FROM routines r "+
+        "JOIN household_members a ON a.household_id=?1 AND a.user_id=?4 "+
+        "LEFT JOIN household_members b ON b.household_id=?1 AND b.user_id=?5 "+
+        "WHERE r.id=?2 AND r.household_id=?1 AND r.created_by=?8 "+
+        "AND (?5 IS NULL OR b.user_id IS NOT NULL)",
+        [h,r.routine_id,r.occurrence_on,r.assignee_user_id,r.second_assignee_user_id||null,
+          r.bonus_points,created,u]]
+    }
     case 'routineMarks':
       if(!id(r.routine_id)||!date(r.occurrence_on))return null
       return ["INSERT OR IGNORE INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at) "+
