@@ -134,7 +134,6 @@ test('actual authenticated Worker writes by either family account advance the ot
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0047_anniversary_archive.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0048_oneoff_five_points.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql')")
-  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
   for(const name of ['alice','bob']){
    sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
