@@ -9,8 +9,7 @@ import {goalRewardCreditAmount} from '../worker/reward-goal-credits.js'
 import {expiringCouponReminders} from '../worker/webpush.js'
 
 const manifest=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
-const names=[...manifest.slice(manifest.indexOf('MIGRATIONS=['),manifest.indexOf(']\\nfiles='))
- .matchAll(/"(\\d{4}_[^"]+\\.sql)"/g)].map(match=>match[1])
+const names=[...manifest.slice(manifest.indexOf('MIGRATIONS=['),manifest.indexOf(']\nfiles=')).matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(x=>x[1])
 const alice={household_id:'h',user_id:'alice'},bob={household_id:'h',user_id:'bob'},
  outsider={household_id:'h2',user_id:'eve'}
 const uuid=()=>crypto.randomUUID()
