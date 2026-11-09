@@ -51,7 +51,14 @@ function earn(sqlite,user,quantity=12,visibility='household',offset=0){
  const q=sqlite.prepare(`INSERT INTO completion_points
  (household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at)
  VALUES('h','task',?1,'',?2,?3,10,?4)`)
- for(let i=0;i<quantity;i++)q.run(user+'-'+(i+offset),user,visibility,stamp)
+ // Older 10-point awards remain valid after the new scoring migration.
+ // This fixture intentionally represents those historical ledger rows.
+ const undo=sqlite.prepare("DELETE FROM completion_point_adjustments WHERE household_id='h' AND kind='task' AND source_id=?1")
+ for(let i=0;i<quantity;i++){
+  const key=user+'-'+(i+offset)
+  q.run(key,user,visibility,stamp)
+  undo.run(key)
+ }
 }
 test('migration creates four configurable household presets and strong foreign keys',async()=>{
  const {sqlite,db}=fixture()
