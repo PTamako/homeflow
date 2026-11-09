@@ -339,6 +339,23 @@ export function annualPointsExpiryEvent(day){
     title:'年度积分即将清零',message:'请在今日内用完所有积分',priority:'important'
   }:null
 }
+// Seven-day notice is sent once via the same daily inbox + optional iOS Push
+// pipeline. The recipient may still choose not to spend their reward coupon.
+export async function expiringCouponReminders(db,member,day){
+ const {results=[]}=await db.prepare(`SELECT c.id,c.kind,c.expires_on AS expiresOn
+   FROM lottery_coupons c WHERE c.household_id=?1 AND c.user_id=?2
+     AND c.used_at IS NULL AND c.expires_on=date(?3,'+7 days')
+   ORDER BY c.expires_on,c.id LIMIT 20`)
+   .bind(member.household_id,member.user_id,day).all()
+ const names={ticket:'免费抽奖券',shop:'商城95折券',wish:'心愿加速券'}
+ return results.map(c=>({
+   kind:'system',id:'coupon-expiry-'+c.id,dueOn:c.expiresOn,daysBefore:7,
+   title:'奖励券将在7天后到期',
+   message:'你的'+(names[c.kind]||'奖励券')+'有效至 '+c.expiresOn+
+     '，可在我的奖励券中选择使用。',
+   priority:'normal'
+ }))
+}
 export async function runPushSchedule(env,now=Date.now()){
   const pushConfigured=vapidReady(env)
   const db=env.DB
@@ -360,10 +377,11 @@ export async function runPushSchedule(env,now=Date.now()){
   for(const member of members){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
-    if(!response.ok&&!annualExpiry)continue
+    const couponEvents=await expiringCouponReminders(db,member,day).catch(()=>[])
+    if(!response.ok&&!annualExpiry&&!couponEvents.length)continue
     const data=response.ok?await response.json():{items:[],quietHours:null}
-    const scheduledData={...data,items:annualExpiry?
-      [annualExpiry,...(data.items||[])]:data.items||[]}
+    const scheduledData={...data,items:[
+      ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...(data.items||[])]}
     remindersCache.set(member.user_id,scheduledData)
     for(const event of scheduledData.items.slice(0,100)){
       const key=reminderDeliveryKey(event)
