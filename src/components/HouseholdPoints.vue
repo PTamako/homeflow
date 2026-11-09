@@ -20,7 +20,9 @@ type Contribution={userId:string;displayName:string;points:number}
 type GroupOrder={id:string;rewardId:string;createdBy:string;title:string;icon:string;
  points:number;fundedPoints:number;wishTitle:string|null;goalCreditYen:number;status:'collecting'|'requested'|'fulfilled'|'cancelled';
  createdAt:string;fundedAt:string|null;contributions:Contribution[]}
-type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[]}
+type Shop={rewards:Reward[];redemptions:Redemption[];groupOrders:GroupOrder[];
+ redemptionPage:number;redemptionPages:number;redemptionTotal:number;
+ groupPage:number;groupPages:number;groupTotal:number;pageSize:number}
 type WishGoalOption={wishId:string;wishTitle:string;goalId:string;goalTitle:string;targetAmount:number}
 type YearMember={userId:string;displayName:string;contributionPoints:number;earnedPoints:number;
  spentPoints:number;lotteryNetPoints:number;privatePoints:number|null;endingPoints:number;expiredPoints:number|null}
@@ -37,6 +39,7 @@ const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
 const view=ref<'shop'|'achievements'|'lottery'|'history'>('shop')
 const quantityChoice=ref<Record<string,number>>({})
+const redemptionPage=ref(1),groupPage=ref(1)
 const history=ref<YearHistory|null>(null)
 const historyYear=ref(new Date(Date.now()+9*3600000).getUTCFullYear())
 const historyMember=ref('')
@@ -68,6 +71,15 @@ async function goToHistory(page:number,year=historyYear.value,member=historyMemb
   history.value=next
  }catch(e){if(token===historyRequest)historyError.value=(e as Error).message}
  finally{if(token===historyRequest)historyBusy.value=false}
+}
+async function changeShopPage(kind:'redemption'|'group',page:number){
+ if(!props.active||!expanded.value||view.value!=='shop'||loading.value||busy.value||
+    !shop.value)return
+ const max=kind==='redemption'?shop.value.redemptionPages:shop.value.groupPages
+ if(page<1||page>max)return
+ if(kind==='redemption')redemptionPage.value=page
+ else groupPage.value=page
+ await refresh()
 }
 const lottery=ref<Lottery|null>(null)
 const lotteryPage=ref(1)
@@ -198,7 +210,8 @@ async function refresh(){
      const historyToken=selectedView==='history'?++historyRequest:0
      const [pointsResult,secondary]=await Promise.all([
        fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery?page='+lotteryPage.value:
-         selectedView==='history'?historyPath():'/rewards')])
+         selectedView==='history'?historyPath():
+          '/rewards?redemptionPage='+redemptionPage.value+'&groupPage='+groupPage.value)])
      if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
      data.value=pointsResult as Summary
      if(selectedView==='lottery'){
@@ -212,7 +225,11 @@ async function refresh(){
         history.value=secondary as YearHistory
         historyBusy.value=false
        }
-     }else shop.value=secondary as Shop
+     }else{
+      shop.value=secondary as Shop
+      redemptionPage.value=shop.value.redemptionPage
+      groupPage.value=shop.value.groupPage
+    }
    }
  }catch(e){if(current===generation)error.value=(e as Error).message}
  finally{if(current===generation)loading.value=false}
@@ -226,6 +243,7 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    experienceHelpOpen.value=false
    lotteryHelpOpen.value=false
    shop.value=null
+   redemptionPage.value=1;groupPage.value=1
    lottery.value=null
    resetLotteryPagination()
    historyRequest++
@@ -238,6 +256,7 @@ watch(()=>props.userId,()=>{
  generation++
  data.value=null
  shop.value=null
+ redemptionPage.value=1;groupPage.value=1
  lottery.value=null
  resetLotteryPagination()
  historyRequest++
@@ -372,6 +391,7 @@ async function redeem(item:Reward){
  if(item.goalCreditYen>0){await askLinkedWish(item,'redeem',quantity);return}
  if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+' 吗？\n兑换后无法自动退款，经验值不会扣除。'))return
  const requestId=crypto.randomUUID()
+ redemptionPage.value=1
  await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId,quantity}),
   '已成功兑换 '+quantity+' 件！')
  if(!error.value)quantityChoice.value={...quantityChoice.value,[item.id]:1}
@@ -380,6 +400,7 @@ async function startPool(item:Reward){
  if(item.goalCreditYen>0){await askLinkedWish(item,'pool');return}
  if(!window.confirm('创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
  const requestId=crypto.randomUUID()
+ groupPage.value=1
  await mutate(()=>fetchJSON('/rewards/pool','POST',{rewardId:item.id,requestId}),
   '合力兑换已创建，请在下方选择出资金额')
 }
@@ -396,12 +417,15 @@ async function submitWishReward(){
  if(!window.confirm(message+'\n奖励额度不代表实际存款，也不会写入家計簿。'))return
  const requestId=crypto.randomUUID()
  const payload={rewardId:item.id,requestId,wishId:choice.wishId,goalId:choice.goalId}
- if(action==='redeem')
+ if(action==='redeem'){
+  redemptionPage.value=1
   await mutate(()=>fetchJSON('/rewards/redeem','POST',{...payload,quantity}),
    '兑换成功！'+choice.wishTitle+'的储值奖励额度增加 ¥'+yen.toLocaleString('ja-JP'))
- else
+ }else{
+  groupPage.value=1
   await mutate(()=>fetchJSON('/rewards/pool','POST',payload),
    '合力兑换已创建，积分凑齐后将自动计入所选心愿的储值额度')
+ }
  if(!error.value){
   wishRewardDraft.value=null
   if(action==='redeem')quantityChoice.value={...quantityChoice.value,[item.id]:1}
@@ -778,6 +802,11 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <button v-else-if="order.status==='requested'" type="button" class="redeem-btn pool-fulfill"
            :disabled="busy" @click="fulfillPool(order)">确认已经兑现</button>
        </article>
+       <nav v-if="(shop?.groupPages||1)>1" class="lottery-history-pagination shop-pagination" aria-label="合力订单分页">
+         <button type="button" :disabled="busy||loading||groupPage<=1" @click="changeShopPage('group',groupPage-1)">上一页</button>
+         <span>第 {{ groupPage }} / {{ shop?.groupPages }} 页 · 共 {{ shop?.groupTotal }} 笔</span>
+         <button type="button" :disabled="busy||loading||groupPage>=(shop?.groupPages||1)" @click="changeShopPage('group',groupPage+1)">下一页</button>
+       </nav>
      </div>
      <div v-if="shop?.redemptions.length" class="history-section">
        <b>兑换记录</b>
@@ -787,6 +816,11 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <span class="history-status" :class="{fulfilled:record.status==='fulfilled'}">{{ record.status==='fulfilled'?'已兑现':'待兑现' }}</span>
          <button v-if="record.status==='requested'" type="button" :disabled="busy" @click="fulfill(record)">确认兑现</button>
        </div>
+       <nav v-if="(shop?.redemptionPages||1)>1" class="lottery-history-pagination shop-pagination" aria-label="商城兑换历史分页">
+         <button type="button" :disabled="busy||loading||redemptionPage<=1" @click="changeShopPage('redemption',redemptionPage-1)">上一页</button>
+         <span>第 {{ redemptionPage }} / {{ shop?.redemptionPages }} 页 · 共 {{ shop?.redemptionTotal }} 笔</span>
+         <button type="button" :disabled="busy||loading||redemptionPage>=(shop?.redemptionPages||1)" @click="changeShopPage('redemption',redemptionPage+1)">下一页</button>
+       </nav>
      </div>
    </template>
    <p v-if="!data&&loading" class="points-loading">正在读取积分与奖励…</p>
