@@ -32,7 +32,12 @@ type YearEntry={userId:string;visibility:'household'|'private';amount:number;con
 type YearHistory={year:number;currentYear:number;members:YearMember[];entries:YearEntry[];
  page:number;pageSize:number;total:number;totalPages:number;
  memberFilter:string;categoryFilter:string}
-type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
+type LotteryDraw={id:string;userId:string;displayName?:string;
+ kind:'empty'|'five'|'six'|'ten'|'twenty'|'fifty'|'double'|'ticket'|'shop'|'wish';
+ cost:number;points:number;createdAt:string;month:string;ticketCouponId?:string|null}
+type Coupon={id:string;kind:'ticket'|'shop'|'wish';createdAt:string;expiresOn:string;
+ usedAt:string|null;useReference:string|null;usedGoalId:string|null;
+ wishTitle:string|null;status:'available'|'used'|'expired'}
 type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];
  historyPage:number;historyPageSize:number;historyTotal:number;historyTotalPages:number;
  odds:{kind:string;rate:number;label:string}[]}
@@ -107,6 +112,36 @@ async function changeShopPage(kind:'redemption'|'group',page:number){
  await refresh()
 }
 const lottery=ref<Lottery|null>(null)
+const couponItems=ref<Coupon[]>([])
+const couponSheetOpen=ref(false)
+const couponStatus=ref<'available'|'used'|'expired'>('available')
+const couponPage=ref(1)
+const useFreeTicket=ref(false)
+const useShopCoupon=ref(false)
+const wishCouponDraft=ref<Coupon|null>(null)
+const wishCouponGoal=ref('')
+const wishCouponOptions=ref<WishGoalOption[]>([])
+const wishCouponBusy=ref(false)
+const activeCoupons=computed(()=>couponItems.value.filter(c=>c.status==='available'))
+const firstCoupon=(kind:Coupon['kind'])=>activeCoupons.value.filter(c=>c.kind===kind)
+  .sort((a,b)=>a.expiresOn.localeCompare(b.expiresOn)||a.createdAt.localeCompare(b.createdAt))[0]||null
+const availableTicket=computed(()=>firstCoupon('ticket'))
+const availableShopCoupon=computed(()=>firstCoupon('shop'))
+const usingTicket=computed(()=>useFreeTicket.value&&Boolean(availableTicket.value))
+const filteredCoupons=computed(()=>couponItems.value.filter(c=>c.status===couponStatus.value))
+const couponTotalPages=computed(()=>Math.max(1,Math.ceil(filteredCoupons.value.length/5)))
+const visibleCoupons=computed(()=>filteredCoupons.value.slice((couponPage.value-1)*5,couponPage.value*5))
+const couponTitle=(kind:Coupon['kind'])=>kind==='ticket'?'🎟 免费抽奖券':
+ kind==='shop'?'🛍 商城95折券':'💖 心愿加速券'
+const couponStatusName=(status:Coupon['status'])=>status==='available'?'可使用':
+ status==='used'?'已使用':'已过期'
+const couponDay=(stamp:string)=>stamp.slice(0,10)
+const couponDiscount=(item:Reward,quantity:number)=>Math.min(50,Math.floor(item.points*quantity/20))
+const selectedCouponDiscount=(item:Reward,quantity:number)=>
+ useShopCoupon.value&&availableShopCoupon.value&&item.points*quantity>=20?
+ couponDiscount(item,quantity):0
+const redeemCost=(item:Reward,quantity:number)=>
+ item.points*quantity-selectedCouponDiscount(item,quantity)
 const lotteryLastDraw=ref<LotteryDraw|null>(null)
 const LOTTERY_RESULT_DURATION_MS=3000
 let lotteryResultTimer:ReturnType<typeof setTimeout>|null=null
@@ -185,7 +220,9 @@ async function fetchJSON(path:string,method='GET',body?:unknown){
    pool_closed_or_insufficient:'本单已结束、金额超过剩余需求，或你的可用积分不足',
    pool_not_cancellable:'只有未凑齐积分的合力兑换可以取消',
    pool_not_funded:'积分尚未凑齐，暂不能兑现',
-   lottery_unavailable:'积分不足、当月次数已用完或抽奖状态已更新，请刷新重试',
+   lottery_unavailable:'积分不足、次数已用完、免费券不可用或抽奖状态已更新，请刷新重试',
+   coupon_unavailable:'奖励券已使用、过期或不属于当前账户，请刷新重试',
+   coupon_unavailable_or_wish_inactive:'奖励券不可用或关联心愿已失效，请检查后重试',
    not_authenticated:'请重新登录',
    origin_forbidden:'请从 HomeFlow 应用内操作'
   } as Record<string,string>)[result.error]||result.error||'操作失败')
@@ -203,12 +240,16 @@ async function refresh(){
    }else{
      const selectedView=view.value
      const historyToken=selectedView==='history'?++historyRequest:0
-     const [pointsResult,secondary]=await Promise.all([
+     const [pointsResult,secondary,couponResult]=await Promise.all([
        fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery':
          selectedView==='history'?historyPath():
-          '/rewards?redemptionPage='+redemptionPage.value+'&groupPage='+groupPage.value)])
+          '/rewards?redemptionPage='+redemptionPage.value+'&groupPage='+groupPage.value),
+       fetchJSON('/lottery/coupons') as Promise<{items:Coupon[]}>])
      if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
      data.value=pointsResult as Summary
+     couponItems.value=couponResult.items||[]
+     if(!availableTicket.value)useFreeTicket.value=false
+     if(!availableShopCoupon.value)useShopCoupon.value=false
      if(selectedView==='lottery'){
        lottery.value=secondary as Lottery
      }else if(selectedView==='history'){
