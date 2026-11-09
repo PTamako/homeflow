@@ -425,8 +425,19 @@ const anniversaryVisibleCount=ref(pageLimit)
 const todayAnniversaryVisibleCount=ref(pageLimit)
 const anniversaryView=ref<'upcoming'|'past'>('upcoming')
 const anniversaryYear=ref(''),anniversaryMonth=ref('')
-const upcomingAnniversaries=computed(()=>anniversaryView.value==='past'?items.value:
-  items.value.slice(0,anniversaryVisibleCount.value))
+// The same shared "items" ref also stores Today's, Plans' and Memories' rows.
+// Never render it under a different anniversary tab while its request is pending.
+const anniversaryLoadedKey=ref('')
+function anniversaryRequestPath(){
+  return anniversaryView.value==='past'?listPath('anniversaries'):'/anniversaries/upcoming'
+}
+const anniversaryExpectedKey=computed(()=>props.userId+'|'+anniversaryRequestPath())
+const anniversaryRowsReady=computed(()=>anniversaryLoadedKey.value===anniversaryExpectedKey.value)
+const upcomingAnniversaries=computed(()=>{
+  if(!anniversaryRowsReady.value)return []
+  return anniversaryView.value==='past'?items.value:
+    items.value.slice(0,anniversaryVisibleCount.value)
+})
 const visibleShopping=computed(()=>other.value)
 const taskPage=ref(0)
 const taskRows=computed(()=>sortPlanTasks(
@@ -774,6 +785,7 @@ async function goalFinished(completed:boolean,periodKey:string){
 async function fetchMode(){
   const requestId=++activeFetch
   const currentMode=props.mode
+  if(currentMode!=='family')anniversaryLoadedKey.value=''
   error.value=''
   focusError.value=''
   listLoading.value=true
@@ -793,11 +805,12 @@ async function fetchMode(){
       items.value=upcoming.items||[]
     }else if(props.mode==='family'){
       const past=anniversaryView.value==='past'
-      const path=past?listPath('anniversaries'):'/anniversaries/upcoming'
+      const path=anniversaryRequestPath()
+      const loadedKey=props.userId+'|'+path
       const data=await api(path)
-      if(requestId!==activeFetch||props.mode!=='family'||past!==(anniversaryView.value==='past')||
-        (past&&path!==listPath('anniversaries')))return
+      if(requestId!==activeFetch||props.mode!=='family'||loadedKey!==anniversaryExpectedKey.value)return
       items.value=data.items||[]
+      anniversaryLoadedKey.value=loadedKey
       listCursors.value.anniversaries=past?data.nextCursor||null:null
       await focusExactPlan(requestId)
     }else if(props.mode==='plans'){
@@ -1076,7 +1089,7 @@ onBeforeUnmount(()=>{
   for(const x of photoUrls)URL.revokeObjectURL(x)
   document.removeEventListener('visibilitychange',refreshOnResume)
 })
-watch(()=>[props.mode,props.profileRevision,props.syncRevision],fetchMode,{immediate:true})
+watch(()=>[props.mode,props.userId,props.profileRevision,props.syncRevision],fetchMode,{immediate:true})
 watch([planScope,planType,planYear,planMonth],()=>{
   historicalGoalDetailRequest++
   historicalGoalDetail.value=null
@@ -1156,8 +1169,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
         <button class="life-more" type="button" @click="anniversaryFilterOpen=false">完成</button>
         </EditBottomSheet>
-        <p v-if="listLoading&&!items.length" class="life-empty anniversary-empty" role="status">正在读取重要日子…</p>
-        <p v-else-if="!listLoading&&!error&&!upcomingAnniversaries.length" class="life-empty anniversary-empty">
+        <p v-if="!anniversaryRowsReady&&listLoading" class="life-empty anniversary-empty" role="status">正在读取{{ anniversaryView==='past'?'过去的日子':'即将到来的日子' }}…</p>
+        <p v-else-if="anniversaryRowsReady&&!listLoading&&!error&&!upcomingAnniversaries.length" class="life-empty anniversary-empty">
           {{ anniversaryView==='past'?'暂无符合条件的历史重要日子':'暂无即将到来的重要日子' }}
         </p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
@@ -1177,7 +1190,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </template>
         <button v-if="anniversaryView==='upcoming'&&items.length>anniversaryVisibleCount" type="button" class="life-more"
           @click="anniversaryVisibleCount+=pageLimit">加载更多重要日子</button>
-        <button v-if="anniversaryView==='past'&&listCursors.anniversaries" type="button" class="life-more"
+        <button v-if="anniversaryView==='past'&&anniversaryRowsReady&&listCursors.anniversaries" type="button" class="life-more"
           :disabled="pageBusy.anniversaries" @click="loadMore('anniversaries')">加载更多历史纪念日</button>
         <EditBottomSheet v-if="showAnniversaryForm" title="添加纪念日" :close-disabled="busy" @close="closeAnniversaryForm">
 <form id="new-anniversary-form" class="life-form" @submit.prevent="addAnniversary">
