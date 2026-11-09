@@ -75,7 +75,13 @@ export async function rewardsRoute(request,db,path,session){
     return json({items:results})
   }
   if(path==='/api/rewards'&&request.method==='GET'){
-    const [rewards,history,orders,contributions]=await Promise.all([
+    const params=new URL(request.url).searchParams
+    const redemptionText=params.get('redemptionPage')||'1'
+    const groupText=params.get('groupPage')||'1'
+    if(!/^[1-9][0-9]{0,3}$/.test(redemptionText)||!/^[1-9][0-9]{0,3}$/.test(groupText))
+      return json({error:'invalid_page'},400)
+    const redemptionPage=Number(redemptionText),groupPage=Number(groupText),pageSize=5
+    const [rewards,history,orders,contributions,redemptionTotal,groupTotal]=await Promise.all([
       getList(db,h),
       db.prepare(`SELECT MIN(x.id) AS id,x.reward_id AS rewardId,x.redeemed_by AS redeemedBy,
         COALESCE((SELECT p.display_name FROM family_profiles p
@@ -92,8 +98,8 @@ export async function rewardsRoute(request,db,path,session){
         WHERE x.household_id=?1
         GROUP BY x.household_id,x.redeemed_by,SUBSTR(x.client_request_id,1,36),
           x.reward_id,x.title_snapshot,x.icon_snapshot
-        ORDER BY MAX(x.created_at) DESC,MIN(x.id) DESC LIMIT 30`)
-        .bind(h,u).all(),
+        ORDER BY MAX(x.created_at) DESC,MIN(x.id) DESC LIMIT 5 OFFSET ?3`)
+        .bind(h,u,(redemptionPage-1)*pageSize).all(),
       db.prepare(`SELECT o.id,o.reward_id AS rewardId,o.created_by AS createdBy,
         o.title_snapshot AS title,o.icon_snapshot AS icon,o.points_required AS points,
         o.status,o.created_at AS createdAt,o.funded_at AS fundedAt,
@@ -104,7 +110,7 @@ export async function rewardsRoute(request,db,path,session){
         FROM reward_group_orders o WHERE o.household_id=?1
           AND o.status<>'cancelled'
            AND (o.status<>'collecting' OR ${pointYearPredicate('o.created_at')})
-        ORDER BY o.created_at DESC,o.id DESC LIMIT 25`).bind(h,u).all(),
+        ORDER BY o.created_at DESC,o.id DESC LIMIT 5 OFFSET ?3`).bind(h,u,(groupPage-1)*pageSize).all(),
       db.prepare(`SELECT c.order_id AS orderId,c.user_id AS userId,
         COALESCE((SELECT p.display_name FROM family_profiles p
           WHERE p.household_id=c.household_id AND p.member_user_id=c.user_id
@@ -115,10 +121,23 @@ export async function rewardsRoute(request,db,path,session){
         WHERE c.household_id=?1 AND c.order_id IN
           (SELECT id FROM reward_group_orders WHERE household_id=?1
             AND status<>'cancelled'
-            ORDER BY created_at DESC,id DESC LIMIT 25)
-        GROUP BY c.order_id,c.user_id,u.login_name`).bind(h).all()
+            AND (status<>'collecting' OR ${pointYearPredicate('created_at')})
+            ORDER BY created_at DESC,id DESC LIMIT 5 OFFSET ?2)
+        GROUP BY c.order_id,c.user_id,u.login_name`).bind(h,(groupPage-1)*pageSize).all()
+      db.prepare(`SELECT COUNT(*) AS total FROM (
+        SELECT 1 FROM reward_redemptions x WHERE x.household_id=?1
+        GROUP BY x.redeemed_by,SUBSTR(x.client_request_id,1,36),
+          x.reward_id,x.title_snapshot,x.icon_snapshot)`).bind(h).first(),
+      db.prepare(`SELECT COUNT(*) AS total FROM reward_group_orders o
+        WHERE o.household_id=?1 AND o.status<>'cancelled'
+          AND (o.status<>'collecting' OR ${pointYearPredicate('o.created_at')})`).bind(h).first()
     ])
     return json({rewards,redemptions:history.results||[],
+      redemptionPage,groupPage,pageSize,
+      redemptionTotal:Number(redemptionTotal?.total||0),
+      redemptionPages:Math.max(1,Math.ceil(Number(redemptionTotal?.total||0)/pageSize)),
+      groupTotal:Number(groupTotal?.total||0),
+      groupPages:Math.max(1,Math.ceil(Number(groupTotal?.total||0)/pageSize)),
       groupOrders:(orders.results||[]).map(o=>({...o,points:Number(o.points),
         fundedPoints:Number(o.fundedPoints),
         contributions:(contributions.results||[]).filter(c=>c.orderId===o.id)
