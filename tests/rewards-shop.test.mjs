@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {rewardsRoute} from '../worker/rewards.js'
+import {goalRewardCreditAmount} from '../worker/reward-goal-credits.js'
 import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/points.js'
 import {annualPointLedgerSql,pointsHistoryRoute,jstYearWindow} from '../worker/points-history.js'
 
@@ -400,5 +401,117 @@ test('one multi-item redemption is one ledger row with total points, while later
   assert.equal(after.members.find(x=>x.userId==='alice').endingPoints,wallet.availablePoints)
   assert.equal(after.members.find(x=>x.userId==='alice').spentPoints,400)
   assert.equal(after.totalPages,Math.ceil(after.total/5))
+ }finally{sqlite.close()}
+})
+
+function addWishAndSavingsGoal(sqlite,who='alice',visibility='household',house='h'){
+ const wishId=id(850+(who==='bob'?1:0)+(house==='h2'?10:0)),goalId=id(860+(who==='bob'?1:0)+(house==='h2'?10:0))
+ sqlite.prepare(`INSERT INTO wishes
+  (id,household_id,created_by,visibility,title,wish_type,status,estimated_amount,currency)
+  VALUES(?1,?2,?3,?4,?5,'purchase','wished',100000,'JPY')`)
+  .run(wishId,house,who,visibility,'想要的物品')
+ sqlite.prepare(`INSERT INTO goals
+  (id,household_id,created_by,visibility,title,target_amount,reserved_amount,currency,wish_id,goal_mode)
+  VALUES(?1,?2,?3,?4,'愿望储值',100000,0,'JPY',?5,'once')`)
+  .run(goalId,house,who,visibility,wishId)
+ return {wishId,goalId}
+}
+test('wish reward redeem credits one-time yen allowance, not duplicated by quantity or retry',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',35)
+  const {wishId,goalId}=addWishAndSavingsGoal(sqlite)
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(r=>r.points===100)
+  const enabled=await call(db,alice,'/api/rewards/'+encodeURIComponent(dessert.id),'PATCH',{
+    title:dessert.title,description:dessert.description,icon:dessert.icon,points:dessert.points,
+    stock:null,active:true,goalCreditYen:1000})
+  assert.equal(enabled.status,200)
+  const wishChoices=await call(db,alice,'/api/rewards/wish-goals')
+  assert.equal(wishChoices.status,200)
+  assert.ok(wishChoices.body.items.some(x=>x.wishId===wishId&&x.goalId===goalId))
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',
+    {rewardId:dessert.id,requestId:id(801),quantity:2})).status,409,
+    'credit voucher cannot be purchased without a linked goal')
+  const before=(await balance(db,alice)).availablePoints
+  const args={rewardId:dessert.id,requestId:id(802),quantity:3,wishId,goalId}
+  const first=await call(db,alice,'/api/rewards/redeem','POST',args)
+  assert.equal(first.status,201)
+  assert.equal(first.body.quantity,3)
+  assert.equal((await call(db,alice,'/api/rewards/redeem','POST',args)).body.replayed,true)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_redemptions').get().n,3)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),3000)
+  assert.equal((await balance(db,alice)).availablePoints,before-300)
+  const records=(await call(db,alice,'/api/rewards')).body.redemptions
+  assert.equal(records.length,1)
+  assert.equal(records[0].quantity,3)
+  assert.equal(records[0].creditedYen,3000)
+  assert.equal(records[0].wishTitle,'想要的物品')
+  assert.equal((await call(db,bob,'/api/rewards')).body.redemptions[0].wishTitle,null)
+  await call(db,alice,'/api/rewards/'+encodeURIComponent(dessert.id),'PATCH',{
+    title:dessert.title,description:dessert.description,icon:dessert.icon,points:dessert.points,
+    stock:null,active:true,goalCreditYen:0})
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),3000,
+    'prior credited vouchers survive reward item edits')
+ }finally{sqlite.close()}
+})
+test('linked reward validates household, private wish and specific goal',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',35)
+  const own=addWishAndSavingsGoal(sqlite,'alice','household')
+  const privateGoal=addWishAndSavingsGoal(sqlite,'bob','private')
+  const foreign=addWishAndSavingsGoal(sqlite,'c','household','h2')
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(r=>r.points===100)
+  await call(db,alice,'/api/rewards/'+encodeURIComponent(dessert.id),'PATCH',{
+    title:dessert.title,description:dessert.description,icon:dessert.icon,points:dessert.points,
+    stock:null,active:true,goalCreditYen:1000})
+  const cases=[
+    {wishId:privateGoal.wishId,goalId:privateGoal.goalId},
+    {wishId:foreign.wishId,goalId:foreign.goalId},
+    {wishId:own.wishId,goalId:privateGoal.goalId},
+    {wishId:own.wishId,goalId:id(999)}
+  ]
+  for(let i=0;i<cases.length;i++){
+   const denied=await call(db,alice,'/api/rewards/redeem','POST',
+     {rewardId:dessert.id,requestId:id(830+i),quantity:1,...cases[i]})
+   assert.equal(denied.status,409,'must reject mismatched/private/other-household goals')
+  }
+  assert.equal(await goalRewardCreditAmount(db,'h',own.goalId),0)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM reward_redemptions').get().n,0)
+  const allowed=await call(db,bob,'/api/rewards/wish-goals')
+  assert.equal(allowed.body.items.some(x=>x.goalId===privateGoal.goalId),true)
+  assert.equal((await call(db,alice,'/api/rewards/wish-goals')).body.items
+    .some(x=>x.goalId===privateGoal.goalId),false)
+ }finally{sqlite.close()}
+})
+test('poolled voucher credits its selected wish only after full funding',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',15);earn(sqlite,'bob',15)
+  const {wishId,goalId}=addWishAndSavingsGoal(sqlite)
+  const dessert=(await call(db,alice,'/api/rewards')).body.rewards.find(r=>r.points===100)
+  await call(db,alice,'/api/rewards/'+encodeURIComponent(dessert.id),'PATCH',{
+    title:dessert.title,description:dessert.description,icon:dessert.icon,points:dessert.points,
+    stock:null,active:true,goalCreditYen:1000})
+  const created=await call(db,alice,'/api/rewards/pool','POST',
+    {rewardId:dessert.id,requestId:id(900),wishId,goalId})
+  assert.equal(created.status,201)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),0)
+  assert.equal((await call(db,alice,'/api/rewards/pool/'+created.body.id+'/contribute','POST',
+    {points:40,requestId:id(901)})).status,201)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),0)
+  assert.equal((await call(db,bob,'/api/rewards/pool/'+created.body.id+'/contribute','POST',
+    {points:60,requestId:id(902)})).status,201)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),1000)
+  const group=(await call(db,alice,'/api/rewards')).body.groupOrders.find(x=>x.id===created.body.id)
+  assert.equal(group.goalCreditYen,1000)
+  assert.equal(group.status,'requested')
+  assert.equal((await call(db,alice,'/api/rewards/pool/'+created.body.id+'/fulfill','POST')).status,200)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),1000,'no second award on fulfillment')
+  const open=await call(db,alice,'/api/rewards/pool','POST',
+    {rewardId:dessert.id,requestId:id(903),wishId,goalId})
+  assert.equal(open.status,201)
+  assert.equal((await call(db,alice,'/api/rewards/pool/'+open.body.id+'/cancel','POST')).status,200)
+  assert.equal(await goalRewardCreditAmount(db,'h',goalId),1000,'cancelled unfunded order cannot grant credit')
  }finally{sqlite.close()}
 })
