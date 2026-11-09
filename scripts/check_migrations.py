@@ -51,7 +51,8 @@ MIGRATIONS=[
     "0043_trip_participant_rewards.sql",
     "0044_trip_reward_snapshot.sql",
     "0045_trip_rewards_no_cap.sql",
-    "0046_reward_wish_savings_credit.sql"
+    "0046_reward_wish_savings_credit.sql",
+    "0047_anniversary_archive.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -116,6 +117,7 @@ assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existi
 added_columns={
   "users":{"password_rounds"},
   "family_profiles":{"relation","adopted_on","weight_grams","notes","archived_at"},
+  "anniversaries":{"archived_at"},
   "tasks":{"client_request_id","health_record_type","remind_enabled","bonus_points","second_assignee_user_id"},
   "routines":{"next_due_on","health_record_type","remind_enabled"},
   "pet_health_records":{"source_routine_id","source_occurrence_on","source_task_id"},
