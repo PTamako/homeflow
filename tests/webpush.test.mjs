@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {readFileSync} from 'node:fs'
 import {encrypt,validSubscription} from '../worker/webpush.js'
 
 function b64(v){
@@ -41,4 +42,11 @@ test('aes128gcm Web Push payload decrypts with recipient key',async()=>{
  const result=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:nonce,tagLength:128},key,encrypted.slice(86)))
  assert.equal(result[result.length-1],2)
  assert.deepEqual(JSON.parse(new TextDecoder().decode(result.slice(0,-1))),payload)
+})
+
+test('family push confirmation counts subscriptions, not physical devices',()=>{
+ const source=readFileSync(new URL('../src/components/PushPanel.vue',import.meta.url),'utf8')
+ assert.match(source,/已向 '\+recipientName\+' 发出推送通知/)
+ assert.match(source,/订阅通道的请求（不等于手机数量）/)
+ assert.doesNotMatch(source,/台设备|个设备请求/)
 })
