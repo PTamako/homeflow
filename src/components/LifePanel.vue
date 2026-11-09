@@ -1103,7 +1103,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
     </template>
 
     <template v-else-if="mode==='family'">
-      <section class="life-card">
+      <section class="life-card anniversary-card">
         <div class="life-section-heading">
           <h2 class="life-heading"><AppIcon name="calendar-heart" :size="21" /> 家人的重要日子</h2>
           <button type="button" class="section-add-button" :aria-expanded="showAnniversaryForm"
@@ -1112,13 +1112,21 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="showAnniversaryForm=true"><AppIcon name="plus" :size="19" /></button>
         </div>
 
+        <div class="anniversary-controls">
         <div class="archive-tabs" role="group" aria-label="重要日子筛选">
           <button type="button" :class="{selected:anniversaryView==='upcoming'}"
             :aria-pressed="anniversaryView==='upcoming'" @click="anniversaryView='upcoming'">即将到来</button>
           <button type="button" :class="{selected:anniversaryView==='past'}"
             :aria-pressed="anniversaryView==='past'" @click="anniversaryView='past'">过去的日子</button>
         </div>
-        <button v-if="anniversaryView==='past'" type="button" class="life-filter-trigger" @click="anniversaryFilterOpen=true">筛选日期 · {{ anniversaryYear||'全部' }}</button>
+        <div v-if="anniversaryView==='past'" class="anniversary-filter-row">
+          <button type="button" class="life-filter-trigger" :aria-expanded="anniversaryFilterOpen"
+            @click="anniversaryFilterOpen=true">
+            <span>筛选日期 · {{ anniversaryYear?(anniversaryYear+' 年'+(anniversaryMonth?' · '+Number(anniversaryMonth)+' 月':'')):'全部' }}</span>
+            <AppIcon name="chevron-down" :size="15" />
+          </button>
+        </div>
+        </div>
         <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="anniversaryFilterOpen=false">
         <div class="archive-date-filters">
           <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
@@ -1132,7 +1140,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
         <button class="life-more" type="button" @click="anniversaryFilterOpen=false">完成</button>
         </EditBottomSheet>
-        <p v-if="anniversaryView==='past'&&!items.length" class="life-empty">该时间范围没有过去的一次性重要日子。</p>
+        <p v-if="listLoading&&!items.length" class="life-empty anniversary-empty" role="status">正在读取重要日子…</p>
+        <p v-else-if="!listLoading&&!error&&!upcomingAnniversaries.length" class="life-empty anniversary-empty">
+          {{ anniversaryView==='past'?'暂无符合条件的历史重要日子':'暂无即将到来的重要日子' }}
+        </p>
         <template v-for="e in upcomingAnniversaries" :key="e.id">
           <div :id="'plan-item-'+e.id" :class="{'focused-plan-entry':isFocused(e)}">
           <SwipeActions :id="e.id" scope="anniversaries"
@@ -2381,6 +2392,18 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
  .shopping-handler-row .shopping-row-actions .life-link{padding:4px 5px}
 }
 
+/* Family anniversaries: keep the filter and empty state tight on phones. */
+.anniversary-card .anniversary-controls{display:grid;gap:14px}
+.anniversary-card .anniversary-filter-row{display:flex;justify-content:flex-end;min-width:0}
+.anniversary-card .anniversary-filter-row .life-filter-trigger{
+ display:inline-flex;align-items:center;justify-content:center;gap:6px;
+ min-height:36px;max-width:100%;padding:7px 11px;
+ line-height:1.35;white-space:normal;text-align:left;
+}
+.anniversary-card .anniversary-filter-row .life-filter-trigger :deep(.app-icon){flex:none}
+.anniversary-card .anniversary-empty{
+ margin:8px 0 0;padding:10px 6px 2px;line-height:1.6;
+}
 </style>
 
 <style scoped>
