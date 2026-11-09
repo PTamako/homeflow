@@ -11,13 +11,40 @@ const source=(table,a,user,visibility,amount,category,label,stamp,extra='')=>
 
 export const annualPointLedgerSql=()=>{
  const lines=[
-  source('completion_points','c','c.earner_user_id','c.visibility','c.points','complete',
-   "CASE WHEN c.kind='routine' THEN COALESCE((SELECT title FROM routines WHERE id=c.source_id AND household_id=c.household_id),'周期任务') ELSE COALESCE((SELECT title FROM tasks WHERE id=c.source_id AND household_id=c.household_id),'一次性任务') END",'c.earned_at'),
-  source('completion_point_adjustments','a','a.earner_user_id','a.visibility','a.delta','adjustment',"'任务积分调整'",'a.earned_at'),
-  source('dual_completion_splits','d','d.user_id','d.visibility','d.points','split',"'双人任务平分'",'d.earned_at'),
-  source('shopping_completion_points','s','s.earner_user_id','s.visibility','s.points','shopping',
-   "COALESCE((SELECT title FROM shopping_items WHERE id=s.shopping_id AND household_id=s.household_id),'购物计划完成')",'s.earned_at'),
-  source('shopping_joint_credits','j','j.user_id','j.visibility','j.points','split',"'双人购物平分'",'j.earned_at'),
+  // Present the actual credit per completed task, not an artificial +10/-5 pair.
+  // The canonical base, adjustment and negative dual split remain intact in D1.
+  `SELECT c.earner_user_id AS userId,c.visibility,
+    (c.points+COALESCE(a.delta,0)+COALESCE(d.points,0)) AS amount,
+    CASE WHEN c.visibility='household'
+      THEN c.points+COALESCE(a.delta,0)+COALESCE(d.points,0) ELSE 0 END AS contribution,
+    'complete' AS category,
+    CASE WHEN c.kind='routine'
+      THEN COALESCE((SELECT title FROM routines WHERE id=c.source_id AND household_id=c.household_id),'周期任务')
+      ELSE COALESCE((SELECT title FROM tasks WHERE id=c.source_id AND household_id=c.household_id),'一次性任务') END AS label,
+    c.earned_at AS stamp
+    FROM completion_points c
+    LEFT JOIN completion_point_adjustments a ON a.household_id=c.household_id
+      AND a.kind=c.kind AND a.source_id=c.source_id AND a.occurrence_on=c.occurrence_on
+    LEFT JOIN dual_completion_splits d ON d.household_id=c.household_id
+      AND d.kind=c.kind AND d.source_id=c.source_id AND d.occurrence_on=c.occurrence_on
+      AND d.user_id=c.earner_user_id AND d.points<0
+    WHERE c.household_id=?1`,
+  // The second participant receives a separate +2.5 credit under the real task title.
+  source('dual_completion_splits','d','d.user_id','d.visibility','d.points','complete',
+   "CASE WHEN d.kind='routine' THEN COALESCE((SELECT title FROM routines WHERE id=d.source_id AND household_id=d.household_id),'周期任务') ELSE COALESCE((SELECT title FROM tasks WHERE id=d.source_id AND household_id=d.household_id),'一次性任务') END",'d.earned_at','AND d.points>0'),
+  // A verified shared purchase shows its real +1 / +1 distribution, not +2/-1/+1.
+  `SELECT s.earner_user_id AS userId,s.visibility,
+    (s.points+COALESCE(j.points,0)) AS amount,
+    CASE WHEN s.visibility='household' THEN s.points+COALESCE(j.points,0) ELSE 0 END AS contribution,
+    'shopping' AS category,
+    COALESCE((SELECT title FROM shopping_items WHERE id=s.shopping_id AND household_id=s.household_id),'购物计划完成') AS label,
+    s.earned_at AS stamp
+    FROM shopping_completion_points s
+    LEFT JOIN shopping_joint_credits j ON j.household_id=s.household_id
+      AND j.shopping_id=s.shopping_id AND j.user_id=s.earner_user_id AND j.points<0
+    WHERE s.household_id=?1`,
+  source('shopping_joint_credits','j','j.user_id','j.visibility','j.points','shopping',
+   "COALESCE((SELECT title FROM shopping_items WHERE id=j.shopping_id AND household_id=j.household_id),'购物计划完成')",'j.earned_at','AND j.points>0'),
   source('weekly_challenge_awards','w','w.user_id',"'household'",'w.points','weekly',"'每周挑战奖励'",'w.awarded_at'),
   source('goal_completion_rewards','g','g.user_id',"'household'",'g.points','savings',"'储值计划达标'",'g.awarded_at'),
   source('trip_completion_rewards','t','t.user_id','t.visibility','t.points','trip',"'旅行完成奖励'",'t.awarded_at'),
@@ -171,7 +198,7 @@ export async function pointsHistoryRoute(request,db,session){
     SELECT userId,visibility,amount,contribution,category,label,stamp
     FROM ledger WHERE ${period} AND (?5='' OR userId=?5)
     ORDER BY datetime(stamp) DESC,category DESC,label DESC
-    LIMIT 10 OFFSET ?6`).bind(h,start,end,u,requestedMember,(page-1)*10).all(),
+    LIMIT 5 OFFSET ?6`).bind(h,start,end,u,requestedMember,(page-1)*5).all(),
   db.prepare(`WITH ledger AS (${raw})
     SELECT COUNT(*) AS total FROM ledger WHERE ${period} AND (?5='' OR userId=?5)`)
       .bind(h,start,end,u,requestedMember).first()
@@ -190,5 +217,5 @@ export async function pointsHistoryRoute(request,db,session){
  const total=Number(count?.total)||0
  return json({year,currentYear:current,members:rows,memberFilter:requestedMember,
    entries:(history.results||[]).map(x=>({...x,amount:Number(x.amount),contribution:Number(x.contribution)})),
-   page,pageSize:10,total,totalPages:Math.max(1,Math.ceil(total/10))})
+   page,pageSize:5,total,totalPages:Math.max(1,Math.ceil(total/5))})
 }
