@@ -497,7 +497,7 @@ async function submitWishReward(){
  }
  if(!error.value){
   wishRewardDraft.value=null
-  if(action==='redeem'){quantityChoice.value={...quantityChoice.value,[item.id]:1];useShopCoupon.value=false}
+  if(action==='redeem'){quantityChoice.value={...quantityChoice.value,[item.id]:1};useShopCoupon.value=false}
  }
 }
 async function contributePool(item:GroupOrder){
