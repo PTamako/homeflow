@@ -29,7 +29,7 @@ const pointRows=(db,id)=>db.prepare(`SELECT c.points AS original,
   FROM completion_points c LEFT JOIN completion_point_adjustments a
   ON a.household_id=c.household_id AND a.kind=c.kind
   AND a.source_id=c.source_id AND a.occurrence_on=c.occurrence_on
-  WHERE c.source_id=?`).all(id)
+  WHERE c.source_id=?`).all(id).map(row=>({...row}))
 
 test('migration preserves all pre-existing unassigned +10 awards, while new tasks default to +5',()=>{
  const db=createFixture()
@@ -74,7 +74,7 @@ test('routine and joint task distribution remains five points after migration',(
     VALUES('joint','home','owner','household','共同完成','owner','member',0)`).run()
   db.prepare("UPDATE tasks SET completed_at='2026-11-09T03:00:00Z',completed_by='owner' WHERE id='joint'").run()
   assert.deepEqual(pointRows(db,'joint'),[{original:10,adjustment:-5,total:5}])
-  const splits=db.prepare("SELECT user_id,SUM(points) amount FROM dual_completion_splits WHERE source_id='joint' GROUP BY user_id ORDER BY user_id").all()
+  const splits=db.prepare("SELECT user_id,SUM(points) amount FROM dual_completion_splits WHERE source_id='joint' GROUP BY user_id ORDER BY user_id").all().map(row=>({...row}))
   assert.deepEqual(splits,[{user_id:'member',amount:2.5},{user_id:'owner',amount:-2.5}])
   db.prepare(`INSERT INTO routines(id,household_id,created_by,visibility,title,repeat_type,anchor_date)
     VALUES('daily','home','owner','household','整理房间','daily','2026-11-09')`).run()
