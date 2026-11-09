@@ -41,7 +41,7 @@ const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0')
 const call=async(db,session,path,method='GET',body)=> {
  const request=new Request('https://homeflow.invalid'+path,{method,
   ...(body===undefined?{}:{headers:{'content-type':'application/json'},body:JSON.stringify(body)})})
- const response=await rewardsRoute(request,db,path,session)
+ const response=await rewardsRoute(request,db,path.split('?')[0],session)
  return {status:response.status,body:await response.json()}
 }
 const balance=async(db,user)=>await (await pointsRoute(
@@ -569,10 +569,13 @@ test('previous-year assigned bounty pays from current-year creator funds only at
   const aliceWallet=(await balance(db,alice)).availablePoints
   assert.ok(aliceWallet>=0,'creator cannot overdraw year-end reset wallet')
   const hist=await pointsHistoryRoute(new Request(
-   'https://homeflow.invalid/api/points/history?year='+year),db,bob)
+   'https://homeflow.invalid/api/points/history?year='+year+'&member=bob'),db,bob)
   assert.equal(hist.status,200)
   const history=await hist.json()
   assert.ok(history.entries.some(e=>e.userId==='bob'&&e.category==='bounty'&&e.amount===20))
-  assert.ok(history.entries.some(e=>e.userId==='alice'&&e.category==='reserved'&&e.amount===-20))
+  const aliceHistory=await pointsHistoryRoute(new Request(
+   'https://homeflow.invalid/api/points/history?year='+year+'&member=alice'),db,alice)
+  const aliceRows=(await aliceHistory.json()).entries
+  assert.ok(aliceRows.some(e=>e.userId==='alice'&&e.category==='reserved'&&e.amount===-20))
  }finally{sqlite.close()}
 })
