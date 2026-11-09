@@ -686,3 +686,66 @@ test('global eight-category search uses D1-safe groups and preserves cross-kind 
   assert.equal((await ask('','task')).items.length,3)
  }finally{sqlite.close()}
 })
+
+
+test('portable ZIP roundtrip preserves dual assignments, travel participants and funded task settings',async()=>{
+ const source=database(),target=database()
+ const second='77777777-7777-4777-8777-777777777777'
+ const third='88888888-8888-4888-8888-888888888888'
+ const trip='99999999-9999-4999-8999-999999999999'
+ const task='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+ try{
+  for(const fixture of [source,target]){
+   for(const uid of [second,third]){
+    fixture.sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)').run(uid,uid,'s','v')
+    fixture.sqlite.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)').run('primary',uid,'member')
+   }
+  }
+  const db=source.sqlite
+  db.prepare('INSERT INTO trips(id,household_id,created_by,visibility,title,start_on,end_on,participant_user_ids) VALUES(?,?,?,?,?,?,?,?)')
+   .run(trip,'primary','u1','household','旅行','2026-12-10','2026-12-12',JSON.stringify(['u1',second]))
+  db.prepare('INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,assignee_user_id,bonus_points) VALUES(?,?,?,?,?,?,?)')
+   .run(task,'primary','u1','household','指定积分任务',second,30)
+  db.prepare('INSERT INTO routines(id,household_id,created_by,visibility,title,repeat_type,anchor_date) VALUES(?,?,?,?,?,?,?)')
+   .run(routine,'primary','u1','household','周期','daily','2026-11-01')
+  db.prepare('INSERT INTO routine_occurrence_assignments(household_id,routine_id,occurrence_on,assignee_user_id,second_assignee_user_id,bonus_points) VALUES(?,?,?,?,?,?)')
+   .run('primary',routine,'2026-12-10',second,third,0)
+  db.prepare('INSERT INTO shopping_items(id,household_id,created_by,visibility,title,quantity,assigned_to,second_assignee_user_id) VALUES(?,?,?,?,?,?,?,?)')
+   .run(shop,'primary','u1','household','共享采购',2,second,third)
+  const response=await portableRoute(new Request('https://homeflow.invalid/api/portable'),source.db,'/api/portable',session)
+  assert.equal(response.status,200)
+  const snapshot=await response.json()
+  assert.equal(snapshot.records.routineAssignments.length,1)
+  for(const dataset of RESTORE_ORDER){
+   const items=snapshot.records[dataset]
+   if(!items?.length)continue
+   const request=new Request('https://homeflow.invalid/api/portable/restore',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({dataset,items,confirm:true})
+   })
+   const result=await portableRoute(request,target.db,'/api/portable/restore',session)
+   assert.equal(result.status,200,dataset+': '+await result.text())
+  }
+  const t=target.sqlite.prepare('SELECT assignee_user_id,bonus_points FROM tasks WHERE id=?').get(task)
+  assert.equal(t.assignee_user_id,second)
+  assert.equal(t.bonus_points,30)
+  const a=target.sqlite.prepare('SELECT assignee_user_id,second_assignee_user_id,bonus_points FROM routine_occurrence_assignments WHERE routine_id=?').get(routine)
+  assert.equal(a.assignee_user_id,second)
+  assert.equal(a.second_assignee_user_id,third)
+  assert.equal(a.bonus_points,0)
+  const s=target.sqlite.prepare('SELECT assigned_to,second_assignee_user_id FROM shopping_items WHERE id=?').get(shop)
+  assert.equal(s.assigned_to,second)
+  assert.equal(s.second_assignee_user_id,third)
+  const p=target.sqlite.prepare('SELECT participant_user_ids FROM trips WHERE id=?').get(trip)
+  assert.deepEqual(new Set(JSON.parse(p.participant_user_ids)),new Set(['u1',second]))
+  assert.equal(target.sqlite.prepare('PRAGMA foreign_key_check').all().length,0)
+ }finally{source.sqlite.close();target.sqlite.close()}
+})
+
+test('mobile ZIP export and restore enumerate every server-side portable dataset',()=>{
+ const component=readFileSync(new URL('../src/components/BackupPanel.vue',import.meta.url),'utf8')
+ const match=component.match(/const order=\[([\s\S]*?)\]/)
+ assert.ok(match)
+ const keys=[...match[1].matchAll(/'([^']+)'/g)].map(m=>m[1])
+ assert.deepEqual(keys,RESTORE_ORDER)
+})
