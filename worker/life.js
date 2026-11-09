@@ -158,8 +158,52 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       db.prepare(BIRTHDAY_PROFILES_SQL).bind(session.household_id)
     ])
     return json({items:mergeProfileBirthdays(events.results,profiles.results)
+      .filter(e=>!e.archived_at)
       .map(e=>({...e,nextOn:nextAnniversary(e.event_date,e.repeat_mode,now)}))
       .filter(e=>e.nextOn).sort((a,b)=>a.nextOn.localeCompare(b.nextOn))})
+  }
+  // An archived anniversary is preserved independently of recycle deletion.
+  if(table==='anniversaries'&&id&&['archive','restore'].includes(parts[3])&&request.method==='POST'){
+    const action=parts[3],stamp=iso()
+    // Profile birthdays normally exist only as virtual rows. Save a household
+    // snapshot when archiving, without changing or deleting the family profile.
+    if(id.startsWith('profile-birthday:')&&action==='archive'){
+      const profileId=id.slice('profile-birthday:'.length)
+      if(!hexId(profileId))return bad()
+      const profile=await db.prepare(`SELECT id,member_user_id,display_name,birthday
+        FROM family_profiles WHERE id=?1 AND household_id=?2 AND archived_at IS NULL`)
+        .bind(profileId,session.household_id).first()
+      if(!profile||!profile.birthday)return json({error:'not_found'},404)
+      if(session.role!=='owner'&&profile.member_user_id!==session.user_id)
+        return json({error:'forbidden'},403)
+      const title=profile.display_name+'的生日'
+      const existing=await db.prepare(`SELECT id,archived_at FROM anniversaries WHERE
+        household_id=?1 AND subject_profile_id=?2 AND event_date=?3 AND title=?4
+        AND repeat_mode='yearly' AND deleted_at IS NULL LIMIT 1`)
+        .bind(session.household_id,profileId,profile.birthday,title).first()
+      if(existing)return existing.archived_at?json({ok:true,archived:true,unchanged:true}):
+        json({error:'existing_birthday_anniversary'},409)
+      const newId=crypto.randomUUID()
+      await db.prepare(`INSERT INTO anniversaries
+        (id,household_id,created_by,visibility,subject_profile_id,title,event_date,
+         repeat_mode,advance_days_json,note,archived_at)
+        VALUES(?1,?2,?3,'household',?4,?5,?6,'yearly','[30,7,1,0]','',?7)`)
+        .bind(newId,session.household_id,session.user_id,profileId,title,profile.birthday,stamp).run()
+      return json({ok:true,id:newId,archived:true})
+    }
+    if(!hexId(id))return bad()
+    const item=await getObject(db,table,id,session)
+    if(!item)return json({error:'not_found'},404)
+    if(item.created_by!==session.user_id)return json({error:'forbidden'},403)
+    const archive=action==='archive'
+    if(archive?!!item.archived_at:!item.archived_at)
+      return json({ok:true,archived:archive,unchanged:true})
+    const changed=await db.prepare(`UPDATE anniversaries
+      SET archived_at=?1,updated_at=?2
+      WHERE id=?3 AND household_id=?4 AND created_by=?5 AND deleted_at IS NULL
+      AND ${archive?'archived_at IS NULL':'archived_at IS NOT NULL'}`)
+      .bind(archive?stamp:null,stamp,id,session.household_id,session.user_id).run()
+    return changed.meta?.changes?json({ok:true,archived:archive}):json({error:'plan_edit_conflict'},409)
   }
   if(table==='routines'&&id==='period-history'&&request.method==='GET')
     return routineHistory(db,request,session)

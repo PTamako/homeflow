@@ -168,10 +168,11 @@ function normalized(key,r,h,u) {
     }
     case 'anniversaries':
       if(!str(r.title,150)||!date(r.event_date)||!['once','yearly','monthly'].includes(r.repeat_mode))return null
-      return ["INSERT OR IGNORE INTO anniversaries(id,household_id,created_by,visibility,title,event_date,repeat_mode,advance_days_json,note,subject_profile_id,deleted_at) "+
-         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11)",
+      return ["INSERT OR IGNORE INTO anniversaries(id,household_id,created_by,visibility,title,event_date,repeat_mode,advance_days_json,note,subject_profile_id,deleted_at,archived_at) "+
+         "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11,?12)",
          [r.id,h,u,v,r.title,r.event_date,r.repeat_mode,str(r.advance_days_json,100)||'[7,1,0]',
-          str(r.note,1000)||'',id(r.subject_profile_id)?r.subject_profile_id:null,r.deleted_at||null]]
+          str(r.note,1000)||'',id(r.subject_profile_id)?r.subject_profile_id:null,r.deleted_at||null,
+          typeof r.archived_at==='string'&&/^\d{4}-\d\d-\d\dT/.test(r.archived_at)?r.archived_at:null]]
     case 'routines':
       if(!str(r.title,150)||!date(r.anchor_date)||
          !['daily','weekly','monthly','interval'].includes(r.repeat_type)||

@@ -279,6 +279,22 @@ async function shoppingLinksChanged(){
   notify('购物账单关联已更新')
  }catch(e){error.value=(e as Error).message}
 }
+async function toggleAnniversaryArchive(item:Row){
+  const synthetic=item.source==='profile_birthday'
+  if(!(synthetic?canEditBirthday(item):canEdit(item))||busy.value)return
+  const restoring=!!item.archived_at
+  if(!restoring&&!confirm('归档后不再提醒，但记录会保留在「过去的日子」。确定归档吗？'))return
+  busy.value=true;error.value=''
+  try{
+    await api('/anniversaries/'+item.id+'/'+(restoring?'restore':'archive'),'POST')
+    editing.value=null
+    const next=restoring?'upcoming':'past'
+    if(anniversaryView.value!==next)anniversaryView.value=next
+    else await fetchMode()
+    notify(restoring?'已恢复纪念日':'已归档，历史记录已保留')
+  }catch(e){error.value=(e as Error).message}
+  finally{busy.value=false}
+}
 async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
  const warning=kind==='memories'?'删除回忆后，本机照片不会一起删除，请先备份。':
@@ -1148,9 +1164,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <div :id="'plan-item-'+e.id" :class="{'focused-plan-entry':isFocused(e)}">
           <SwipeActions :id="e.id" scope="anniversaries"
             :allow-edit="canEdit(e)||canEditBirthday(e)" :allow-delete="canEdit(e)"
-            @edit="editAnniversary(e)" @delete="removeItem('anniversaries',e)">
+            :allow-archive="canEdit(e)||canEditBirthday(e)"
+            :archive-label="e.archived_at?'恢复':'归档'"
+            @edit="editAnniversary(e)" @archive="toggleAnniversaryArchive(e)"
+            @delete="removeItem('anniversaries',e)">
             <div class="life-row"><div class="life-details"><b>{{ e.title }}</b>
-              <small>{{ e.nextOn||e.event_date }}</small></div></div>
+              <small>{{ e.nextOn||e.event_date }} <span v-if="e.archived_at" class="anniversary-archived-tag">· 已归档</span></small></div></div>
           </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='anniversaries'&&editing.item.id===e.id"
             kind="anniversaries" :item="e" @saved="changed" @cancel="editing=null"/>
@@ -2392,6 +2411,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
  .shopping-handler-row .shopping-row-actions .life-link{padding:4px 5px}
 }
 
+.anniversary-archived-tag{color:#4a8062;font-weight:600}
 /* Family anniversaries: keep the filter and empty state tight on phones. */
 .anniversary-card .anniversary-controls{display:grid;gap:14px}
 .anniversary-card .anniversary-filter-row{display:flex;justify-content:flex-end;min-width:0}
