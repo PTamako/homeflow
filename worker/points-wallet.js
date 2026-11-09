@@ -59,9 +59,10 @@ export function householdWalletSql(h,u,from=null,to=null){
     AND ((m.completed_at IS NULL AND m.skipped_at IS NULL)
       OR (m.completed_at IS NOT NULL
        AND m.completed_by IN(a.assignee_user_id,a.second_assignee_user_id))) AND ${reservationPeriod('a.created_at','m.completed_at')}`)
- const lotteryWinnings=sum(`l.prize_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
- const lotteryCosts=sum(`l.cost_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
+ const lotteryWinnings=sum(`l.prize_points+l.prize_bonus_points) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
+ const lotteryCosts=sum(`CASE WHEN l.ticket_coupon_id IS NULL THEN l.cost_points ELSE 0 END) FROM household_lottery_draws l WHERE l.household_id=${h} AND l.user_id=${u} AND ${inPeriod('l.created_at')}`)
+ const shopDiscounts=sum(`d.discount_points) FROM reward_coupon_discounts d WHERE d.household_id=${h} AND d.user_id=${u} AND ${inPeriod('d.created_at')}`)
  const direct=sum(`r.points_spent) FROM reward_redemptions r WHERE r.household_id=${h} AND r.redeemed_by=${u} AND ${inPeriod('r.created_at')}`)
  const group=sum(`c.points) FROM reward_group_contributions c JOIN reward_group_orders g ON g.id=c.order_id WHERE c.household_id=${h} AND c.user_id=${u} AND (g.status<>'cancelled'${from&&to?` OR datetime(g.cancelled_at)>=datetime(${to})`:''}) AND ${inPeriod('c.created_at')}`)
- return `(${earned} + ${adjust} + ${jointBase} + ${shopping} + ${shoppingSplit} + ${weekly} + ${savings} + ${trips} + ${achievements} + ${incoming} + ${routineIncoming} + ${duoTaskIn} + ${duoRoutineIn} - ${outgoing} - ${routineOutgoing} - ${duoTaskOut} - ${duoRoutineOut} - ${direct} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
+ return `(${earned} + ${adjust} + ${jointBase} + ${shopping} + ${shoppingSplit} + ${weekly} + ${savings} + ${trips} + ${achievements} + ${incoming} + ${routineIncoming} + ${duoTaskIn} + ${duoRoutineIn} - ${outgoing} - ${routineOutgoing} - ${duoTaskOut} - ${duoRoutineOut} - ${direct} + ${shopDiscounts} - ${group} + ${lotteryWinnings} - ${lotteryCosts})`
 }
