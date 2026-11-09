@@ -586,3 +586,63 @@ test('previous-year assigned bounty pays from current-year creator funds only at
   assert.ok(aliceRows.some(e=>e.userId==='alice'&&e.category==='reserved'&&e.amount===-20))
  }finally{sqlite.close()}
 })
+
+
+test('lottery is one detailed ledger event per draw, with safe category and member filtering',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const month=new Date(Date.now()+9*3600000).toISOString().slice(0,7)
+  const now=new Date().toISOString()
+  const draw=sqlite.prepare(`INSERT INTO household_lottery_draws
+    (id,household_id,user_id,client_request_id,month_on,prize_kind,
+     cost_points,prize_points,created_at)
+    VALUES(?1,?2,?3,?4,?5,?6,5,?7,?8)`)
+  const outcomes=[['alice','empty',0],['alice','five',5],['bob','ten',10],
+    ['alice','twenty',20],['bob','fifty',50],['alice','double',17]]
+  for(const [i,[who,kind,prize]] of outcomes.entries())
+   draw.run(id(2000+i),'h',who,id(2100+i),month,kind,prize,now)
+  draw.run(id(2099),'h2','c',id(2199),month,'empty',0,now)
+  earn(sqlite,'bob',1,'private')
+  const query=async(session,category='all',page=1,member='')=>{
+   const request=new Request('https://homeflow.invalid/api/points/history?year='+
+     year+'&page='+page+'&category='+encodeURIComponent(category)+
+     '&member='+encodeURIComponent(member))
+   const response=await pointsHistoryRoute(request,db,session)
+   return {status:response.status,body:await response.json()}
+  }
+  const all=await query(alice,'all')
+  const first=await query(alice,'lottery',1)
+  const second=await query(alice,'lottery',2)
+  assert.equal(first.status,200)
+  assert.equal(first.body.categoryFilter,'lottery')
+  assert.equal(first.body.total,6,'one event per ticket, including empty tickets')
+  assert.equal(first.body.totalPages,2)
+  assert.equal(first.body.pageSize,5)
+  assert.equal(first.body.entries.length,5)
+  assert.equal(second.body.entries.length,1)
+  const entries=[...first.body.entries,...second.body.entries]
+  assert.equal(entries.every(x=>x.category==='lottery'),true)
+  assert.equal(new Set(entries.map(x=>x.eventId)).size,6)
+  assert.equal(entries.every(x=>x.ticketCost===5),true)
+  assert.equal(entries.every(x=>x.amount===x.prizePoints-x.ticketCost),true)
+  assert.ok(entries.some(x=>x.prizeKind==='empty'&&x.amount===-5))
+  assert.ok(entries.some(x=>x.prizeKind==='five'&&x.amount===0))
+  assert.ok(entries.some(x=>x.prizeKind==='double'&&x.prizePoints===17&&x.amount===12))
+  assert.equal(entries.every(x=>x.contribution===0),true)
+  assert.deepEqual(first.body.members,all.body.members,
+    'category changes must not change yearly balances, earnings, spending or contribution')
+  assert.equal((await query(alice,'lottery',1,'bob')).body.total,2)
+  assert.equal((await query(bob,'lottery',1,'bob')).body.total,2)
+  assert.equal((await query(alice,'task')).body.entries.some(x=>x.visibility==='private'&&x.userId==='bob'),false)
+  assert.equal((await query(bob,'task')).body.entries.some(x=>x.visibility==='private'&&x.userId==='bob'),true)
+  assert.equal((await query(alice,'shop')).body.total,0)
+  assert.equal((await query(alice,'shopping')).body.total,0)
+  assert.equal((await query(alice,'achievement')).status,200)
+  assert.equal((await query(alice,'saving')).status,200)
+  for(const invalid of ['__proto__','lottery;DROP TABLE household_lottery_draws','unknown']){
+   assert.equal((await query(alice,invalid)).status,400)
+  }
+  assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0)
+ }finally{sqlite.close()}
+})
