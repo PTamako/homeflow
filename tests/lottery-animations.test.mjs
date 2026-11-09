@@ -15,8 +15,8 @@ test('full-screen lottery animation is shown only for a successful draw and last
  assert.doesNotMatch(board,/<div v-if="lotteryLastDraw" class="lottery-result"/)
 })
 
-test('lottery celebrates all six outcomes with distinct effects including a spectacular top 1% double',()=>{
- for(const kind of ['empty','five','ten','twenty','fifty','double'])
+test('lottery celebrates all nine outcomes with capped 0.2% jackpot and three coupons',()=>{
+ for(const kind of ['empty','five','six','ten','twenty','fifty','double','ticket','shop','wish'])
   assert.ok(visual.includes("case '"+kind+"'"),kind+' has result copy')
  assert.match(visual,/props\.draw\?\.kind==='double'\?'jackpot'/)
  assert.match(visual,/props\.draw\?\.kind==='fifty'\|\|props\.draw\?\.kind==='twenty'\?'rare'/)
