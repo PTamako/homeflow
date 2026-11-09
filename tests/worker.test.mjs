@@ -1,213 +1,156 @@
-export const SESSION_COOKIE = '__Host-hf_session'
-const encoder = new TextEncoder()
-export const nowMs = () => Date.now()
-export const randomToken = () => {
-  const b = crypto.getRandomValues(new Uint8Array(32))
-  return Array.from(b, n => n.toString(16).padStart(2, '0')).join('')
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+import test from 'node:test'
+import worker from '../worker/index.js'
+import {constantEqualHex,hashPassword,passwordMatches,sameOrigin,validDate,validPassword} from '../worker/security.js'
+const request=(path,method='GET',headers={})=>new Request('https://homeflow.example'+path,{method,headers})
+function environment(name='preview',database='homeflow-preview',migration='0046_reward_wish_savings_credit.sql'){
+  return {APP_ENV:name,DB:{
+    prepare(sql){return {
+      bind(){return this},
+      first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
+         required_migration_ready:migration==='0046_reward_wish_savings_credit.sql'?1:0,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,
+         action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,coupon_migration_ready:1,coupon_tables_ready:2,coupon_triggers_ready:5,lottery_table_ready:1}:null,
+      all:async()=>({results:[]}),
+      run:async()=>({meta:{changes:1}})
+    }}
+  },ASSETS:{fetch:()=>new Response('ASSET_MARKER')}}
 }
-export const sha256 = async value => {
-  const bytes = await crypto.subtle.digest('SHA-256', encoder.encode(value))
-  return Array.from(new Uint8Array(bytes), n => n.toString(16).padStart(2, '0')).join('')
-}
-export function constantEqualHex(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length || !/^[0-9a-f]+$/.test(a+b)) return false
-  let different = 0
-  for (let i = 0; i < a.length; i++) different |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return different === 0
-}
-export const PASSWORD_ROUNDS = 100000
-export async function hashPassword(password, salt = randomToken().slice(0,32), rounds = PASSWORD_ROUNDS) {
-  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])
-  const bits = await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:encoder.encode(salt),iterations:rounds}, key, 256)
-  return { salt, rounds, verifier: Array.from(new Uint8Array(bits), n => n.toString(16).padStart(2, '0')).join('') }
-}
-export async function passwordMatches(password, user) {
-  const rounds = Number(user.password_rounds) || PASSWORD_ROUNDS
-  if (rounds !== 100000) return false
-  const candidate = await hashPassword(password, user.password_salt, rounds)
-  return constantEqualHex(candidate.verifier, user.password_verifier)
-}
-export function validPassword(value) {
-  return typeof value === 'string' && value.length >= 12 && value.length <= 128 && encoder.encode(value).length <= 300
-}
-export function shortText(value, max = 120) {
-  return typeof value === 'string' ? value.trim().slice(0,max + 1) : ''
-}
-export function validDate(value) {
-  if (value === null || value === '') return true
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const x = new Date(value+'T00:00:00.000Z')
-  return !Number.isNaN(x.getTime()) && x.toISOString().slice(0,10) === value
-}
-export const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), {
-  status,
-  headers:{
-    'content-type':'application/json; charset=utf-8',
-    'cache-control':'no-store',
-    'x-content-type-options':'nosniff',
-    'referrer-policy':'no-referrer',
-    ...extra
+test('health confirms D1 identity',async()=>{
+  const res=await worker.fetch(request('/api/health'),environment())
+  assert.equal(res.status,200)
+  assert.equal((await res.json()).database,'ready')
+})
+test('health rejects old migration baselines even if they were accepted during rollout',async()=>{
+  for(const migration of ['0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql',
+    '0028_explicit_today_actions.sql','0031_completion_event_read_state.sql',
+    '0032_settlement_origin.sql','0033_completion_points.sql']){
+    const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview',migration))
+    assert.equal(res.status,503,migration)
   }
 })
-export function rejectMethod(request) {
-  return json({error:'method_not_allowed'},405,{allow:'GET, POST, PATCH, DELETE'})
-}
-export async function readBody(request) {
-  const length = Number(request.headers.get('content-length')||'0')
-  if (length>16000) return null
-  const s = await request.text()
-  if (s.length>16000) return null
-  try { const val=JSON.parse(s); return val && typeof val==='object' && !Array.isArray(val) ? val:null } catch {return null}
-}
-export function sameOrigin(request) {
-  const origin = request.headers.get('origin')
-  const site = request.headers.get('sec-fetch-site')
-  return !!origin && origin === new URL(request.url).origin &&
-    (!site || site === 'same-origin' || site === 'none')
-}
-export function cookieFrom(request) {
-  const found=(request.headers.get('cookie')||'').match(/(?:^|;\s*)__Host-hf_session=([a-f0-9]{64})(?:;|$)/)
-  return found?.[1]||null
-}
-export const cookieValue = token =>
-  SESSION_COOKIE+'='+token+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=1209600'
-export const eraseCookie = () =>
-  SESSION_COOKIE+'=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'
-export async function sessionFor(request, db) {
-  const token=cookieFrom(request)
-  if (!token) return null
-  const hash=await sha256(token)
-  return db.prepare(`SELECT u.id AS user_id,u.login_name, m.household_id,m.role,
-       h.display_name AS household_name
-     FROM sessions s JOIN users u ON u.id=s.user_id
-     JOIN household_members m ON m.user_id=u.id
-     JOIN households h ON h.id=m.household_id
-     WHERE s.token_hash=?1 AND s.expires_at>?2 AND u.disabled_at IS NULL LIMIT 1`)
-    .bind(hash,nowMs()).first()
-}
-// One short-lived cache per physical binding handle: neither secrets nor user data
-// are cached. A different binding or environment always forces a new identity read.
-const dbIdentityCache=new WeakMap()
-const DB_IDENTITY_TTL_MS=15000
-// Require the latest deployed business schema without rejecting compatible future migrations.
-export async function verifiedDatabase(env) {
-  const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
-  if (!expected || !env.DB?.prepare) return false
-  const now=Date.now(),cached=dbIdentityCache.get(env.DB)
-  if(cached?.name===expected && cached.expiresAt>now)return true
-  try {
-    const identity=await env.DB.prepare(`SELECT database_name,
-      (SELECT COUNT(*) FROM d1_migrations
-       WHERE name='0046_reward_wish_savings_credit.sql') AS required_migration_ready,
-      (SELECT COUNT(*) FROM d1_migrations WHERE name='0047_anniversary_archive.sql') AS anniversary_migration_ready,
-      (SELECT COUNT(*) FROM d1_migrations WHERE name='0048_oneoff_five_points.sql') AS oneoff_migration_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='points_adjust_new_completion' AND instr(sql,'WHEN NEW.kind IN (''task'',''routine'')')>0) AS oneoff_rule_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('anniversaries') WHERE name='archived_at') AS anniversary_archive_ready,
-      (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
-      (SELECT COUNT(*) FROM d1_migrations WHERE name='0049_lottery_balanced_coupons.sql') AS coupon_migration_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('lottery_coupons','reward_coupon_discounts')) AS coupon_tables_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('lottery_coupon_granted','lottery_ticket_guard','lottery_ticket_claim','reward_shop_coupon_guard','reward_shop_coupon_claim')) AS coupon_triggers_ready,
-       (SELECT COUNT(*) FROM pragma_table_info('reward_redemptions') WHERE name='goal_credit_yen') AS reward_credit_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='trip_completion_rewards') AS travel_view_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trip_reward_events') AS travel_events_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
-       ('trip_reward_award_on_completion','trip_reward_reverse_on_reopen')) AS travel_triggers_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
-       AND name='idx_today_actions_original') AS action_index_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-       AND name='household_revisions') AS sync_table_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-       AND name='member_revisions') AS member_sync_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('notification_inbox')
-       WHERE name='last_completion_key') AS completion_read_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('goal_period_settlements')
-       WHERE name='settlement_origin') AS settlement_origin_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-       AND name='routine_occurrence_assignments') AS routine_assignments_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='index'
-       AND name='idx_routine_assignment_due') AS routine_assignment_index_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='dual_completion_splits') AS joint_credits_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='shopping_joint_credits') AS shopping_joint_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('shopping_items') WHERE name='second_assignee_user_id') AS shopping_second_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='second_assignee_user_id') AS second_assignee_ready,
-      (SELECT COUNT(*) FROM pragma_table_info('routine_occurrence_assignments') WHERE name='second_assignee_user_id') AS routine_second_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='view'
-       AND name='monthly_achievement_credits') AS achievement_credits_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='monthly_achievement_awards') AS monthly_awards_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'monthly_achievement_%') AS monthly_triggers_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goal_completion_rewards') AS savings_rewards_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
-        ('points_goal_met','points_goal_reopened','points_goal_hidden','points_goal_restored')) AS savings_triggers_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-       AND name='completion_points') AS points_table_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
-       ('points_task_completed','points_task_reopened','points_task_visibility',
-        'points_task_permanent_delete','points_routine_completed_insert',
-        'points_routine_completed_update','points_routine_reopened',
-        'points_routine_mark_deleted','points_routine_visibility',
-        'points_routine_permanent_delete')) AS points_triggers_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
-       ('reward_items','reward_redemptions','weekly_challenge_awards',
-        'reward_group_orders','reward_group_contributions')) AS rewards_tables_ready,
-      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN
-       ('rewards_weekly_points_earned','rewards_weekly_points_revoked',
-        'rewards_seed_new_household','rewards_group_funded')) AS rewards_triggers_ready
-      FROM environment_identity WHERE key='current' LIMIT 1`).first()
-    const valid=identity?.database_name===expected &&
-      Number(identity.required_migration_ready)===1 &&
-       Number(identity.anniversary_migration_ready)===1 &&
-       Number(identity.oneoff_migration_ready)===1 &&
-       Number(identity.oneoff_rule_ready)===1 &&
-       Number(identity.anniversary_archive_ready)===1 &&
-      Number(identity.lottery_migration_ready)===1 &&
-      Number(identity.coupon_migration_ready)===1 &&
-      Number(identity.coupon_tables_ready)===2 &&
-      Number(identity.coupon_triggers_ready)===5 &&
-       Number(identity.reward_credit_ready)===1 &&
-      Number(identity.travel_view_ready)===1 &&
-      Number(identity.travel_events_ready)===1 &&
-      Number(identity.travel_triggers_ready)===2 &&
-      Number(identity.joint_credits_ready)===1 &&
-      Number(identity.shopping_joint_ready)===1 &&
-      Number(identity.shopping_second_ready)===1 &&
-      Number(identity.second_assignee_ready)===1 &&
-      Number(identity.routine_second_ready)===1 &&
-      Number(identity.action_index_ready)===1 &&
-      Number(identity.sync_table_ready)===1 &&
-      Number(identity.member_sync_ready)===1 &&
-      Number(identity.completion_read_ready)===1 &&
-      Number(identity.settlement_origin_ready)===1 &&
-      Number(identity.routine_assignments_ready)===1 &&
-      Number(identity.routine_assignment_index_ready)===1 &&
-      Number(identity.achievement_credits_ready)===1 &&
-      Number(identity.monthly_awards_ready)===1 &&
-      Number(identity.monthly_triggers_ready)===5 &&
-      Number(identity.savings_rewards_ready)===1 &&
-      Number(identity.savings_triggers_ready)===4 &&
-      Number(identity.points_table_ready)===1 &&
-      Number(identity.points_triggers_ready)===10 &&
-      Number(identity.rewards_tables_ready)===5 &&
-      Number(identity.rewards_triggers_ready)===4
-    if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
-    else dbIdentityCache.delete(env.DB)
-    return valid
-  }catch{dbIdentityCache.delete(env.DB);return false}
-}
-export function isValidLogin(login) {
-  if(typeof login!=='string')return false
-  // Keep existing 3–36 character usernames working unchanged.
-  if(/^[a-zA-Z0-9._-]{3,36}$/.test(login))return true
-  // Also allow an email as a login identifier. This is NOT email ownership verification.
-  if(login.length>254||login.length<3)return false
-  const parts=login.split('@')
-  if(parts.length!==2)return false
-  const [local,domain]=parts
-  if(!local||local.length>64||local.startsWith('.')||local.endsWith('.')||local.includes('..'))return false
-  if(!/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local))return false
-  if(!domain||domain.length>253||!domain.includes('.'))return false
-  const labels=domain.split('.')
-  return labels.every(label=>label.length<=63&&
-    /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label))
-    &&labels[labels.length-1].length>=2
-}
-export const iso = () => new Date().toISOString()
+test('health rejects a missing physical Today index even with a current migration name',async()=>{
+  const env=environment()
+  env.DB.prepare=()=>({first:async()=>({
+   database_name:'homeflow-preview',latest_migration:'0046_reward_wish_savings_credit.sql',
+   required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:0,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
+})
+test('preview fails closed when attached to production',async()=>{
+  const res=await worker.fetch(request('/api/health'),environment('preview','homeflow'))
+  assert.equal(res.status,503)
+})
+test('missing latest D1 migration fails closed even when the database identity matches',async()=>{
+  const res=await worker.fetch(request('/api/health'),environment('preview','homeflow-preview','0022_recycle_plans.sql'))
+  assert.equal(res.status,503)
+})
+test('validated binding identity is reused briefly but never shared across different bindings',async()=>{
+  let count=0
+  const env=environment()
+  const original=env.DB.prepare
+  env.DB.prepare=(sql)=>{count++;return original(sql)}
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
+  assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
+  assert.equal(count,1)
+  const changed={...env,APP_ENV:'production'}
+  assert.equal((await worker.fetch(request('/api/health'),changed)).status,503)
+  assert.equal(count,2)
+})
+test('unknown environment fails closed',async()=>{
+  const res=await worker.fetch(request('/api/health'),environment('staging'))
+  assert.equal(res.status,503)
+})
+test('missing migration fails closed',async()=>{
+  const env=environment()
+  env.DB.prepare=()=>({first:async()=>{throw Error('missing table')}})
+  const res=await worker.fetch(request('/api/health'),env)
+  assert.equal(res.status,503)
+})
+test('private API always denies anonymous requests regardless of method',async()=>{
+  for(const method of ['GET','POST','PUT','DELETE']){
+    const res=await worker.fetch(request('/api/tasks',method),environment())
+    assert.equal(res.status,401)
+    assert.notEqual(await res.text(),'ASSET_MARKER')
+  }
+})
+test('health refuses mutations',async()=>{
+  assert.equal((await worker.fetch(request('/api/health','POST'),environment())).status,405)
+})
+test('CSRF requests require exact same Origin',()=>{
+  assert.equal(sameOrigin(request('/api/tasks','POST',{'origin':'https://evil.example'})),false)
+  assert.equal(sameOrigin(request('/api/tasks','POST',{'origin':'https://homeflow.example','sec-fetch-site':'same-origin'})),true)
+  assert.equal(sameOrigin(request('/api/tasks','POST')),false)
+})
+test('password validation and constant time digest check',async()=>{
+  assert.equal(validPassword('weak'),false)
+  assert.equal(validPassword('very-long-password-for-two-users'),true)
+  const a=await hashPassword('safe-not-real-password','test-salt-0123456789abcdef',100000)
+  assert.equal(await passwordMatches('safe-not-real-password',{password_salt:a.salt,password_verifier:a.verifier,password_rounds:a.rounds}),true)
+  assert.equal(await passwordMatches('different-wrong-password',{password_salt:a.salt,password_verifier:a.verifier,password_rounds:a.rounds}),false)
+  assert.equal(constantEqualHex('a0f1','a0f1'),true)
+  assert.equal(constantEqualHex('a0f1','a0f2'),false)
+})
+test('date validation does not accept rolled over dates',()=>{
+  assert.equal(validDate('2028-02-29'),true)
+  assert.equal(validDate('2027-02-29'),false)
+  assert.equal(validDate('2027-13-01'),false)
+  assert.equal(validDate(null),true)
+})
+
+test('future migration must not break identity health if required schema remains intact',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({
+  database_name:'homeflow-preview',latest_migration:'0029_example_safe_additive.sql',
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,200)
+})
+
+test('health refuses a recorded 0032 migration whose provenance column is absent',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({
+  database_name:'homeflow-preview',required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,
+  action_index_ready:1,sync_table_ready:1,member_sync_ready:1,
+  completion_read_ready:1,settlement_origin_ready:0,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
+})
+
+test('health requires latest settlement migration and column in one D1 read',()=>{
+ const source=readFileSync(new URL('../worker/security.js',import.meta.url),'utf8')
+ assert.ok(source.includes("name='0041_household_lottery.sql'"))
+ assert.ok(source.includes("name='0046_reward_wish_savings_credit.sql'"))
+ assert.ok(source.includes("name='0047_anniversary_archive.sql'"))
+ assert.ok(source.includes("name='0048_oneoff_five_points.sql'"))
+ assert.ok(source.includes('oneoff_rule_ready'))
+ assert.ok(source.includes("reward_credit_ready"))
+ assert.ok(source.includes("pragma_table_info('goal_period_settlements')"))
+ assert.ok(source.includes("Number(identity.settlement_origin_ready)===1"))
+})
+
+test('health rejects a point table missing its secure completion triggers',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,
+  member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
+  points_table_ready:1,points_triggers_ready:9,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
+})
+
+test('new point feature only uses authenticated API routing',async()=>{
+ const res=await worker.fetch(request('/api/points'),environment())
+ assert.equal(res.status,401)
+})
+
+
+test('health requires reward tables and pooling triggers',async()=>{
+ const env=environment()
+ env.DB.prepare=()=>({first:async()=>({database_name:'homeflow-preview',
+  required_migration_ready:1,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,action_index_ready:1,sync_table_ready:1,
+  member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,
+  points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:4,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,lottery_table_ready:1})})
+ assert.equal((await worker.fetch(request('/api/health'),env)).status,503)
+})
+test('reward routes cannot be accessed anonymously',async()=>{
+ for(const path of ['/api/rewards','/api/rewards/pool','/api/rewards/redeem']){
+  assert.equal((await worker.fetch(request(path),environment())).status,401)
+ }
+})
