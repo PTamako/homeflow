@@ -326,13 +326,15 @@ test('history nets task adjustments and dual shares and paginates five rows',asy
   const entries=sqlite.prepare(`WITH ledger AS (${annualPointLedgerSql()})
     SELECT userId,label,amount FROM ledger
     WHERE label IN ('单人任务','双人任务','周期任务','一起购物')
-    ORDER BY label,userId`).all('h',start,end)
+    ORDER BY label,userId`).all('h',start,end).map(e=>({
+      userId:e.userId,label:e.label,amount:e.amount
+    }))
   assert.deepEqual(entries,[
    {userId:'alice',label:'一起购物',amount:1},
    {userId:'bob',label:'一起购物',amount:1},
+   {userId:'bob',label:'单人任务',amount:5},
    {userId:'alice',label:'双人任务',amount:2.5},
    {userId:'bob',label:'双人任务',amount:2.5},
-   {userId:'bob',label:'单人任务',amount:5},
    {userId:'bob',label:'周期任务',amount:5}
   ])
   const get=async(who,page)=>{
