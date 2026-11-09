@@ -89,7 +89,7 @@ async function sendFamily(){
     throw Error(reasons[data.error]||'发送失败，请稍后重试')
   }
   familyMessage.value='';familyFormOpen.value=false
-  notify(data.inAppOnly?'已发送到 '+recipientName+' 的今日通知':'已通知 '+recipientName+'（'+data.sent+' 台设备）')
+  notify(data.inAppOnly?'已发送到 '+recipientName+' 的今日通知':'已向 '+recipientName+' 发出推送通知')
  }catch(e){familyError.value=(e as Error).message}
  finally{familyBusy.value=false}
 }
@@ -105,7 +105,7 @@ async function testOwnPush(){
   if(!response.ok)throw Error(result.error==='push_rate_limited'?'同一分钟已测试过，请稍后再试':
     result.error==='push_not_subscribed'?'服务器没有找到推送订阅，请重新开启推送':
     '推送服务测试失败，请稍后重试')
-  testPushResult.value='推送服务已受理 '+Number(result.sent||0)+' 个设备请求。请查看本机锁屏/通知中心；这不代表系统已显示横幅。'
+  testPushResult.value='推送服务已受理 '+Number(result.sent||0)+' 条订阅通道的请求（不等于手机数量）。请查看本机锁屏/通知中心；这不代表系统已显示横幅。'
  }catch(e){testPushResult.value=(e as Error).message}
  finally{testingPush.value=false}
 }
