@@ -3,51 +3,40 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 
 const source=readFileSync(new URL('../src/components/HouseholdPoints.vue',import.meta.url),'utf8')
-const rule=selector=>{
-  const escaped=selector.replace(/[.*+?^\x24{}()|[\]\\]/g,'\\$&')
-  const match=source.match(new RegExp(escaped+'\\s*\\{([^}]*)\\}'))
-  assert.ok(match,'Missing CSS rule '+selector)
-  return match[1]
-}
 
-test('lottery history rows are fixed-height compact items, independent of prize result',()=>{
- const board=rule('.points-board')
- const expanded=rule('.points-expanded')
- const history=rule('.lottery-history')
- const list=rule('.lottery-history-list')
- const row=rule('.lottery-history-row')
- const detail=rule('.lottery-history-detail')
- const result=rule('.lottery-history-row>span')
- assert.ok(board.includes('align-content:start'))
- assert.ok(expanded.includes('align-content:start'))
- assert.ok(history.includes('display:block'))
- assert.ok(history.includes('align-self:start'))
- assert.ok(list.includes('display:flex'))
- assert.ok(list.includes('flex-direction:column'))
- assert.ok(list.includes('gap:0'))
- assert.ok(row.includes('display:flex'))
- assert.ok(!row.includes('display:grid'))
- assert.ok(row.includes('height:54px'))
- assert.ok(row.includes('min-height:54px'))
- assert.ok(row.includes('max-height:54px'))
- assert.ok(row.includes('margin:0'))
- assert.ok(detail.includes('flex:1 1 auto'))
- assert.ok(result.includes('white-space:nowrap'))
- assert.ok(result.includes('text-overflow:ellipsis'))
- assert.ok(source.includes('<ul v-else class="lottery-history-list"'))
- assert.ok(source.includes('<li v-for="record in lottery.history"'))
- assert.ok(source.includes('class="lottery-history-row"'))
+test('lottery tab keeps the draw card and rules, while all draw history moves to points ledger',()=>{
+ assert.match(source,/class="lottery-card"/)
+ assert.match(source,/class="lottery-box"/)
+ assert.match(source,/查看奖池概率与规则/)
+ assert.doesNotMatch(source,/近一年抽奖明细/)
+ assert.doesNotMatch(source,/<li v-for="record in lottery\.history"/)
+ assert.doesNotMatch(source,/goToLotteryPage|lotteryPageBusy|lotteryPageError/)
 })
 
-test('lottery history uses five-item server pages and mobile previous/next controls',()=>{
- assert.match(source,/const lotteryPage=ref\(1\)/)
- assert.match(source,/fetchJSON\('\/lottery\?page='\+page\)/)
- assert.match(source,/lottery\.historyTotalPages>1/)
- assert.match(source,/@click="goToLotteryPage\(lotteryPage-1\)"/)
- assert.match(source,/@click="goToLotteryPage\(lotteryPage\+1\)"/)
- assert.match(source,/每页 5 条/)
- assert.match(source,/lotteryPage<=1\|\|lotteryPageBusy\|\|busy/)
- assert.match(source,/lotteryPage>=lottery\.historyTotalPages\|\|lotteryPageBusy\|\|busy/)
- assert.match(source,/resetLotteryPagination\(\)/)
- assert.match(source,/lotteryPageError/)
+test('points ledger provides independent year, household member and category selectors',()=>{
+ assert.match(source,/const historyCategory=ref\('all'\)/)
+ assert.match(source,/category='\+encodeURIComponent\(historyCategory\.value\)/)
+ for(const [value,label] of [
+  ['all','全部'],['task','任务'],['shopping','购物'],['lottery','抽奖'],
+  ['shop','商城'],['achievement','挑战成就'],['saving','储值旅行']
+ ]){
+  assert.ok(source.includes('<option value="'+value+'">'+label+'</option>'),label)
+ }
+ assert.match(source,/const historyMatchesFilters=computed/)
+ assert.match(source,/v-for="\(entry,i\) in visibleHistoryEntries"/)
+ assert.match(source,/historyMatchesFilters&&history&&history\.totalPages>1/)
+ assert.match(source,/共 \{\{ history\?\.total \}\} 条 · 每页5条/)
+})
+
+test('lottery draws show timestamp, draw cost, prize and net points in one row',()=>{
+ assert.match(source,/const historyTime=/)
+ assert.match(source,/second:'2-digit'/)
+ assert.match(source,/entry\.prizeKind/)
+ assert.match(source,/entry\.ticketCost/)
+ assert.match(source,/entry\.prizePoints/)
+ assert.match(source,/signedPoints\(entry\.amount\)/)
+ assert.match(source,/净变化/)
+ assert.match(source,/categoryNames\[entry\.category\]/)
+ assert.match(source,/historyMemberName\(entry\.userId\)/)
+ assert.doesNotMatch(source,/class="lottery-history-list"/)
 })

@@ -165,6 +165,35 @@ export const annualPointLedgerSql=()=>{
  return groups.join(' UNION ALL ')
 }
 
+// Grouping is a *presentation-only* projection. Keep the original ledger intact
+// for annual earned/spent totals, but render one row per lottery draw (rather
+// than separate prize and ticket rows occupying two pagination slots).
+export const pointsDisplayLedgerSql=raw=>`WITH ledger AS (${raw}),
+display AS (
+  SELECT userId,visibility,amount,contribution,category,label,stamp,
+    NULL AS prizeKind,NULL AS ticketCost,NULL AS prizePoints,NULL AS eventId
+  FROM ledger WHERE category NOT IN ('lottery_cost','lottery_prize')
+  UNION ALL
+  SELECT l.user_id AS userId,'household' AS visibility,
+    l.prize_points-l.cost_points AS amount,0 AS contribution,
+    'lottery' AS category,
+    CASE l.prize_kind WHEN 'empty' THEN '空手而归'
+      WHEN 'double' THEN '好运箱 · 积分翻倍'
+      ELSE '好运箱 · 中奖' END AS label,
+    l.created_at AS stamp,l.prize_kind AS prizeKind,
+    l.cost_points AS ticketCost,l.prize_points AS prizePoints,l.id AS eventId
+  FROM household_lottery_draws l WHERE l.household_id=?1
+)`
+const POINTS_CATEGORY_FILTERS=Object.freeze({
+ all:'1=1',
+ task:"category IN ('complete','bounty','reserved')",
+ shopping:"category='shopping'",
+ lottery:"category='lottery'",
+ shop:"category IN ('redeem','pool')",
+ achievement:"category IN ('weekly','achievement')",
+ saving:"category IN ('savings','trip')"
+})
+
 const validYear=(text,current)=>/^\d{4}$/.test(text)&&Number(text)>=2026&&Number(text)<=current
 export function jstYearWindow(year){
  const start=new Date(Date.UTC(year-1,11,31,15)).toISOString()
@@ -179,12 +208,16 @@ export async function pointsHistoryRoute(request,db,session){
  const selected=url.searchParams.get('year')||String(current)
  const pageText=url.searchParams.get('page')||'1'
  const requestedMember=url.searchParams.get('member')||''
+ const selectedCategory=url.searchParams.get('category')||'all'
  if(!validYear(selected,current)||!/^\d{1,5}$/.test(pageText)||
    Number(pageText)<1||Number(pageText)>9999||
-   (requestedMember.length>100))return json({error:'invalid_input'},400)
+   (requestedMember.length>100)||!Object.hasOwn(POINTS_CATEGORY_FILTERS,selectedCategory))
+   return json({error:'invalid_input'},400)
  const year=Number(selected),page=Number(pageText),{start,end}=jstYearWindow(year)
  const h=session.household_id,u=session.user_id
  const raw=annualPointLedgerSql()
+ const display=pointsDisplayLedgerSql(raw)
+ const categoryRule=POINTS_CATEGORY_FILTERS[selectedCategory]
  const period=`datetime(stamp)>=datetime(?2) AND datetime(stamp)<datetime(?3)
     AND (visibility='household' OR userId=?4)`
  const [members,totals,history,count]=await Promise.all([
@@ -203,13 +236,16 @@ export async function pointsHistoryRoute(request,db,session){
       COALESCE(SUM(CASE WHEN visibility='private' THEN amount ELSE 0 END),0) AS privatePoints,
       COALESCE(SUM(CASE WHEN category IN('lottery_cost','lottery_prize') THEN amount ELSE 0 END),0) AS lotteryNet
     FROM ledger WHERE ${period} GROUP BY userId`).bind(h,start,end,u).all(),
-  db.prepare(`WITH ledger AS (${raw})
-    SELECT userId,visibility,amount,contribution,category,label,stamp
-    FROM ledger WHERE ${period} AND (?5='' OR userId=?5)
-    ORDER BY datetime(stamp) DESC,category DESC,label DESC
+  db.prepare(`${display}
+    SELECT userId,visibility,amount,contribution,category,label,stamp,
+      prizeKind,ticketCost,prizePoints,eventId
+    FROM display WHERE ${period} AND (?5='' OR userId=?5)
+      AND ${categoryRule}
+    ORDER BY datetime(stamp) DESC,category DESC,label DESC,eventId DESC
     LIMIT 5 OFFSET ?6`).bind(h,start,end,u,requestedMember,(page-1)*5).all(),
-  db.prepare(`WITH ledger AS (${raw})
-    SELECT COUNT(*) AS total FROM ledger WHERE ${period} AND (?5='' OR userId=?5)`)
+  db.prepare(`${display}
+    SELECT COUNT(*) AS total FROM display WHERE ${period}
+      AND (?5='' OR userId=?5) AND ${categoryRule}`)
       .bind(h,start,end,u,requestedMember).first()
  ])
  const byUser=new Map((totals.results||[]).map(x=>[x.userId,x]))
@@ -225,6 +261,11 @@ export async function pointsHistoryRoute(request,db,session){
  })
  const total=Number(count?.total)||0
  return json({year,currentYear:current,members:rows,memberFilter:requestedMember,
-   entries:(history.results||[]).map(x=>({...x,amount:Number(x.amount),contribution:Number(x.contribution)})),
+   categoryFilter:selectedCategory,
+   entries:(history.results||[]).map(x=>({
+     ...x,amount:Number(x.amount),contribution:Number(x.contribution),
+     ticketCost:x.ticketCost===null?null:Number(x.ticketCost),
+     prizePoints:x.prizePoints===null?null:Number(x.prizePoints)
+   })),
    page,pageSize:5,total,totalPages:Math.max(1,Math.ceil(total/5))})
 }

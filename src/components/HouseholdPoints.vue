@@ -27,9 +27,11 @@ type WishGoalOption={wishId:string;wishTitle:string;goalId:string;goalTitle:stri
 type YearMember={userId:string;displayName:string;contributionPoints:number;earnedPoints:number;
  spentPoints:number;lotteryNetPoints:number;privatePoints:number|null;endingPoints:number;expiredPoints:number|null}
 type YearEntry={userId:string;visibility:'household'|'private';amount:number;contribution:number;
- category:string;label:string;stamp:string}
+ category:string;label:string;stamp:string;prizeKind:string|null;
+ ticketCost:number|null;prizePoints:number|null;eventId:string|null}
 type YearHistory={year:number;currentYear:number;members:YearMember[];entries:YearEntry[];
- page:number;pageSize:number;total:number;totalPages:number}
+ page:number;pageSize:number;total:number;totalPages:number;
+ memberFilter:string;categoryFilter:string}
 type LotteryDraw={id:string;userId:string;displayName?:string;kind:'empty'|'five'|'ten'|'twenty'|'fifty'|'double';cost:number;points:number;createdAt:string;month:string}
 type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryDraw[];
  historyPage:number;historyPageSize:number;historyTotal:number;historyTotalPages:number;
@@ -43,7 +45,13 @@ const redemptionPage=ref(1),groupPage=ref(1)
 const history=ref<YearHistory|null>(null)
 const historyYear=ref(new Date(Date.now()+9*3600000).getUTCFullYear())
 const historyMember=ref('')
+const historyCategory=ref('all')
 const historyPage=ref(1)
+const historyMatchesFilters=computed(()=>Boolean(history.value&&
+ history.value.year===historyYear.value&&history.value.page===historyPage.value&&
+ history.value.memberFilter===historyMember.value&&
+ history.value.categoryFilter===historyCategory.value))
+const visibleHistoryEntries=computed(()=>historyMatchesFilters.value?history.value?.entries||[]:[])
 const historyBusy=ref(false)
 const historyError=ref('')
 let historyRequest=0
@@ -52,6 +60,20 @@ const availableYears=computed(()=>{
  return Array.from({length:Math.max(1,latest-2025)},(_,i)=>latest-i)
 })
 const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===id)?.displayName||'家庭成员'
+const categoryNames:Record<string,string>={
+ complete:'任务完成',bounty:'指定奖励',reserved:'指定扣分',
+ shopping:'购物计划',lottery:'幸运抽奖',
+ redeem:'商城兑换',pool:'合力兑换',
+ weekly:'每周挑战',achievement:'月度成就',
+ savings:'储值奖励',trip:'旅行奖励'
+}
+const historyTime=(stamp:string)=>new Date(stamp).toLocaleString('zh-CN',{
+ timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',
+ hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false
+})
+const drawOutcome=(kind:string|null)=>kind==='empty'?'空手而归':
+ kind==='double'?'最高奖 · 积分翻倍':'中奖'
+const signedPoints=(amount:number)=>(amount>0?'+':'')+fmt(amount)
 const quantityFor=(item:Reward)=>Math.max(1,Math.min(99,Math.trunc(quantityChoice.value[item.id]||1)))
 function stepQuantity(item:Reward,delta:number){
  const remaining=item.stock===null?99:Math.max(1,item.stock-item.redeemedCount)
@@ -59,11 +81,14 @@ function stepQuantity(item:Reward,delta:number){
   [item.id]:Math.max(1,Math.min(99,remaining,quantityFor(item)+delta))}
 }
 const historyPath=()=>'/points/history?year='+historyYear.value+
- '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)
-async function goToHistory(page:number,year=historyYear.value,member=historyMember.value){
+ '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)+
+ '&category='+encodeURIComponent(historyCategory.value)
+async function goToHistory(page:number,year=historyYear.value,member=historyMember.value,
+ category=historyCategory.value){
  if(!props.active||!expanded.value||view.value!=='history'||busy.value)return
  const token=++historyRequest
  historyPage.value=page;historyYear.value=year;historyMember.value=member
+ historyCategory.value=category
  historyBusy.value=true;historyError.value=''
  try{
   const next=await fetchJSON(historyPath()) as YearHistory
@@ -82,35 +107,6 @@ async function changeShopPage(kind:'redemption'|'group',page:number){
  await refresh()
 }
 const lottery=ref<Lottery|null>(null)
-const lotteryPage=ref(1)
-const lotteryPageBusy=ref(false)
-const lotteryPageError=ref('')
-let lotteryPageRequest=0
-function resetLotteryPagination(){
- ++lotteryPageRequest
- lotteryPage.value=1
- lotteryPageBusy.value=false
- lotteryPageError.value=''
-}
-async function goToLotteryPage(page:number){
- const current=lottery.value
- if(!current||!props.active||!expanded.value||view.value!=='lottery'||
-   busy.value||lotteryPageBusy.value||page<1||page>current.historyTotalPages||
-   page===lotteryPage.value)return
- const token=++lotteryPageRequest
- lotteryPageBusy.value=true;lotteryPageError.value=''
- try{
-  // Only query this page. No full-history download or extra wallet refresh.
-  const result=await fetchJSON('/lottery?page='+page) as Lottery
-  if(token!==lotteryPageRequest||!props.active||!expanded.value||view.value!=='lottery')return
-  lottery.value=result
-  lotteryPage.value=result.historyPage
- }catch(e){
-  if(token===lotteryPageRequest)lotteryPageError.value=(e as Error).message
- }finally{
-  if(token===lotteryPageRequest)lotteryPageBusy.value=false
- }
-}
 const lotteryLastDraw=ref<LotteryDraw|null>(null)
 const LOTTERY_RESULT_DURATION_MS=3000
 let lotteryResultTimer:ReturnType<typeof setTimeout>|null=null
@@ -206,20 +202,15 @@ async function refresh(){
      data.value=pointsResult as Summary
    }else{
      const selectedView=view.value
-     const lotteryToken=selectedView==='lottery'?++lotteryPageRequest:0
      const historyToken=selectedView==='history'?++historyRequest:0
      const [pointsResult,secondary]=await Promise.all([
-       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery?page='+lotteryPage.value:
+       fetchJSON('/points'),fetchJSON(selectedView==='lottery'?'/lottery':
          selectedView==='history'?historyPath():
           '/rewards?redemptionPage='+redemptionPage.value+'&groupPage='+groupPage.value)])
      if(current!==generation||!props.active||!expanded.value||selectedView!==view.value)return
      data.value=pointsResult as Summary
      if(selectedView==='lottery'){
-       if(lotteryToken===lotteryPageRequest){
-         lottery.value=secondary as Lottery
-         lotteryPage.value=(secondary as Lottery).historyPage
-         lotteryPageBusy.value=false
-       }
+       lottery.value=secondary as Lottery
      }else if(selectedView==='history'){
        if(historyToken===historyRequest){
         history.value=secondary as YearHistory
@@ -245,7 +236,6 @@ watch(()=>[props.active,props.userId,props.syncRevision],()=>{
    shop.value=null
    redemptionPage.value=1;groupPage.value=1
    lottery.value=null
-   resetLotteryPagination()
    historyRequest++
    history.value=null
    historyBusy.value=false
@@ -258,7 +248,6 @@ watch(()=>props.userId,()=>{
  shop.value=null
  redemptionPage.value=1;groupPage.value=1
  lottery.value=null
- resetLotteryPagination()
  historyRequest++
  history.value=null
  historyBusy.value=false
@@ -290,7 +279,6 @@ onMounted(()=>{
 onBeforeUnmount(()=>{
  document.removeEventListener('pointerdown',dismissRulesOutside)
  document.removeEventListener('keydown',dismissRulesKey)
- resetLotteryPagination()
  historyRequest++
  clearLotteryResult()
 })
@@ -300,7 +288,6 @@ function openDetails(){
  void refresh()
 }
 function closeDetails(){
- resetLotteryPagination()
  clearLotteryResult()
  historyRequest++
  historyBusy.value=false
@@ -327,7 +314,6 @@ function editReward(reward:Reward){
 function openCreate(){resetForm();formOpen.value=true}
 function selectView(next:'shop'|'achievements'|'lottery'|'history'){
  if(view.value===next)return
- resetLotteryPagination()
  clearLotteryResult()
  historyRequest++
  lotteryHelpOpen.value=false
@@ -335,8 +321,6 @@ function selectView(next:'shop'|'achievements'|'lottery'|'history'){
  wishRewardDraft.value=null
  if(next==='lottery'||next==='shop'&&!shop.value||next==='history')void refresh()
 }
-const lotteryLabel=(draw:LotteryDraw)=>draw.kind==='empty'?'空手而归':
- draw.kind==='double'?'积分翻倍 +'+fmt(draw.points):'+'+fmt(draw.points)+' 积分'
 async function drawLottery(){
  if(busy.value||!lottery.value||lotteryRemaining.value<1||points.value<5)return
  busy.value=true;error.value='';clearLotteryResult()
@@ -345,8 +329,7 @@ async function drawLottery(){
  try{
    const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
    if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser){
-     resetLotteryPagination()
-     showLotteryResult(result.draw)
+       showLotteryResult(result.draw)
    }
    await refresh()
    // A committed draw is final even when the follow-up read fails. Never show
@@ -484,7 +467,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            @click="ruleHelpOpen=!ruleHelpOpen"><span class="points-help-glyph" aria-hidden="true">?</span></button>
          <div v-if="ruleHelpOpen" id="points-rule-popover" role="tooltip" class="points-rule-popover">
            <b>积分规则</b>
-           <p>购物计划完成 +2；周期任务每期 +5；一次性任务指定处理人 +5、未指定 +10；储值目标每期经核验达标，家庭每位成员 +50；旅行结束并确认完成后，每位参与人每天 +10（含出发与结束当天）；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入贡献榜，也不能兑换家庭奖励。贡献分不包括抽奖中奖和抽奖消耗；抽奖只影响可用家庭积分。每年 1 月 1 日 00:00（日本时间）所有积分、贡献分与 XP 清零，历史兑换记录保留。</p>
+           <p>购物计划完成 +2；周期任务每期 +5；一次性任务统一基础 +5，额外指定奖励另计；储值目标每期经核验达标，家庭每位成员 +50；旅行结束并确认完成后，每位参与人每天 +10（含出发与结束当天）；心愿不计分。定期任务可单独指派某一期：指定他人时必须填写大于 0 的整数奖励，由发布人家庭积分预留。跳过无分、撤销扣回；私人任务不进入贡献榜，也不能兑换家庭奖励。贡献分不包括抽奖中奖和抽奖消耗；抽奖只影响可用家庭积分。每年 1 月 1 日 00:00（日本时间）所有积分、贡献分与 XP 清零，历史兑换记录保留。</p>
          </div>
        </div>
        <button type="button" class="points-collapse" @click="closeDetails">收起 <AppIcon name="chevron-down" :size="16" class="points-chevron-up"/></button>
@@ -612,31 +595,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        </div>
      </div>
      <p v-else class="points-loading">{{ loading?'正在读取抽奖箱…':'暂无抽奖数据' }}</p>
-     <div v-if="lottery" class="lottery-history">
-       <div class="lottery-history-heading">
-         <b>近一年抽奖明细</b>
-         <small v-if="lottery.historyTotal">共 {{ lottery.historyTotal }} 条 · 每页 5 条</small>
-       </div>
-       <div v-if="!lottery.historyTotal" class="lottery-empty">还没有抽奖记录，试试今天的好运气吧</div>
-       <ul v-else class="lottery-history-list" :aria-busy="lotteryPageBusy">
-         <li v-for="record in lottery.history" :key="record.id" class="lottery-history-row">
-           <AppIcon name="ticket" :size="17"/>
-           <div class="lottery-history-detail">
-             <strong>{{ record.displayName||'家庭成员' }}</strong>
-             <small>{{ new Date(record.createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }} · 消耗 {{ record.cost }} 分</small>
-           </div>
-           <span :class="{empty:record.kind==='empty'}">{{ lotteryLabel(record) }}</span>
-         </li>
-       </ul>
-       <div v-if="lottery.historyTotalPages>1" class="lottery-history-pagination" role="navigation" aria-label="抽奖历史分页">
-         <button type="button" :disabled="lotteryPage<=1||lotteryPageBusy||busy"
-           @click="goToLotteryPage(lotteryPage-1)">上一页</button>
-         <span aria-live="polite">第 {{ lotteryPage }} / {{ lottery.historyTotalPages }} 页</span>
-         <button type="button" :disabled="lotteryPage>=lottery.historyTotalPages||lotteryPageBusy||busy"
-           @click="goToLotteryPage(lotteryPage+1)">下一页</button>
-       </div>
-       <p v-if="lotteryPageError" role="alert" class="lottery-page-error">{{ lotteryPageError }}</p>
-     </div>
    </template>
    <template v-if="view==='history'">
      <div class="annual-history-head">
@@ -651,6 +609,17 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
            <select :value="historyMember" @change="goToHistory(1,historyYear,($event.target as HTMLSelectElement).value)">
              <option value="">全部</option>
              <option v-for="person in history?.members||[]" :key="person.userId" :value="person.userId">{{ person.displayName }}</option>
+           </select>
+         </label>
+         <label>分类
+           <select :value="historyCategory" @change="goToHistory(1,historyYear,historyMember,($event.target as HTMLSelectElement).value)">
+             <option value="all">全部</option>
+             <option value="task">任务</option>
+             <option value="shopping">购物</option>
+             <option value="lottery">抽奖</option>
+             <option value="shop">商城</option>
+             <option value="achievement">挑战成就</option>
+             <option value="saving">储值旅行</option>
            </select>
          </label>
        </div>
@@ -668,15 +637,23 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <p class="annual-note">{{ history&&history.year<history.currentYear?
       '年末未用积分已经清零，仅供历史回顾，不能继续兑换。':'当前年度积分将于12月31日结束，次年1月1日清零。' }}</p>
      <div class="annual-ledger">
-       <div class="annual-ledger-title"><b>积分流水</b><small v-if="history">共 {{ history.total }} 条 · 每页5条</small></div>
-       <p v-if="historyBusy&&!history" class="points-loading">正在加载明细…</p>
-       <p v-else-if="history&&!history.entries.length" class="points-loading">该年度暂无积分记录</p>
-       <div v-for="(entry,i) in history?.entries||[]" :key="entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
-         <div><b>{{ entry.label }}</b><small>{{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} ·
-           {{ new Date(entry.stamp).toLocaleString('zh-CN',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) }}</small></div>
-         <strong :class="{negative:entry.amount<0}">{{ entry.amount>0?'+':'' }}{{ fmt(entry.amount) }}</strong>
+       <div class="annual-ledger-title"><b>积分流水</b><small v-if="historyMatchesFilters">共 {{ history?.total }} 条 · 每页5条</small></div>
+       <p v-if="historyBusy&&!historyMatchesFilters" class="points-loading">正在筛选明细…</p>
+       <p v-else-if="historyMatchesFilters&&!visibleHistoryEntries.length" class="points-loading">该条件下暂无积分记录</p>
+       <div v-for="(entry,i) in visibleHistoryEntries" :key="entry.eventId||entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
+         <div>
+           <b>{{ entry.label }}</b>
+           <small class="annual-ledger-meta">{{ categoryNames[entry.category]||'积分调整' }} · {{ historyMemberName(entry.userId) }} · {{ entry.visibility==='private'?'私人':'家庭' }} · {{ historyTime(entry.stamp) }}</small>
+           <small v-if="entry.category==='lottery'" class="annual-ledger-breakdown">
+             {{ drawOutcome(entry.prizeKind) }} · 消耗 {{ fmt(entry.ticketCost||0) }} 分 · 中奖 {{ fmt(entry.prizePoints||0) }} 分 · 净变化 {{ signedPoints(entry.amount) }} 分
+           </small>
+           <small v-else class="annual-ledger-breakdown">
+             {{ entry.amount<0?'扣减':'获得' }} {{ fmt(Math.abs(entry.amount)) }} 分 · 贡献变化 {{ signedPoints(entry.contribution) }} 分
+           </small>
+         </div>
+         <strong :class="{negative:entry.amount<0,neutral:entry.amount===0}">{{ entry.category==='lottery'?'净 ':'' }}{{ signedPoints(entry.amount) }}</strong>
        </div>
-       <div v-if="history&&history.totalPages>1" class="annual-pagination">
+       <div v-if="historyMatchesFilters&&history&&history.totalPages>1" class="annual-pagination">
          <button type="button" :disabled="historyBusy||historyPage<=1" @click="goToHistory(historyPage-1)">上一页</button>
          <span>{{ historyPage }} / {{ history.totalPages }}</span>
          <button type="button" :disabled="historyBusy||historyPage>=history.totalPages" @click="goToHistory(historyPage+1)">下一页</button>
@@ -1080,36 +1057,13 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-rule-popover{top:calc(26px + 9px)}
  .lottery-odds-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
- /* A block list avoids implicit grid tracks stretching draw history items. */
- .lottery-history{display:block;align-self:start;min-width:0;padding-top:4px}
- .lottery-history-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
- .lottery-history-heading b{font-size:14px;line-height:1.3;color:#426b50}
- .lottery-history-heading small{flex:none;color:#89988d;font-size:10px;white-space:nowrap}
- .lottery-empty{margin:4px 0 0;padding:12px;font-size:12px;color:#829487;text-align:center}
- /* Fixed compact rows prevent an empty prize label from stretching into whitespace. */
- .lottery-history-list{display:flex;flex-direction:column;gap:0;list-style:none;margin:5px 0 0;padding:0;min-width:0}
- .lottery-history-row{display:flex;align-items:center;gap:8px;min-width:0;
-  flex:none;box-sizing:border-box;height:54px;min-height:54px;max-height:54px;
-  margin:0;padding:5px 0;border-bottom:1px solid #e8efe9;color:#5b846b}
- .lottery-history-row>.app-icon{flex:0 0 17px}
- .lottery-history-detail{display:flex;flex:1 1 auto;flex-direction:column;justify-content:center;gap:3px;
-  min-width:0;overflow:hidden}
- .lottery-history-detail strong{font-size:12px;line-height:1.25;color:#3f624c;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-detail small{font-size:10px;line-height:1.3;color:#849787;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-row>span{flex:0 0 auto;margin-left:auto;min-width:0;font-size:11px;line-height:1.3;
-  font-weight:700;color:#407f5c;text-align:right;max-width:43%;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .lottery-history-row>span.empty{color:#9aa39b;font-weight:500}
- .lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
+.lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
   padding:12px 0 2px;min-height:42px}
  .lottery-history-pagination button{flex:0 0 auto;min-height:38px;padding:7px 12px;border-radius:9px;
   border:1px solid #cfe2d3;background:#f5faf5;color:#3e805d;font-size:12px;font-weight:650}
  .lottery-history-pagination button:disabled{opacity:.42}
  .lottery-history-pagination span{font-size:11px;color:#768b7c;white-space:nowrap}
- .lottery-page-error{margin:6px 0 0;font-size:12px;color:#a34b3d;text-align:center}
- .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
+  .challenge-card{background:#f5faf5;border-radius:12px;padding:12px;display:grid;gap:9px}
 .challenge-card>div:first-child{display:flex;justify-content:space-between;font-size:13px;color:#43674e}
 .challenge-card small{font-size:11px;color:#678477}
 .monthly-achievement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:3px 0 8px;color:#43674e;font-size:12px}.monthly-achievement-heading small{font-size:11px;color:#71867a}.badges-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -1186,7 +1140,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
 .annual-filters{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
 .annual-filters label{display:grid;gap:3px;min-width:0;font-size:11px;color:#748778}
-.annual-filters select{min-width:105px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
+.annual-filters select{min-width:90px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
 .annual-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .annual-member{display:grid;align-content:start;gap:7px;padding:10px;min-width:0;background:#f7faf6;border:1px solid #e2ece3;border-radius:11px}
 .annual-member>b{font-size:13px;color:#355f47;overflow-wrap:anywhere}
@@ -1201,6 +1155,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .annual-ledger-row>div{display:grid;gap:4px;min-width:0;flex:1}
 .annual-ledger-row b{font-size:12px;color:#456b52;overflow-wrap:anywhere}
 .annual-ledger-row small{font-size:10px;color:#829586;line-height:1.35}
+.annual-ledger-meta,.annual-ledger-breakdown{display:block;overflow-wrap:anywhere}
+.annual-ledger-breakdown{color:#59816b!important;line-height:1.5!important}
+.annual-ledger-row>strong.neutral{color:#89998d}
 .annual-ledger-row>strong{flex:none;font-size:13px;color:#33845f;font-variant-numeric:tabular-nums}
 .annual-ledger-row>strong.negative{color:#b97461}
 .annual-pagination{display:flex;justify-content:center;align-items:center;gap:12px;padding:9px}
