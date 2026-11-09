@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {rewardsRoute} from '../worker/rewards.js'
 import {pointsRoute,pointLevel,tokyoWeekWindow,longestStreak} from '../worker/points.js'
-import {pointsHistoryRoute,jstYearWindow} from '../worker/points-history.js'
+import {annualPointLedgerSql,pointsHistoryRoute,jstYearWindow} from '../worker/points-history.js'
 
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
@@ -297,5 +297,61 @@ test('annual points history lists credits, spending, privacy and pre-reset balan
   assert.equal(otherView.body.members.find(x=>x.userId==='bob').privatePoints,20)
   assert.equal(otherView.body.entries.some(x=>x.userId==='bob'&&x.visibility==='private'),true)
   assert.equal((await history(alice,2025)).status,400)
+ }finally{sqlite.close()}
+})
+
+test('history nets task adjustments and dual shares and paginates five rows',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  const stamp=new Date().toISOString(),day=stamp.slice(0,10)
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  sqlite.prepare(`INSERT INTO tasks
+    (id,household_id,creator_user_id,assignee_user_id,visibility,title)
+    VALUES('net-task','h','alice','bob','household','单人任务')`).run()
+  sqlite.prepare("UPDATE tasks SET completed_at=?1,completed_by='bob' WHERE id='net-task'").run(stamp)
+  sqlite.prepare(`INSERT INTO tasks
+    (id,household_id,creator_user_id,assignee_user_id,second_assignee_user_id,visibility,title)
+    VALUES('dual-task','h','alice','alice','bob','household','双人任务')`).run()
+  sqlite.prepare("UPDATE tasks SET completed_at=?1,completed_by='alice' WHERE id='dual-task'").run(stamp)
+  sqlite.prepare(`INSERT INTO routines
+    (id,household_id,created_by,title,visibility,repeat_type,repeat_config,anchor_date)
+    VALUES('net-routine','h','alice','周期任务','household','daily','{}',?1)`).run(day)
+  sqlite.prepare(`INSERT INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by)
+    VALUES('net-routine',?1,?2,'bob')`).run(day,stamp)
+  sqlite.prepare(`INSERT INTO shopping_items
+    (id,household_id,created_by,visibility,title,assigned_to,second_assignee_user_id)
+    VALUES('joint-buy','h','alice','household','一起购物','alice','bob')`).run()
+  sqlite.prepare("UPDATE shopping_items SET completed_at=?1,completed_by='alice' WHERE id='joint-buy'").run(stamp)
+  const {start,end}=jstYearWindow(year)
+  const entries=sqlite.prepare(`WITH ledger AS (${annualPointLedgerSql()})
+    SELECT userId,label,amount FROM ledger
+    WHERE label IN ('单人任务','双人任务','周期任务','一起购物')
+    ORDER BY label,userId`).all('h',start,end)
+  assert.deepEqual(entries,[
+   {userId:'alice',label:'一起购物',amount:1},
+   {userId:'bob',label:'一起购物',amount:1},
+   {userId:'alice',label:'双人任务',amount:2.5},
+   {userId:'bob',label:'双人任务',amount:2.5},
+   {userId:'bob',label:'单人任务',amount:5},
+   {userId:'bob',label:'周期任务',amount:5}
+  ])
+  const get=async(who,page)=>{
+   const response=await pointsHistoryRoute(
+     new Request(`https://homeflow.invalid/api/points/history?year=${year}&page=${page}`),db,who)
+   assert.equal(response.status,200)
+   return response.json()
+  }
+  const first=await get(alice,1),second=await get(alice,2)
+  assert.equal(first.pageSize,5)
+  assert.equal(first.entries.length,5)
+  assert.equal(first.totalPages,Math.ceil(first.total/5))
+  assert.equal(first.total,second.total)
+  assert.ok(second.entries.length>0)
+  assert.equal(first.members.find(x=>x.userId==='alice').endingPoints,
+    (await balance(db,alice)).availablePoints)
+  assert.equal(first.members.find(x=>x.userId==='bob').endingPoints,
+    (await balance(db,bob)).availablePoints)
+  const all=[...first.entries,...second.entries]
+  assert.equal(all.some(x=>x.category==='adjustment'||x.category==='split'),false)
  }finally{sqlite.close()}
 })
