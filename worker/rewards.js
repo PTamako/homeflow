@@ -22,9 +22,19 @@ export async function expireOldRewardPools(db){
 }
 const icons=new Set(['🎁','🍦','🎬','🍖','🛋️','🐱','☕','🌸','🎮','🎟️','🧹','🎉'])
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// An optional linked wish may only receive a virtual allowance when its
+// household-visible or personally-owned one-time JPY goal is active.
+// Different reward endpoints use different parameter positions for the user.
+const goalJoins=(user,goal,wish)=>`LEFT JOIN goals g ON g.id=${goal} AND g.household_id=r.household_id
+  AND g.wish_id=${wish} AND g.goal_mode='once' AND g.currency='JPY'
+  AND g.deleted_at IS NULL AND (g.visibility='household' OR g.created_by=${user})
+ LEFT JOIN wishes w ON w.id=${wish} AND w.household_id=r.household_id
+  AND w.id=g.wish_id AND w.currency='JPY' AND w.deleted_at IS NULL
+  AND w.status IN ('wished','planning','active')
+  AND (w.visibility='household' OR w.created_by=${user})`
 const getList=async(db,household)=>{
   const {results}=await db.prepare(`SELECT r.id,r.title,r.description,r.icon,r.points,r.stock,r.active,
-    r.builtin,r.created_by AS createdBy,
+    r.builtin,r.created_by AS createdBy,r.goal_credit_yen AS goalCreditYen,
     ((SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)+
      (SELECT COUNT(*) FROM reward_group_orders g WHERE g.reward_id=r.id
        AND g.status<>'cancelled')) AS redeemedCount
@@ -33,6 +43,7 @@ const getList=async(db,household)=>{
     .bind(household).all()
   return (results||[]).map(r=>({...r,points:Number(r.points),
     stock:r.stock===null?null:Number(r.stock),redeemedCount:Number(r.redeemedCount),
+    goalCreditYen:Number(r.goalCreditYen)||0,
     active:!!r.active,builtin:!!r.builtin}))
 }
 const validReward=b=>{
@@ -42,12 +53,27 @@ const validReward=b=>{
     !Number.isSafeInteger(b.points)||b.points<10||b.points>10000||
     (b.stock!==null&&b.stock!==undefined&&(!Number.isInteger(b.stock)||b.stock<0||b.stock>9999))||
     (b.icon!==undefined&&!icons.has(b.icon))||
-    (b.active!==undefined&&typeof b.active!=='boolean'))return null
+    (b.active!==undefined&&typeof b.active!=='boolean')||
+    (b.goalCreditYen!==undefined&&(!Number.isSafeInteger(b.goalCreditYen)||
+      b.goalCreditYen<0||b.goalCreditYen>100000)))return null
   return {title:b.title.trim(),description:shortText(b.description||'',150),
-    icon:b.icon||'🎁',points:b.points,stock:b.stock??null,active:b.active!==false}
+    icon:b.icon||'🎁',points:b.points,stock:b.stock??null,active:b.active!==false,
+    goalCreditYen:b.goalCreditYen??0}
 }
 export async function rewardsRoute(request,db,path,session){
   const h=session.household_id,u=session.user_id
+  if(path==='/api/rewards/wish-goals'&&request.method==='GET'){
+    const {results=[]}=await db.prepare(`SELECT w.id AS wishId,w.title AS wishTitle,
+      g.id AS goalId,g.title AS goalTitle,g.target_amount AS targetAmount
+      FROM wishes w JOIN goals g ON g.wish_id=w.id AND g.household_id=w.household_id
+      WHERE w.household_id=?1 AND w.deleted_at IS NULL
+        AND w.status IN ('wished','planning','active') AND w.currency='JPY'
+        AND (w.visibility='household' OR w.created_by=?2)
+        AND g.deleted_at IS NULL AND g.currency='JPY' AND g.goal_mode='once'
+        AND (g.visibility='household' OR g.created_by=?2)
+      ORDER BY w.created_at DESC,g.created_at DESC LIMIT 100`).bind(h,u).all()
+    return json({items:results})
+  }
   if(path==='/api/rewards'&&request.method==='GET'){
     const [rewards,history,orders,contributions]=await Promise.all([
       getList(db,h),
@@ -58,6 +84,8 @@ export async function rewardsRoute(request,db,path,session){
           m.login_name) AS redeemedByName,
         x.title_snapshot AS title,x.icon_snapshot AS icon,
         SUM(x.points_spent) AS points,COUNT(*) AS quantity,
+        SUM(x.goal_credit_yen) AS creditedYen,
+        CASE WHEN x.redeemed_by=?2 THEN MAX(x.wish_title_snapshot) ELSE NULL END AS wishTitle,
         CASE WHEN SUM(x.status='requested')>0 THEN 'requested' ELSE 'fulfilled' END AS status,
         MAX(x.created_at) AS createdAt,MAX(x.fulfilled_at) AS fulfilledAt
         FROM reward_redemptions x JOIN users m ON m.id=x.redeemed_by
@@ -65,16 +93,18 @@ export async function rewardsRoute(request,db,path,session){
         GROUP BY x.household_id,x.redeemed_by,SUBSTR(x.client_request_id,1,36),
           x.reward_id,x.title_snapshot,x.icon_snapshot
         ORDER BY MAX(x.created_at) DESC,MIN(x.id) DESC LIMIT 30`)
-        .bind(h).all(),
+        .bind(h,u).all(),
       db.prepare(`SELECT o.id,o.reward_id AS rewardId,o.created_by AS createdBy,
         o.title_snapshot AS title,o.icon_snapshot AS icon,o.points_required AS points,
         o.status,o.created_at AS createdAt,o.funded_at AS fundedAt,
+        CASE WHEN o.created_by=?2 THEN o.wish_title_snapshot ELSE NULL END AS wishTitle,
+        o.goal_credit_yen AS goalCreditYen,
         COALESCE((SELECT SUM(c.points) FROM reward_group_contributions c
           WHERE c.order_id=o.id),0) AS fundedPoints
         FROM reward_group_orders o WHERE o.household_id=?1
           AND o.status<>'cancelled'
            AND (o.status<>'collecting' OR ${pointYearPredicate('o.created_at')})
-        ORDER BY o.created_at DESC,o.id DESC LIMIT 25`).bind(h).all(),
+        ORDER BY o.created_at DESC,o.id DESC LIMIT 25`).bind(h,u).all(),
       db.prepare(`SELECT c.order_id AS orderId,c.user_id AS userId,
         COALESCE((SELECT p.display_name FROM family_profiles p
           WHERE p.household_id=c.household_id AND p.member_user_id=c.user_id
@@ -99,14 +129,16 @@ export async function rewardsRoute(request,db,path,session){
     if(!b)return json({error:'invalid_reward'},400)
     const id=crypto.randomUUID()
     await db.prepare(`INSERT INTO reward_items
-      (id,household_id,title,description,icon,points,stock,active,created_by)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`)
-      .bind(id,h,b.title,b.description,b.icon,b.points,b.stock,b.active?1:0,u).run()
+      (id,household_id,title,description,icon,points,stock,active,created_by,goal_credit_yen)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`)
+      .bind(id,h,b.title,b.description,b.icon,b.points,b.stock,b.active?1:0,u,b.goalCreditYen).run()
     return json({ok:true,id},201)
   }
   if(path==='/api/rewards/pool'&&request.method==='POST'){
     const b=await readBody(request)
-    if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId))
+    if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId)||
+      (b.wishId!==undefined&&b.wishId!==null&&!uuid.test(b.wishId))||
+      (b.goalId!==undefined&&b.goalId!==null&&!uuid.test(b.goalId)))
       return json({error:'invalid_input'},400)
     const prior=await db.prepare(`SELECT id FROM reward_group_orders
       WHERE household_id=?1 AND created_by=?2 AND client_request_id=?3`)
@@ -115,10 +147,18 @@ export async function rewardsRoute(request,db,path,session){
     const id=crypto.randomUUID()
     const sql=`INSERT INTO reward_group_orders
       (id,household_id,reward_id,created_by,client_request_id,title_snapshot,
-        icon_snapshot,points_required,created_at)
-      SELECT ?1,r.household_id,r.id,?2,?3,r.title,r.icon,r.points,?4
+        icon_snapshot,points_required,created_at,credited_wish_id,credited_goal_id,
+        goal_credit_yen,wish_title_snapshot)
+      SELECT ?1,r.household_id,r.id,?2,?3,r.title,r.icon,r.points,?4,
+        CASE WHEN r.goal_credit_yen>0 THEN w.id ELSE NULL END,
+        CASE WHEN r.goal_credit_yen>0 THEN g.id ELSE NULL END,
+        r.goal_credit_yen,
+        CASE WHEN r.goal_credit_yen>0 THEN w.title ELSE NULL END
       FROM reward_items r
+      ${goalJoins('?2','?7','?8')}
       WHERE r.id=?5 AND r.household_id=?6 AND r.active=1
+        AND ((r.goal_credit_yen=0 AND ?7 IS NULL AND ?8 IS NULL)
+             OR (r.goal_credit_yen>0 AND g.id IS NOT NULL AND w.id IS NOT NULL))
         AND (r.stock IS NULL OR r.stock>
           (SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)+
           (SELECT COUNT(*) FROM reward_group_orders g
@@ -128,7 +168,7 @@ export async function rewardsRoute(request,db,path,session){
         AND NOT EXISTS (SELECT 1 FROM reward_group_orders g WHERE
           g.household_id=?6 AND g.created_by=?2 AND g.client_request_id=?3)`
     try{
-      const result=await db.prepare(sql).bind(id,u,b.requestId,iso(),b.rewardId,h).run()
+      const result=await db.prepare(sql).bind(id,u,b.requestId,iso(),b.rewardId,h,b.goalId||null,b.wishId||null).run()
       if(result.meta?.changes)return json({ok:true,id},201)
     }catch{
       const replay=await db.prepare(`SELECT id FROM reward_group_orders
@@ -208,15 +248,17 @@ export async function rewardsRoute(request,db,path,session){
     if(!b)return json({error:'invalid_reward'},400)
     const result=await db.prepare(`UPDATE reward_items SET
       title=?1,description=?2,icon=?3,points=?4,stock=?5,active=?6,
-      updated_at=?7 WHERE id=?8 AND household_id=?9`)
-      .bind(b.title,b.description,b.icon,b.points,b.stock,b.active?1:0,iso(),itemId,h).run()
+      updated_at=?7,goal_credit_yen=?10 WHERE id=?8 AND household_id=?9`)
+      .bind(b.title,b.description,b.icon,b.points,b.stock,b.active?1:0,iso(),itemId,h,b.goalCreditYen).run()
     if(!result.meta?.changes)return json({error:'not_found'},404)
     return json({ok:true})
   }
   if(path==='/api/rewards/redeem'&&request.method==='POST'){
     const b=await readBody(request)
     if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId)||
-      (b.quantity!==undefined&&(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>99)))
+      (b.quantity!==undefined&&(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>99))||
+      (b.wishId!==undefined&&b.wishId!==null&&!uuid.test(b.wishId))||
+      (b.goalId!==undefined&&b.goalId!==null&&!uuid.test(b.goalId)))
       return json({error:'invalid_input'},400)
     const quantity=b.quantity??1
     // Per-request idempotency also handles double taps / connection retries.
@@ -229,14 +271,23 @@ export async function rewardsRoute(request,db,path,session){
     // All rows are inserted in ONE SQLite statement, guarded by total stock
     // and total wallet checks. First child holds the base idempotency token.
     const values=ids.map((_,i)=>`(${i+1},?${7+i})`).join(',')
+    const goalParam='?'+(7+quantity),wishParam='?'+(8+quantity)
     const sql=`WITH units(n,unit_id) AS (VALUES ${values})
       INSERT INTO reward_redemptions
         (id,household_id,reward_id,redeemed_by,title_snapshot,icon_snapshot,
-          points_spent,client_request_id,status,created_at)
+          points_spent,client_request_id,status,created_at,credited_wish_id,
+          credited_goal_id,goal_credit_yen,wish_title_snapshot)
       SELECT units.unit_id,r.household_id,r.id,?1,r.title,r.icon,r.points,
-        CASE WHEN units.n=1 THEN ?2 ELSE ?2||':'||units.n END,'requested',?3
+        CASE WHEN units.n=1 THEN ?2 ELSE ?2||':'||units.n END,'requested',?3,
+        CASE WHEN r.goal_credit_yen>0 THEN w.id ELSE NULL END,
+        CASE WHEN r.goal_credit_yen>0 THEN g.id ELSE NULL END,
+        r.goal_credit_yen,
+        CASE WHEN r.goal_credit_yen>0 THEN w.title ELSE NULL END
       FROM reward_items r CROSS JOIN units
+      ${goalJoins('?1',goalParam,wishParam)}
       WHERE r.id=?4 AND r.household_id=?5 AND r.active=1
+        AND ((r.goal_credit_yen=0 AND ${goalParam} IS NULL AND ${wishParam} IS NULL)
+             OR (r.goal_credit_yen>0 AND g.id IS NOT NULL AND w.id IS NOT NULL))
         AND (r.stock IS NULL OR r.stock >= ?6+
           (SELECT COUNT(*) FROM reward_redemptions x WHERE x.reward_id=r.id)+
           (SELECT COUNT(*) FROM reward_group_orders g
@@ -245,7 +296,7 @@ export async function rewardsRoute(request,db,path,session){
           x.household_id=?5 AND x.redeemed_by=?1 AND x.client_request_id=?2)
         AND r.points*?6 <= ${householdWalletSql('?5','?1')}`
     try{
-      const result=await db.prepare(sql).bind(u,b.requestId,iso(),b.rewardId,h,quantity,...ids).run()
+      const result=await db.prepare(sql).bind(u,b.requestId,iso(),b.rewardId,h,quantity,...ids,b.goalId||null,b.wishId||null).run()
       if(Number(result.meta?.changes)===quantity)return json({ok:true,id:ids[0],quantity},201)
     }catch{
       const replay=await db.prepare(`SELECT id FROM reward_redemptions WHERE

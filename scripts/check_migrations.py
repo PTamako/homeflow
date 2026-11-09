@@ -50,7 +50,8 @@ MIGRATIONS=[
     "0042_shopping_dual_assignee.sql",
     "0043_trip_participant_rewards.sql",
     "0044_trip_reward_snapshot.sql",
-    "0045_trip_rewards_no_cap.sql"
+    "0045_trip_rewards_no_cap.sql",
+    "0046_reward_wish_savings_credit.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -76,6 +77,7 @@ assert required.issubset(tables),f"Missing tables: {required - tables}"
 
 # Every expected object must exist before historical files can be baselined.
 secondary_indexes={
+  "idx_reward_wish_credits","idx_reward_group_wish_credits",
   "idx_household_members_user","idx_family_profiles_household","idx_sessions_user","idx_sessions_expiry",
   "idx_invitations_household","idx_tasks_household_due","idx_tasks_creator","idx_tasks_assignee",
   "idx_anniversaries_household","idx_routines_household","idx_wishes_household",
@@ -126,6 +128,9 @@ added_columns={
   "notification_deliveries":{"attempts"},
   "notification_inbox":{"local_day","read_at","sent_devices","failed_devices","dedupe_key","last_completion_key"},
   "goal_period_settlements":{"settlement_origin"},
+  "reward_items":{"goal_credit_yen"},
+  "reward_redemptions":{"credited_wish_id","credited_goal_id","goal_credit_yen","wish_title_snapshot"},
+  "reward_group_orders":{"credited_wish_id","credited_goal_id","goal_credit_yen","wish_title_snapshot"},
 }
 for table in ("routines","anniversaries","wishes","goals","shopping_items","trips","memories"):
   added_columns.setdefault(table,set()).add("deleted_at")

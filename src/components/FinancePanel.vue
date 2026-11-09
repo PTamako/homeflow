@@ -25,7 +25,7 @@ const total=computed(()=>!props.owner&&kind.value==='trip'
   ?sanitizedTripTotal.value:links.value.reduce((n,item)=>n+Number(item.entry?.amount||0),0))
 const linkedTripCount=computed(()=>!props.owner&&kind.value==='trip'
   ?sanitizedTripCount.value:links.value.filter(x=>x.entry).length)
-const adjustment=ref(0),opening=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
+const adjustment=ref(0),opening=ref(0),rewardCreditYen=ref(0),net=ref(0),netLoaded=ref(false),netBusy=ref(false)
 const periodKey=ref(''),periodFuture=ref(false)
 const completedPeriods=ref<string[]>(props.initialCompletedPeriods||[])
 const currentMarkKey=computed(()=>recurringGoal.value?String(periodKey.value):'once')
@@ -46,7 +46,8 @@ function defaultPeriodKey(){
  return startKey&&startKey>nowKey?startKey:nowKey
 }
 const actualWithAdjustment=computed(()=>total.value+Number(adjustment.value||0))
-const goalTotal=computed(()=>(recurringGoal.value?0:opening.value)+net.value+Number(adjustment.value||0))
+const goalTotal=computed(()=>(recurringGoal.value?0:opening.value)+net.value+Number(adjustment.value||0)+
+  (recurringGoal.value?0:rewardCreditYen.value))
 const goalProgress=computed(()=>Math.max(0,Math.min(100,goalTotal.value/Number(selected.value?.target_amount||1)*100)))
 const goalPeriodDue=computed(()=>{
   const g=selected.value,today=dateYmd()
@@ -163,7 +164,7 @@ async function loadGoalNet(){
   finally{netBusy.value=false}
 }
 async function refreshSettings(){
-  adjustment.value=0;opening.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
+  adjustment.value=0;opening.value=0;rewardCreditYen.value=0;net.value=0;netLoaded.value=false;periodFuture.value=false
   if(!available.value||!target.value)return
   const requestedId=target.value,requestedKind=kind.value,requestedKey=periodKey.value
   try{
@@ -174,6 +175,7 @@ async function refreshSettings(){
       (recurringGoal.value&&requestedKey!==periodKey.value))return
     adjustment.value=Number(data.adjustmentAmount||0)
     opening.value=recurringGoal.value?0:Number(data.openingAmount||0)
+    rewardCreditYen.value=recurringGoal.value?0:Number(data.rewardCreditYen||0)
     if(requestedKind==='goal'){
       if(data.periodStart&&data.periodEnd){start.value=data.periodStart;end.value=data.periodEnd}
       await loadGoalNet()
@@ -310,10 +312,13 @@ onMounted(()=>{
           <span v-if="!recurringGoal">期初储值额 {{ fmt(opening) }}</span>
           <span>{{ recurringGoal?'本期':'所选期间' }}收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
           <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
+          <span v-if="kind==='goal'&&!recurringGoal&&rewardCreditYen>0" class="reward-credit-line">
+            家庭奖励抵扣额度 +¥{{ Number(rewardCreditYen).toLocaleString('ja-JP') }}
+          </span>
           <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
           <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
           <small v-if="periodFuture"><StatusBadge code="not_started" label="期间尚未开始" /></small>
-          <small v-else>仅为收支估算，不代表实际存款。</small>
+          <small v-else>仅为收支估算，含家庭奖励额度；奖励不代表实际存款，也不会写入家計簿。</small>
         </div>
         <small v-if="kind==='trip'&&!owner" class="hint">共享旅行只显示已关联消费的合计，原始账单仍仅管理员可查看。</small>
         <label v-if="canModify" class="adjustment-label">调整额（日元，可为负数）

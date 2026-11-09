@@ -2,6 +2,7 @@
 // User-approved ledger entry IDs are the only financial records stored in HomeFlow D1.
 import {json,readBody} from './security.js'
 import {goalPeriod} from './goal-period.js'
+import {goalRewardCreditAmount} from './reward-goal-credits.js'
 const dateOk=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&
   !Number.isNaN(Date.parse(x+'T00:00:00Z'))&&new Date(x+'T00:00:00Z').toISOString().slice(0,10)===x
 const idOk=x=>typeof x==='string'&&/^[0-9a-f-]{36}$/i.test(x)
@@ -78,12 +79,17 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
   }
   if(!validPeriod(start,end)||end>today)return {ok:false,error:'invalid_goal_period'}
   const data=await ledger(env,{summary:'net',start,end})
-  const amount=opening+data.net+adjustment
+  const rewardCreditYen=mode==='once'?
+    await goalRewardCreditAmount(env.DB,goal.household_id,goal.id):0
+  // Virtual reward allowance counts toward the household's wish goal, but is
+  // explicitly separated from verified Kakebo cash flow and real deposits.
+  const amount=opening+data.net+adjustment+rewardCreditYen
   if(!Number.isSafeInteger(amount))return {ok:false,error:'ledger_invalid_response'}
   // A verified household cash-flow estimate is NOT a bank balance or proof of
   // earmarked savings. Keep the calculation basis explicit for future modes.
   return {ok:amount>=goal.target_amount,amount,target:goal.target_amount,start,end,
-    calculationBasis:'household_net_cashflow_estimate',
+    calculationBasis:rewardCreditYen>0?'household_net_cashflow_estimate_plus_reward_allowance':
+      'household_net_cashflow_estimate',rewardCreditYen,
     error:amount>=goal.target_amount?null:'goal_not_funded'}
 }
 
@@ -215,7 +221,10 @@ export async function financeRoute(request,env,path,session,onComplete=null){
         openingAmount:0,targetAmount:item.target_amount})
     }
     const saved=await savedSettings(db,h,kind,id)
+    const rewardCreditYen=kind==='goal'?
+      await goalRewardCreditAmount(db,h,id):0
     const result={adjustmentAmount:saved?.adjustment_amount||0,
+      ...(rewardCreditYen>0?{rewardCreditYen}:{}),
       periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null,
       openingAmount:kind==='goal'?item.reserved_amount||0:null,linkedAmount:null}
     // The linked-entries endpoint handles every shopping receipt in one read.
