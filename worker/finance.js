@@ -223,7 +223,8 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     const saved=await savedSettings(db,h,kind,id)
     const rewardCreditYen=kind==='goal'?
       await goalRewardCreditAmount(db,h,id):0
-    const result={adjustmentAmount:saved?.adjustment_amount||0,rewardCreditYen,
+    const result={adjustmentAmount:saved?.adjustment_amount||0,
+      ...(rewardCreditYen>0?{rewardCreditYen}:{}),
       periodStart:saved?.period_start||null,periodEnd:saved?.period_end||null,
       openingAmount:kind==='goal'?item.reserved_amount||0:null,linkedAmount:null}
     // The linked-entries endpoint handles every shopping receipt in one read.
