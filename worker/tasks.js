@@ -279,7 +279,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
           AND (?6=0 OR bonus_points=0 OR second_assignee_user_id IS NOT NULL
             OR assignee_user_id=creator_user_id
             OR datetime(created_at)>=${pointYearStartSql}
-            OR ${householdWalletSql('household_id','creator_user_id')}>=bonus_points)`)
+            OR ${householdWalletSql('tasks.household_id','tasks.creator_user_id')}>=bonus_points)`)
         .bind(b.completed?stamp:null,b.completed?who:null,stamp,task.id,household,b.completed?1:0)
       let changed=0
       if(b.completed && task.subject_profile_id && task.health_record_type){
