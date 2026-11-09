@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {lotteryOdds,lotteryRoute} from '../worker/lottery.js'
 import {rewardsRoute} from '../worker/rewards.js'
 import {pointsRoute} from '../worker/points.js'
+import {pointsHistoryRoute} from '../worker/points-history.js'
 import {goalRewardCreditAmount} from '../worker/reward-goal-credits.js'
 import {expiringCouponReminders} from '../worker/webpush.js'
 
@@ -188,5 +189,72 @@ test('coupon expiry follows JST dates, allows cross-year carry, and warns 7 days
   sqlite.prepare("UPDATE lottery_coupons SET expires_on=date('now','+9 hours','-1 day') WHERE id=?").run(c1.id)
   assert.equal((await coupons(db,alice)).find(x=>x.id===c1.id).status,'expired')
   assert.equal((await draw(db,alice,'empty',{ticketCouponId:c1.id})).status,409)
+ }finally{sqlite.close()}
+})
+
+test('lottery summary matches wallet and annual ledger for six-point prizes and free-ticket draws',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',10)
+  const before=await (await pointsRoute(new Request('https://homeflow.invalid/api/points'),db,alice)).json()
+  assert.equal(before.pointRules.onceUnassigned,5,'all new one-off completions award five base points')
+  assert.equal(before.pointRules.onceAssigned,5)
+  const ticket=await draw(db,alice,'ticket')
+  const six=await draw(db,alice,'six')
+  const free=await draw(db,alice,'ten',{ticketCouponId:ticket.body.draw.id})
+  const shopCoupon=await draw(db,alice,'shop')
+  const wishCoupon=await draw(db,alice,'wish')
+  for(const result of [ticket,six,free,shopCoupon,wishCoupon])assert.equal(result.status,201)
+  assert.equal(free.body.draw.cost,0)
+  const net=[ticket,six,free,shopCoupon,wishCoupon]
+    .reduce((total,{body})=>total+body.draw.points-body.draw.cost,0)
+  assert.equal(net,-4,'all five draws cost 5, except the free ticket')
+  const after=await (await pointsRoute(new Request('https://homeflow.invalid/api/points'),db,alice)).json()
+  assert.equal(after.lotteryNetPoints,net)
+  assert.equal(after.availablePoints,before.availablePoints+net)
+  assert.equal(after.experience,before.experience,'lottery never creates XP')
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const history=await pointsHistoryRoute(new Request(
+   'https://homeflow.invalid/api/points/history?year='+year+'&category=lottery'),db,alice)
+  assert.equal(history.status,200)
+  const ledger=await history.json()
+  assert.equal(ledger.members.find(m=>m.userId==='alice').lotteryNetPoints,net)
+  assert.equal(ledger.members.find(m=>m.userId==='alice').endingPoints,after.availablePoints)
+  assert.equal(ledger.entries.length,5)
+ }finally{sqlite.close()}
+})
+
+test('yearly history excludes free-ticket and wish-coupon events from the Shop filter',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',10)
+  const ticket=await draw(db,alice,'ticket')
+  const used=await draw(db,alice,'ten',{ticketCouponId:ticket.body.draw.id})
+  const shopCoupon=await draw(db,alice,'shop')
+  const wishCoupon=await draw(db,alice,'wish')
+  assert.ok([ticket,used,shopCoupon,wishCoupon].every(r=>r.status===201))
+  // Model expiration without spending a production coupon. History must
+  // retain distinct coupon kinds even after expiry or manual consumption.
+  sqlite.prepare("UPDATE lottery_coupons SET expires_on=date('now','+9 hours','-1 day') WHERE id=?").run(shopCoupon.body.draw.id)
+  const year=new Date(Date.now()+9*3600000).getUTCFullYear()
+  const query=async(category,page=1)=>{
+   const res=await pointsHistoryRoute(new Request(
+    'https://homeflow.invalid/api/points/history?year='+year+'&category='+category+'&page='+page),db,alice)
+   assert.equal(res.status,200)
+   return res.json()
+  }
+  const shop=await query('shop')
+  assert.equal(shop.total,1,'only the shop coupon expiry belongs to Shop')
+  assert.equal(shop.entries[0].category,'coupon_shop_expire')
+  const first=await query('lottery')
+  const second=await query('lottery',2)
+  const categories=[...first.entries,...second.entries].map(e=>e.category)
+  assert.ok(categories.includes('coupon_ticket_use'))
+  assert.ok(categories.includes('coupon_shop_expire'))
+  assert.equal(categories.filter(c=>c==='lottery').length,4)
+  assert.equal(first.total,6)
+  const all=await query('all')
+  assert.ok(all.total>=first.total)
+  assert.equal((await query('shop',2)).entries.length,0)
  }finally{sqlite.close()}
 })

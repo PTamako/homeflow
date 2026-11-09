@@ -68,6 +68,9 @@ const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===i
 const categoryNames:Record<string,string>={
  complete:'任务完成',bounty:'指定奖励',reserved:'指定扣分',
  shopping:'购物计划',lottery:'幸运抽奖',
+ coupon_ticket_use:'免费抽奖券使用',coupon_ticket_expire:'免费抽奖券到期',
+ coupon_shop_use:'商城95折券使用',coupon_shop_expire:'商城95折券到期',
+ coupon_wish_use:'心愿加速券使用',coupon_wish_expire:'心愿加速券到期',
  redeem:'商城兑换',pool:'合力兑换',
  weekly:'每周挑战',achievement:'月度成就',
  savings:'储值奖励',trip:'旅行奖励'
@@ -747,8 +750,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
              <template v-else>中奖 {{ fmt(entry.prizePoints||0) }} 分 · </template>
              净变化 {{ signedPoints(entry.amount) }} 分
            </small>
-           <small v-else-if="entry.category==='coupon_use'||entry.category==='coupon_expire'"
-             class="annual-ledger-breakdown">奖励券{{ entry.category==='coupon_use'?'已核销':'已过期' }} · 保留永久记录</small>
+           <small v-else-if="entry.category.startsWith('coupon_')"
+             class="annual-ledger-breakdown">奖励券{{ entry.category.endsWith('_use')?'已核销':'已过期' }} · 保留永久记录</small>
            <small v-else class="annual-ledger-breakdown">
              {{ entry.amount<0?'扣减':'获得' }} {{ fmt(Math.abs(entry.amount)) }} 分 · 贡献变化 {{ signedPoints(entry.contribution) }} 分
            </small>
