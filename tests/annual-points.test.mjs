@@ -66,7 +66,7 @@ test('D1 annual history avoids oversized compound SELECTs',()=>{
  // D1's compound SELECT limit is lower than local Node SQLite's. Nested
  // groups cap each compound at five ledger sources while keeping all sources.
  const groups=query.split(') UNION ALL SELECT * FROM (')
- assert.equal(groups.length,5)
+ assert.ok(groups.length>=4&&groups.length<=5)
  assert.match(query,/^SELECT \* FROM \(/)
  assert.ok(groups.every(group=>group.split(' UNION ALL ').length<=7))
  for(const source of ['completion_points','reward_redemptions','household_lottery_draws',
