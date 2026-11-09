@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
-import {portableRoute,RESTORE_ORDER} from '../worker/portable.js'
+import {portableRoute,RESTORE_ORDER,POINTS_AUDIT_SOURCES} from '../worker/portable.js'
 import {tasksRoute} from '../worker/tasks.js'
 import {lifeRoute} from '../worker/life.js'
 import {petsRoute} from '../worker/pets.js'
@@ -771,8 +771,31 @@ test('portable points audit is complete but read-only and isolates other members
   const points=await read('completionPoints')
   assert.deepEqual(new Set(points.items.map(item=>item.source_id)),new Set(['self','shared']))
   assert.equal(points.nextCursor,null)
+  for(const [dataset] of POINTS_AUDIT_SOURCES){
+    const result=await read(dataset)
+    assert.ok(Array.isArray(result.items),dataset)
+  }
   const shop=await read('rewardRedemptions')
   assert.ok(Array.isArray(shop.items))
+  // A shared point/stock history must not expose another member's private wish.
+  const redemptionId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const poolId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  sqlite.prepare(`INSERT INTO reward_redemptions
+    (id,household_id,reward_id,redeemed_by,title_snapshot,icon_snapshot,
+      points_spent,client_request_id,created_at,wish_title_snapshot)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(redemptionId,'primary','primary:dessert',second,
+      '秘密礼物','🎁',100,'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      new Date().toISOString(),'另一位成员的私人心愿')
+  sqlite.prepare(`INSERT INTO reward_group_orders
+    (id,household_id,reward_id,created_by,client_request_id,
+     title_snapshot,icon_snapshot,points_required,created_at,wish_title_snapshot)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(poolId,'primary','primary:dessert',second,
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd','私人合力','🎁',100,
+      new Date().toISOString(),'对方的私人梦想')
+  const r=await read('rewardRedemptions')
+  const p=await read('rewardGroupOrders')
+  assert.equal(r.items.find(x=>x.id===redemptionId)?.wish_title_snapshot,null)
+  assert.equal(p.items.find(x=>x.id===poolId)?.wish_title_snapshot,null)
   assert.equal((await portableRoute(new Request('https://homeflow.invalid/api/portable/audit?dataset=users'),
    source.db,'/api/portable/audit',session)).status,400)
   const restore=await portableRoute(new Request('https://homeflow.invalid/api/portable/restore',{
