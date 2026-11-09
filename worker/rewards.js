@@ -123,7 +123,7 @@ export async function rewardsRoute(request,db,path,session){
             AND status<>'cancelled'
             AND (status<>'collecting' OR ${pointYearPredicate('created_at')})
             ORDER BY created_at DESC,id DESC LIMIT 5 OFFSET ?2)
-        GROUP BY c.order_id,c.user_id,u.login_name`).bind(h,(groupPage-1)*pageSize).all()
+        GROUP BY c.order_id,c.user_id,u.login_name`).bind(h,(groupPage-1)*pageSize).all(),
       db.prepare(`SELECT COUNT(*) AS total FROM (
         SELECT 1 FROM reward_redemptions x WHERE x.household_id=?1
         GROUP BY x.redeemed_by,SUBSTR(x.client_request_id,1,36),
