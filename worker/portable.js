@@ -403,7 +403,16 @@ export async function portableRoute(request,db,path,session){
       db.prepare(`SELECT * FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT 101 OFFSET ?2`)
         .bind(...args)
     const {results=[]}=await bound.all()
-    return json({dataset:key,items:results.slice(0,100),
+    const items=results.slice(0,100).map(row=>{
+      // Shared redemption amounts are auditable, but another member's
+      // personal linked wish title/goal ID must never escape their account.
+      const otherRedemption=key==='rewardRedemptions'&&row.redeemed_by!==user
+      const otherPool=key==='rewardGroupOrders'&&row.created_by!==user
+      if(!otherRedemption&&!otherPool)return row
+      return {...row,credited_wish_id:null,credited_goal_id:null,
+        wish_title_snapshot:null}
+    })
+    return json({dataset:key,items,
       nextCursor:results.length>100?String(offset+100):null})
   }
 
