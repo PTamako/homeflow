@@ -593,7 +593,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <p class="annual-note">{{ history&&history.year<history.currentYear?
       '年末未用积分已经清零，仅供历史回顾，不能继续兑换。':'当前年度积分将于12月31日结束，次年1月1日清零。' }}</p>
      <div class="annual-ledger">
-       <div class="annual-ledger-title"><b>积分流水</b><small v-if="history">共 {{ history.total }} 条 · 每页10条</small></div>
+       <div class="annual-ledger-title"><b>积分流水</b><small v-if="history">共 {{ history.total }} 条 · 每页5条</small></div>
        <p v-if="historyBusy&&!history" class="points-loading">正在加载明细…</p>
        <p v-else-if="history&&!history.entries.length" class="points-loading">该年度暂无积分记录</p>
        <div v-for="(entry,i) in history?.entries||[]" :key="entry.stamp+entry.userId+entry.category+i" class="annual-ledger-row">
