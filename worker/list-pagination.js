@@ -80,10 +80,10 @@ export async function listPage(db,table,session,filters,options={}){
     if(filters.scope==='unscheduled')
       clauses.push('completed_at IS NULL',"(due_on IS NULL OR due_on='')")
   }else if(table==='anniversaries'){
-    // Recurring annual/monthly events always have a future occurrence.
-    // Only one-off events in the past belong to this archive.
-    if(filters.scope==='history')push("(repeat_mode='once' AND event_date<{0})",localDate)
-    if(filters.scope==='active')push("(repeat_mode!='once' OR event_date>={0})",localDate)
+    // Explicitly archived dates and elapsed one-offs appear in history.
+    // Recurring events remain upcoming unless explicitly archived.
+    if(filters.scope==='history')push("(archived_at IS NOT NULL OR (repeat_mode='once' AND event_date<{0}))",localDate)
+    if(filters.scope==='active')push("(archived_at IS NULL AND (repeat_mode!='once' OR event_date>={0}))",localDate)
   }else if(table==='wishes'){
     if(filters.scope==='active')clauses.push("status NOT IN ('completed','cancelled')")
     if(filters.scope==='history')clauses.push("status IN ('completed','cancelled')")
