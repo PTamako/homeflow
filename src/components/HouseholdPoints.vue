@@ -670,6 +670,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div class="reward-details"><b>{{ item.title }}</b><small>{{ item.description }}</small>
            <span>{{ fmt(item.points) }} 分/件 <small v-if="item.stock!==null"> · 剩余 {{ Math.max(0,item.stock-item.redeemedCount) }}</small></span>
            <small v-if="quantityFor(item)>1">合计 {{ fmt(item.points*quantityFor(item)) }} 分</small>
+           <small v-if="item.goalCreditYen>0" class="reward-goal-note">可关联心愿储值 · ¥{{ Number(item.goalCreditYen).toLocaleString('ja-JP') }}/件</small>
          </div>
          <button type="button" class="redeem-btn reward-buy" :disabled="busy||points<item.points*quantityFor(item)||(item.stock!==null&&item.redeemedCount+quantityFor(item)>item.stock)"
            @click="redeem(item)">{{ item.stock!==null&&item.redeemedCount>=item.stock?'售罄':'兑换' }}</button>
@@ -688,7 +689,35 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          </div>
        </article>
      </div>
-     <details v-if="hiddenRewards.length" class="hidden-rewards">
+     <EditBottomSheet v-if="wishRewardDraft" :title="wishRewardDraft.action==='redeem'?'兑换并关联心愿':'合力兑换 · 关联心愿'"
+        :close-disabled="busy||wishGoalLoading" @close="closeWishReward">
+        <div class="wish-reward-sheet">
+          <p><b>{{ wishRewardDraft.item.title }}</b> · {{ wishRewardDraft.quantity }} 件 ·
+            {{ wishRewardDraft.item.points*wishRewardDraft.quantity }} 积分</p>
+          <p class="wish-reward-credit">将获得 ¥{{ (wishRewardDraft.item.goalCreditYen*wishRewardDraft.quantity).toLocaleString('ja-JP') }} 的奖励抵扣额度</p>
+          <p v-if="wishGoalLoading">读取可关联心愿…</p>
+          <template v-else>
+            <label v-if="wishGoalOptions.length">选择心愿及对应的储值计划
+              <select v-model="wishGoalSelected">
+                <option value="">请选择心愿</option>
+                <option v-for="option in wishGoalOptions" :key="option.goalId" :value="option.goalId">
+                  {{ option.wishTitle }} · {{ option.goalTitle }}
+                </option>
+              </select>
+            </label>
+            <p v-else class="wish-reward-notice">暂无可关联的心愿储值计划，请先在计划中创建心愿及累计储值计划。</p>
+            <p class="wish-reward-notice">仅增加心愿的虚拟奖励额度，不会生成实际银行存款或家計簿账单。
+              <template v-if="wishRewardDraft.action==='pool'">合力兑换需要先凑齐积分，凑齐后才计入。</template>
+            </p>
+            <p v-if="wishGoalError||error" role="alert" class="points-error">{{ wishGoalError||error }}</p>
+            <button type="button" class="redeem-btn wish-reward-confirm"
+              :disabled="busy||!wishGoalSelected" @click="submitWishReward">
+              {{ busy?'处理中…':wishRewardDraft.action==='pool'?'确认创建合力兑换':'确认兑换并计入储值' }}
+            </button>
+          </template>
+        </div>
+      </EditBottomSheet>
+      <details v-if="hiddenRewards.length" class="hidden-rewards">
        <summary>已下架的奖励（{{ hiddenRewards.length }}）</summary>
        <div v-for="item in hiddenRewards" :key="item.id" class="archived-row">
          <span>{{ item.icon }} {{ item.title }} · {{ item.points }}分</span>
@@ -707,6 +736,10 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <label>积分<input v-model="formCost" type="number" inputmode="numeric" min="10" max="10000" step="1" required/></label>
          <label>库存<input v-model="formStock" type="number" inputmode="numeric" min="0" max="9999" placeholder="无限"/></label>
        </div>
+       <label>关联心愿储值额度（¥/件，0 表示不关联）
+         <input v-model="formCredit" type="number" inputmode="numeric" min="0" max="100000" step="1"/>
+       </label>
+       <small class="reward-credit-help">大于 0 时，兑换人须选择已关联累计储值的心愿。属于家庭奖励额度，不是实际存款。</small>
        <label class="checkbox-line"><input v-model="formActive" type="checkbox"/> 上架</label>
        <button type="submit" class="save-btn" :disabled="busy">{{ busy?'保存中…':'保存奖励' }}</button>
      </form>
@@ -722,6 +755,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div v-if="order.status!=='cancelled'" class="challenge-bar">
            <span :style="{width:Math.min(100,order.fundedPoints/order.points*100)+'%'}"></span>
          </div>
+         <small v-if="order.goalCreditYen>0" class="reward-goal-note">心愿{{ order.wishTitle?'「'+order.wishTitle+'」':'' }} · 奖励额度 ¥{{ Number(order.goalCreditYen).toLocaleString('ja-JP') }} · {{ order.status==='collecting'?'凑齐后计入':'已计入储值' }}</small>
          <div v-if="order.contributions.length" class="pool-contributors">
            <span v-for="c in order.contributions" :key="c.userId">{{ c.displayName }}：{{ fmt(c.points) }}分</span>
          </div>
@@ -749,7 +783,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
        <b>兑换记录</b>
        <div v-for="record in shop.redemptions" :key="record.id" class="history-row">
          <span>{{ record.icon }}</span>
-         <div><strong>{{ record.title }}</strong><small>{{ record.redeemedByName }} · {{ record.quantity||1 }}件 · {{ record.points }}分 · {{ dateText(record.createdAt) }}</small></div>
+         <div><strong>{{ record.title }}</strong><small>{{ record.redeemedByName }} · {{ record.quantity||1 }}件 · {{ record.points }}分 · {{ dateText(record.createdAt) }}<template v-if="record.creditedYen>0"> · 心愿奖励 ¥{{ Number(record.creditedYen).toLocaleString('ja-JP') }}{{ record.wishTitle?' → '+record.wishTitle:'' }}</template></small></div>
          <span class="history-status" :class="{fulfilled:record.status==='fulfilled'}">{{ record.status==='fulfilled'?'已兑现':'待兑现' }}</span>
          <button v-if="record.status==='requested'" type="button" :disabled="busy" @click="fulfill(record)">确认兑现</button>
        </div>
@@ -1062,6 +1096,15 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .reward-buy{grid-column:3;grid-row:1;min-height:32px;white-space:nowrap}
 .reward-actions{grid-column:2/-1;grid-row:2;display:flex;gap:6px;justify-content:flex-end;
   align-items:center;min-width:0;flex-wrap:wrap}
+.reward-goal-note{font-size:11px;color:#578c69;line-height:1.35}
+.wish-reward-sheet{display:grid;gap:12px;padding:2px 0 8px}
+.wish-reward-sheet p{margin:0;color:#587660;font-size:12px;line-height:1.55}
+.wish-reward-sheet label{display:grid;gap:7px;font-size:12px;color:#507457}
+.wish-reward-sheet select{min-height:44px;width:100%;min-width:0;border:1px solid #d4e4d8;border-radius:9px;background:#fff;color:#345d44;padding:8px;font-size:14px}
+.wish-reward-sheet .wish-reward-credit{font-size:14px;font-weight:700;color:#41815a}
+.wish-reward-sheet .wish-reward-notice{color:#7b8c7c;font-size:11px}
+.wish-reward-confirm{justify-self:stretch;min-height:42px}
+.reward-credit-help{font-size:11px;color:#7b8c7c;line-height:1.5}
 .quantity-stepper{display:inline-flex;align-items:center;flex:none;gap:0;border:1px solid #d7e8da;border-radius:8px;background:#f7faf7;overflow:hidden}
 .quantity-stepper button{display:grid;place-items:center;min-width:29px;min-height:30px;border:0;background:none;color:#478466;font-size:17px;line-height:1}
 .quantity-stepper button:disabled{opacity:.35}
