@@ -12,7 +12,7 @@ const migrationSql=readFileSync(new URL('../migrations/'+latest,import.meta.url)
 const createFixture=()=>{
  const db=new DatabaseSync(':memory:')
  db.exec('PRAGMA foreign_keys=ON')
- for(const name of migrations.slice(0,-1))
+ for(const name of migrations.slice(0,migrations.indexOf(latest)))
   db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'))
  db.exec(`
   INSERT INTO households(id,display_name) VALUES('home','Home');
