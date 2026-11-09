@@ -47,7 +47,7 @@ test('contribution counts weekly household bonuses but not lottery or redemption
  try{
   for(let i=0;i<10;i++){addTask(db,'work-'+i,'alice');complete(db,'work-'+i,'alice')}
   const before=await members()
-  assert.ok(before.alice.sharedPoints>=130,'10 completions and weekly challenge are contributors')
+  assert.ok(before.alice.sharedPoints>=80,'10 five-point completions and weekly challenge are contributors')
   assert.equal(before.alice.monthPoints,before.alice.sharedPoints)
   db.prepare(`INSERT INTO household_lottery_draws
     (id,household_id,user_id,client_request_id,month_on,prize_kind,cost_points,prize_points,created_at)

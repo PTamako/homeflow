@@ -26,7 +26,15 @@ function fixture(){
 }
 function earn(sqlite,user,count=15,visibility='household'){
  const q=sqlite.prepare("INSERT INTO completion_points(household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at) VALUES(?1,'task',?2,'',?3,?4,10,?5)")
- for(let i=0;i<count;i++)q.run(user==='c'?'h2':'h',crypto.randomUUID(),user,visibility,new Date().toISOString())
+ // Seed explicit historical 10-point awards. The current trigger correctly
+ // auto-adjusts *new* tasks to five, so remove its adjustment in this
+ // legacy-wallet test fixture (not in production application code).
+ const undo=sqlite.prepare("DELETE FROM completion_point_adjustments WHERE household_id=?1 AND kind='task' AND source_id=?2")
+ for(let i=0;i<count;i++){
+  const id=crypto.randomUUID(),house=user==='c'?'h2':'h'
+  q.run(house,id,user,visibility,new Date().toISOString())
+  undo.run(house,id)
+ }
 }
 async function call(db,session,method='GET',id,kind='empty',notify){
  const path=method==='POST'?'/api/lottery/draw':'/api/lottery'

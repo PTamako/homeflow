@@ -11,7 +11,7 @@ import {annualPointLedgerSql,pointsHistoryRoute,jstYearWindow} from '../worker/p
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
 const names=[...manifests.matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(m=>m[1])
-assert.equal(names.length,49)
+assert.equal(names.length,50)
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
@@ -51,7 +51,14 @@ function earn(sqlite,user,quantity=12,visibility='household',offset=0){
  const q=sqlite.prepare(`INSERT INTO completion_points
  (household_id,kind,source_id,occurrence_on,earner_user_id,visibility,points,earned_at)
  VALUES('h','task',?1,'',?2,?3,10,?4)`)
- for(let i=0;i<quantity;i++)q.run(user+'-'+(i+offset),user,visibility,stamp)
+ // Older 10-point awards remain valid after the new scoring migration.
+ // This fixture intentionally represents those historical ledger rows.
+ const undo=sqlite.prepare("DELETE FROM completion_point_adjustments WHERE household_id='h' AND kind='task' AND source_id=?1")
+ for(let i=0;i<quantity;i++){
+  const key=user+'-'+(i+offset)
+  q.run(key,user,visibility,stamp)
+  undo.run(key)
+ }
 }
 test('migration creates four configurable household presets and strong foreign keys',async()=>{
  const {sqlite,db}=fixture()

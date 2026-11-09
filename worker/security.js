@@ -100,6 +100,8 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM d1_migrations
        WHERE name='0046_reward_wish_savings_credit.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0047_anniversary_archive.sql') AS anniversary_migration_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name='0048_oneoff_five_points.sql') AS oneoff_migration_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='points_adjust_new_completion' AND instr(sql,'WHEN NEW.kind IN (''task'',''routine'')')>0) AS oneoff_rule_ready,
       (SELECT COUNT(*) FROM pragma_table_info('anniversaries') WHERE name='archived_at') AS anniversary_archive_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
        (SELECT COUNT(*) FROM pragma_table_info('reward_redemptions') WHERE name='goal_credit_yen') AS reward_credit_ready,
@@ -151,6 +153,8 @@ export async function verifiedDatabase(env) {
     const valid=identity?.database_name===expected &&
       Number(identity.required_migration_ready)===1 &&
        Number(identity.anniversary_migration_ready)===1 &&
+       Number(identity.oneoff_migration_ready)===1 &&
+       Number(identity.oneoff_rule_ready)===1 &&
        Number(identity.anniversary_archive_ready)===1 &&
       Number(identity.lottery_migration_ready)===1 &&
        Number(identity.reward_credit_ready)===1 &&
