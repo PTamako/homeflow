@@ -12,7 +12,7 @@ const migrationSql=readFileSync(new URL('../migrations/'+latest,import.meta.url)
 const createFixture=()=>{
  const db=new DatabaseSync(':memory:')
  db.exec('PRAGMA foreign_keys=ON')
- for(const name of migrations.slice(0,-1))
+ for(const name of migrations.slice(0,migrations.indexOf(latest)))
   db.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'))
  db.exec(`
   INSERT INTO households(id,display_name) VALUES('home','Home');
@@ -45,6 +45,7 @@ test('migration preserves all pre-existing unassigned +10 awards, while new task
   done(old,'owner')
   assert.deepEqual(pointRows(db,old),[{original:10,adjustment:0,total:10}])
   db.exec(migrationSql)
+  db.exec(readFileSync(new URL('../migrations/0049_lottery_balanced_coupons.sql',import.meta.url),'utf8'))
   assert.deepEqual(pointRows(db,old),[{original:10,adjustment:0,total:10}],
     'an additive scoring migration must not backfill old earnings')
   add(recent)
@@ -69,6 +70,7 @@ test('routine and joint task distribution remains five points after migration',(
  const db=createFixture()
  try{
   db.exec(migrationSql)
+  db.exec(readFileSync(new URL('../migrations/0049_lottery_balanced_coupons.sql',import.meta.url),'utf8'))
   db.prepare(`INSERT INTO tasks(id,household_id,creator_user_id,visibility,title,
     assignee_user_id,second_assignee_user_id,bonus_points)
     VALUES('joint','home','owner','household','共同完成','owner','member',0)`).run()

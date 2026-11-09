@@ -6,6 +6,9 @@ export const goalRewardCreditSql=(household,goal)=>`(
   COALESCE((SELECT SUM(r.goal_credit_yen)
     FROM reward_redemptions r
     WHERE r.household_id=${household} AND r.credited_goal_id=${goal}),0)
+  + COALESCE((SELECT COUNT(*)*100 FROM lottery_coupons c
+    WHERE c.household_id=${household} AND c.used_goal_id=${goal}
+      AND c.kind='wish' AND c.used_at IS NOT NULL),0)
   + COALESCE((SELECT SUM(o.goal_credit_yen)
     FROM reward_group_orders o
     WHERE o.household_id=${household} AND o.credited_goal_id=${goal}

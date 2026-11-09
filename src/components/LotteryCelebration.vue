@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed} from 'vue'
 
-type PrizeKind='empty'|'five'|'ten'|'twenty'|'fifty'|'double'
+type PrizeKind='empty'|'five'|'six'|'ten'|'twenty'|'fifty'|'double'|'ticket'|'shop'|'wish'
 type Draw={id:string;kind:PrizeKind;points:number}
 const props=defineProps<{draw:Draw|null}>()
 const mode=computed(()=>
@@ -12,6 +12,10 @@ const title=computed(()=>{
  switch(props.draw?.kind){
   case 'empty':return '哎呀，空手而归！'
   case 'five':return '🎉 小幸运降临！'
+  case 'six':return '🍀 幸运小赚，净赚 1 分！'
+  case 'ticket':return '🎟 免费抽奖券到手！'
+  case 'shop':return '🛍 家庭商城95折券！'
+  case 'wish':return '💖 心愿加速券到手！'
   case 'ten':return '🎊 好运正在靠近！'
   case 'twenty':return '💎 幸运爆棚！'
   case 'fifty':return '🌟 稀有大奖！'
@@ -20,7 +24,10 @@ const title=computed(()=>{
  }
 })
 const caption=computed(()=>props.draw?.kind==='empty'?'好运正在蓄力，下次再来！':
- props.draw?.kind==='double'?'积分翻倍，今天幸运值拉满！':
+ props.draw?.kind==='double'?'传说翻倍奖：最低80分，最高200分！':
+ props.draw?.kind==='ticket'?'有效期60天，可以自己选择哪次免费抽奖。':
+ props.draw?.kind==='shop'?'有效期90天，95折最高优惠50积分。':
+ props.draw?.kind==='wish'?'有效期90天，任选有效心愿增加¥100虚拟奖励。':
  props.draw?.kind==='fifty'?'金色好运，稀有奖励已到账！':'奖励已计入可用家庭积分')
 // CSS-only particles have bounded counts and stable deterministic positions.
 // This avoids canvas, libraries and sustained rendering loops on mobile.
@@ -61,8 +68,12 @@ const rain=Array.from({length:14},(_,index)=>({
      </div>
      <strong class="lottery-fx-title">{{ title }}</strong>
      <div v-if="draw.kind!=='empty'" class="lottery-fx-award">
-      <span v-if="mode==='jackpot'" class="lottery-fx-double-label">JACKPOT · 积分翻倍</span>
-      <span class="lottery-fx-total">+{{ draw.points.toLocaleString('zh-CN') }}<small>积分</small></span>
+      <span v-if="mode==='jackpot'" class="lottery-fx-double-label">JACKPOT · 80～200 分</span>
+      <span v-if="['ticket','shop','wish'].includes(draw.kind)" class="lottery-fx-total">
+        {{ draw.kind==='ticket'?'免费抽奖':draw.kind==='shop'?'95折':'¥100' }}
+        <small>奖励券已入库</small>
+      </span>
+      <span v-else class="lottery-fx-total">+{{ draw.points.toLocaleString('zh-CN') }}<small>积分</small></span>
      </div>
      <p>{{ caption }}</p>
     </div>

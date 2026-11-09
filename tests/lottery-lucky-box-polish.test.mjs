@@ -36,7 +36,7 @@ test('jackpot turns the chest gold without affecting drawing logic or the existi
  assert.match(css,/\.lottery-box--jackpot \.lottery-chest\{[\s\S]*?animation:/)
  assert.match(source,/const LOTTERY_RESULT_DURATION_MS=3000/)
  assert.match(source,/<LotteryCelebration :draw="lotteryLastDraw"\/>/)
- assert.match(source,/fetchJSON\('\/lottery\/draw','POST',\{requestId\}\)/)
+ assert.match(source,/fetchJSON\('\/lottery\/draw','POST',\{requestId,ticketCouponId\}\)/)
 })
 
 test('lucky box remains compact on narrow iPhones and respects reduced-motion preferences',()=>{

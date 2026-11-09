@@ -49,21 +49,23 @@ export const annualPointLedgerSql=()=>{
   source('goal_completion_rewards','g','g.user_id',"'household'",'g.points','savings',"'储值计划达标'",'g.awarded_at'),
   source('trip_completion_rewards','t','t.user_id','t.visibility','t.points','trip',"'旅行完成奖励'",'t.awarded_at'),
   source('monthly_achievement_credits','a','a.user_id',"'household'",'a.points','achievement',"'月度成就奖励'",'a.awarded_at'),
-  source('household_lottery_draws','l','l.user_id',"'household'",'l.prize_points','lottery_prize',"'抽奖中奖'",'l.created_at','AND l.prize_points>0'),
+  source('household_lottery_draws','l','l.user_id',"'household'",'l.prize_points+l.prize_bonus_points','lottery_prize',"'抽奖中奖'",'l.created_at','AND l.prize_points+l.prize_bonus_points>0'),
   // Prize and ticket cost are separate so spent totals and yearly balance reconcile.
-  `SELECT l.user_id AS userId,'household' AS visibility,-l.cost_points AS amount,
+  `SELECT l.user_id AS userId,'household' AS visibility,
+    -CASE WHEN l.ticket_coupon_id IS NULL THEN l.cost_points ELSE 0 END AS amount,
     0 AS contribution,'lottery_cost' AS category,'抽奖消耗' AS label,l.created_at AS stamp
     FROM household_lottery_draws l WHERE l.household_id=?1`,
   // A multi-quantity redemption writes one row per unit for atomic inventory,
   // but the ledger presents that purchase as ONE event (and one pagination slot).
   // The stable first 36 characters identify the original request UUID; a later
   // purchase of the same reward has a different UUID and remains separate.
-  `SELECT r.redeemed_by AS userId,'household' AS visibility,-SUM(r.points_spent) AS amount,
+  `SELECT r.redeemed_by AS userId,'household' AS visibility,-SUM(r.points_spent)+COALESCE(SUM(d.discount_points),0) AS amount,
     0 AS contribution,'redeem' AS category,
     '兑换：'||r.title_snapshot||
       CASE WHEN COUNT(*)>1 THEN ' ×'||COUNT(*) ELSE '' END AS label,
     MAX(r.created_at) AS stamp
-    FROM reward_redemptions r WHERE r.household_id=?1
+    FROM reward_redemptions r LEFT JOIN reward_coupon_discounts d ON d.redemption_id=r.id
+    WHERE r.household_id=?1
     GROUP BY r.household_id,r.redeemed_by,SUBSTR(r.client_request_id,1,36),
       r.reward_id,r.title_snapshot,r.icon_snapshot`,
   `SELECT c.user_id AS userId,'household' AS visibility,-c.points AS amount,
@@ -175,21 +177,44 @@ display AS (
   FROM ledger WHERE category NOT IN ('lottery_cost','lottery_prize')
   UNION ALL
   SELECT l.user_id AS userId,'household' AS visibility,
-    l.prize_points-l.cost_points AS amount,0 AS contribution,
+    l.prize_points+l.prize_bonus_points-
+      CASE WHEN l.ticket_coupon_id IS NULL THEN l.cost_points ELSE 0 END AS amount,0 AS contribution,
     'lottery' AS category,
-    CASE l.prize_kind WHEN 'empty' THEN '空手而归'
-      WHEN 'double' THEN '好运箱 · 积分翻倍'
+    CASE WHEN l.special_prize_kind='ticket' THEN '好运箱 · 免费抽奖券'
+      WHEN l.special_prize_kind='shop' THEN '好运箱 · 商城95折券'
+      WHEN l.special_prize_kind='wish' THEN '好运箱 · 心愿加速券'
+      WHEN l.prize_kind='empty' THEN '空手而归'
+      WHEN l.prize_kind='double' THEN '好运箱 · 传说翻倍'
+      WHEN l.prize_kind='five' AND l.prize_bonus_points=1 THEN '好运箱 · 幸运小赚'
       ELSE '好运箱 · 中奖' END AS label,
-    l.created_at AS stamp,l.prize_kind AS prizeKind,
-    l.cost_points AS ticketCost,l.prize_points AS prizePoints,l.id AS eventId
+    l.created_at AS stamp,
+    COALESCE(l.special_prize_kind,CASE WHEN l.prize_kind='five' AND l.prize_bonus_points=1
+      THEN 'six' ELSE l.prize_kind END) AS prizeKind,
+    CASE WHEN l.ticket_coupon_id IS NULL THEN l.cost_points ELSE 0 END AS ticketCost,
+    l.prize_points+l.prize_bonus_points AS prizePoints,l.id AS eventId
   FROM household_lottery_draws l WHERE l.household_id=?1
+  UNION ALL
+  SELECT c.user_id,'household',0,0,'coupon_use',
+    CASE c.kind WHEN 'ticket' THEN '使用免费抽奖券'
+      WHEN 'shop' THEN '使用商城95折券'
+      ELSE '心愿加速券 · ¥100' END,
+    c.used_at,NULL,NULL,NULL,c.id
+  FROM lottery_coupons c WHERE c.household_id=?1 AND c.used_at IS NOT NULL
+  UNION ALL
+  SELECT c.user_id,'household',0,0,'coupon_expire',
+    CASE c.kind WHEN 'ticket' THEN '免费抽奖券到期'
+      WHEN 'shop' THEN '商城95折券到期'
+      ELSE '心愿加速券到期' END,
+    datetime(c.expires_on,'+1 day','-9 hours'),NULL,NULL,NULL,c.id
+  FROM lottery_coupons c WHERE c.household_id=?1 AND c.used_at IS NULL
+    AND c.expires_on<date('now','+9 hours')
 )`
 const POINTS_CATEGORY_FILTERS=Object.freeze({
  all:'1=1',
  task:"category IN ('complete','bounty','reserved')",
  shopping:"category='shopping'",
- lottery:"category='lottery'",
- shop:"category IN ('redeem','pool')",
+ lottery:"category IN ('lottery','coupon_use','coupon_expire')",
+ shop:"category IN ('redeem','pool','coupon_use','coupon_expire')",
  achievement:"category IN ('weekly','achievement')",
  saving:"category IN ('savings','trip')"
 })

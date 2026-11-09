@@ -89,12 +89,14 @@ export async function rewardsRoute(request,db,path,session){
             AND p.archived_at IS NULL ORDER BY p.created_at DESC LIMIT 1),
           m.login_name) AS redeemedByName,
         x.title_snapshot AS title,x.icon_snapshot AS icon,
-        SUM(x.points_spent) AS points,COUNT(*) AS quantity,
+        SUM(x.points_spent)-COALESCE(SUM(dc.discount_points),0) AS points,
+        COALESCE(SUM(dc.discount_points),0) AS discountPoints,COUNT(*) AS quantity,
         SUM(x.goal_credit_yen) AS creditedYen,
         CASE WHEN x.redeemed_by=?2 THEN MAX(x.wish_title_snapshot) ELSE NULL END AS wishTitle,
         CASE WHEN SUM(x.status='requested')>0 THEN 'requested' ELSE 'fulfilled' END AS status,
         MAX(x.created_at) AS createdAt,MAX(x.fulfilled_at) AS fulfilledAt
         FROM reward_redemptions x JOIN users m ON m.id=x.redeemed_by
+        LEFT JOIN reward_coupon_discounts dc ON dc.redemption_id=x.id
         WHERE x.household_id=?1
         GROUP BY x.household_id,x.redeemed_by,SUBSTR(x.client_request_id,1,36),
           x.reward_id,x.title_snapshot,x.icon_snapshot
@@ -276,6 +278,7 @@ export async function rewardsRoute(request,db,path,session){
     const b=await readBody(request)
     if(!b||typeof b.rewardId!=='string'||b.rewardId.length>100||!uuid.test(b.requestId)||
       (b.quantity!==undefined&&(!Number.isSafeInteger(b.quantity)||b.quantity<1||b.quantity>99))||
+      (b.couponId!==undefined&&b.couponId!==null&&!uuid.test(b.couponId))||
       (b.wishId!==undefined&&b.wishId!==null&&!uuid.test(b.wishId))||
       (b.goalId!==undefined&&b.goalId!==null&&!uuid.test(b.goalId)))
       return json({error:'invalid_input'},400)
@@ -291,17 +294,20 @@ export async function rewardsRoute(request,db,path,session){
     // and total wallet checks. First child holds the base idempotency token.
     const values=ids.map((_,i)=>`(${i+1},?${7+i})`).join(',')
     const goalParam='?'+(7+quantity),wishParam='?'+(8+quantity)
+    const couponParam='?'+(9+quantity)
     const sql=`WITH units(n,unit_id) AS (VALUES ${values})
       INSERT INTO reward_redemptions
         (id,household_id,reward_id,redeemed_by,title_snapshot,icon_snapshot,
           points_spent,client_request_id,status,created_at,credited_wish_id,
-          credited_goal_id,goal_credit_yen,wish_title_snapshot)
+          credited_goal_id,goal_credit_yen,wish_title_snapshot,shop_coupon_id,coupon_quantity)
       SELECT units.unit_id,r.household_id,r.id,?1,r.title,r.icon,r.points,
         CASE WHEN units.n=1 THEN ?2 ELSE ?2||':'||units.n END,'requested',?3,
         CASE WHEN r.goal_credit_yen>0 THEN w.id ELSE NULL END,
         CASE WHEN r.goal_credit_yen>0 THEN g.id ELSE NULL END,
         r.goal_credit_yen,
-        CASE WHEN r.goal_credit_yen>0 THEN w.title ELSE NULL END
+        CASE WHEN r.goal_credit_yen>0 THEN w.title ELSE NULL END,
+        CASE WHEN units.n=1 THEN ${couponParam} ELSE NULL END,
+        CASE WHEN units.n=1 AND ${couponParam} IS NOT NULL THEN ?6 ELSE NULL END
       FROM reward_items r CROSS JOIN units
       ${goalJoins('?1',goalParam,wishParam)}
       WHERE r.id=?4 AND r.household_id=?5 AND r.active=1
@@ -313,9 +319,16 @@ export async function rewardsRoute(request,db,path,session){
             WHERE g.reward_id=r.id AND g.status<>'cancelled'))
         AND NOT EXISTS (SELECT 1 FROM reward_redemptions x WHERE
           x.household_id=?5 AND x.redeemed_by=?1 AND x.client_request_id=?2)
-        AND r.points*?6 <= ${householdWalletSql('?5','?1')}`
+        AND (${couponParam} IS NULL OR EXISTS(
+          SELECT 1 FROM lottery_coupons c WHERE c.id=${couponParam}
+            AND c.household_id=?5 AND c.user_id=?1 AND c.kind='shop'
+            AND c.used_at IS NULL AND c.expires_on>=date(?3,'+9 hours')
+            AND r.points*?6>=20))
+        AND r.points*?6 - CASE WHEN ${couponParam} IS NULL THEN 0
+          ELSE MIN(50,CAST(r.points*?6/20 AS INTEGER)) END
+          <= ${householdWalletSql('?5','?1')}`
     try{
-      const result=await db.prepare(sql).bind(u,b.requestId,iso(),b.rewardId,h,quantity,...ids,b.goalId||null,b.wishId||null).run()
+      const result=await db.prepare(sql).bind(u,b.requestId,iso(),b.rewardId,h,quantity,...ids,b.goalId||null,b.wishId||null,b.couponId||null).run()
       if(Number(result.meta?.changes)===quantity)return json({ok:true,id:ids[0],quantity},201)
     }catch{
       const replay=await db.prepare(`SELECT id FROM reward_redemptions WHERE

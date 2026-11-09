@@ -104,6 +104,9 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='points_adjust_new_completion' AND instr(sql,'WHEN NEW.kind IN (''task'',''routine'')')>0) AS oneoff_rule_ready,
       (SELECT COUNT(*) FROM pragma_table_info('anniversaries') WHERE name='archived_at') AS anniversary_archive_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name='0049_lottery_balanced_coupons.sql') AS coupon_migration_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('lottery_coupons','reward_coupon_discounts')) AS coupon_tables_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('lottery_coupon_granted','lottery_ticket_guard','lottery_ticket_claim','reward_shop_coupon_guard','reward_shop_coupon_claim')) AS coupon_triggers_ready,
        (SELECT COUNT(*) FROM pragma_table_info('reward_redemptions') WHERE name='goal_credit_yen') AS reward_credit_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='trip_completion_rewards') AS travel_view_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trip_reward_events') AS travel_events_ready,
@@ -157,6 +160,9 @@ export async function verifiedDatabase(env) {
        Number(identity.oneoff_rule_ready)===1 &&
        Number(identity.anniversary_archive_ready)===1 &&
       Number(identity.lottery_migration_ready)===1 &&
+      Number(identity.coupon_migration_ready)===1 &&
+      Number(identity.coupon_tables_ready)===2 &&
+      Number(identity.coupon_triggers_ready)===5 &&
        Number(identity.reward_credit_ready)===1 &&
       Number(identity.travel_view_ready)===1 &&
       Number(identity.travel_events_ready)===1 &&
