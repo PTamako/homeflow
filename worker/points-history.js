@@ -194,14 +194,18 @@ display AS (
     l.prize_points+l.prize_bonus_points AS prizePoints,l.id AS eventId
   FROM household_lottery_draws l WHERE l.household_id=?1
   UNION ALL
-  SELECT c.user_id,'household',0,0,'coupon_use',
+  SELECT c.user_id,'household',0,0,
+    CASE c.kind WHEN 'ticket' THEN 'coupon_ticket_use'
+      WHEN 'shop' THEN 'coupon_shop_use' ELSE 'coupon_wish_use' END,
     CASE c.kind WHEN 'ticket' THEN '使用免费抽奖券'
       WHEN 'shop' THEN '使用商城95折券'
       ELSE '心愿加速券 · ¥100' END,
     c.used_at,NULL,NULL,NULL,c.id
   FROM lottery_coupons c WHERE c.household_id=?1 AND c.used_at IS NOT NULL
   UNION ALL
-  SELECT c.user_id,'household',0,0,'coupon_expire',
+  SELECT c.user_id,'household',0,0,
+    CASE c.kind WHEN 'ticket' THEN 'coupon_ticket_expire'
+      WHEN 'shop' THEN 'coupon_shop_expire' ELSE 'coupon_wish_expire' END,
     CASE c.kind WHEN 'ticket' THEN '免费抽奖券到期'
       WHEN 'shop' THEN '商城95折券到期'
       ELSE '心愿加速券到期' END,
@@ -213,8 +217,10 @@ const POINTS_CATEGORY_FILTERS=Object.freeze({
  all:'1=1',
  task:"category IN ('complete','bounty','reserved')",
  shopping:"category='shopping'",
- lottery:"category IN ('lottery','coupon_use','coupon_expire')",
- shop:"category IN ('redeem','pool','coupon_use','coupon_expire')",
+ lottery:"(category='lottery' OR category LIKE 'coupon_%')",
+ // Only marketplace coupon events belong in the Shop tab. Free tickets and wish
+ // coupons remain visible in the Lottery tab and the unfiltered yearly ledger.
+ shop:"category IN ('redeem','pool','coupon_shop_use','coupon_shop_expire')",
  achievement:"category IN ('weekly','achievement')",
  saving:"category IN ('savings','trip')"
 })
