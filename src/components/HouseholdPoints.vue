@@ -363,21 +363,56 @@ function selectView(next:'shop'|'achievements'|'lottery'|'history'){
  if(next==='lottery'||next==='shop'&&!shop.value||next==='history')void refresh()
 }
 async function drawLottery(){
- if(busy.value||!lottery.value||lotteryRemaining.value<1||points.value<5)return
+ if(busy.value||!lottery.value||lotteryRemaining.value<1||(!usingTicket.value&&points.value<5))return
  busy.value=true;error.value='';clearLotteryResult()
  const requestId=crypto.randomUUID()
  const drawingUser=props.userId
+ const ticketCouponId=usingTicket.value?availableTicket.value?.id:null
  try{
-   const result=await fetchJSON('/lottery/draw','POST',{requestId}) as {draw:LotteryDraw}
-   if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser){
-       showLotteryResult(result.draw)
-   }
+   const result=await fetchJSON('/lottery/draw','POST',{requestId,ticketCouponId}) as {draw:LotteryDraw}
+   if(props.active&&expanded.value&&view.value==='lottery'&&props.userId===drawingUser)
+     showLotteryResult(result.draw)
+   useFreeTicket.value=false
    await refresh()
-   // A committed draw is final even when the follow-up read fails. Never show
-   // a generic draw failure or invite a second charge in that situation.
-   if(error.value)error.value='抽奖已经成功，积分刷新失败，请稍后重新打开查看：'+error.value
+   // A committed draw is final even when the follow-up read fails.
+   if(error.value)error.value='抽奖已成功，余额刷新失败，请重新打开确认：'+error.value
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
+}
+function openCouponSheet(){
+ couponStatus.value='available';couponPage.value=1;couponSheetOpen.value=true
+}
+function changeCouponStatus(status:'available'|'used'|'expired'){
+ couponStatus.value=status;couponPage.value=1
+}
+async function startWishCoupon(coupon:Coupon){
+ if(coupon.status!=='available'||coupon.kind!=='wish'||busy.value)return
+ wishCouponDraft.value=coupon
+ wishCouponGoal.value='';wishCouponOptions.value=[];wishCouponBusy.value=true
+ try{
+   const result=await fetchJSON('/rewards/wish-goals') as {items:WishGoalOption[]}
+   wishCouponOptions.value=result.items||[]
+   if(wishCouponOptions.value.length===1)wishCouponGoal.value=wishCouponOptions.value[0].goalId
+ }catch(e){error.value=(e as Error).message}
+ finally{wishCouponBusy.value=false}
+}
+async function redeemWishCoupon(){
+ const coupon=wishCouponDraft.value
+ const choice=wishCouponOptions.value.find(c=>c.goalId===wishCouponGoal.value)
+ if(!coupon||!choice||busy.value||wishCouponBusy.value)return
+ if(!window.confirm('确认将 ¥100 虚拟储值奖励计入「'+choice.wishTitle+'」？\n这不是实际存款，也不会写入家計簿。'))return
+ await mutate(()=>fetchJSON('/lottery/coupons/redeem-wish','POST',{
+  couponId:coupon.id,requestId:crypto.randomUUID(),wishId:choice.wishId,goalId:choice.goalId
+ }),'心愿加速券已核销，虚拟奖励 ¥100 已计入储值进度')
+ if(!error.value){wishCouponDraft.value=null;couponSheetOpen.value=false}
+}
+function applyCouponFromSheet(coupon:Coupon){
+ if(coupon.status!=='available')return
+ if(coupon.kind==='ticket'){
+   useFreeTicket.value=true;couponSheetOpen.value=false;selectView('lottery')
+ }else if(coupon.kind==='shop'){
+   useShopCoupon.value=true;couponSheetOpen.value=false;selectView('shop')
+ }else void startWishCoupon(coupon)
 }
 async function mutate(work:()=>Promise<unknown>,success:string){
  if(busy.value)return
@@ -409,16 +444,20 @@ async function toggleActive(item:Reward){
   item.active?'已下架':'已重新上架')
 }
 async function redeem(item:Reward){
- const quantity=quantityFor(item),total=quantity*item.points
+ const quantity=quantityFor(item),total=redeemCost(item,quantity)
+ const discount=selectedCouponDiscount(item,quantity)
  if(item.stock!==null&&item.redeemedCount+quantity>item.stock){error.value='商品剩余数量不足';return}
  if(points.value<total){error.value='可用积分不足';return}
  if(item.goalCreditYen>0){await askLinkedWish(item,'redeem',quantity);return}
- if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+' 吗？\n兑换后无法自动退款，经验值不会扣除。'))return
+ if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+
+  (discount?'？\n已使用 95 折券，减免 '+discount+' 分。':'？')+
+  '\n兑换后无法自动退款，经验值不会扣除。'))return
  const requestId=crypto.randomUUID()
+ const couponId=discount?availableShopCoupon.value?.id:null
  redemptionPage.value=1
- await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId,quantity}),
-  '已成功兑换 '+quantity+' 件！')
- if(!error.value)quantityChoice.value={...quantityChoice.value,[item.id]:1}
+ await mutate(()=>fetchJSON('/rewards/redeem','POST',{rewardId:item.id,requestId,quantity,couponId}),
+  '已成功兑换 '+quantity+' 件！'+(discount?' 优惠 '+discount+' 分':''))
+ if(!error.value){quantityChoice.value={...quantityChoice.value,[item.id]:1};useShopCoupon.value=false}
 }
 async function startPool(item:Reward){
  if(item.goalCreditYen>0){await askLinkedWish(item,'pool');return}
@@ -434,13 +473,16 @@ async function submitWishReward(){
  const {item,action,quantity}=draft
  const yen=item.goalCreditYen*quantity
  const message=action==='redeem'?
-  '花费 '+item.points*quantity+' 积分，兑换「'+item.title+'」×'+quantity+
+  '花费 '+redeemCost(item,quantity)+' 积分，兑换「'+item.title+'」×'+quantity+
     '，并将 ¥'+yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？':
   '创建「'+item.title+'」的合力兑换，凑齐后将 ¥'+
     yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？'
  if(!window.confirm(message+'\n奖励额度不代表实际存款，也不会写入家計簿。'))return
  const requestId=crypto.randomUUID()
- const payload={rewardId:item.id,requestId,wishId:choice.wishId,goalId:choice.goalId}
+ const couponId=action==='redeem'&&selectedCouponDiscount(item,quantity)?
+   availableShopCoupon.value?.id:null
+ const payload={rewardId:item.id,requestId,wishId:choice.wishId,goalId:choice.goalId,
+  ...(action==='redeem'?{couponId}: {})}
  if(action==='redeem'){
   redemptionPage.value=1
   await mutate(()=>fetchJSON('/rewards/redeem','POST',{...payload,quantity}),
@@ -452,7 +494,7 @@ async function submitWishReward(){
  }
  if(!error.value){
   wishRewardDraft.value=null
-  if(action==='redeem')quantityChoice.value={...quantityChoice.value,[item.id]:1}
+  if(action==='redeem'){quantityChoice.value={...quantityChoice.value,[item.id]:1];useShopCoupon.value=false}
  }
 }
 async function contributePool(item:GroupOrder){
