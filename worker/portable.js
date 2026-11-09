@@ -105,7 +105,7 @@ function normalized(key,r,h,u) {
          (r.plan_json!=null&&str(r.plan_json,160000)===null))return null
       let participants
       try{participants=JSON.parse(r.participant_user_ids||'[]')}catch{return null}
-      if(!Array.isArray(participants)||participants.length>10||!participants.every(id))return null
+      if(!Array.isArray(participants)||participants.length>10||!participants.every(x=>typeof x==='string'&&x.length>0&&x.length<=100))return null
       if(v==='private')participants=[u]
       else participants=[...new Set([u,...participants])]
       return ["INSERT OR IGNORE INTO trips(id,household_id,created_by,visibility,wish_id,title,destination,start_on,end_on,"+
