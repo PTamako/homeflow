@@ -15,18 +15,20 @@ export function archiveFilter(url){
   const params=new URL(url).searchParams
   const limit=params.has('limit')?Number(params.get('limit')):5
   const year=params.get('year')||'',month=params.get('month')||''
+  const outcome=params.get('outcome')||'all'
   const cursor=params.get('cursor')||''
   if(!Number.isInteger(limit)||limit<1||limit>maxPageSize||
     (year&&!/^(19|20|21)\d{2}$/.test(year))||
     (month&&!/^(0[1-9]|1[0-2])$/.test(month))||
-    (month&&!year)||cursor.length>55)return null
+    (month&&!year)||!['all','completed','skipped','missed'].includes(outcome)||
+    cursor.length>55)return null
   let before=null
   if(cursor){
     const match=cursor.match(/^(\d{4}-\d{2}-\d{2})\|([0-9a-f-]{36})$/i)
     if(!match||!validDate(match[1])||!uuid.test(match[2]))return null
     before={end:match[1],goalId:match[2]}
   }
-  return {limit,year,month,before}
+  return {limit,year,month,outcome,before}
 }
 export function candidateGoalPeriods(goals,options,today=tokyoDay()){
   const candidates=[]
@@ -66,8 +68,11 @@ export async function goalPeriodArchiveRoute(request,db,session){
   if((goals||[]).length>250)return json({error:'archive_goal_limit_exceeded'},409)
   const financeVisible=new Set((goals||[]).filter(g=>
     session.role==='owner'||g.created_by===session.user_id).map(g=>g.id))
-  const periods=candidateGoalPeriods(goals||[],opts)
-  const shown=periods.slice(0,opts.limit)
+  // Period status is stored in separate settlement/legacy tables. Fetch
+  // enough candidate keys in ONE bounded batch to filter before paging.
+  const scanLimit=opts.outcome==='all'?opts.limit:Math.max(60,opts.limit*12)
+  const periods=candidateGoalPeriods(goals||[],{...opts,limit:scanLimit})
+  const shown=periods.slice(0,scanLimit)
   if(!shown.length)return json({items:[],nextCursor:null})
   const values=shown.map((_,i)=>`(?${i*2+2},?${i*2+3})`).join(',')
   const binds=shown.flatMap(x=>[x.goalId,x.periodKey])
@@ -85,7 +90,7 @@ export async function goalPeriodArchiveRoute(request,db,session){
       AND m.plan_id=r.goal_id AND m.period_key=r.period_key`)
     .bind(session.household_id,...binds).all()
   const saved=new Map((records||[]).map(x=>[x.goal_id+'|'+x.period_key,x]))
-  const items=shown.map(period=>{
+  const annotated=shown.map(period=>{
     const record=saved.get(period.goalId+'|'+period.periodKey)
     return {...period,
       status:record?.status||(record?.legacy_completed_at?'met':'pending'),
@@ -94,6 +99,13 @@ export async function goalPeriodArchiveRoute(request,db,session){
       differenceAmount:financeVisible.has(period.goalId)?record?.difference_amount??null:null,
       settledAt:record?.settled_at||record?.legacy_completed_at||null}
   })
-  const last=shown.at(-1)
-  return json({items,nextCursor:periods.length>opts.limit?last.periodEnd+'|'+last.goalId:null})
+  const matching=annotated.filter(period=>opts.outcome==='all'||
+    (opts.outcome==='completed'&&period.status==='met')||
+    (opts.outcome==='missed'&&['shortfall','pending'].includes(period.status)))
+  // No goal settlement currently has a skipped outcome; skips of a goal
+  // belong to /plans/action-history and should not be fabricated here.
+  const items=matching.slice(0,opts.limit)
+  const next=matching.length>opts.limit?items.at(-1):
+    periods.length>scanLimit?shown.at(-1):null
+  return json({items,nextCursor:next?next.periodEnd+'|'+next.goalId:null})
 }
