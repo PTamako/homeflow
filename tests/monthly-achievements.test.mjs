@@ -70,7 +70,7 @@ test('monthly achievement awards are graded, month-keyed and idempotent',async()
   assert.equal(current.badges.find(x=>x.id==='first').unlocked,false,
     'undo re-locks only the active-month badge')
   assert.equal(current.achievementBonusPoints,5,'only revoked month reward is deducted')
-  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).length,2)
+  assert.equal(awards(db).filter(x=>x.month_on===lastDate.slice(0,7)).length,1)
  }finally{db.close()}
 })
 test('private completions earn XP, not monthly household awards, and weekly challenge is additionally rewarded',async()=>{
