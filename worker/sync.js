@@ -39,6 +39,24 @@ export async function bumpMemberRevision(db,session){
 }
 export function personalMutation(path){
  return /^\/api\/notifications\/[a-f0-9-]{36}\/(read|unread)$/i.test(path)||
-   ['/api/reminders/snooze','/api/reminders/preferences','/api/reminders/item',
-     '/api/push/subscriptions','/api/auth/logout'].includes(path)
+   ['/api/notifications/today/read-all',
+    '/api/reminders/snooze','/api/reminders/preferences','/api/reminders/item',
+    '/api/push/subscriptions','/api/auth/logout'].includes(path)
+}
+
+// A successful HTTP response can be a replay, a read-only preview, or an
+// idempotent no-op. Those requests must not cause unrelated family devices
+// to reload all their plans. This is a pure function for regression coverage.
+export function mutationChangesState(path,body){
+ if(path==='/api/push/send-now'||path==='/api/auth/logout')return false
+ if(!body||typeof body!=='object')return true
+ if(body.replayed===true||body.unchanged===true||body.reused===true||
+    body.readOnly===true||body.changed===false)return false
+ if(path==='/api/notifications/today/read-all')
+   return Number(body.markedCount)>0
+ if(path==='/api/portable/restore')
+   return Number(body.inserted)>0
+ if(path==='/api/recycle/empty')
+   return Number(body.deleted)>0
+ return true
 }

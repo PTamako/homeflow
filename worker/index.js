@@ -5,7 +5,7 @@ import {lifeRoute} from './life.js'
 import {todayPlansRoute} from './plan-today.js'
 import {todayActionRoute} from './today-actions.js'
 import {todayPageRoute} from './today-page.js'
-import {syncStateRoute,bumpHouseholdRevision,bumpMemberRevision,personalMutation} from './sync.js'
+import {syncStateRoute,bumpHouseholdRevision,bumpMemberRevision,personalMutation,mutationChangesState} from './sync.js'
 import {planSummaryRoute} from './plan-summary.js'
 import {searchRoute} from './search.js'
 import {tripsRoute} from './trips.js'
@@ -71,7 +71,9 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/lottery'||path==='/api/lottery/draw'||path==='/api/lottery/coupons'||path==='/api/lottery/coupons/redeem-wish'){
           const onDraw=draw=>{
             const job=sendLotteryDrawNotification(env,session,draw)
-              .then(()=>bumpHouseholdRevision(env.DB,session))
+              // A replay only resends an already-recorded event. Advance
+              // revisions for genuinely new inbox entries, never for retries.
+              .then(result=>result.newInboxRows>0?bumpHouseholdRevision(env.DB,session):null)
               .catch(()=>console.warn('homeflow_lottery_push_failed'))
             if(typeof ctx?.waitUntil==='function')ctx.waitUntil(job)
             else void job
@@ -124,9 +126,16 @@ export default {
     // Read-only requests and any rejected mutation never advance the version.
     if(state.session&&response.ok&&!['GET','HEAD','OPTIONS'].includes(request.method)){
       try{
-        if(personalMutation(new URL(request.url).pathname))
-          await bumpMemberRevision(env.DB,state.session)
-        else await bumpHouseholdRevision(env.DB,state.session)
+        const path=new URL(request.url).pathname
+        // Response bodies here are tiny JSON acknowledgements. Inspect the
+        // outcome rather than treating HTTP 200 from a replay as a mutation.
+        const outcome=response.headers.get('content-type')?.includes('application/json')
+          ?await response.clone().json().catch(()=>null):null
+        if(mutationChangesState(path,outcome)){
+          if(personalMutation(path))
+            await bumpMemberRevision(env.DB,state.session)
+          else await bumpHouseholdRevision(env.DB,state.session)
+        }
       }catch{console.warn('homeflow_sync_revision_failed')}
     }
     return response

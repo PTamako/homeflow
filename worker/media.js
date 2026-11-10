@@ -12,6 +12,35 @@ const signatures={
 }
 const uuid=/^[0-9a-f-]{36}$/i
 
+// Bound streamed request bodies before allocation, including requests whose
+// Content-Length is missing or inaccurate (e.g. chunked uploads).
+export async function readLimitedMedia(request){
+ const declared=request.headers.get('content-length')
+ if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>MAX_MEDIA_BYTES))
+   return null
+ if(!request.body)return null
+ const reader=request.body.getReader(),parts=[]
+ let size=0
+ try{
+   for(;;){
+     const {value,done}=await reader.read()
+     if(done)break
+     size+=value.byteLength
+     if(size>MAX_MEDIA_BYTES){
+       await reader.cancel().catch(()=>{})
+       return null
+     }
+     parts.push(value)
+   }
+ }catch{return null}
+ finally{reader.releaseLock()}
+ const bytes=new Uint8Array(size)
+ let offset=0
+ for(const part of parts){bytes.set(part,offset);offset+=part.byteLength}
+ return bytes
+}
+
+
 /**
  * Retry physical R2 deletes without ever exposing an object that was logically
  * deleted. The D1 media_assets row is the durable cleanup queue: only after
@@ -121,10 +150,9 @@ export async function mediaRoute(request,env,path,session){
        AND (visibility='household' OR created_by=?3)`).bind(memoryId,h,u).first()
    if(!memory)return json({error:'not_found'},404)
    const mime=(request.headers.get('content-type')||'').split(';')[0].toLowerCase()
-   const length=Number(request.headers.get('content-length')||0)
-   if(!allowed.has(mime)||length>MAX_MEDIA_BYTES)return json({error:'photo_too_large_or_unsupported'},413)
-   const bytes=new Uint8Array(await request.arrayBuffer())
-   if(bytes.length>MAX_MEDIA_BYTES)return json({error:'photo_exceeds_300kb'},413)
+   if(!allowed.has(mime))return json({error:'photo_too_large_or_unsupported'},413)
+   const bytes=await readLimitedMedia(request)
+   if(!bytes)return json({error:'photo_exceeds_300kb'},413)
    if(bytes.length<16||!signatures[mime](bytes))return json({error:'unsupported_photo'},400)
    // Idempotent ZIP restore: retrying a partial restore must not duplicate
    // pictures. Never expose the original digest or private storage key.
@@ -197,9 +225,10 @@ export async function mediaRoute(request,env,path,session){
  }
  if(match&&request.method==='PUT'){
    if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
-   // Only the uploader can edit their photo; viewing a family-shared
-   // memory never grants another member edit/delete permissions.
-   const photo=await db.prepare(`SELECT a.storage_key FROM media_assets a
+   // Stage a new private object instead of replacing the only good copy.
+   // Reuse the existing durable media_assets tombstone queue, so a Worker
+   // crash or D1 failure cannot strand an R2 object without a cleanup key.
+   const photo=await db.prepare(`SELECT a.storage_key,a.memory_id,a.visibility FROM media_assets a
      JOIN memories m ON m.id=a.memory_id
      WHERE a.id=?1 AND a.household_id=?2 AND a.uploaded_by=?3
        AND a.deleted_at IS NULL AND m.deleted_at IS NULL
@@ -207,19 +236,67 @@ export async function mediaRoute(request,env,path,session){
      .bind(match[1],h,u).first()
    if(!photo)return json({error:'not_found'},404)
    const mime=(request.headers.get('content-type')||'').split(';')[0].toLowerCase()
-   if(mime!=='image/jpeg'||Number(request.headers.get('content-length')||0)>MAX_MEDIA_BYTES)
-     return json({error:'photo_too_large_or_unsupported'},413)
-   const bytes=new Uint8Array(await request.arrayBuffer())
-   if(bytes.length<16||bytes.length>MAX_MEDIA_BYTES||!signatures['image/jpeg'](bytes))
+   if(mime!=='image/jpeg')return json({error:'photo_too_large_or_unsupported'},413)
+   const bytes=await readLimitedMedia(request)
+   if(!bytes||bytes.length<16||!signatures['image/jpeg'](bytes))
      return json({error:'invalid_photo'},413)
+   const reservationId=crypto.randomUUID()
+   const nextKey='private/'+h+'/'+reservationId+'/edit'
+   // This intermediate database key has no corresponding R2 object. It
+   // frees UNIQUE(storage_key) during the atomic three-statement swap.
+   const swapKey='private/'+h+'/'+reservationId+'/swap'
    try{
-     // Replace the existing private object, rather than accumulating revisions.
-     await env.MEDIA.put(photo.storage_key,bytes,{httpMetadata:{contentType:mime}})
-     await db.prepare(`UPDATE media_assets SET mime_type=?1,byte_size=?2
-       WHERE id=?3 AND household_id=?4 AND uploaded_by=?5 AND deleted_at IS NULL`)
-       .bind(mime,bytes.length,match[1],h,u).run()
-     return json({ok:true,byteSize:bytes.length})
-   }catch{return json({error:'photo_edit_failed'},503)}
+     await db.prepare(`INSERT INTO media_assets
+       (id,household_id,uploaded_by,visibility,memory_id,storage_key,mime_type,byte_size,deleted_at)
+       VALUES(?1,?2,?3,?4,?5,?6,'image/jpeg',?7,datetime('now','+1 hour'))`)
+       .bind(reservationId,h,u,photo.visibility,photo.memory_id,nextKey,bytes.length).run()
+   }catch{return json({error:'photo_metadata_failed'},503)}
+   try{
+     await env.MEDIA.put(nextKey,bytes,{httpMetadata:{contentType:mime}})
+     // D1 batch commits atomically. The original asset ID stays unchanged.
+     // If another edit/delete won the race, restore the staged key as a
+     // cleanup tombstone; never replace their new photo or delete it.
+     const changed=await db.batch([
+       db.prepare(`UPDATE media_assets SET storage_key=?1
+         WHERE id=?2 AND household_id=?3 AND uploaded_by=?4
+           AND storage_key=?5 AND deleted_at IS NOT NULL`)
+         .bind(swapKey,reservationId,h,u,nextKey),
+       db.prepare(`UPDATE media_assets SET storage_key=?1,mime_type='image/jpeg',byte_size=?2
+         WHERE id=?3 AND household_id=?4 AND uploaded_by=?5
+           AND storage_key=?6 AND deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM memories m WHERE m.id=media_assets.memory_id
+             AND m.household_id=?4 AND m.deleted_at IS NULL
+             AND (m.visibility='household' OR m.created_by=?5))
+           AND EXISTS (SELECT 1 FROM media_assets stage
+             WHERE stage.id=?7 AND stage.household_id=?4
+               AND stage.storage_key=?8 AND stage.deleted_at IS NOT NULL)`)
+         .bind(nextKey,bytes.length,match[1],h,u,photo.storage_key,reservationId,swapKey),
+       db.prepare(`UPDATE media_assets SET storage_key=CASE
+           WHEN EXISTS (SELECT 1 FROM media_assets active
+             WHERE active.id=?1 AND active.household_id=?2
+               AND active.storage_key=?3 AND active.deleted_at IS NULL)
+             THEN ?4 ELSE ?3 END,deleted_at=CURRENT_TIMESTAMP
+         WHERE id=?5 AND household_id=?2 AND uploaded_by=?6
+           AND storage_key=?7 AND deleted_at IS NOT NULL`)
+         .bind(match[1],h,nextKey,photo.storage_key,reservationId,u,swapKey)
+     ])
+     // A losing concurrent edit makes statement #2 a no-op. The candidate
+     // is still queued for deletion, while the winner remains intact.
+     const committed=Number(changed[1]?.meta?.changes)===1
+     const cleanup=await runMediaCleanup(env,h).catch(()=>({failed:1}))
+     if(!committed)return json({error:'photo_edit_conflict'},409)
+     return json({ok:true,byteSize:bytes.length,pendingCleanup:!!cleanup.failed})
+   }catch{
+     // Even if a response failed after committing, the pending row is
+     // always the obsolete key, never the live object.
+     try{
+       await db.prepare(`UPDATE media_assets SET deleted_at=CURRENT_TIMESTAMP
+         WHERE id=?1 AND household_id=?2 AND uploaded_by=?3 AND deleted_at IS NOT NULL`)
+         .bind(reservationId,h,u).run()
+       await runMediaCleanup(env,h)
+     }catch{console.warn('homeflow_r2_edit_compensation_pending')}
+     return json({error:'photo_edit_failed'},503)
+   }
  }
  if(match&&request.method==='DELETE'){
    if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
@@ -235,7 +312,7 @@ export async function mediaRoute(request,env,path,session){
    }
    // Immediately hide the photo; retry R2 deletion if an outage occurs.
    const cleaned=await runMediaCleanup(env,h).catch(()=>({failed:1}))
-   return json({ok:true,pendingCleanup:!!cleaned.failed})
+   return json({ok:true,unchanged:!!photo.deleted_at,pendingCleanup:!!cleaned.failed})
  }
  return json({error:'not_found'},404)
 }

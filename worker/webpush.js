@@ -628,12 +628,15 @@ export async function sendLotteryDrawNotification(env,session,draw){
     FROM household_members m JOIN users u ON u.id=m.user_id
     WHERE m.household_id=?1 AND u.disabled_at IS NULL LIMIT 20`)
     .bind(session.household_id).all()
-  let sent=0,failed=0
+  let sent=0,failed=0,newInboxRows=0
   for(const member of members){
     try{
       const digest=await sha256(draw.id+'|'+member.id)
       const id=[digest.slice(0,8),digest.slice(8,12),digest.slice(12,16),
         digest.slice(16,20),digest.slice(20,32)].join('-')
+      const existed=await db.prepare(`SELECT 1 AS found FROM notification_inbox
+        WHERE id=?1 AND household_id=?2 AND recipient_user_id=?3 LIMIT 1`)
+        .bind(id,session.household_id,member.id).first()
       const result=await deliverToHouseholdUser(env,session.household_id,member.id,{
         title,body:message,url:'/?notificationId='+id,
         tag:'homeflow-lottery-'+draw.id,priority:'important',recordInInbox:true
@@ -644,7 +647,8 @@ export async function sendLotteryDrawNotification(env,session,draw){
       const payload=await result.json()
       sent+=Number(payload.sent||0)
       failed+=Number(payload.failed||0)
+      if(!existed&&payload.recorded)newInboxRows++
     }catch{failed++}
   }
-  return {members:members.length,sent,failed}
+  return {members:members.length,sent,failed,newInboxRows}
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,onMounted,ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
+import {BACKUP_MANIFEST_NAME,createBackupManifest,verifyBackupManifest} from '../backup-integrity.mjs'
 import {listLocalPhotos,compressPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
@@ -22,6 +23,7 @@ const auditOrder=['rewardItems','rewardRedemptions','rewardGroupOrders',
  'completionAdjustments','dualSplits','shoppingPoints','shoppingJoint',
  'weeklyChallenges','goalRewards','tripRewards','monthlyAchievements']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
+const archiveIntegrity=ref('')
 const restoreSheetOpen=ref(false)
 const helpOpen=ref(false)
 const helpAnchor=ref<HTMLElement|null>(null)
@@ -163,6 +165,12 @@ async function exportArchive(){
         cursor=listing.nextCursor||null
       }while(cursor)
     }
+    // Include a checksum for every archived dataset and image (including the
+    // audit-only reward ledger). A partially written/corrupted ZIP is rejected
+    // before any record can be restored.
+    const manifest=strToU8(JSON.stringify(await createBackupManifest(files)))
+    if(size+manifest.byteLength>50*1024*1024)throw Error('备份文件超过 50MB，请分批导出')
+    files[BACKUP_MANIFEST_NAME]=manifest
     const archive=zipSync(files,{level:0})
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')
     lastExportAt.value=new Date().toISOString()
@@ -173,7 +181,7 @@ async function exportArchive(){
   finally{pending.value=false}
 }
 async function chooseArchive(file:File|null){
-  selectedFile.value=file;preview.value=null;photos.value={};readonlySharedCount.value=0;error.value='';status.value=''
+  selectedFile.value=file;preview.value=null;photos.value={};readonlySharedCount.value=0;error.value='';status.value='';archiveIntegrity.value=''
   if(!file)return
   pending.value=true
   try{
@@ -187,9 +195,16 @@ async function chooseArchive(file:File|null){
         expanded+=fileInfo.originalSize
         if(expanded>65*1024*1024)throw Error('备份解压后过大')
         return fileInfo.name==='homeflow.json'||fileInfo.name==='shared-memories-readonly.json'||
+          fileInfo.name==='points-and-rewards-audit.json'||fileInfo.name===BACKUP_MANIFEST_NAME||
           /^photos\/[0-9a-f-]{36}\/\d{4}\.jpg$/i.test(fileInfo.name)
       }})
       if(!files['homeflow.json'])throw Error('不是有效的 HomeFlow 备份')
+      if(files[BACKUP_MANIFEST_NAME]){
+        try{
+          const report=await verifyBackupManifest(files,JSON.parse(strFromU8(files[BACKUP_MANIFEST_NAME])))
+          archiveIntegrity.value='ZIP 校验通过 · '+report.verifiedEntries+' 个文件完整'
+        }catch{throw Error('ZIP 完整性校验失败：文件缺失或内容已损坏')}
+      }else archiveIntegrity.value='旧版 ZIP 未包含完整性校验，已继续检查记录结构'
       snapshot=JSON.parse(strFromU8(files['homeflow.json'])) as Snapshot
       if(files['shared-memories-readonly.json']){
         const shared=JSON.parse(strFromU8(files['shared-memories-readonly.json']))
@@ -206,6 +221,7 @@ async function chooseArchive(file:File|null){
       }
     }else if(file.name.toLowerCase().endsWith('.json')){
       snapshot=JSON.parse(await file.text()) as Snapshot
+      archiveIntegrity.value='JSON 不包含照片及 ZIP 完整性校验'
     }else throw Error('请选择 HomeFlow ZIP 或 JSON 文件')
     if(!bodyOk(snapshot))throw Error('备份版本或内容不正确')
     // Server validates all records before any import. A local preview never writes to D1.
@@ -310,6 +326,7 @@ async function restore(){
         </span>
       </div>
       <div v-if="preview" class="backup-preview">
+        <p v-if="archiveIntegrity">{{ archiveIntegrity }}</p>
         <p>校验通过：{{ previewRecordCount }} 条本人记录 · {{ previewPhotoCount }} 张可恢复照片</p>
         <p v-if="readonlySharedCount||readonlyPhotoCount">另外保存 {{ readonlySharedCount }} 条他人共享回忆 · {{ readonlyPhotoCount }} 张只读照片（须由原创建者恢复）</p>
         <button type="button" class="backup-restore" :disabled="pending" @click="restore">确认恢复</button>
