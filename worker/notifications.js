@@ -65,6 +65,18 @@ export async function ensureScheduledNotification(db,item){
   return Number(result.meta?.changes||0)===1
 }
 
+// During hourly catch-up, one indexed lookup avoids repeating an INSERT
+// for every already-registered event. The INSERT remains the concurrency guard
+// if a different Worker creates an event after this snapshot.
+export async function existingScheduledDedupeKeys(db,householdId,recipientId,localDay){
+  const {results=[]}=await db.prepare(`SELECT dedupe_key FROM notification_inbox
+    WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
+      AND dedupe_key LIKE 'scheduled:%'
+    ORDER BY created_at DESC,id DESC LIMIT 200`)
+    .bind(householdId,recipientId,localDay).all()
+  return new Set(results.map(row=>row.dedupe_key).filter(Boolean))
+}
+
 // Find this recipient's scheduled reminder for the same task occurrence. A
 // completion may update that inbox row without suppressing the separate Push.
 // This lookup is limited to a recipient's current-day indexed inbox entries.
