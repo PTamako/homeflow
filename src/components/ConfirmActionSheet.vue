@@ -7,7 +7,7 @@ const emit=defineEmits<{confirm:[];cancel:[]}>()
 </script>
 
 <template>
- <EditBottomSheet :title="request.title" @close="emit('cancel')">
+ <EditBottomSheet :title="request.title" @close="emit('cancel')" priority="confirmation">
   <div class="confirm-action">
    <p class="confirm-action-message">{{ request.message }}</p>
    <div class="confirm-action-buttons">
