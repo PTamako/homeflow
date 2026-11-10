@@ -72,8 +72,8 @@ function onVisibilityChange(){
   form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
  }
 }
-function dismiss(){
- if(busy.value)return
+function dismiss(force=false){
+ if(busy.value&&!force)return
  opened.value=false;step.value='choose';kind.value=null;error.value=''
  Object.assign(form,defaultForm())
  onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
@@ -131,7 +131,8 @@ async function submit(){
   }
   const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&!onceDraft.value.dueOn
   emit('created',kind.value,String(result.id||''),savedUnscheduled)
-  dismiss()
+  // Submission is still busy until finally; successful saves must close anyway.
+  dismiss(true)
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
