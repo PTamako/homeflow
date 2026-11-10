@@ -274,7 +274,9 @@ body{background:var(--ui-bg);color:var(--ui-ink)}
 
 /* Platform-wide phone ergonomics: improve the whole application, not just
    dropdowns. Select values, number/date fields and keyboard remain native data. */
-@media(pointer:coarse) and (max-width:1100px){
+@media(pointer:coarse){
+ /* Every touchscreen, including large iPad landscape, needs accessible hits. */
+ .shell button{min-height:44px}
  .shell{scroll-padding-block-start:12px}
  .shell :is(button,[role="button"],a[href]){touch-action:manipulation}
  .shell :is(button,[role="button"]):not(.swipe-trigger){-webkit-tap-highlight-color:transparent}
