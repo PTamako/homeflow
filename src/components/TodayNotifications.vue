@@ -27,6 +27,7 @@ const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|nu
 const highlightedId=ref('')
 const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
+let viewEpoch=0
 // A push deep-link performs its own focused load. Do not start a second
 // ordinary tab request that invalidates it on the next Vue watcher tick.
 let focusedReceivedLoad=false
@@ -122,7 +123,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
  // Capture identity and revision BEFORE awaiting a network request. Do not
  // mutate an old Vue row reference after a background refresh replaces it.
  const id=item.id,revision=item.lastCompletionKey??null
- const account=props.userId,scope=noticeScope.value
+ const account=props.userId,scope=noticeScope.value,epoch=viewEpoch
  reading.value=id
  error.value=''
  try{
@@ -132,6 +133,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
    headers:{'content-type':'application/json'},
    body:JSON.stringify({expectedCompletionKey:revision})
   })
+  if(account!==props.userId||scope!==noticeScope.value||epoch!==viewEpoch)return
   if(r.status===409){
    await load(true)
    error.value='这条通知刚刚更新，请确认最新内容后再标记'
@@ -141,7 +143,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
   const data=await r.json()
   if(data.notificationId!==id||data.read!==markAsRead)
    throw Error('通知身份校验失败，请刷新重试')
-  if(account!==props.userId||scope!==noticeScope.value)return
+  if(account!==props.userId||scope!==noticeScope.value||epoch!==viewEpoch)return
   // Invalidate any stale list fetch begun before this write was acknowledged.
   generation++
   loading.value=false
@@ -154,13 +156,13 @@ async function changeReadState(item:Notice,markAsRead:boolean){
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   // One source of truth for Today's red dot and the Home Screen PWA badge.
   emit('unreadChange',unread.value)
- }catch(e){error.value=(e as Error).message}
+ }catch(e){if(account===props.userId&&scope===noticeScope.value&&epoch===viewEpoch)error.value=(e as Error).message}
  finally{if(reading.value===id)reading.value=null}
 }
 async function markAllRead(){
  if(!props.active||view.value!=='received'||unread.value===0||
    bulkReading.value||reading.value)return
- const account=props.userId,day=props.todayDate
+ const account=props.userId,day=props.todayDate,epoch=viewEpoch
  bulkReading.value=true
  error.value=''
  try{
@@ -171,7 +173,7 @@ async function markAllRead(){
   const data=await response.json()
   if(data.ok!==true||!Number.isInteger(data.unreadCount)||data.unreadCount<0)
    throw Error('未读数量同步失败，请刷新重试')
-  if(account!==props.userId||day!==props.todayDate||view.value!=='received')return
+  if(account!==props.userId||day!==props.todayDate||view.value!=='received'||epoch!==viewEpoch)return
   // Ignore any list response initiated before the write completed.
   generation++
   loading.value=false
@@ -183,7 +185,7 @@ async function markAllRead(){
   emit('unreadChange',unread.value)
   if(unread.value>0)void load(true)
  }catch(e){
-  if(account===props.userId&&day===props.todayDate)
+  if(account===props.userId&&day===props.todayDate&&epoch===viewEpoch)
    error.value=(e as Error).message
  }finally{bulkReading.value=false}
 }
@@ -240,6 +242,7 @@ watch(()=>[props.focusRequest,props.active],()=>{
   void showIncomingNotification(props.focusNotificationId)
 },{immediate:true})
 watch(view,()=>{
+ viewEpoch++
  if(focusedReceivedLoad&&view.value==='received')return
  // Switching to pending does not fetch an inbox page; explicitly invalidate
  // any in-flight received/sent response so it cannot repaint stale rows.
