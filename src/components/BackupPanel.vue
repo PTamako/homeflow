@@ -251,7 +251,6 @@ async function restore(){
         <h3>下载备份</h3>
         <small v-if="lastExportAt">上次：{{ lastExportAt.slice(0,10) }}</small>
       </div>
-      <p class="backup-caption">备份当前账号及可访问的云端照片，包含本设备尚未迁移的旧照片；请先同步待办。手动下载 ZIP 会占用保存位置空间。</p>
       <button type="button" class="backup-download" :disabled="pending" @click="exportArchive">
         {{ pending?'处理中…':'下载备份' }}
       </button>

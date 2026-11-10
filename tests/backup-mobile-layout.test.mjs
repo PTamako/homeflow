@@ -66,7 +66,10 @@ test('backup reads legacy local photos but restores photos only to private cloud
  assert.match(backup,/PageToast :toast="toast"/)
 })
 
-test('export entry warns about unsynced tasks and device-local pictures',()=>{
- assert.match(template,/备份当前账号及可访问的云端照片/)
- assert.match(template,/请先同步待办/)
+test('backup download entry is concise, with details only in the help popover',()=>{
+  assert.doesNotMatch(template,/<p class="backup-caption">备份当前账号及可访问的云端照片/)
+  assert.doesNotMatch(template,/请先同步待办/)
+  assert.match(template,/<h3>下载备份<\/h3>/)
+  assert.match(template,/<p>包含当前账号可读取的云端及旧本机照片/)
+  assert.match(template,/不含密码与未同步任务/)
 })
