@@ -26,6 +26,7 @@ import {pointsHistoryRoute} from './points-history.js'
 import {rewardsRoute,expireOldRewardPools} from './rewards.js'
 import {lotteryRoute} from './lottery.js'
 import {sendLotteryDrawNotification} from './webpush.js'
+import {scheduledRunPhase} from './schedule-policy.js'
 
 async function routeRequest(request,env,ctx,state){
     const url=new URL(request.url),path=url.pathname
@@ -131,14 +132,13 @@ export default {
     return response
   },
   async scheduled(controller,env,ctx){
-    if(!await verifiedDatabase(env))return
+    // A single hourly Cron covers every member's own quiet-hour end.
+    // No reminders are generated before 06:00 JST; from 07:00 onward only
+    // unsent deliveries are retried. Settlements and cleanup remain once/day.
+    const phase=scheduledRunPhase(controller)
+    if(phase==='skip'||!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
-      // Do not repeat point settlements, expiry, or cleanup at 08:00.
-      // One Cron expression runs at 21:00/23:00 UTC; the fire time distinguishes
-      // 06:00 normal maintenance from the 08:00 quiet-hour delivery-only pass.
-      // A missing Cron identity (e.g. test/manual call) keeps the original 06:00 path.
-      const scheduledJstHour=new Date((controller?.scheduledTime??Date.now())+9*3600000).getUTCHours()
-      const catchUp=controller?.cron==='0 21,23 * * *'&&scheduledJstHour===8
+      const catchUp=phase==='catchup'
       const jobNames=catchUp?['quiet-hour-catch-up']:['push','savings','annual-points-expiry']
       const jobs=await Promise.allSettled(catchUp?
         [runPushSchedule(env)]:
