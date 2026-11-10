@@ -50,13 +50,13 @@ test('balanced 35/40/25 pool covers all outcomes and 0.2% capped jackpot',()=>{
    assert.equal(lotteryPrize(roll).kind,expected)
 })
 
-test('seven draws per member per month; replay does not double-charge; private XP intact',async()=>{
+test('ten draws per member per JST month; replay does not double-charge; private XP intact',async()=>{
  const {sqlite,db}=fixture()
  try{
   earn(sqlite,'alice');earn(sqlite,'bob')
   const before=await wallet(db,alice)
   let net=0
-  for(const [index,kind] of ['empty','six','ten','twenty','fifty','empty','six'].entries()){
+  for(const [index,kind] of ['empty','six','ten','twenty','fifty','empty','six','ten','empty','six'].entries()){
    const id=crypto.randomUUID()
    const first=await call(db,alice,'POST',id,kind)
    assert.equal(first.status,201)
@@ -68,6 +68,7 @@ test('seven draws per member per month; replay does not double-charge; private X
    assert.equal((await call(db,alice)).body.used,index+1)
   }
   assert.equal((await call(db,alice,'POST',crypto.randomUUID())).status,409)
+  assert.equal((await call(db,alice)).body.limit,10,'the UI receives ten as the authoritative monthly cap')
   assert.equal((await call(db,bob)).body.used,0)
   const after=await wallet(db,alice)
   assert.equal(after.availablePoints,before.availablePoints+net)
@@ -75,14 +76,18 @@ test('seven draws per member per month; replay does not double-charge; private X
   assert.equal((await call(db,bob,'POST',crypto.randomUUID())).status,201)
   const latest=(await call(db,alice)).body
   assert.equal(latest.history.length,5,'first page never returns more than five records')
-  assert.equal(latest.historyTotal,8,'all eight family draws count toward history')
-  assert.equal(latest.historyTotalPages,2)
+  assert.equal(latest.historyTotal,11,'all eleven family draws count toward history')
+  assert.equal(latest.historyTotalPages,3)
   const nextResponse=await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page=2'),
    db,'/api/lottery',alice)
   const next=await nextResponse.json()
-  assert.equal(next.history.length,3)
+  assert.equal(next.history.length,5)
   assert.equal(next.historyPage,2)
-  assert.equal(new Set([...latest.history,...next.history].map(x=>x.id)).size,8,
+  const thirdResponse=await lotteryRoute(new Request('https://homeflow.invalid/api/lottery?page=3'),
+   db,'/api/lottery',alice)
+  const third=await thirdResponse.json()
+  assert.equal(third.history.length,1)
+  assert.equal(new Set([...latest.history,...next.history,...third.history].map(x=>x.id)).size,11,
    'pagination does not duplicate or lose draws')
   assert.equal((await call(db,other)).body.history.length,0)
  }finally{sqlite.close()}
@@ -170,15 +175,15 @@ test('racing attempts obey monthly cap and a stale history row stays hidden',asy
  const {sqlite,db}=fixture()
  try{
   earn(sqlite,'alice')
-  const attempts=await Promise.all(Array.from({length:10},()=>call(db,alice,'POST',crypto.randomUUID())))
-  assert.equal(attempts.filter(x=>x.status===201).length,7)
+  const attempts=await Promise.all(Array.from({length:13},()=>call(db,alice,'POST',crypto.randomUUID())))
+  assert.equal(attempts.filter(x=>x.status===201).length,10)
   assert.equal(attempts.filter(x=>x.status===409).length,3)
   const old=new Date();old.setUTCFullYear(old.getUTCFullYear()-2)
   sqlite.prepare("INSERT INTO household_lottery_draws(id,household_id,user_id,client_request_id,month_on,prize_kind,cost_points,prize_points,created_at) VALUES (?1,'h','alice',?2,'2024-02','empty',5,0,?3)").run(crypto.randomUUID(),crypto.randomUUID(),old.toISOString())
   const list=(await call(db,alice)).body
-  assert.equal(list.used,7)
+  assert.equal(list.used,10)
   assert.equal(list.history.length,5)
-  assert.equal(list.historyTotal,7)
+  assert.equal(list.historyTotal,10)
   assert.equal(list.historyTotalPages,2)
   assert.equal(list.history.every(x=>x.kind==='empty'&&x.points===0),true)
  }finally{sqlite.close()}

@@ -63,7 +63,7 @@ test('lottery odds use a separate question-mark popover for long rules',()=>{
   assert.match(source,/class="lottery-odds-toggle"[\s\S]*?@click="lotteryOddsOpen=!lotteryOddsOpen"/)
   assert.match(source,/aria-label="查看抽奖规则说明"/)
   assert.match(source,/v-if="lotteryHelpOpen" id="lottery-rule-popover" role="tooltip"/)
-  assert.equal(source.split('每位成员每月最多抽 7 次').length-1,1,
+  assert.equal(source.split('每位成员每月最多抽 10 次').length-1,1,
     'lottery explanatory copy belongs only in the question-mark popover')
   assert.doesNotMatch(source,/<details class="lottery-odds">/)
 })

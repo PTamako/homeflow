@@ -244,7 +244,7 @@ const points=computed(()=>data.value?.availablePoints??0)
 const contributionLeaderId=computed(()=>data.value?.members[0]?.userId??'')
 const walletLeaderId=computed(()=>data.value?.members.reduce((leader,member)=>
  !leader||member.availablePoints>leader.availablePoints?member:leader,null as MemberPoints|null)?.userId??'')
-const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??7)-(lottery.value?.used??0)))
+const lotteryRemaining=computed(()=>Math.max(0,(lottery.value?.limit??10)-(lottery.value?.used??0)))
 const visibleRewards=computed(()=>shop.value?.rewards.filter(r=>r.active)||[])
 const hiddenRewards=computed(()=>shop.value?.rewards.filter(r=>!r.active)||[])
 // A cancelled group order is fully refunded and should no longer occupy the
@@ -747,7 +747,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div v-if="lotteryHelpOpen" id="lottery-rule-popover" role="tooltip"
            class="points-rule-popover lottery-rule-popover">
            <b>抽奖规则</b>
-           <p>每位成员每月最多抽 7 次，日本时间每月 1 日重置。35% 空手、40% 返还 6 分、25% 中奖。传说奖按本次费用扣除后的余额计算奖励，保底 80 分、封顶 200 分。免费券需手动选择，不扣 5 分但仍占次数。奖励券分别有效 60/90/90 天，允许跨年；私人积分不参与。抽奖结果发送到今日消息。</p>
+           <p>每位成员每月最多抽 10 次，日本时间每月 1 日重置。35% 空手、40% 返还 6 分、25% 中奖。传说奖按本次费用扣除后的余额计算奖励，保底 80 分、封顶 200 分。免费券需手动选择，不扣 5 分但仍占次数。奖励券分别有效 60/90/90 天，允许跨年；私人积分不参与。抽奖结果发送到今日消息。</p>
          </div>
        </div>
      </div>

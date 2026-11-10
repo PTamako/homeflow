@@ -179,9 +179,9 @@ export async function pointsRoute(request,db,session){
     badge('first','初次出发','🌱',1,monthProgress?.taskDone,5),
     badge('routines','周期达人','🔁',5,monthProgress?.routineDone,10),
     badge('challenge','每周挑战王','🏆',1,monthProgress?.weeksWon,15),
-    badge('master','家务达人','🏅',20,monthProgress?.taskDone,20),
-    badge('pet','毛孩子守护者','🐱',10,monthProgress?.petCare,25),
-    badge('streak','连续七天','🔥',7,monthProgress?.longestStreak,25)
+    badge('master','家务达人','🏅',30,monthProgress?.taskDone,20),
+    badge('pet','毛孩子守护者','🐱',15,monthProgress?.petCare,25),
+    badge('streak','连续十四天','🔥',14,monthProgress?.longestStreak,25)
   ]
   return json({
     month,pointsPerCompletion:DEFAULT_POINTS,
