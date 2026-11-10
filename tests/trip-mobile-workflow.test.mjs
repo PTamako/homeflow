@@ -10,7 +10,7 @@ const trips=readFileSync(new URL('../worker/trips.js',import.meta.url),'utf8')
 const financeApi=readFileSync(new URL('../worker/finance.js',import.meta.url),'utf8')
 
 test('travel expenses expose direct compact entry without duplicated full-width actions',()=>{
-  const block=life.slice(life.indexOf('<section v-if="(planType===\'all\'||planType===\'trip\')"'),
+  const block=life.slice(life.indexOf('<div class="trip-section-header"'),
     life.indexOf('<div v-if="tripDetail" class="trip-detail">'))
   assert.match(block, /class="life-link trip-finance-trigger"/)
   assert.match(block, /@click\.stop="toggleFinance\('trip',t\.id\)"/)
