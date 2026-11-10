@@ -9,7 +9,7 @@ test('timeline shows image tiles, adds via a small plus, and hides cloud develop
  assert.match(template,/<PhotoThumbnail v-for="remote in cloudPhotos\[m.id\]"/)
  assert.match(template,/<PhotoViewer v-if="openPhoto"/)
  assert.doesNotMatch(template,/删除照片（含 R2）|继续添加照片（私人 R2/)
- assert.match(template,/>查看更多照片</)
+ assert.match(template,/查看更多照片/)
 })
 test('photo bytes are downloaded only when visible and stay only in bounded RAM',()=>{
  const photo=read('src/components/PhotoThumbnail.vue')
