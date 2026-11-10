@@ -639,8 +639,8 @@ watch(routineSubject,id=>{
   routineHealthType.value=props.profiles.some(p=>p.id===id&&p.type==='pet')?'other':''
 })
 const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(today()),memoryVisibility=ref<'private'|'household'>('household')
-function closeMemoryForm(){
- if(busy.value)return
+function closeMemoryForm(force=false){
+ if(busy.value&&!force)return
  showMemoryForm.value=false
  memoryTitle.value='';memoryStory.value='';memoryDate.value=today()
  memoryVisibility.value='household';photoFiles.value=[]
@@ -1226,7 +1226,7 @@ async function addMemory(){
         failedPhotos.push(file.name+'：'+(e as Error).message)
       }
     }
-    closeMemoryForm()
+    closeMemoryForm(true)
     await fetchMode()
     if(failedPhotos.length)notify('回忆已保存，'+failedPhotos.length+' 张照片未上传：'+failedPhotos.join('；'),'warning')
     else if(!toast.value)notify('回忆已保存')
