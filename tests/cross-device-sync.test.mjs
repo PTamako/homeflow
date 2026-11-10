@@ -27,7 +27,7 @@ function dbFixture(){
  '0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql',
  '0029_household_revisions.sql','0030_member_revisions.sql',
  '0031_completion_event_read_state.sql','0032_settlement_origin.sql',
- '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql','0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql','0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql' ,'0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql']
+ '0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql','0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql','0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql' ,'0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql','0051_private_media_cleanup.sql']
  for(const m of migrations)sqlite.exec(readFileSync(new URL('../migrations/'+m,import.meta.url),'utf8'))
  const db={
   prepare(sql){const stmt=sqlite.prepare(sql);let args=[]
@@ -133,7 +133,7 @@ test('actual authenticated Worker writes by either family account advance the ot
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0046_reward_wish_savings_credit.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0047_anniversary_archive.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0048_oneoff_five_points.sql')")
-  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql'),('0051_private_media_cleanup.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home')")
   for(const name of ['alice','bob']){
    sqlite.prepare('INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES(?,?,?,?)')
@@ -202,7 +202,7 @@ test('successful 06:00 system notifications advance only affected household revi
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0046_reward_wish_savings_credit.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0047_anniversary_archive.sql')")
   sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0048_oneoff_five_points.sql')")
-  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql')")
+  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql'),('0051_private_media_cleanup.sql')")
   sqlite.exec("INSERT INTO households(id,display_name) VALUES('shared','Home'),('other','Unchanged')")
   sqlite.exec("INSERT INTO users(id,login_name,password_salt,password_verifier) VALUES('alice','alice','salt','verifier')")
   sqlite.exec("INSERT INTO household_members(household_id,user_id,role) VALUES('shared','alice','owner')")
