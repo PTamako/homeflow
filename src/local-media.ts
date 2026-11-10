@@ -20,25 +20,50 @@ export const MAX_PHOTO_BYTES=300*1024
 /** Both cloud and offline photos use <= 300KiB JPEG. Quality-only compression
  * is insufficient for noisy iPhone images, so dimensions also shrink. */
 async function compress(file:File):Promise<Blob>{
-  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)
-    throw Error('仅支持 12MB 以下的 JPEG/PNG/WebP')
+  // iOS may return HEIC/HEIF (or an empty MIME for a .heic file).
+  // Decode in-browser when supported; upload only the compressed JPEG.
+  const mime=file.type.toLowerCase()
+  const accepted=/^image\/(jpeg|png|webp|heic|heif|heic-sequence|heif-sequence)$/.test(mime)||
+    (!mime&&/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name))
+  if(!accepted||file.size>12*1024*1024)
+    throw Error('仅支持 12MB 以下的 JPEG/PNG/WebP/HEIC/HEIF')
+  const isHeic=/heic|heif/i.test(mime)||/\.(heic|heif)$/i.test(file.name)
   const src=URL.createObjectURL(file)
+  let bitmap:ImageBitmap|null=null
   try{
     const image=new Image()
     image.src=src
-    await image.decode()
-    if(image.naturalWidth*image.naturalHeight>35000000)throw Error('图片尺寸过大')
-    const ratio=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight))
+    let decoded:CanvasImageSource=image
+    let naturalWidth=0,naturalHeight=0
+    try{
+      await image.decode()
+      naturalWidth=image.naturalWidth
+      naturalHeight=image.naturalHeight
+    }catch{
+      // WebKit's native Image decoder and ImageBitmap have different
+      // capabilities across iOS versions; try both without storing a copy.
+      if(typeof createImageBitmap==='function'){
+        try{bitmap=await createImageBitmap(file)}catch{}
+      }
+      if(!bitmap)throw Error(isHeic?
+        '当前设备无法解码 HEIC/HEIF，请先将照片转换为 JPEG 后上传':
+        '图片无法读取，请选择其他照片重试')
+      decoded=bitmap
+      naturalWidth=bitmap.width
+      naturalHeight=bitmap.height
+    }
+    if(!naturalWidth||!naturalHeight||naturalWidth*naturalHeight>35000000)throw Error('图片尺寸过大')
+    const ratio=Math.min(1,1600/Math.max(naturalWidth,naturalHeight))
     const canvas=document.createElement('canvas')
-    let width=Math.max(1,Math.round(image.naturalWidth*ratio))
-    let height=Math.max(1,Math.round(image.naturalHeight*ratio))
+    let width=Math.max(1,Math.round(naturalWidth*ratio))
+    let height=Math.max(1,Math.round(naturalHeight*ratio))
     const ctx=canvas.getContext('2d')
     if(!ctx)throw Error('图片处理失败')
     const jpeg=(quality:number)=>new Promise<Blob>((resolve,reject)=>
       canvas.toBlob(blob=>blob?resolve(blob):reject(Error('照片压缩失败')),'image/jpeg',quality))
     for(let step=0;step<12;step++){
       canvas.width=width;canvas.height=height
-      ctx.drawImage(image,0,0,width,height)
+      ctx.drawImage(decoded,0,0,width,height)
       for(const quality of [0.82,0.68,0.52,0.38,0.24]){
         const blob=await jpeg(quality)
         if(blob.size<=MAX_PHOTO_BYTES)return blob
@@ -48,7 +73,7 @@ async function compress(file:File):Promise<Blob>{
       height=Math.max(1,Math.round(height*0.76))
     }
     throw Error('照片无法压缩到 300KB 以下')
-  }finally{URL.revokeObjectURL(src)}
+  }finally{bitmap?.close();URL.revokeObjectURL(src)}
 }
 export async function listLocalPhotos(userId:string,memoryId:string):Promise<Blob[]>{
   const db=await store()

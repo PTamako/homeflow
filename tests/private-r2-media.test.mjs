@@ -227,3 +227,41 @@ test('photo editing is uploader-only, max 300KiB, and overwrites one private obj
   assert.equal((await readback.arrayBuffer()).byteLength,90)
  }finally{f.close()}
 })
+
+test('a future-dated upload reservation is skipped until safe to clean',async()=>{
+ const f=fixture()
+ try{
+  const saved=await mediaRoute(upload(memoryId,jpeg()),f.env,'/api/media/upload',session)
+  const {id}=await saved.json()
+  f.sqlite.prepare("UPDATE media_assets SET deleted_at=datetime('now','+1 hour') WHERE id=?").run(id)
+  const early=await runMediaCleanup(f.env)
+  assert.equal(early.removed,0,'do not delete an in-flight upload')
+  assert.equal(f.media.objects.size,1)
+  f.sqlite.prepare('UPDATE media_assets SET deleted_at=CURRENT_TIMESTAMP WHERE id=?').run(id)
+  const later=await runMediaCleanup(f.env)
+  assert.equal(later.removed,1)
+  assert.equal(f.media.objects.size,0)
+ }finally{f.close()}
+})
+
+test('failed metadata activation still leaves a durable R2 cleanup tombstone',async()=>{
+ const f=fixture()
+ try{
+  const prepare=f.db.prepare.bind(f.db)
+  f.db.prepare=(sql)=>{
+   if(/UPDATE media_assets\s+SET deleted_at=NULL/.test(sql))return {
+     bind(){return {run:async()=>{throw Error('simulated D1 activation failure')}}}
+   }
+   return prepare(sql)
+  }
+  f.media.failNextDelete()
+  const res=await mediaRoute(upload(memoryId,jpeg()),f.env,'/api/media/upload',session)
+  assert.equal(res.status,503)
+  assert.equal(f.media.objects.size,1,'the first cleanup failed')
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets WHERE deleted_at IS NOT NULL').get().n,1)
+  const again=await runMediaCleanup(f.env)
+  assert.equal(again.removed,1)
+  assert.equal(f.media.objects.size,0)
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets').get().n,0)
+ }finally{f.close()}
+})

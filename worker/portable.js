@@ -391,6 +391,21 @@ function normalized(key,r,h,u) {
 }
 export async function portableRoute(request,db,path,session){
   const household=session.household_id,user=session.user_id
+  if(path==='/api/portable/shared-memories'&&request.method==='GET'){
+    // Include family memories authored by someone else in a READ-ONLY archive.
+    // Other people's ownership is never rewritten by the portable importer.
+    const raw=new URL(request.url).searchParams.get('cursor')||'0'
+    if(!/^(0|[1-9][0-9]{0,5})$/.test(raw)||
+      Number(raw)>50000||Number(raw)%100!==0)return json({error:'invalid_export_cursor'},400)
+    const offset=Number(raw)
+    const {results=[]}=await db.prepare(`SELECT id,created_by,visibility,title,story,
+      happened_on,linked_type,linked_id,created_at
+      FROM memories WHERE household_id=?1 AND visibility='household'
+        AND created_by<>?2 AND deleted_at IS NULL
+      ORDER BY created_at,id LIMIT 101 OFFSET ?3`).bind(household,user,offset).all()
+    return json({dataset:'sharedMemories',items:results.slice(0,100),
+      nextCursor:results.length>100?String(offset+100):null,restorePolicy:'read-only'})
+  }
   if(path==='/api/portable/audit'&&request.method==='GET'){
     const params=new URL(request.url).searchParams
     const key=params.get('dataset'),raw=params.get('cursor')||'0'

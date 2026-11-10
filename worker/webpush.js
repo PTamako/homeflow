@@ -1,6 +1,6 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
-import {jstNotificationDay,saveNotification,findScheduledNotification} from './notifications.js'
+import {jstNotificationDay,saveNotification,ensureScheduledNotification,findScheduledNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -414,9 +414,12 @@ export async function runPushSchedule(env,now=Date.now()){
   }
   // Write each scheduled notice before sending to devices, not afterwards.
   for(const notice of scheduledNotices.values()){
-    await saveNotification(db,{...notice,sentDevices:0,failedDevices:0})
-    changedHouseholds.add(notice.householdId)
-    inbox++
+    // A new notice is the only reason to write at this stage. Hourly checks
+    // must not overwrite a completed task notification or its read flag.
+    if(await ensureScheduledNotification(db,notice)){
+      changedHouseholds.add(notice.householdId)
+      inbox++
+    }
   }
   if(!subscriptions.length)return {checked:0,sent:0,failed:0,inbox,changedHouseholds:[...changedHouseholds]}
   for(const sub of subscriptions){
@@ -485,9 +488,12 @@ export async function runPushSchedule(env,now=Date.now()){
   }
   // Only notices with a Push attempt need a second status update.
   for(const [logicalKey,totals] of deliveryTotals){
-    if(totals.sent||totals.failed)
-      await saveNotification(db,{...scheduledNotices.get(logicalKey),
+    if(totals.sent||totals.failed){
+      const notice=scheduledNotices.get(logicalKey)
+      await saveNotification(db,{...notice,
         sentDevices:totals.sent,failedDevices:totals.failed})
+      changedHouseholds.add(notice.householdId)
+    }
   }
   return {checked,sent,failed,inbox,changedHouseholds:[...changedHouseholds]}
 }

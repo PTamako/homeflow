@@ -22,7 +22,7 @@ export async function runMediaCleanup(env,householdId=null){
  const db=env.DB
  const clause=householdId?' AND household_id=?1':''
  const stmt=db.prepare(`SELECT id,household_id,storage_key FROM media_assets
-   WHERE deleted_at IS NOT NULL${clause}
+   WHERE deleted_at IS NOT NULL AND datetime(deleted_at)<=datetime('now')${clause}
    ORDER BY deleted_at,id LIMIT 100`)
  const {results=[]}=await (householdId?stmt.bind(householdId):stmt).all()
  let removed=0,failed=0
@@ -144,19 +144,37 @@ export async function mediaRoute(request,env,path,session){
    }
    const sha=await sha256(id)
    const storageKey='private/'+h+'/'+id+'/'+sha.slice(0,10)
-   try{await env.MEDIA.put(storageKey,bytes,{httpMetadata:{contentType:mime}})}
-   catch{return json({error:'photo_upload_failed'},503)}
+   // Reserve durable metadata BEFORE R2.put: an interrupted upload can
+   // never leave an untracked object. Future deleted_at allows a one-hour
+   // grace period before the daily cleanup may act on an unfinished upload.
    try{
      await db.prepare(`INSERT INTO media_assets
-       (id,household_id,uploaded_by,visibility,memory_id,storage_key,mime_type,byte_size)
-       VALUES(?1,?2,?3,?4,?5,?6,?7,?8)`)
+       (id,household_id,uploaded_by,visibility,memory_id,storage_key,mime_type,byte_size,deleted_at)
+       VALUES(?1,?2,?3,?4,?5,?6,?7,?8,datetime('now','+1 hour'))`)
        .bind(id,h,u,memory.visibility,memoryId,storageKey,mime,bytes.length).run()
    }catch{
-     // The object is not referenced by D1. Attempt cleanup immediately.
-     try{await env.MEDIA.delete(storageKey)}catch{console.warn('homeflow_r2_unindexed_upload_cleanup_failed')}
      return json({error:'photo_metadata_failed'},503)
    }
-   return json({ok:true,id,byteSize:bytes.length},201)
+   let objectStored=false
+   try{
+     await env.MEDIA.put(storageKey,bytes,{httpMetadata:{contentType:mime}})
+     objectStored=true
+     const activated=await db.prepare(`UPDATE media_assets
+       SET deleted_at=NULL WHERE id=?1 AND household_id=?2
+         AND uploaded_by=?3 AND deleted_at IS NOT NULL`)
+       .bind(id,h,u).run()
+     if(Number(activated.meta?.changes)!==1)throw Error('metadata_activation_failed')
+     return json({ok:true,id,byteSize:bytes.length},201)
+   }catch{
+     // Keep the tombstone for the daily cron if immediate cleanup fails.
+     try{
+       await db.prepare(`UPDATE media_assets SET deleted_at=CURRENT_TIMESTAMP
+         WHERE id=?1 AND household_id=?2 AND uploaded_by=?3 AND deleted_at IS NOT NULL`)
+         .bind(id,h,u).run()
+       await runMediaCleanup(env,h)
+     }catch{console.warn('homeflow_r2_upload_compensation_pending')}
+     return json({error:objectStored?'photo_metadata_failed':'photo_upload_failed'},503)
+   }
  }
  const match=path.match(/^\/api\/media\/([0-9a-f-]{36})$/i)
  if(match&&request.method==='GET'){
