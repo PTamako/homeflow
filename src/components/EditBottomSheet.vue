@@ -1,6 +1,18 @@
 <script lang="ts">
 let activeSheetLocks=0
 let sheetOrder=0
+// Only the topmost sheet may receive focus or pointer events. Nested pickers
+// remain independently dismissible without exposing the underlying form.
+const sheetLayers:Array<{node:HTMLElement;z:number}>=[]
+function syncSheetLayers(){
+ const top=sheetLayers.reduce((highest,item)=>item.z>highest?item.z:highest,0)
+ for(const item of sheetLayers){
+  const hidden=item.z!==top
+  item.node.inert=hidden
+  if(hidden)item.node.setAttribute('aria-hidden','true')
+  else item.node.removeAttribute('aria-hidden')
+ }
+}
 let savedBodyOverflow=''
 let savedBodyPosition=''
 let savedBodyTop=''
@@ -10,9 +22,12 @@ let savedScrollY=0
 <script setup lang="ts">
 import {nextTick,onBeforeUnmount,onMounted,ref,useId} from 'vue'
 
-const props=withDefaults(defineProps<{title:string;closeDisabled?:boolean}>(),{closeDisabled:false})
+const props=withDefaults(defineProps<{title:string;closeDisabled?:boolean;priority?:'default'|'confirmation'}>(),{
+ closeDisabled:false,priority:'default'
+})
 const emit=defineEmits<{close:[]}>()
 const dialog=ref<HTMLElement|null>(null)
+const layer=ref<HTMLElement|null>(null)
 const layerZIndex=ref(10001)
 const titleId=useId()
 let previousFocus:HTMLElement|null=null
@@ -43,12 +58,22 @@ onMounted(()=>{
  lockSheetScroll()
  // Teleported siblings do not follow component parent order. The newest
  // nested sheet must be visually and interactively above its parent.
- layerZIndex.value=10000+(++sheetOrder)
- void nextTick(()=>dialog.value?.focus({preventScroll:true}))
+ layerZIndex.value=(props.priority==='confirmation'?11500:10000)+(++sheetOrder)
+ void nextTick(()=>{
+  if(layer.value){sheetLayers.push({node:layer.value,z:layerZIndex.value});syncSheetLayers()}
+  dialog.value?.focus({preventScroll:true})
+ })
 })
 onBeforeUnmount(()=>{
+ if(layer.value){
+  const index=sheetLayers.findIndex(entry=>entry.node===layer.value)
+  if(index!==-1)sheetLayers.splice(index,1)
+  layer.value.inert=false
+  layer.value.removeAttribute('aria-hidden')
+  syncSheetLayers()
+ }
  unlockSheetScroll()
- previousFocus?.focus({preventScroll:true})
+ if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true})
 })
 function lockSheetScroll(){
  if(activeSheetLocks++===0){
@@ -79,7 +104,7 @@ function unlockSheetScroll(){
 
 <template>
  <Teleport to="body">
-  <div class="edit-sheet-layer" :style="{zIndex:layerZIndex}" @keydown="onKeydown">
+  <div ref="layer" class="edit-sheet-layer" :style="{zIndex:layerZIndex}" @keydown="onKeydown">
    <div class="edit-sheet-scrim" aria-hidden="true" @click="requestClose"></div>
    <section ref="dialog" class="edit-sheet-dialog" role="dialog" aria-modal="true"
      :aria-labelledby="titleId" tabindex="-1">
