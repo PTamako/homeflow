@@ -2309,14 +2309,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-filter-tabs button.selected{background:#43866a;color:#fff;border-color:#43866a}
 .trip-section-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
 .trip-section-header h2{margin:0}
-.trip-import-trigger{background:#edf5ef;color:#397e5f;border:1px solid #d4e6d9;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:650;min-height:36px;white-space:nowrap}
+.trip-import-trigger{background:#edf5ef;color:#397e5f;border:1px solid #d4e6d9;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:650;min-height:44px;white-space:nowrap}
 .trip-card-actions,.wish-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none;flex-wrap:wrap}
-.trip-card-actions .life-link{min-height:34px;white-space:nowrap}
-.trip-card-actions .routine-more-trigger{width:34px;height:34px}
+.trip-card-actions .life-link{min-height:44px;white-space:nowrap}
+.trip-card-actions .routine-more-trigger{width:44px;height:44px}
 .trip-inline-actions{display:flex;gap:6px;padding:5px 0 8px}
 .trip-detail-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .trip-detail-header h3{margin:0;min-width:0;overflow-wrap:anywhere}
-.trip-detail-close{display:grid;place-items:center;border:none;background:#e9f0e9;color:#567765;border-radius:9px;width:32px;height:32px;flex:none}
+.trip-detail-close{display:grid;place-items:center;border:none;background:#e9f0e9;color:#567765;border-radius:9px;width:44px;height:44px;flex:none}
 .trip-progress{display:grid;grid-template-columns:1fr auto;gap:6px;margin:10px 0 12px;color:#506e5b;font-size:12px}
 .trip-progress-track{grid-column:1/-1;height:6px;background:#dfe9dd;border-radius:10px;overflow:hidden}
 .trip-progress-fill{height:100%;border-radius:10px;background:#43866a;transition:width .2s}
@@ -2330,7 +2330,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
  .plan-filter-tabs button{padding:7px 10px}}
 
 .task-list-pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 0 4px;font-size:12px;color:#74897a}
-.task-list-pager button{border:1px solid #d3e5d8;border-radius:9px;background:#f4faf6;color:#397e5f;min-height:36px;padding:7px 13px;font-size:12px}
+.task-list-pager button{border:1px solid #d3e5d8;border-radius:9px;background:#f4faf6;color:#397e5f;min-height:44px;padding:7px 13px;font-size:12px}
 .task-list-pager button:disabled{opacity:.42}
 /* Each task is one uninterrupted swipe surface (title, metadata and actions).
    Only the outside item owns a separator; no line is painted inside a task. */
@@ -2398,7 +2398,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere;align-items:flex-start}.trip-detail-row .trip-item :deep(.status-badge){flex:none;margin-left:auto}
 .trip-item.done span{color:#9aa99d;text-decoration:line-through}
 .trip-item-actions{display:flex;gap:5px;flex:none}
-.trip-item-actions button{border:0;border-radius:7px;background:#edf5ed;color:#43866a;padding:6px 8px;font-size:11px}
+.trip-item-actions button{min-height:44px;border:0;border-radius:7px;background:#edf5ed;color:#43866a;padding:6px 8px;font-size:11px}
 .trip-item-actions .remove{background:#faefeb;color:#ab5d4a}.life-light{padding:10px;border-radius:9px;background:white;color:#478969;border:1px solid #a2c5ad}.trip-preview{padding:12px 0;font-size:12px}.memory{border-left:2px solid #c1d8c7;margin:15px 0;padding:1px 14px}.memory time,.memory small{font-size:11px;color:#8a9d90}.memory h3{margin:8px 0}.memory p{font-size:13px;white-space:pre-wrap;line-height:1.7}.memory-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .memory-swipe-body{min-width:0;width:100%;overflow-wrap:anywhere;padding:0 0 2px}
 .memory-swipe-body .memory-swipe-heading{min-width:0;overflow-wrap:anywhere}
@@ -2413,7 +2413,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .memory-heading-content{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .memory-heading-content h3{min-width:0;flex:1}
 .memory-add-photo{flex:none;display:grid;place-items:center;position:relative;
- width:34px;height:34px;border:1px solid #c8ddcc;border-radius:50%;
+ width:44px;height:44px;border:1px solid #c8ddcc;border-radius:50%;
  background:#eff7f0;color:#45876a;cursor:pointer}
 .memory-add-photo input{position:absolute;inset:0;opacity:0;width:100%;height:100%;
  cursor:pointer;font-size:0}
@@ -2513,13 +2513,13 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
 .archive-toolbar{background:#fff;border:1px solid #eeebe5;border-radius:16px;padding:13px;margin-bottom:16px}
 .archive-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:#f0f5ef;padding:4px;border-radius:12px;gap:4px}
-.archive-tabs button{min-height:39px;border:0;background:transparent;color:#748b7d;border-radius:9px;font-size:13px;font-weight:650}
+.archive-tabs button{min-height:44px;border:0;background:transparent;color:#748b7d;border-radius:9px;font-size:13px;font-weight:650}
 .archive-tabs button.selected{background:#43866a;color:white}
 .archive-date-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
 .archive-date-filters label{display:grid;gap:5px;font-size:12px;color:#6c8073;min-width:0}
 .archive-date-filters select{width:100%;max-width:100%;min-width:0;min-height:40px;border:1px solid #d9e5dc;border-radius:9px;padding:8px;font-size:13px;background:#fff;color:#344c3c}
 .archive-date-filters select:disabled{opacity:.5}
-.life-more{display:block;margin:14px auto 0;padding:9px 15px;min-height:40px;border:1px solid #b4d4be;background:#f6faf6;color:#397e59;border-radius:10px;font-size:12px;font-weight:650}
+.life-more{display:block;margin:14px auto 0;padding:9px 15px;min-height:44px;border:1px solid #b4d4be;background:#f6faf6;color:#397e59;border-radius:10px;font-size:12px;font-weight:650}
 .life-more:disabled{opacity:.6}
 @media(max-width:420px){.archive-date-filters{gap:8px}}
 
@@ -2540,8 +2540,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .plan-view-toolbar .archive-date-filters{margin:12px 0 6px;gap:8px}
 .plan-view-toolbar .plan-history-date-filters{margin:10px 0 4px;grid-template-columns:repeat(3,minmax(0,1fr))}
 .plan-view-toolbar .archive-date-filters label{font-size:11px}
-.plan-view-toolbar .archive-date-filters select{min-height:38px}
-.plan-view-toolbar .archive-tabs button{min-height:37px}
+.plan-view-toolbar .archive-date-filters select{min-height:44px}
+.plan-view-toolbar .archive-tabs button{min-height:44px}
 .trip-import{padding:2px 0 0;margin-top:0;background:transparent}
 .trip-import label{display:grid;gap:8px;color:#526c5b;font-size:13px;font-weight:650;line-height:1.45}
 .trip-import textarea{display:block;min-height:124px;max-height:32dvh;margin:12px 0 12px;
@@ -2588,7 +2588,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   gap:6px;min-width:0;margin-top:5px;color:#718578;font-size:12px;line-height:1.45}
 .trip-participant-names{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trip-plan-row .trip-card-actions{max-width:none;flex:none;justify-content:flex-end;flex-wrap:nowrap;gap:5px;margin-left:auto}
-.trip-plan-row .trip-card-actions .life-link{min-height:38px;padding:8px 10px}
+.trip-plan-row .trip-card-actions .life-link{min-height:44px;padding:8px 10px}
 .routine-description-row{display:flex;align-items:center;justify-content:space-between;
   gap:6px;min-width:0}
 .routine-description-row>.routine-meta{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
@@ -2647,7 +2647,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .shopping-handler-row .shopping-row-actions{display:flex;align-items:center;
   justify-content:flex-end;flex:none;max-width:none;gap:5px;
   flex-wrap:nowrap;margin-left:auto}
-.shopping-handler-row .shopping-row-actions .life-link{min-height:32px;
+.shopping-handler-row .shopping-row-actions .life-link{min-height:44px;
   padding:4px 7px;font-size:11px}
 @media(max-width:380px){
  .trip-participant-actions{gap:4px}
