@@ -1,5 +1,6 @@
 // Recover by toggling a marker; preserve original IDs and all linked records.
 import {json,readBody,iso} from './security.js'
+import {runMediaCleanup} from './media.js'
 const sources=[
   ['task','tasks','creator_user_id'],
   ['routine','routines','created_by'],
@@ -13,7 +14,7 @@ const sources=[
 const byKind=new Map(sources.map(([kind,table,creator])=>[kind,{table,creator}]))
 const uuid=/^[0-9a-f-]{36}$/i
 const timestamp=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/
-export async function recycleRoute(request,db,path,session){
+export async function recycleRoute(request,db,path,session,env=null){
  const h=session.household_id,u=session.user_id
  if(path==='/api/recycle'&&request.method==='GET'){
    const query=new URL(request.url).searchParams,raw=query.get('cursor')||''
@@ -69,9 +70,14 @@ export async function recycleRoute(request,db,path,session){
      " AND NOT EXISTS (SELECT 1 FROM trips t WHERE t.wish_id=wishes.id)"+
      " AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.wish_id=wishes.id)"+
      " AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.linked_type='wish' AND m.linked_id=wishes.id)"
+   // Without R2 (Preview), do not permanently clear memories containing photos.
+   // With R2, mark their assets for durable cleanup before physical purge.
    const memory=owned('memories','created_by')+
-     ' AND NOT EXISTS (SELECT 1 FROM media_assets a WHERE a.memory_id=memories.id)'
+     (env?.MEDIA?'':' AND NOT EXISTS (SELECT 1 FROM media_assets a WHERE a.memory_id=memories.id)')
    const pre=[
+     ...(env?.MEDIA?[`UPDATE media_assets SET deleted_at=CURRENT_TIMESTAMP
+       WHERE deleted_at IS NULL AND memory_id IN
+       (SELECT id FROM memories WHERE ${memory})`]:[]),
      `DELETE FROM finance_links WHERE household_id=?1 AND target_type='trip'
          AND target_id IN (SELECT id FROM trips WHERE ${trip})`,
      `DELETE FROM finance_links WHERE household_id=?1 AND target_type='goal'
@@ -100,7 +106,10 @@ export async function recycleRoute(request,db,path,session){
    try{
      const results=await db.batch([...pre,...deletions].map(sql=>db.prepare(sql).bind(h,u)))
      const deleted=results.slice(pre.length).reduce((sum,result)=>sum+(result.meta?.changes||0),0)
-     return json({ok:true,deleted})
+     // R2 cleanup runs only after D1 batch commits. Failed object removals
+     // remain in media_assets.deleted_at and are retried by the daily Cron.
+     const cleanup=env?.MEDIA?await runMediaCleanup(env,h).catch(()=>({failed:1})):null
+     return json({ok:true,deleted,pendingPhotoCleanup:!!cleanup?.failed})
    }catch{
      return json({error:'related_records_prevent_purge'},409)
    }

@@ -106,6 +106,8 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0041_household_lottery.sql') AS lottery_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0049_lottery_balanced_coupons.sql') AS coupon_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0050_notification_delivery_state.sql') AS delivery_migration_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name='0051_private_media_cleanup.sql') AS media_migration_ready,
+      (SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name='deleted_at') AS media_deleted_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='notification_inbox'
         AND instr(sql,'''quiet''')>0 AND instr(sql,'''app_only''')>0) AS delivery_state_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('lottery_coupons','reward_coupon_discounts')) AS coupon_tables_ready,
@@ -165,6 +167,8 @@ export async function verifiedDatabase(env) {
       Number(identity.lottery_migration_ready)===1 &&
       Number(identity.coupon_migration_ready)===1 &&
       Number(identity.delivery_migration_ready)===1 &&
+      Number(identity.media_migration_ready)===1 &&
+      Number(identity.media_deleted_ready)===1 &&
       Number(identity.delivery_state_ready)===1 &&
       Number(identity.coupon_tables_ready)===2 &&
       Number(identity.coupon_triggers_ready)===5 &&
