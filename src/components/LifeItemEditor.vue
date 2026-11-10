@@ -2,12 +2,15 @@
 import DateField from './DateField.vue'
 import MoneyInput from './MoneyInput.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import {reactive,ref,computed,watch} from 'vue'
 import {tripDurationDays,longTripNeedsConfirmation,longTripWarning} from '../trip-reward-confirmation.mjs'
 type Kind='routines'|'anniversaries'|'wishes'|'goals'|'shopping'|'memories'|'trips'
 type Item=Record<string,any>
 const props=defineProps<{kind:Kind;item:Item;profiles?:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;userId?:string}>()
 const emit=defineEmits<{saved:[];cancel:[]}>()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const busy=ref(false),error=ref('')
 const data=props.item
 const config=(()=>{try{return typeof data.repeat_config==='string'?JSON.parse(data.repeat_config):data.repeat_config||{}}catch{return {}}})()
@@ -94,10 +97,12 @@ async function save(){
   const completingTrip=props.kind==='trips'&&form.status==='completed'&&data.status!=='completed'
   let longTripConfirmed=false
   if(completingTrip){
-    if(!confirm('确定旅行已结束并结算参与人积分吗？'))return
+    if(!await confirmAction({title:'完成旅行并结算积分',confirmLabel:'确认完成',
+     message:'确定旅行已结束并结算参与人积分吗？'}))return
     const days=tripDurationDays(form.startOn,form.endOn)
     if(longTripNeedsConfirmation(days)){
-      if(!confirm(longTripWarning(days)))return
+      if(!await confirmAction({title:'长途旅行二次确认',confirmLabel:'确认结算',
+       message:longTripWarning(days)}))return
       longTripConfirmed=true
     }
   }
@@ -290,6 +295,8 @@ async function save(){
   </div>
  </form>
  </EditBottomSheet>
+ <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+   @confirm="acceptConfirm" @cancel="cancelConfirm"/>
 </template>
 <style scoped>
 .detail-editor{margin:0;padding:0;border:0;background:transparent;display:grid;gap:12px;min-width:0}
@@ -314,7 +321,7 @@ async function save(){
 .detail-editor .day-select-group legend{font-size:12px;color:#65796e;margin-bottom:6px}
 .detail-editor .day-select-group small{font-size:11px;color:#708778}
 .detail-editor .day-select{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
-.detail-editor .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:36px;cursor:pointer;border:1px solid #d4e0d6;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
+.detail-editor .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:44px;cursor:pointer;border:1px solid #d4e0d6;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
 .detail-editor .day-option.is-selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
 .detail-editor .day-option:focus-within{outline:2px solid #7bbda1;outline-offset:2px}
 .detail-editor .day-option input{position:absolute;opacity:0;width:1px;height:1px;min-height:1px;padding:0;pointer-events:none}
