@@ -110,7 +110,7 @@ async function confirmGoalCompleted(){
   const key=currentMarkKey.value,wasCompleted=alreadyCompleted.value
   if(!wasCompleted&&!await confirmAction({
     title:'确认储值估算达标',confirmLabel:'按估算确认完成',
-    message:'HomeFlow 仅根据家計簿家庭收支净额、期初金额、手动调整及虚拟奖励估算储值进度，并未核验银行实际存款。\\n请先核对实际储值金额，确认后将依据该估算更新完成状态及相关积分。'
+    message:'HomeFlow 仅根据家計簿家庭收支净额、期初金额、手动调整及虚拟奖励估算储值进度，并未核验银行实际存款。\n请先核对实际储值金额，确认后将依据该估算更新完成状态及相关积分。'
   }))return
   confirmBusy.value=true;error.value=''
   try{
@@ -130,7 +130,7 @@ async function settleRecurringGoal(){
  if(!recurringGoal.value||!selected.value||!goalPeriodDue.value||confirmBusy.value)return
  if(!await confirmAction({
    title:'按收支估算结算',confirmLabel:'确认按估算结算',
-   message:'结算依据是家計簿家庭收支净额加手动调整，并非银行实际存款记录。\\n系统自动结算同样采用这一估算口径；确认前请核对本期实际储值，结算可能改变家庭积分。'
+   message:'结算依据是家計簿家庭收支净额加手动调整，并非银行实际存款记录。\n系统自动结算同样采用这一估算口径；确认前请核对本期实际储值，结算可能改变家庭积分。'
  }))return
  confirmBusy.value=true;error.value=''
  try{
