@@ -312,7 +312,7 @@ async function submit(){
 .plan-fields .trip-participant-option>span{display:block;flex:1 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal;font-size:13px;font-weight:600;line-height:1.4;color:#314d3e}
 @media(max-width:350px){.trip-participants-field{grid-template-columns:minmax(0,1fr)}}
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
-.creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
+.creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:44px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}
 @media(max-width:380px){.plan-type-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.plan-type{padding:10px 9px}.plan-type small{font-size:10px}}
 </style>
