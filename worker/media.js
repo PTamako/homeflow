@@ -51,6 +51,7 @@ export async function mediaRoute(request,env,path,session){
      "AND (m.visibility='household' OR m.created_by=?2)"
    const columns="a.id,a.memory_id AS memoryId,a.uploaded_by AS uploadedBy,"+
      "a.mime_type AS mimeType,a.byte_size AS byteSize,a.created_at AS createdAt"
+   if(idsParam==='')return json({items:[],nextCursors:{},cloudAvailable})
    if(idsParam!==null){
      // First two thumbnails for up to five currently displayed memories.
      // One D1 statement, zero R2 list operations and no offscreen reads.

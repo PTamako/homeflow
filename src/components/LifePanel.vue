@@ -11,6 +11,9 @@ import StatusBadge from './StatusBadge.vue'
 import {wishTypeLabel} from '../wish-type-display.mjs'
 import LifeItemEditor from './LifeItemEditor.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import PhotoThumbnail from './PhotoThumbnail.vue'
+import PhotoViewer from './PhotoViewer.vue'
+import {invalidatePhoto,setPhotoCacheUser} from '../photo-session-cache'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
@@ -649,6 +652,11 @@ async function savePlanMemory(){
 }
 const photoFiles=ref<File[]>([]),photos=ref<Record<string,string[]>>({}),localPhotoBlobs=ref<Record<string,Blob[]>>({})
 const cloudEnabled=ref(false),cloudPhotos=ref<Record<string,Array<{id:string;uploadedBy:string}>>>({})
+const photoCursors=ref<Record<string,string|null>>({})
+const photoPageBusy=ref<Record<string,boolean>>({})
+const photoVersions=ref<Record<string,number>>({})
+type OpenPhoto={kind:'cloud'|'local';src:string;title:string;memoryId:string;id?:string;index?:number;uploadedBy?:string}
+const openPhoto=ref<OpenPhoto|null>(null),viewerBusy=ref(false)
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
 const convertWishEdit=ref<{id:string;title:string;destination:string}|null>(null)
 const tripItemEdit=ref<{id:string;title:string;quantity:number|null}|null>(null)
@@ -794,6 +802,7 @@ async function fetchMode(){
   if(currentMode==='memories'){
     items.value=[]
     photos.value={};cloudPhotos.value={};localPhotoBlobs.value={}
+    photoCursors.value={}
     for(const url of photoUrls)URL.revokeObjectURL(url)
     photoUrls=[]
   }
@@ -1037,21 +1046,69 @@ async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
     throw Error(String(info.error||'photo_upload_failed'))
   }
 }
-async function removeCloudPhoto(id:string){
-  if(!confirm('永久删除这张照片？R2 云端文件也会删除，此操作不能撤销。'))return
-  try{
-    const result=await api('/media/'+id,'DELETE')
-    await loadPhotos()
-    notify(result.pendingCleanup?'照片已隐藏，R2 删除失败后会自动重试':'R2 云端照片已删除')
-  }catch(e){error.value=(e as Error).message}
+function previewCloudPhoto(remote:{id:string;uploadedBy:string},memoryId:string,title:string,url:string){
+  openPhoto.value={kind:'cloud',id:remote.id,uploadedBy:remote.uploadedBy,
+    memoryId,title,src:url}
 }
-async function removeDevicePhoto(memoryId:string,index:number){
-  if(!confirm('永久删除这张仅存本机的照片？'))return
+function previewDevicePhoto(memoryId:string,index:number,title:string,url:string){
+  openPhoto.value={kind:'local',index,memoryId,title,src:url}
+}
+async function saveViewedPhoto(blob:Blob){
+  const selected=openPhoto.value
+  if(!selected||viewerBusy.value)return
+  viewerBusy.value=true;error.value=''
   try{
-    await deleteLocalPhoto(props.userId,memoryId,index)
-    await loadPhotos()
-    notify('本机照片已删除')
+    if(selected.kind==='cloud'&&selected.id){
+      const response=await fetch('/api/media/'+encodeURIComponent(selected.id),{
+        method:'PUT',credentials:'same-origin',cache:'no-store',
+        headers:{'content-type':'image/jpeg'},body:blob
+      })
+      if(!response.ok)throw Error('照片编辑失败，请稍后重试')
+      invalidatePhoto(props.userId,selected.id)
+      photoVersions.value[selected.id]=(photoVersions.value[selected.id]||0)+1
+    }else if(selected.kind==='local'&&selected.index!==undefined){
+      await uploadPhoto(selected.memoryId,blob)
+      await deleteLocalPhoto(props.userId,selected.memoryId,selected.index)
+      await loadPhotos(activeFetch,true)
+    }
+    openPhoto.value=null
+    notify('照片已保存')
   }catch(e){error.value=(e as Error).message}
+  finally{viewerBusy.value=false}
+}
+async function deleteViewedPhoto(){
+  const selected=openPhoto.value
+  if(!selected||viewerBusy.value||
+    !confirm('确定永久删除这张照片吗？删除后无法恢复。'))return
+  viewerBusy.value=true;error.value=''
+  try{
+    if(selected.kind==='cloud'&&selected.id){
+      await api('/media/'+selected.id,'DELETE')
+      invalidatePhoto(props.userId,selected.id)
+    }else if(selected.kind==='local'&&selected.index!==undefined){
+      await deleteLocalPhoto(props.userId,selected.memoryId,selected.index)
+    }
+    openPhoto.value=null
+    await loadPhotos(activeFetch,true)
+    notify('照片已删除')
+  }catch(e){error.value=(e as Error).message}
+  finally{viewerBusy.value=false}
+}
+async function loadMorePhotos(memoryId:string){
+  const cursor=photoCursors.value[memoryId]
+  if(!cursor||photoPageBusy.value[memoryId])return
+  photoPageBusy.value[memoryId]=true
+  try{
+    const data=await api('/media?memoryId='+encodeURIComponent(memoryId)+
+      '&limit=5&cursor='+encodeURIComponent(cursor))
+    if(!items.value.some(m=>m.id===memoryId)||photoCursors.value[memoryId]!==cursor)return
+    const existing=cloudPhotos.value[memoryId]||[]
+    const seen=new Set(existing.map(photo=>photo.id))
+    cloudPhotos.value[memoryId]=[...existing,...(data.items||[])
+      .filter((photo:{id:string})=>!seen.has(photo.id))]
+    photoCursors.value[memoryId]=data.nextCursor||null
+  }catch(e){error.value=(e as Error).message}
+  finally{photoPageBusy.value[memoryId]=false}
 }
 async function uploadAdditionalPhotos(memoryId:string,event:Event){
   const input=event.target as HTMLInputElement
@@ -1121,31 +1178,54 @@ async function addMemory(){
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
-async function loadPhotos(requestId=activeFetch){
-  for(const x of photoUrls)URL.revokeObjectURL(x)
-  photoUrls=[];photos.value={};localPhotoBlobs.value={};cloudPhotos.value={}
-  try{
-    const media=await api('/media')
-    if(requestId!==activeFetch)return
-    cloudEnabled.value=!!media.cloudAvailable
-    for(const item of media.items||[]){
-      if(!item.memoryId)continue
-      if(!cloudPhotos.value[item.memoryId])cloudPhotos.value[item.memoryId]=[]
-      cloudPhotos.value[item.memoryId].push({id:item.id,uploadedBy:item.uploadedBy})
+async function loadPhotos(requestId=activeFetch,force=false){
+  // Photo bytes are fetched only by visible thumbnail components.
+  // Metadata is grouped into one D1 request for each five-memory page.
+  setPhotoCacheUser(props.userId)
+  if(force){
+    for(const url of photoUrls)URL.revokeObjectURL(url)
+    photoUrls=[];photos.value={};localPhotoBlobs.value={}
+    cloudPhotos.value={};photoCursors.value={}
+  }
+  const missing=items.value.filter(m=>!(m.id in photoCursors.value)).map(m=>m.id)
+  if(!missing.length&&items.value.length===0){
+    try{
+      const status=await api('/media?memoryIds=')
+      if(requestId===activeFetch)cloudEnabled.value=!!status.cloudAvailable
+    }catch{if(requestId===activeFetch)cloudEnabled.value=false}
+  }
+  for(let i=0;i<missing.length;i+=5){
+    const ids=missing.slice(i,i+5)
+    try{
+      const page=await api('/media?memoryIds='+ids.map(encodeURIComponent).join(','))
+      if(requestId!==activeFetch)return
+      cloudEnabled.value=!!page.cloudAvailable
+      for(const id of ids){
+        cloudPhotos.value[id]=[]
+        photoCursors.value[id]=page.nextCursors?.[id]||null
+      }
+      for(const photo of page.items||[]){
+        if(!cloudPhotos.value[photo.memoryId])continue
+        cloudPhotos.value[photo.memoryId].push({id:photo.id,uploadedBy:photo.uploadedBy})
+      }
+    }catch{
+      if(requestId!==activeFetch)return
+      error.value='部分照片目录读取失败，请稍后重试'
     }
-  }catch{cloudEnabled.value=false}
+  }
   for(const m of items.value){
     if(requestId!==activeFetch)return
+    if(m.created_by!==props.userId||m.id in localPhotoBlobs.value)continue
     try{
-      if(m.created_by!==props.userId)continue
       const list=await listLocalPhotos(props.userId,m.id)
       if(requestId!==activeFetch)return
-      if(!list.length)continue
       localPhotoBlobs.value[m.id]=list
+      if(!list.length)continue
       photos.value[m.id]=list.map(b=>{const url=URL.createObjectURL(b);photoUrls.push(url);return url})
-    }catch{ /* private local storage may be unavailable in some Safari modes */ }
+    }catch{ /* Old device-only albums may be unavailable in Safari private mode. */ }
   }
 }
+
 onMounted(()=>document.addEventListener('visibilitychange',refreshOnResume))
 onBeforeUnmount(()=>{
   activeFetch++
