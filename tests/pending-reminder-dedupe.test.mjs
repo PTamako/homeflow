@@ -72,5 +72,5 @@ test('Today pending tab uses the filtered route and refreshes when a push arrive
   assert.match(pending,/props\.mode==='list'\?'&pending=1':''/)
   assert.match(pending,/defineExpose\(\{refreshIfStale,refresh:load\}\)/)
   assert.match(today,/ref="pendingReminders"/)
-  assert.match(today,/if\(view\.value==='pending'\)await pendingReminders\.value\?\.refresh\(\)/)
+  assert.match(today,/if\(requestedView==='pending'\)await pendingReminders\.value\?\.refresh\(\)/)
 })
