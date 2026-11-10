@@ -308,7 +308,7 @@ onBeforeUnmount(()=>{requestId++})
 .snooze-calendar :deep(.date-field){flex:1 1 150px;max-width:180px;min-inline-size:0}
 .item-settings{align-items:flex-end;flex-wrap:wrap}
 .item-settings label{display:grid;gap:3px;font-size:11px}
-.item-settings select{border:1px solid #d5e3d8;border-radius:8px;padding:5px;min-height:30px;max-width:100%}
+.item-settings select{border:1px solid #d5e3d8;border-radius:8px;padding:5px;min-height:44px;max-width:100%}
 .quiet-controls{display:grid;gap:7px}
 .reminder-rule-section{padding:12px 0;border-bottom:1px solid #e7eee9}
 .reminder-rule-section:last-child{border-bottom:0}
@@ -325,7 +325,7 @@ onBeforeUnmount(()=>{requestId++})
 .reminder-settings--sheet{margin-top:0;border-top:0}
 .reminder-settings--sheet>.reminder-rule-section:first-child{padding-top:0}
 .reminder-settings label{font-size:12px;display:grid;gap:5px}
-.reminder-settings select{min-height:34px;width:100%;border-radius:8px;border:1px solid #d5e3d8;background:white}
+.reminder-settings select{min-height:44px;width:100%;border-radius:8px;border:1px solid #d5e3d8;background:white}
 .reminder-settings small{color:#71867a;font-size:11px}
 .snoozed-items{padding-top:8px}
 .snoozed-items>b{font-size:12px}

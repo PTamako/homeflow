@@ -36,5 +36,5 @@ test('bottom sheets pin iOS page scroll and restore original position on final c
  assert.match(sheet,/if\(activeSheetLocks===0\)\{/)
  assert.match(sheet,/document\.body\.style\.position=savedBodyPosition/)
  assert.match(sheet,/window\.scrollTo\(0,savedScrollY\)/)
- assert.match(sheet,/previousFocus\?\.focus\(\{preventScroll:true\}\)/)
+ assert.match(sheet,/if\(previousFocus\?\.isConnected\)previousFocus\.focus\(\{preventScroll:true\}\)/)
 })

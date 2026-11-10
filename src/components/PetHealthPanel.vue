@@ -3,6 +3,8 @@ import DateField from './DateField.vue'
 import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import SwipeActions from './SwipeActions.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
@@ -14,6 +16,7 @@ const editingId=ref<string|null>(null)
 const showHealthForm=ref(false)
 const historyFilterOpen=ref(false)
 const {toast,notify}=usePageToast()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
 const reading=ref(false)
 type WeightPoint={eventOn:string;weightGrams:number}
@@ -77,7 +80,9 @@ function toggleHealthForm(){
   else {editingId.value=null;showHealthForm.value=true}
 }
 async function removeRecord(r:Health){
-  if(r.createdBy!==props.userId||!confirm('删除这条护理记录吗？已单独建立的提醒任务不会被自动删除。'))return
+  if(r.createdBy!==props.userId||busy.value)return
+  if(!await confirmAction({title:'删除护理记录',confirmLabel:'确认删除',danger:true,
+    message:'删除这条护理记录吗？已单独建立的提醒任务不会被自动删除。'}))return
   busy.value=true;error.value=''
   try{
     const res=await fetch('/api/pets/'+props.petId+'/health/'+r.id,{method:'DELETE',credentials:'same-origin'})
@@ -144,6 +149,8 @@ watch(year,value=>{if(!value)month.value=''})
     </EditBottomSheet>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <PageToast :toast="toast" />
+    <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+      @confirm="acceptConfirm" @cancel="cancelConfirm"/>
     <button type="button" class="pet-more" @click="historyFilterOpen=true">筛选护理记录 · {{ year||'全部' }}</button>
     <EditBottomSheet v-if="historyFilterOpen" title="筛选护理记录" @close="historyFilterOpen=false">
     <div class="pet-history-filter">

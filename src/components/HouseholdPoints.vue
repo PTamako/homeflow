@@ -1047,7 +1047,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-expanded{display:grid;align-content:start;gap:11px;min-width:0}
 .points-collapse{display:inline-flex;align-items:center;justify-content:center;gap:4px;
   border:0;background:#f3f8f2;color:#518069;border-radius:8px;
-  font-size:12px;line-height:1;min-height:30px;padding:4px 11px;white-space:nowrap}
+  font-size:12px;line-height:1;min-height:44px;padding:4px 11px;white-space:nowrap}
 .points-chevron-up{transform:rotate(180deg)}
 .points-head,.shop-title,.form-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .points-head h2{margin:0;font-size:17px;line-height:1.4}
@@ -1266,7 +1266,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .lottery-panel{display:grid;gap:5px;min-width:0;flex:1}
  .lottery-panel>b{font-size:15px;color:#365b43}
  .lottery-panel small{font-size:11px;color:#708977}
- .lottery-spin{justify-self:start;min-height:35px;margin-top:5px}
+ .lottery-spin{justify-self:start;min-height:44px;margin-top:5px}
  .lottery-spin:disabled{opacity:.55}
  .lottery-result{display:flex;align-items:center;gap:9px;border-radius:10px;background:#eef7ef;padding:10px;color:#3b7656}
  .lottery-result>div{display:grid;gap:4px}
@@ -1305,7 +1305,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .reward-details b{font-size:13px;overflow-wrap:anywhere}
 .reward-details small{font-size:11px;color:#7b8d80;line-height:1.35;overflow-wrap:anywhere}
 .reward-details>span{font-size:12px;color:#438266;font-weight:650}
-.reward-buy{grid-column:3;grid-row:1;min-height:32px;white-space:nowrap}
+.reward-buy{grid-column:3;grid-row:1;min-height:44px;white-space:nowrap}
 .reward-actions{grid-column:2/-1;grid-row:2;display:flex;gap:6px;justify-content:flex-end;
   align-items:center;min-width:0;flex-wrap:wrap}
 .reward-goal-note{font-size:11px;color:#578c69;line-height:1.35}
@@ -1359,7 +1359,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .history-row small{font-size:10px;color:#829487}
 .history-status{font-size:10px;color:#b1793c;white-space:nowrap}
 .history-status.fulfilled{color:#589175}
-.history-row button{font-size:11px;color:#467a59;background:#f3f8f3;border:0;border-radius:7px;padding:7px;white-space:nowrap}
+.history-row button{min-height:44px;font-size:11px;color:#467a59;background:#f3f8f3;border:0;border-radius:7px;padding:7px;white-space:nowrap}
 .lottery-coupon-select,.shop-coupon-choice{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
  justify-content:space-between;padding:8px;border-radius:9px;background:#f5faf5}
 .lottery-ticket-choice,.shop-coupon-choice label{display:flex;align-items:center;gap:7px;min-width:0;color:#416c51;font-size:12px}
@@ -1416,7 +1416,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .annual-ledger-row>strong{flex:none;font-size:13px;color:#33845f;font-variant-numeric:tabular-nums}
 .annual-ledger-row>strong.negative{color:#b97461}
 .annual-pagination{display:flex;justify-content:center;align-items:center;gap:12px;padding:9px}
-.annual-pagination button{min-height:34px;border:1px solid #d5e8da;background:#f8fcf8;color:#4b8364;border-radius:7px;padding:5px 9px;font-size:12px}
+.annual-pagination button{min-height:44px;border:1px solid #d5e8da;background:#f8fcf8;color:#4b8364;border-radius:7px;padding:5px 9px;font-size:12px}
 .annual-pagination button:disabled{opacity:.4}
 .annual-pagination span{font-size:11px;color:#7a8c7d}
 .points-loading,.points-error{margin:0;font-size:12px;color:#7c8c80}

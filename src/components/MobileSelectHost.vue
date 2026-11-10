@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onBeforeUnmount,onMounted,ref,shallowRef} from 'vue'
+import {computed,nextTick,onBeforeUnmount,onMounted,ref,shallowRef,watch} from 'vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import AppIcon from './AppIcon.vue'
 import {filterMobileSelectOptions,shouldSearchMobileSelect,type MobileSelectChoice} from '../mobile-select-options.mjs'
@@ -9,6 +9,7 @@ import {filterMobileSelectOptions,shouldSearchMobileSelect,type MobileSelectChoi
 // required/disabled validation, and existing @change behavior without replacing
 // dozens of independent form implementations.
 const activeSelect=shallowRef<HTMLSelectElement|null>(null)
+const optionList=ref<HTMLElement|null>(null)
 const options=ref<MobileSelectChoice[]>([])
 const heading=ref('选择选项')
 const chosen=ref('')
@@ -52,6 +53,27 @@ function openSelect(select:HTMLSelectElement){
  chosen.value=select.value
  keyword.value=''
  activeSelect.value=select
+}
+watch(activeSelect,select=>{
+ if(!select)return
+ void nextTick(()=>{
+  // Keep the selected choice visible even in long year/member/shop lists.
+  const selected=optionList.value?.querySelector<HTMLElement>('.mobile-select-option[aria-selected="true"]')
+  selected?.scrollIntoView({block:'nearest'})
+ })
+})
+function navigateOptions(event:KeyboardEvent){
+ if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return
+ const list=event.currentTarget as HTMLElement|null
+ if(!list)return
+ const buttons=Array.from(list.querySelectorAll<HTMLButtonElement>('.mobile-select-option:not(:disabled)'))
+ if(!buttons.length)return
+ event.preventDefault()
+ const previous=buttons.indexOf(document.activeElement as HTMLButtonElement)
+ const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:
+  event.key==='ArrowDown'?(previous+1)%buttons.length:
+   previous<0?buttons.length-1:(previous-1+buttons.length)%buttons.length
+ buttons[next]?.focus({preventScroll:false})
 }
 function closeSelect(){activeSelect.value=null;keyword.value=''}
 function choose(option:MobileSelectChoice){
@@ -109,7 +131,8 @@ onBeforeUnmount(()=>{
       autocapitalize="off" spellcheck="false" placeholder="输入关键词筛选"
       aria-label="搜索下拉选项"/>
    </label>
-   <div class="mobile-select-list" role="listbox" :aria-label="heading">
+   <div ref="optionList" class="mobile-select-list" role="listbox" :aria-label="heading"
+     @keydown="navigateOptions">
     <template v-for="(item,i) in filtered" :key="item.index">
      <div v-if="item.group&&(i===0||filtered[i-1]?.group!==item.group)"
        class="mobile-select-group" role="presentation">{{ item.group }}</div>

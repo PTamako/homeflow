@@ -167,7 +167,7 @@ onMounted(discover)
 <style scoped>
 .push-setting{display:grid;gap:10px;margin-top:10px;min-width:0}
 .push-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
-.push-toggle{background:#43866a;color:#fff;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
+.push-toggle{background:#43866a;color:#fff;border:0;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:44px}
 .push-toggle:disabled,.push-now:disabled{opacity:.55;cursor:not-allowed}
 .push-now{border:1px solid #80a790;background:#fff;color:#397f5f;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;min-height:40px}
 .push-toggle:focus-visible{outline:2px solid #43866a;outline-offset:3px}
