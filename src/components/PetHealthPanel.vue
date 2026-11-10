@@ -18,6 +18,20 @@ const historyFilterOpen=ref(false)
 const {toast,notify}=usePageToast()
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const year=ref(''),month=ref(''),nextCursor=ref<string|null>(null)
+const draftYear=ref(''),draftMonth=ref('')
+function openHistoryFilter(){
+ draftYear.value=year.value;draftMonth.value=month.value
+ historyFilterOpen.value=true
+}
+function closeHistoryFilter(){
+ historyFilterOpen.value=false
+ draftYear.value=year.value;draftMonth.value=month.value
+}
+function applyHistoryFilter(){
+ historyFilterOpen.value=false
+ year.value=draftYear.value
+ month.value=draftYear.value?draftMonth.value:''
+}
 const reading=ref(false)
 type WeightPoint={eventOn:string;weightGrams:number}
 const weightPoints=ref<WeightPoint[]>([])
@@ -114,6 +128,7 @@ onMounted(()=>{void read();void loadWeightTrend()})
 watch(()=>props.petId,()=>{cancelEditing();weightPoints.value=[];void read();void loadWeightTrend()})
 watch([year,month],()=>void read())
 watch(year,value=>{if(!value)month.value=''})
+watch(draftYear,value=>{if(!value)draftMonth.value=''})
 </script>
 <template>
   <section class="pet-card">
@@ -151,17 +166,17 @@ watch(year,value=>{if(!value)month.value=''})
     <PageToast :toast="toast" />
     <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
       @confirm="acceptConfirm" @cancel="cancelConfirm"/>
-    <button type="button" class="pet-more" @click="historyFilterOpen=true">筛选护理记录 · {{ year||'全部' }}</button>
-    <EditBottomSheet v-if="historyFilterOpen" title="筛选护理记录" @close="historyFilterOpen=false">
+    <button type="button" class="pet-more" @click="openHistoryFilter">筛选护理记录 · {{ year||'全部' }}</button>
+    <EditBottomSheet v-if="historyFilterOpen" title="筛选护理记录" @close="closeHistoryFilter">
     <div class="pet-history-filter">
-      <label>年份<select v-model="year" aria-label="宠物护理记录年份">
+      <label>年份<select v-model="draftYear" aria-label="宠物护理记录年份">
         <option value="">全部年份</option><option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
       </select></label>
-      <label>月份<select v-model="month" :disabled="!year" aria-label="宠物护理记录月份">
+      <label>月份<select v-model="draftMonth" :disabled="!draftYear" aria-label="宠物护理记录月份">
         <option value="">全年</option><option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
       </select></label>
     </div>
-    <button type="button" class="pet-more" @click="historyFilterOpen=false">完成</button>
+    <button type="button" class="pet-more" @click="applyHistoryFilter">完成</button>
     </EditBottomSheet>
 
     <div v-if="!items.length" class="empty">暂无护理记录</div>

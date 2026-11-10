@@ -27,6 +27,6 @@ test('closing search cancels and unlocks any in-flight query', () => {
  assert.match(component, /activeRequest\?\.abort\(\)/)
  assert.match(component, /busy\.value=false/)
  assert.match(component, /signal:controller\.signal/)
- assert.match(component, /function toggle\(\)\{open\.value=!open\.value;if\(!open\.value\)cancelPending\(\)/)
+ assert.match(component, /function closeSearch\(\)\{[\s\S]*?cancelPending\(\)/)
  assert.match(component, /if\(token===revision&&!controller\.signal\.aborted\)/)
 })

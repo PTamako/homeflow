@@ -155,6 +155,11 @@ const wishCouponDraft=ref<Coupon|null>(null)
 const wishCouponGoal=ref('')
 const wishCouponOptions=ref<WishGoalOption[]>([])
 const wishCouponBusy=ref(false)
+function closeWishCoupon(){
+ if(busy.value||wishCouponBusy.value)return
+ wishCouponDraft.value=null;wishCouponGoal.value='';wishCouponOptions.value=[]
+ error.value=''
+}
 const activeCoupons=computed(()=>couponItems.value.filter(c=>c.status==='available'))
 const firstCoupon=(kind:Coupon['kind'])=>activeCoupons.value.filter(c=>c.kind===kind)
   .sort((a,b)=>a.expiresOn.localeCompare(b.expiresOn)||a.createdAt.localeCompare(b.createdAt))[0]||null
@@ -206,7 +211,10 @@ const wishGoalSelected=ref('')
 const wishGoalLoading=ref(false)
 const wishGoalError=ref('')
 const wishGoalChoice=computed(()=>wishGoalOptions.value.find(g=>g.goalId===wishGoalSelected.value)||null)
-function closeWishReward(){if(!busy.value&&!wishGoalLoading.value)wishRewardDraft.value=null}
+function closeWishReward(){
+ if(busy.value||wishGoalLoading.value)return
+ wishRewardDraft.value=null;wishGoalOptions.value=[];wishGoalSelected.value='';wishGoalError.value=''
+}
 async function askLinkedWish(item:Reward,action:'redeem'|'pool',quantity=1){
  if(busy.value||wishGoalLoading.value)return
  wishRewardDraft.value={item,action,quantity}
@@ -222,6 +230,14 @@ async function askLinkedWish(item:Reward,action:'redeem'|'pool',quantity=1){
 }
 const poolAmount=ref<Record<string,string>>({})
 const poolContributionOpen=ref('')
+function closePoolContribution(id:string){
+ if(busy.value)return
+ if(poolContributionOpen.value===id)poolContributionOpen.value=''
+ const remaining={...poolAmount.value}
+ delete remaining[id]
+ poolAmount.value=remaining
+ error.value=''
+}
 const own=computed(()=>data.value?.members.find(x=>x.userId===props.userId))
 const myTotal=computed(()=>data.value?.experience??Number(own.value?.sharedPoints||0)+Number(data.value?.ownPrivatePoints||0))
 const points=computed(()=>data.value?.availablePoints??0)
@@ -439,7 +455,7 @@ async function redeemWishCoupon(){
  await mutate(()=>fetchJSON('/lottery/coupons/redeem-wish','POST',{
   couponId:coupon.id,requestId:crypto.randomUUID(),wishId:choice.wishId,goalId:choice.goalId
  }),'心愿加速券已核销，虚拟奖励 ¥100 已计入储值进度')
- if(!error.value){wishCouponDraft.value=null;couponSheetOpen.value=false}
+ if(!error.value){closeWishCoupon();couponSheetOpen.value=false}
 }
 function applyCouponFromSheet(coupon:Coupon){
  if(coupon.status!=='available')return
@@ -550,7 +566,7 @@ async function contributePool(item:GroupOrder){
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/contribute','POST',
   {points:amount,requestId}),'已出资 '+amount+' 分')
- if(!error.value)poolContributionOpen.value=''
+ if(!error.value)closePoolContribution(item.id)
 }
 async function cancelPool(item:GroupOrder){
  if(!await confirmAction({title:'取消合力兑换',confirmLabel:'确认取消',danger:true,
@@ -940,7 +956,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <div v-if="order.status==='collecting'" class="pool-contribute">
            <button type="button" class="redeem-btn" :disabled="busy||points<1" @click="poolContributionOpen=order.id">出资积分</button>
            <button type="button" class="pool-cancel" :disabled="busy" @click="cancelPool(order)">取消并退分</button>
-           <EditBottomSheet v-if="poolContributionOpen===order.id" :title="'合力出资 · '+order.title" :close-disabled="busy" @close="poolContributionOpen=''">
+           <EditBottomSheet v-if="poolContributionOpen===order.id" :title="'合力出资 · '+order.title" :close-disabled="busy" @close="closePoolContribution(order.id)">
              <div class="pool-contribute-sheet">
                <p>尚需 {{ fmt(Math.max(0,order.points-order.fundedPoints)) }} 分 · 我的可用积分 {{ fmt(points) }} 分</p>
                <label>我出多少积分
@@ -1005,7 +1021,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
    </EditBottomSheet>
    <EditBottomSheet v-if="wishCouponDraft" title="心愿加速券 · ¥100" :close-disabled="busy||wishCouponBusy"
-     @close="wishCouponDraft=null">
+     @close="closeWishCoupon">
      <div class="wish-reward-sheet">
        <p>选择本次要增加 ¥100 虚拟储值奖励的心愿。不会生成真实存款或家計簿支出。</p>
        <p v-if="wishCouponBusy">正在读取心愿…</p>

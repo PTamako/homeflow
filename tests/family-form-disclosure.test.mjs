@@ -13,9 +13,9 @@ test('new family and pet profile form is collapsed by default',()=>{
   assert.match(app,/:aria-expanded="showProfileForm&&petType==='pet'"/)
   assert.match(app,/@click="openProfileForm\('person'\)"/)
   assert.match(app,/@click="openProfileForm\('pet'\)"/)
-  assert.match(app,/function closeProfileForm\(\)\{[\s\S]*?showProfileForm\.value=false/)
-  assert.match(app,/await profileSaved\(\)\s*closeProfileForm\(\)/)
-  assert.match(app,/@click="closeProfileForm">取消/)
+  assert.match(app,/function closeProfileForm\(force=false\)\{[\s\S]*?showProfileForm\.value=false/)
+  assert.match(app,/await profileSaved\(\)\s*closeProfileForm\(true\)/)
+  assert.match(app,/@click="closeProfileForm\(\)">取消/)
 })
 
 test('family anniversaries stay visible while entry form is collapsed',()=>{

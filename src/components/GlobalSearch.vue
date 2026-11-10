@@ -37,8 +37,14 @@ async function load(more=false){
  finally{if(activeRequest===controller)activeRequest=null;if(token===revision)busy.value=false}
 }
 function yearChanged(){if(!year.value)month.value='';resetFilters()}
-function toggle(){open.value=!open.value;if(!open.value)cancelPending()}
-function selected(row:Result){emit('select',row);open.value=false;cancelPending()}
+function closeSearch(){
+ open.value=false
+ cancelPending()
+ keyword.value='';kind.value='all';year.value='';month.value=''
+ rows.value=[];cursor.value=null
+}
+function toggle(){if(open.value)closeSearch();else open.value=true}
+function selected(row:Result){emit('select',row);closeSearch()}
 const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 </script>
 <template>

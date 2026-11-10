@@ -1,0 +1,72 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+const read=(name)=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8')
+const app=read('App.vue'),life=read('components/LifePanel.vue')
+const plan=read('components/PlanCreator.vue'),backup=read('components/BackupPanel.vue')
+const push=read('components/PushPanel.vue'),search=read('components/GlobalSearch.vue')
+const points=read('components/HouseholdPoints.vue')
+const pet=read('components/PetHealthPanel.vue')
+const reminder=read('components/ImportantReminders.vue')
+
+test('new plans clear all reactive fields and one-off draft after success or cancel',()=>{
+ assert.match(plan,/function dismiss\(force=false\)\{[\s\S]*?opened\.value=false;step\.value='choose';kind\.value=null[\s\S]*?Object\.assign\(form,defaultForm\(\)\)[\s\S]*?onceDraft\.value=newOneTimeTaskDraft/)
+ assert.match(plan,/emit\('created',[\s\S]*?dismiss\(true\)/)
+ assert.match(plan,/:close-disabled="busy" @close="dismiss"/)
+})
+test('memory creation cancels title, story, date, visibility, and pending photos',()=>{
+ assert.match(life,/function closeMemoryForm\(force=false\)\{[\s\S]*?showMemoryForm\.value=false[\s\S]*?memoryTitle\.value='';memoryStory\.value='';memoryDate\.value=today\(\)[\s\S]*?memoryVisibility\.value='household';photoFiles\.value=\[\]/)
+ assert.match(life,/title="添加回忆" :close-disabled="busy" @close="closeMemoryForm"/)
+ assert.match(life,/@click="closeMemoryForm\(\)">取消/)
+ assert.match(life,/closeMemoryForm\(true\)\s*await fetchMode\(\)/)
+})
+test('import, reminder, postpone and family-message drafts close and clear',()=>{
+ assert.match(life,/function closeTripImport\(\)\{[\s\S]*?tripImportOpen\.value=false[\s\S]*?paste\.value='';importTargetId\.value='';preview\.value=null/)
+ assert.match(life,/title="导入行程 JSON" :close-disabled="busy" @close="closeTripImport"/)
+ assert.match(life,/if\(!error\.value\)closeTripImport\(\)/)
+ assert.match(push,/function closeFamilyForm\(force=false\)\{[\s\S]*?familyMessage\.value='';familyError\.value=''/)
+ assert.match(push,/title="通知家人" :close-disabled="familyBusy" @close="closeFamilyForm"/)
+ assert.match(push,/closeFamilyForm\(true\)/)
+ assert.match(app,/function closePostpone\(force=false\)\{[\s\S]*?postponeKey\.value='';postponeOn\.value=''/)
+ assert.match(app,/:close-disabled="todayActionBusy" @close="closePostpone"/)
+ assert.match(app,/closePostpone\(true\)/)
+ assert.match(reminder,/function closeSnoozeSheet\(force=false\)\{[\s\S]*?selectedSnoozeId\.value='';againOn\.value=''/)
+ assert.match(reminder,/title="选择再次提醒日期" :close-disabled="snoozing" @close="closeSnoozeSheet"/)
+})
+test('ZIP restoration cancel releases file, photo buffers, preview and integrity status',()=>{
+ assert.match(backup,/function clearRestoreDraft\(\)\{[\s\S]*?selectedFile\.value=null;preview\.value=null;photos\.value=\{\}[\s\S]*?readonlySharedCount\.value=0;archiveIntegrity\.value=''/)
+ assert.match(backup,/function closeRestoreSheet\(force=false\)\{[\s\S]*?restoreSheetOpen\.value=false\s*clearRestoreDraft\(\)/)
+ assert.match(backup,/title="恢复备份" :close-disabled="pending" @close="closeRestoreSheet"/)
+ assert.match(backup,/closeRestoreSheet\(true\)/)
+ assert.match(backup,/input\.value=''/)
+})
+test('global search and unused pool contribution drafts do not survive close',()=>{
+ assert.match(search,/function closeSearch\(\)\{[\s\S]*?keyword\.value='';kind\.value='all';year\.value='';month\.value=''[\s\S]*?rows\.value=\[\];cursor\.value=null/)
+ assert.match(search,/function selected\(row:Result\)\{emit\('select',row\);closeSearch\(\)\}/)
+ assert.match(points,/function closePoolContribution\(id:string\)\{[\s\S]*?delete remaining\[id\]/)
+ assert.match(points,/@close="closePoolContribution\(order\.id\)"/)
+ assert.match(points,/if\(!error\.value\)closePoolContribution\(item\.id\)/)
+})
+test('filters apply only on confirm while cancellation discards the uncommitted selection',()=>{
+ for(const kind of ['Anniversary','Memory']){
+  assert.match(life,new RegExp('function open'+kind+'Filter\\('))
+  assert.match(life,new RegExp('function close'+kind+'Filter\\('))
+  assert.match(life,new RegExp('function apply'+kind+'Filter\\('))
+  assert.match(life,new RegExp('@close="close'+kind+'Filter"'))
+  assert.match(life,new RegExp('@click="apply'+kind+'Filter"'))
+ }
+ assert.match(life,/function openRecapForm\(\)/)
+ assert.match(life,/function closeRecapForm\(\)/)
+ assert.match(life,/@close="closeRecapForm"/)
+ assert.match(pet,/function openHistoryFilter\(\)/)
+ assert.match(pet,/function closeHistoryFilter\(\)/)
+ assert.match(pet,/function applyHistoryFilter\(\)/)
+ assert.match(pet,/:disabled="!draftYear"/)
+})
+test('failed saves retain the sheet and error; active saves cannot be canceled',()=>{
+ assert.match(backup,/:close-disabled="pending"/)
+ assert.match(life,/title="添加回忆" :close-disabled="busy"/)
+ assert.match(push,/:close-disabled="familyBusy"/)
+ assert.match(app,/:disabled="profileSaving" @click="closeProfileForm\(\)">取消/)
+ assert.match(read('components/EditBottomSheet.vue'),/if\(!props\.closeDisabled\)emit\('close'\)/)
+})

@@ -72,9 +72,10 @@ function onVisibilityChange(){
   form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
  }
 }
-function dismiss(){
- if(busy.value)return
+function dismiss(force=false){
+ if(busy.value&&!force)return
  opened.value=false;step.value='choose';kind.value=null;error.value=''
+ Object.assign(form,defaultForm())
  onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
 }
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
@@ -130,7 +131,8 @@ async function submit(){
   }
   const savedUnscheduled=kind.value==='routine'&&form.repeatType==='once'&&!onceDraft.value.dueOn
   emit('created',kind.value,String(result.id||''),savedUnscheduled)
-  dismiss()
+  // Submission is still busy until finally; successful saves must close anyway.
+  dismiss(true)
  }catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
@@ -312,7 +314,7 @@ async function submit(){
     </select></label>
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
-     <button type="button" class="creator-cancel" @click="dismiss">取消</button>
+     <button type="button" class="creator-cancel" :disabled="busy" @click="dismiss()">取消</button>
      <button class="creator-save" :disabled="busy||(kind==='routine'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>

@@ -12,6 +12,17 @@ watch([available,enabled],([isAvailable,isEnabled])=>{
 },{immediate:true})
 const familyFormOpen=ref(false),recipientId=ref(''),familyMessage=ref('')
 const familyBusy=ref(false),familyError=ref('')
+function closeFamilyForm(force=false){
+ if(familyBusy.value&&!force)return
+ familyFormOpen.value=false
+ familyMessage.value='';familyError.value=''
+ recipientId.value=otherMembers.value.length===1?otherMembers.value[0].id:''
+}
+function toggleFamilyForm(){
+ if(familyFormOpen.value){closeFamilyForm();return}
+ familyError.value='';familyMessage.value=''
+ familyFormOpen.value=true
+}
 const testingPush=ref(false),testPushResult=ref('')
 watch(otherMembers,members=>{
   if(members.length===1){recipientId.value=members[0].id;return}
@@ -88,7 +99,7 @@ async function sendFamily(){
     }
     throw Error(reasons[data.error]||'发送失败，请稍后重试')
   }
-  familyMessage.value='';familyFormOpen.value=false
+  closeFamilyForm(true)
   notify(data.inAppOnly?'已发送到 '+recipientName+' 的今日通知':'已向 '+recipientName+' 发出推送通知')
  }catch(e){familyError.value=(e as Error).message}
  finally{familyBusy.value=false}
@@ -133,11 +144,11 @@ onMounted(discover)
       <button v-if="enabled" type="button" class="push-now" :disabled="testingPush||busy"
         @click="testOwnPush">{{ testingPush?'测试中…':'测试本机推送' }}</button>
       <button v-if="otherMembers.length" type="button" class="push-now"
-        :aria-expanded="familyFormOpen" @click="familyFormOpen=!familyFormOpen">
+        :aria-expanded="familyFormOpen" :disabled="familyBusy" @click="toggleFamilyForm">
         通知家人
       </button>
     </div>
-    <EditBottomSheet v-if="familyFormOpen" title="通知家人" :close-disabled="familyBusy" @close="familyFormOpen=false">
+    <EditBottomSheet v-if="familyFormOpen" title="通知家人" :close-disabled="familyBusy" @close="closeFamilyForm">
     <form class="family-message-form" @submit.prevent="sendFamily">
       <p v-if="otherMembers.length===1" class="push-recipient">发送给 {{ otherMembers[0].loginName }}</p>
       <label v-else>接收人

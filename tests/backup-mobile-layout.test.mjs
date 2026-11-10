@@ -13,7 +13,7 @@ test('backup page has two compact action areas rather than inline buttons embedd
  assert.match(template,/<EditBottomSheet v-if="restoreSheetOpen" title="恢复备份"/)
  assert.match(template,/class="backup-download" :disabled="pending" @click="exportArchive"/)
  assert.match(template,/class="backup-file-picker"/)
- assert.match(template,/@change="chooseArchive\(/)
+ assert.match(template,/@change="selectArchiveFile"/)
  assert.doesNotMatch(template,/<p[^>]*>[^<]*<button/)
 })
 
