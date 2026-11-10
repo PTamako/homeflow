@@ -2153,9 +2153,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <option value="private">仅自己</option>
             </select>
           </label>
-          <label @click.capture="beginPhotoPicker">照片（可选）
+          <label @click.capture="beginPhotoPicker()">照片（可选）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp"
-              @cancel="finishPhotoPicker"
+              @cancel="finishPhotoPicker()"
               @change="finishPhotoPicker();photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <button :disabled="busy">保存到时光轴</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
@@ -2191,11 +2191,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="memory-heading-content">
                   <h3>{{ m.title }}</h3>
                   <label v-if="cloudEnabled&&m.created_by===props.userId" class="memory-add-photo"
-                    title="添加照片" aria-label="添加照片" @click.capture="beginPhotoPicker">
+                    title="添加照片" aria-label="添加照片" @click.capture="beginPhotoPicker()">
                     <AppIcon name="image-upload" :size="19" />
                     <input type="file" multiple accept="image/jpeg,image/png,image/webp"
                       aria-label="添加照片" :disabled="busy"
-                      @cancel="finishPhotoPicker" @change="uploadAdditionalPhotos(m.id,$event)"/>
+                      @cancel="finishPhotoPicker()" @change="uploadAdditionalPhotos(m.id,$event)"/>
                   </label>
                 </div>
               </div>
