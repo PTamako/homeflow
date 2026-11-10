@@ -2,11 +2,14 @@
 import DateField from './DateField.vue'
 import StatusBadge from './StatusBadge.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import {computed,onMounted,ref} from 'vue'
 type Entry={id:number|string;date:string;amount:number;merchant?:string;category?:string;type:string}
 type Linked={entryId:string|number;entry:Entry|null;needsReview:boolean}
 const props=defineProps<{shoppingId:string;linkedId?:string|null}>()
 const emit=defineEmits<{saved:[];close:[]}>()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const connected=ref(false),loaded=ref(false),busy=ref(false),error=ref('')
 const entries=ref<Entry[]>([]),cursor=ref<string|null>(null)
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
@@ -56,9 +59,12 @@ async function attach(entry:Entry){
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 async function unlink(entryId?:string|number){
- if(busy.value||!confirm(entryId===undefined
-   ?'解除全部关联？购物项将恢复为未完成，家計簿交易不会删除。'
-   :'解除这笔消费关联吗？如果还有其他关联，购物项会保持完成。'))return
+ if(busy.value)return
+ if(!await confirmAction({title:entryId===undefined?'解除全部账单关联':'解除消费关联',
+   confirmLabel:'确认解除',danger:true,
+   message:entryId===undefined
+     ?'解除全部关联？购物项将恢复为未完成，家計簿交易不会删除。'
+     :'解除这笔消费关联吗？如果还有其他关联，购物项会保持完成。'}))return
  busy.value=true;error.value=''
  try{
   await call('/finance/shopping/'+encodeURIComponent(props.shoppingId)+'/link','DELETE',
@@ -107,6 +113,8 @@ onMounted(()=>{void check()})
   <button type="button" class="ledger-close" @click="emit('close')">关闭</button>
  </section>
  </EditBottomSheet>
+ <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+   @confirm="acceptConfirm" @cancel="cancelConfirm"/>
 </template>
 <style scoped>
 .shopping-ledger{margin:0;padding:0;background:transparent;border:0;border-radius:0;display:grid;gap:12px}
