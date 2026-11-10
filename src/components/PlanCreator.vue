@@ -75,6 +75,7 @@ function onVisibilityChange(){
 function dismiss(){
  if(busy.value)return
  opened.value=false;step.value='choose';kind.value=null;error.value=''
+ Object.assign(form,defaultForm())
  onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
 }
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
