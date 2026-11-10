@@ -28,7 +28,7 @@ test('back navigation keeps the draft when returning to the same type',()=>{
  assert.match(template,/@click="backToChoices"/)
  assert.match(template,/返回选择类型/)
  assert.match(template,/:disabled="busy" @click="backToChoices"/)
- assert.match(script,/function dismiss\(\)\{[\s\S]*?step.value='choose';kind.value=null/)
+ assert.match(script,/function dismiss\(force=false\)\{[\s\S]*?step.value='choose';kind.value=null/)
 })
 
 test('step navigation scrolls the sheet to top without remounting or jumping the page',()=>{
