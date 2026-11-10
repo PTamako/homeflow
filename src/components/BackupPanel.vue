@@ -5,6 +5,8 @@ import {listLocalPhotos,compressPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import {usePageToast} from '../page-toast'
 const props=defineProps<{userId:string}>()
 const backupStorageKey='homeflow-last-local-export:'+props.userId
@@ -38,6 +40,7 @@ onBeforeUnmount(()=>{
   document.removeEventListener('keydown',closeHelpOnEscape)
 })
 const {toast,notify}=usePageToast()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
 const readonlySharedCount=ref(0)
 const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
@@ -221,7 +224,8 @@ async function chooseArchive(file:File|null){
 }
 async function restore(){
   if(!preview.value)return
-  if(!confirm('确定恢复吗？只补充缺失记录，不覆盖现有内容。恢复中断后可以再次导入。'))return
+  if(!await confirmAction({title:'确认恢复备份',confirmLabel:'开始恢复',
+    message:'确定恢复吗？只补充缺失记录，不覆盖现有内容。恢复中断后可以再次导入。'}))return
   pending.value=true;error.value='';status.value='正在恢复…';restoreCounts.value={}
   try{
     const snapshot=preview.value
@@ -316,6 +320,8 @@ async function restore(){
     <p v-if="status" class="success" role="status">{{ status }}</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <PageToast :toast="toast" />
+  <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+    @confirm="acceptConfirm" @cancel="cancelConfirm"/>
   </section>
 </template>
 <style scoped>
