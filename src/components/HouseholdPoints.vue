@@ -1110,7 +1110,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .points-private[open] .points-private-chevron{transform:rotate(180deg)}
 .points-bonus-breakdown{margin:5px 0 0;color:#758c7b;font-size:11px;line-height:1.5}
 .points-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;border-radius:11px;background:#f2f5f0}
-.points-tabs button{min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
+.points-tabs button{min-height:44px;min-width:0;white-space:nowrap;border:0;border-radius:8px;background:transparent;padding:9px 3px;font-size:clamp(10px,3vw,13px);color:#657b6b;display:flex;justify-content:center;align-items:center;gap:4px}
 .points-tabs button.chosen{background:white;color:#397a54;font-weight:700;box-shadow:0 1px 4px #00000012}
  .lottery-card{display:grid;gap:12px;border:1px solid #e4ede6;border-radius:13px;padding:12px;background:#fbfdfa}
  .lottery-main{display:flex;align-items:center;gap:12px;min-width:0}
@@ -1253,7 +1253,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
  .lottery-odds{position:relative;min-width:0}
  .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:26px}
- .lottery-odds-toggle{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:0;
+ .lottery-odds-toggle{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:0;
    border:0;background:none;color:#4a8265;font-size:12px;text-align:left;cursor:pointer}
  .lottery-odds-toggle:focus-visible{outline:2px solid #43866a;outline-offset:2px}
  .lottery-odds-toggle :deep(svg){transform:rotate(-90deg);transition:transform .2s}
@@ -1263,7 +1263,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-odds-grid>div{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:7px;background:#f2f7f2;color:#58715e;font-size:11px}
 .lottery-history-pagination{display:flex;justify-content:center;align-items:center;gap:12px;
   padding:12px 0 2px;min-height:42px}
- .lottery-history-pagination button{flex:0 0 auto;min-height:38px;padding:7px 12px;border-radius:9px;
+ .lottery-history-pagination button{flex:0 0 auto;min-height:44px;padding:7px 12px;border-radius:9px;
   border:1px solid #cfe2d3;background:#f5faf5;color:#3e805d;font-size:12px;font-weight:650}
  .lottery-history-pagination button:disabled{opacity:.42}
  .lottery-history-pagination span{font-size:11px;color:#768b7c;white-space:nowrap}
@@ -1275,7 +1275,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .achievement.locked{filter:grayscale(1);opacity:.55}
 .achievement span{font-size:22px}.achievement b{font-size:11px}.achievement small{font-size:10px;color:#6f8a76}
 .shop-title b,.history-section>b{font-size:14px;color:#426b50}
-.small-outline{border:1px solid #cde1d1;background:white;color:#448765;border-radius:8px;padding:7px 10px;font-size:12px}
+.small-outline{min-height:44px;border:1px solid #cde1d1;background:white;color:#448765;border-radius:8px;padding:7px 10px;font-size:12px}
 .reward-list{display:grid;gap:7px}
 .reward-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;
   align-items:center;gap:6px 9px;border:1px solid #e4ede6;border-radius:11px;padding:9px;min-width:0}
@@ -1298,12 +1298,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .wish-reward-confirm{justify-self:stretch;min-height:42px}
 .reward-credit-help{font-size:11px;color:#7b8c7c;line-height:1.5}
 .quantity-stepper{display:inline-flex;align-items:center;flex:none;gap:0;border:1px solid #d7e8da;border-radius:8px;background:#f7faf7;overflow:hidden}
-.quantity-stepper button{display:grid;place-items:center;min-width:29px;min-height:30px;border:0;background:none;color:#478466;font-size:17px;line-height:1}
+.quantity-stepper button{display:grid;place-items:center;min-width:44px;min-height:44px;border:0;background:none;color:#478466;font-size:17px;line-height:1}
 .quantity-stepper button:disabled{opacity:.35}
 .quantity-stepper span{min-width:19px;text-align:center;font-size:12px;color:#466d55;font-variant-numeric:tabular-nums;font-weight:700}
-.redeem-btn,.save-btn{border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
+.redeem-btn,.save-btn{min-height:44px;border:0;background:#468f65;color:white;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:650}
 .redeem-btn:disabled,.save-btn:disabled{opacity:.45}
-.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:6px 5px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.link-btn{border:0;background:transparent;color:#739483;font-size:11px;padding:8px 7px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pool-section{display:grid;gap:8px;padding-top:9px;border-top:1px solid #ecf0ea}
 .pool-section>b{font-size:14px;color:#426b50}.pool-title{display:flex;align-items:center;gap:6px}
 .pooled-order{border:1px solid #dceadf;border-radius:11px;padding:11px;display:grid;gap:8px;background:#fafdfb;min-width:0}
@@ -1324,7 +1324,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .hidden-rewards summary{font-size:12px;color:#758c7c;cursor:pointer}
 .archived-row{display:flex;align-items:center;gap:5px;padding:7px 0;font-size:12px}
 .archived-row span{flex:1}
-.archived-row button,.form-heading button{background:none;border:0;color:#478466;font-size:12px;padding:4px}
+.archived-row button,.form-heading button{min-height:44px;background:none;border:0;color:#478466;font-size:12px;padding:4px}
 .reward-form{display:grid;gap:12px;padding:0;border:0;background:transparent;min-width:0}
 .reward-form label{display:grid;gap:4px;font-size:12px;color:#54735a;min-width:0}
 .reward-form input:not([type=checkbox]),.reward-form select{width:100%;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #d4e0d4;background:#fff;border-radius:8px;padding:9px;font-size:14px;color:#314f3b}
