@@ -59,6 +59,9 @@ export async function goalPeriodArchiveRoute(request,db,session){
   // restricted to the household owner or the creator of that savings goal.
   const opts=archiveFilter(request.url)
   if(!opts)return json({error:'invalid_filters'},400)
+  // Goal-period results never have a skipped state. Avoid reading the
+  // household's goals and settlements when the skipped-only tab is selected.
+  if(opts.outcome==='skipped')return json({items:[],nextCursor:null})
   const {results:goals}=await db.prepare(`SELECT id,title,created_by,goal_mode,start_on,target_on,target_amount
     FROM goals WHERE household_id=?1 AND deleted_at IS NULL AND goal_mode IN ('monthly','yearly')
     AND (visibility='household' OR created_by=?2)
