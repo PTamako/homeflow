@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
 import {readFileSync} from 'node:fs'
-import {mediaRoute,runMediaCleanup,MAX_MEDIA_BYTES} from '../worker/media.js'
+import {mediaRoute,runMediaCleanup,MAX_MEDIA_BYTES,readLimitedMedia} from '../worker/media.js'
 import {recycleRoute} from '../worker/recycle.js'
 
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8')
@@ -263,5 +263,82 @@ test('failed metadata activation still leaves a durable R2 cleanup tombstone',as
   assert.equal(again.removed,1)
   assert.equal(f.media.objects.size,0)
   assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets').get().n,0)
+ }finally{f.close()}
+})
+
+
+test('streamed uploads and edits reject oversized bodies without trusting Content-Length',async()=>{
+ const req=(bytes,declared)=>new Request('https://homeflow.invalid/api/media/upload',{
+  method:'POST',duplex:'half',
+  headers:{'content-type':'image/jpeg',...(declared?{'content-length':declared}:{})},
+  body:new ReadableStream({start(controller){
+   controller.enqueue(bytes.subarray(0,64))
+   controller.enqueue(bytes.subarray(64))
+   controller.close()
+  }})
+ })
+ assert.equal(await readLimitedMedia(req(jpeg(MAX_MEDIA_BYTES+64))),null)
+ assert.equal(await readLimitedMedia(req(jpeg(MAX_MEDIA_BYTES+64),'40')),null)
+ assert.equal((await readLimitedMedia(req(jpeg(64)))).length,64)
+ const f=fixture()
+ try{
+  const tooLarge=await mediaRoute(req(jpeg(MAX_MEDIA_BYTES+64)),f.env,'/api/media/upload',session)
+  assert.equal(tooLarge.status,413)
+  assert.equal(f.media.objects.size,0)
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets').get().n,0)
+  const created=await mediaRoute(upload(memoryId,jpeg(64)),f.env,'/api/media/upload',session)
+  const {id}=await created.json()
+  const denied=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id,{
+   method:'PUT',duplex:'half',headers:{'content-type':'image/jpeg'},
+   body:new ReadableStream({start(c){c.enqueue(jpeg(MAX_MEDIA_BYTES+1));c.close()}})
+  }),f.env,'/api/media/'+id,session)
+  assert.equal(denied.status,413)
+  assert.equal(f.media.objects.size,1)
+ }finally{f.close()}
+})
+
+test('R2 photo edit keeps original bytes if the D1 swap fails after upload',async()=>{
+ const f=fixture()
+ try{
+  const original=await mediaRoute(upload(memoryId,jpeg(64)),f.env,'/api/media/upload',session)
+  const {id}=await original.json()
+  const prepare=f.db.prepare.bind(f.db)
+  f.db.prepare=sql=>/SET storage_key=\?1,mime_type='image\/jpeg'/.test(sql)
+   ?{bind(){return {run:async()=>{throw Error('simulated atomic swap failure')}}}}
+   :prepare(sql)
+  const updated=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id,{
+   method:'PUT',headers:{'content-type':'image/jpeg'},body:jpeg(90)
+  }),f.env,'/api/media/'+id,session)
+  assert.equal(updated.status,503)
+  const photo=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id),
+   f.env,'/api/media/'+id,session)
+  assert.equal((await photo.arrayBuffer()).byteLength,64,'original photo must remain readable')
+  assert.equal(f.media.objects.size,1,'staged object is compensated')
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets').get().n,1)
+ }finally{f.close()}
+})
+
+test('edited image becomes available even if deleting obsolete R2 object temporarily fails',async()=>{
+ const f=fixture()
+ try{
+  const original=await mediaRoute(upload(memoryId,jpeg(64)),f.env,'/api/media/upload',session)
+  const {id}=await original.json()
+  const oldKey=f.sqlite.prepare('SELECT storage_key FROM media_assets WHERE id=?').get(id).storage_key
+  f.media.failNextDelete()
+  const edited=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id,{
+   method:'PUT',headers:{'content-type':'image/jpeg'},body:jpeg(93)
+  }),f.env,'/api/media/'+id,session)
+  assert.equal(edited.status,200)
+  assert.equal((await edited.json()).pendingCleanup,true)
+  const photo=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id),
+   f.env,'/api/media/'+id,session)
+  assert.equal((await photo.arrayBuffer()).byteLength,93)
+  assert.equal(f.media.objects.size,2,'obsolete image stays queued for retry')
+  assert.equal(f.media.objects.has(oldKey),true)
+  const cleanup=await runMediaCleanup(f.env)
+  assert.equal(cleanup.removed,1)
+  assert.equal(f.media.objects.size,1)
+  assert.equal(f.media.objects.has(oldKey),false)
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets').get().n,1)
  }finally{f.close()}
 })
