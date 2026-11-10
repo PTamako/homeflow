@@ -3,7 +3,7 @@ import DateField from './DateField.vue'
 import MoneyInput from './MoneyInput.vue'
 import OneTimeTaskFields from './OneTimeTaskFields.vue'
 import {newOneTimeTaskDraft,oneTimeTaskPayload} from '../one-time-task'
-import {computed,reactive,ref} from 'vue'
+import {computed,nextTick,reactive,ref} from 'vue'
 import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 
@@ -18,8 +18,24 @@ const choices=[
  {id:'trip',label:'旅行计划',icon:'plane',description:'日期与预算'}
 ] as const
 const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
+const step=ref<'choose'|'details'>('choose')
+const stepContent=ref<HTMLElement|null>(null)
+const stepHeading=ref<HTMLElement|null>(null)
+function scrollStepToTop(){
+ void nextTick(()=>{
+  const scrollArea=stepContent.value?.closest<HTMLElement>('.edit-sheet-content')
+  scrollArea?.scrollTo({top:0})
+  stepHeading.value?.focus({preventScroll:true})
+ })
+}
+function backToChoices(){
+ if(busy.value)return
+ step.value='choose'
+ error.value=''
+ scrollStepToTop()
+}
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-const form=reactive({
+const defaultForm=()=>({
  title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
  monthWeekday:2,monthWeekNumbers:[2,4] as number[],monthDays:[Number(today().slice(-2))] as number[],leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,
@@ -30,11 +46,24 @@ const form=reactive({
  startDate:'',endDate:'',budgetAmount:0,
  tripParticipants:props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
 })
+const form=reactive(defaultForm())
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
 const selected=computed(()=>choices.find(c=>c.id===kind.value))
-function choose(value:PlanKind){kind.value=value;error.value='';form.title='';form.repeatType='once';form.monthlyMode='day';form.monthWeekday=2;form.monthWeekNumbers=[2,4];form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)];form.assignedTo=props.userId||'';form.shoppingSecond='';form.visibility='household';form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean);form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0;onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function choose(value:PlanKind){
+ // Returning from the form to the same type must not discard the draft.
+ if(kind.value!==value){
+  // Switching plan types begins a fresh draft; going back to the same type
+  // preserves every field, including one-time tasks and trip participants.
+  Object.assign(form,defaultForm())
+  onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
+  kind.value=value
+ }
+ step.value='details'
+ error.value=''
+ scrollStepToTop()
+}
 function onVisibilityChange(){
  if(form.visibility==='private'){
   if(form.assignedTo!==props.userId)form.assignedTo=props.userId||''
@@ -43,7 +72,11 @@ function onVisibilityChange(){
   form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
  }
 }
-function dismiss(){opened.value=false;kind.value=null;error.value='';onceDraft.value=newOneTimeTaskDraft(today(),props.userId)}
+function dismiss(){
+ if(busy.value)return
+ opened.value=false;step.value='choose';kind.value=null;error.value=''
+ onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
+}
 function utcWeekday(date:string){return new Date(date+'T00:00:00Z').getUTCDay()}
 async function send(path:string,payload:Record<string,unknown>){
  const response=await fetch('/api'+path,{method:'POST',credentials:'same-origin',
@@ -109,17 +142,28 @@ async function submit(){
     @click="opened?dismiss():opened=true">
    <AppIcon name="plus" :size="19"/><span v-if="!props.compact">{{ opened?'收起新增计划':'新增计划' }}</span>
   </button>
-  <EditBottomSheet v-if="opened" title="新增计划" :close-disabled="busy" @close="dismiss">
-   <h2>选择计划类型</h2>
-   <div class="plan-type-grid">
+  <EditBottomSheet v-if="opened" :title="step==='choose'?'新增计划':selected?.label||'填写计划'"
+    :close-disabled="busy" @close="dismiss">
+   <div v-if="step==='choose'" ref="stepContent" class="plan-choice-step">
+    <div class="creator-step-heading">
+     <span class="creator-step-counter">第 1 步 / 共 2 步</span>
+     <h2 ref="stepHeading" tabindex="-1">选择计划类型</h2>
+    </div>
+    <div class="plan-type-grid">
     <button v-for="choice in choices" :key="choice.id" type="button"
      :class="['plan-type',{selected:kind===choice.id}]" :aria-pressed="kind===choice.id" @click="choose(choice.id)">
      <AppIcon :name="choice.icon" :size="21"/>
      <b>{{ choice.label }}</b><small>{{ choice.description }}</small>
     </button>
+    </div>
    </div>
-   <form v-if="kind" class="plan-fields" @submit.prevent="submit">
-    <h3>{{ selected?.label }}</h3>
+   <form v-else-if="kind" ref="stepContent" class="plan-fields" @submit.prevent="submit">
+    <div class="creator-step-heading creator-details-heading">
+     <span ref="stepHeading" tabindex="-1" class="creator-step-counter">第 2 步 / 共 2 步 · 填写信息</span>
+     <button type="button" class="creator-step-back" :disabled="busy" @click="backToChoices">
+      <AppIcon name="chevron-down" :size="17" class="creator-back-chevron"/> 返回选择类型
+     </button>
+    </div>
     <label v-if="kind!=='routine'||form.repeatType!=='once'">计划名称<input v-model.trim="form.title" required maxlength="150" placeholder="计划名称"/></label>
     <template v-if="kind==='routine'">
      <label>执行频率<select v-model="form.repeatType">
@@ -283,10 +327,22 @@ async function submit(){
 .plan-creator.compact .creator-trigger:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-creator h2{font-size:15px;margin:0}.plan-creator h3{margin:0;font-size:14px;color:#2a4c3a}
 .creator-trigger{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;min-height:44px;background:#43866a;color:white;font-size:14px;font-weight:700}
+.plan-choice-step{display:grid;gap:16px;min-width:0}
+.creator-step-heading{display:grid;gap:8px;min-width:0}
+ .creator-step-heading :is(h2,span):focus{outline:none}
+.creator-step-counter{font-size:12px;font-weight:650;color:#729280;line-height:1.5}
+.creator-details-heading{display:flex;align-items:center;justify-content:space-between;
+ gap:10px;flex-wrap:wrap}
+.creator-step-back{display:inline-flex;align-items:center;justify-content:center;
+ gap:4px;min-height:44px;border:1px solid #cddfd2;border-radius:10px;
+ background:#f5faf6;color:#397b5a;padding:8px 12px;font-size:13px;font-weight:700}
+.creator-back-chevron{transform:rotate(90deg)}
+.creator-step-back:disabled{opacity:.5}
+.creator-step-back:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .plan-type{min-height:86px;touch-action:manipulation;border:1px solid #e0e9e1;border-radius:12px;background:#fbfcf9;padding:12px;min-width:0;text-align:left;display:grid;justify-items:start;gap:5px;color:#466e54}
 .plan-type.selected{border-color:#43866a;background:#eef7ef}.plan-type b{font-size:13px;color:#314637}.plan-type small{font-size:11px;line-height:1.45;color:#7b9082}
-.plan-fields{display:grid;gap:12px;padding-top:12px;border-top:1px solid #e6eee5}
+.plan-fields{display:grid;gap:12px;padding-top:0;border-top:0}
 .plan-fields label{display:grid;gap:5px;min-width:0;color:#5d7769;font-size:12px}
 .plan-fields input:not([type="checkbox"]),.plan-fields select{width:100%;max-width:100%;min-width:0;min-height:41px;border-radius:9px;padding:8px 10px;border:1px solid #d9e4db;background:#fff;box-sizing:border-box;color:#304838}
 .plan-fields .plan-checkbox{display:flex;align-items:center;gap:10px}.plan-checkbox input{width:19px;height:19px;flex:none;accent-color:#43866a}
@@ -313,6 +369,9 @@ async function submit(){
 @media(max-width:350px){.trip-participants-field{grid-template-columns:minmax(0,1fr)}}
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:44px;border:0;border-radius:9px;padding:9px 15px}
+.creator-actions .creator-cancel{flex:0 1 120px}
+.creator-actions .creator-save{flex:1 1 auto;max-width:270px}
+@media(max-width:380px){.creator-details-heading{align-items:flex-start;flex-direction:column;gap:3px}}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}
 @media(max-width:380px){.plan-type-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.plan-type{padding:10px 9px}.plan-type small{font-size:10px}}
 </style>

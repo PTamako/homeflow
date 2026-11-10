@@ -47,7 +47,7 @@ test('plan creation uses 44px actions, number keypad and a compact two-column mo
  assert.match(plans,/@media\(max-width:380px\)\{\.plan-type-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/)
  assert.match(plans,/v-model.number="form.quantity" type="number" inputmode="numeric"/)
  assert.match(plans,/v-model.number="form.intervalDays" type="number" inputmode="numeric"/)
- assert.match(plans,/<EditBottomSheet v-if="opened" title="新增计划"/)
+ assert.match(plans,/<EditBottomSheet v-if="opened" :title="step==='choose'\?'新增计划':selected\?\.label\|\|'填写计划'"/)
 })
 
 test('search, receipts and photo preview use bottom sheets and thumb-sized actions',()=>{
