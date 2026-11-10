@@ -49,6 +49,22 @@ export async function saveNotification(db,item){
       item.mergeCompletion?1:0,item.completionKey||null,item.unreadOnCompletion?1:0).run()
 }
 
+// Scheduled reminders are insert-once for each member/day/occurrence.
+// Hourly quiet-hour catch-up must never rewrite the same inbox row, reset
+// completion text or read state, or bump household revisions on a no-op.
+export async function ensureScheduledNotification(db,item){
+  const status=item.deliveryReason==='quiet'?'quiet':'app_only'
+  const result=await db.prepare(`INSERT INTO notification_inbox
+    (id,household_id,sender_user_id,recipient_user_id,kind,source_id,title,message,
+     delivery_status,sent_devices,failed_devices,local_day,dedupe_key)
+    VALUES(?1,?2,NULL,?3,?4,?5,?6,?7,?8,0,0,?9,?10)
+    ON CONFLICT DO NOTHING`)
+    .bind(item.id,item.householdId,item.recipientId,item.kind,item.sourceId||null,
+      String(item.title||'').slice(0,90),String(item.message||'').slice(0,160),
+      status,item.localDay,item.dedupeKey).run()
+  return Number(result.meta?.changes||0)===1
+}
+
 // Find this recipient's scheduled reminder for the same task occurrence. A
 // completion may update that inbox row without suppressing the separate Push.
 // This lookup is limited to a recipient's current-day indexed inbox entries.
