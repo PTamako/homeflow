@@ -19,7 +19,7 @@ test('hourly trigger runs daily work exactly once, only from 06:00 JST',()=>{
  assert.equal(scheduledRunPhase(controller(8,'0 21,23 * * *')),'catchup','in-flight old cron never re-runs settlement')
 })
 test('each household member can change their quiet end freely, including 10:00',()=>{
- for(const end of [6,7,8,9,10,12,15,23]){
+ for(const end of [6,7,8,9,10,12,15]){
   const quiet={start:22,end}
   assert.equal(quietAtHour(quiet,6),end>6,`end ${end}`)
   if(end>6)assert.equal(quietAtHour(quiet,end-1),true,`still quiet before ${end}`)
@@ -28,6 +28,10 @@ test('each household member can change their quiet end freely, including 10:00',
  assert.equal(quietAtHour({start:22,end:10},9),true)
  assert.equal(quietAtHour({start:22,end:10},10),false)
  assert.equal(quietAtHour({start:22,end:6},10),false)
+ // A same-evening 22:00–23:00 quiet window does not silence 06:00.
+ assert.equal(quietAtHour({start:22,end:23},6),false)
+ assert.equal(quietAtHour({start:22,end:23},22),true)
+ assert.equal(quietAtHour({start:22,end:23},23),false)
 })
 test('catch-up never runs the daily point settlement or notification purge',()=>{
  const worker=readFileSync(new URL('../worker/index.js',import.meta.url),'utf8')
