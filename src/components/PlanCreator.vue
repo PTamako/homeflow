@@ -314,7 +314,7 @@ async function submit(){
     </select></label>
     <p v-if="error" role="alert" class="creator-error">{{ error }}</p>
     <div class="creator-actions">
-     <button type="button" class="creator-cancel" @click="dismiss">取消</button>
+     <button type="button" class="creator-cancel" :disabled="busy" @click="dismiss()">取消</button>
      <button class="creator-save" :disabled="busy||(kind==='routine'&&((form.repeatType==='weekly'&&!form.weekdays.length)||(form.repeatType==='monthly'&&!(form.monthlyMode==='weekday'?form.monthWeekNumbers:form.monthDays).length)))">{{ busy?'保存中…':kind==='routine'&&form.repeatType==='once'?'添加任务':'保存计划' }}</button>
     </div>
    </form>
