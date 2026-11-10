@@ -13,7 +13,7 @@ test('creation and one-time input controls use a bottom sheet, not expanding inl
  assert.match(app,/<EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key"/)
  assert.match(life,/<EditBottomSheet v-if="showAnniversaryForm"/)
  assert.match(life,/<EditBottomSheet v-if="showMemoryForm"/)
- assert.match(plan,/<EditBottomSheet v-if="opened" title="新增计划"/)
+ assert.match(plan,/<EditBottomSheet v-if="opened" :title="step==='choose'\?'新增计划':selected\?\.label\|\|'填写计划'"/)
  assert.match(plan,/:close-disabled="busy" @close="dismiss"/)
  assert.match(life,/<EditBottomSheet v-if="planMemoryDraft\?\.kind==='wish'/)
  assert.match(life,/<EditBottomSheet v-if="planMemoryDraft\?\.kind==='trip'/)
