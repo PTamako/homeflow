@@ -20,10 +20,12 @@ const choices=[
 const opened=ref(!!props.openOnMount),kind=ref<PlanKind|null>(null),busy=ref(false),error=ref('')
 const step=ref<'choose'|'details'>('choose')
 const stepContent=ref<HTMLElement|null>(null)
+const stepHeading=ref<HTMLElement|null>(null)
 function scrollStepToTop(){
  void nextTick(()=>{
   const scrollArea=stepContent.value?.closest<HTMLElement>('.edit-sheet-content')
   scrollArea?.scrollTo({top:0})
+  stepHeading.value?.focus({preventScroll:true})
  })
 }
 function backToChoices(){
@@ -146,7 +148,7 @@ async function submit(){
    <div v-if="step==='choose'" ref="stepContent" class="plan-choice-step">
     <div class="creator-step-heading">
      <span class="creator-step-counter">第 1 步 / 共 2 步</span>
-     <h2>选择计划类型</h2>
+     <h2 ref="stepHeading" tabindex="-1">选择计划类型</h2>
     </div>
     <div class="plan-type-grid">
     <button v-for="choice in choices" :key="choice.id" type="button"
@@ -158,7 +160,7 @@ async function submit(){
    </div>
    <form v-else-if="kind" ref="stepContent" class="plan-fields" @submit.prevent="submit">
     <div class="creator-step-heading creator-details-heading">
-     <span class="creator-step-counter">第 2 步 / 共 2 步 · 填写信息</span>
+     <span ref="stepHeading" tabindex="-1" class="creator-step-counter">第 2 步 / 共 2 步 · 填写信息</span>
      <button type="button" class="creator-step-back" :disabled="busy" @click="backToChoices">
       <AppIcon name="chevron-down" :size="17" class="creator-back-chevron"/> 返回选择类型
      </button>
@@ -328,6 +330,7 @@ async function submit(){
 .creator-trigger{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;min-height:44px;background:#43866a;color:white;font-size:14px;font-weight:700}
 .plan-choice-step{display:grid;gap:16px;min-width:0}
 .creator-step-heading{display:grid;gap:8px;min-width:0}
+ .creator-step-heading :is(h2,span):focus{outline:none}
 .creator-step-counter{font-size:12px;font-weight:650;color:#729280;line-height:1.5}
 .creator-details-heading{display:flex;align-items:center;justify-content:space-between;
  gap:10px;flex-wrap:wrap}
