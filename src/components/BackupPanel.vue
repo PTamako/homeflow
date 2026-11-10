@@ -105,23 +105,39 @@ async function exportArchive(){
     }
     let size=Object.values(files).reduce((total,part)=>total+part.byteLength,0),count=0
     if(size>50*1024*1024)throw Error('备份内容超过 50MB，请使用 D1 数据库备份')
-    // Photos are only available on this device; other devices have separate local photo caches.
+    // Include device-only and private R2 photos, only for memories in this
+    // authenticated user's export. No bucket/public URLs or object keys.
     for(const m of snapshot.records.memories||[]){
       const id=String(m.id)
       if(!/^[0-9a-f-]{36}$/i.test(id))continue
+      let number=0
       const blobs=await listLocalPhotos(props.userId,id)
-      for(let i=0;i<blobs.length;i++){
-        const bytes=new Uint8Array(await blobs[i].arrayBuffer())
-        size+=bytes.length;count++
-        if(size>50*1024*1024)throw Error('本机照片超过单次 50MB 备份上限，请先逐张导出照片')
-        files['photos/'+id+'/'+String(i+1).padStart(4,'0')+'.jpg']=bytes
+      for(const blob of blobs){
+        const bytes=new Uint8Array(await blob.arrayBuffer())
+        size+=bytes.length;count++;number++
+        if(size>50*1024*1024)throw Error('照片超过单次 50MB 备份上限，请先逐张导出')
+        files['photos/'+id+'/'+String(number).padStart(4,'0')+'.jpg']=bytes
+      }
+      const media=await fetch('/api/media?memoryId='+encodeURIComponent(id),{
+        credentials:'same-origin',cache:'no-store'})
+      if(!media.ok)throw Error('云端照片备份列表读取失败')
+      const listing=await media.json() as {cloudAvailable?:boolean;items?:Array<{id:string}>}
+      if(!listing.cloudAvailable)continue
+      for(const item of listing.items||[]){
+        const photo=await fetch('/api/media/'+encodeURIComponent(item.id),{
+          credentials:'same-origin',cache:'no-store'})
+        if(!photo.ok)throw Error('云端照片下载失败，请重试')
+        const bytes=new Uint8Array(await photo.arrayBuffer())
+        size+=bytes.length;count++;number++
+        if(size>50*1024*1024)throw Error('照片超过单次 50MB 备份上限，请先逐张导出')
+        files['photos/'+id+'/'+String(number).padStart(4,'0')+'.jpg']=bytes
       }
     }
     const archive=zipSync(files,{level:0})
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')
     lastExportAt.value=new Date().toISOString()
     try{localStorage.setItem(backupStorageKey,lastExportAt.value)}catch{}
-    notify('备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机照片')
+    notify('备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机和云端照片')
   }catch(e){error.value=(e as Error).message}
   finally{pending.value=false}
 }
