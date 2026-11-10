@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 
 const plan=readFileSync(new URL('../src/components/PlanCreator.vue',import.meta.url),'utf8')
 const script=plan.slice(0,plan.indexOf('</script>'))
-const template=plan.slice(plan.indexOf('<template>'),plan.indexOf('</template>')+11)
+const template=plan.slice(plan.indexOf('<template>'),plan.lastIndexOf('</template>')+11)
 
 test('plan creator presents type selection first and renders the form only on the next step',()=>{
  assert.match(script,/const step=ref<'choose'\|'details'>\('choose'\)/)
