@@ -2375,8 +2375,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .memory-swipe-body .memory-swipe-heading h3{margin:7px 0 8px;line-height:1.45}
 .memory :deep(.swipe-row){border-radius:8px}
 .memory :deep(.swipe-content){background:#fff}
-.memory :deep(.swipe-actions){align-items:flex-start;background:#fff}
-.memory :deep(.swipe-actions button){height:72px;flex:0 0 72px}
+.memory :deep(.swipe-actions){align-items:stretch;background:#fff}
+.memory :deep(.swipe-actions button){align-self:stretch;height:auto;min-height:0;flex:0 0 72px}
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
 .memory-heading-content{display:flex;align-items:center;justify-content:space-between;gap:12px}
