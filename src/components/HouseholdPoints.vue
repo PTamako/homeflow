@@ -52,6 +52,10 @@ const historyYear=ref(new Date(Date.now()+9*3600000).getUTCFullYear())
 const historyMonth=ref(String(new Date(Date.now()+9*3600000).getUTCMonth()+1).padStart(2,'0'))
 const historyMember=ref('')
 const historyCategory=ref('all')
+const historyFilterOpen=ref(false)
+const draftHistoryMember=ref('')
+const draftHistoryCategory=ref('all')
+const historyMoreCount=computed(()=>Number(!!historyMember.value)+Number(historyCategory.value!=='all'))
 const historyPage=ref(1)
 const historyMatchesFilters=computed(()=>Boolean(history.value&&
  history.value.year===historyYear.value&&history.value.page===historyPage.value&&
@@ -66,8 +70,7 @@ const availableYears=computed(()=>{
  const latest=new Date(Date.now()+9*3600000).getUTCFullYear()
  return Array.from({length:Math.max(1,latest-2025)},(_,i)=>latest-i)
 })
-const historyMonths=Array.from({length:12},(_,i)=>String(12-i).padStart(2,'0'))
-const historyPeriod=computed(()=>historyYear.value+'-'+(historyMonth.value||'all'))
+const historyMonths=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===id)?.displayName||'家庭成员'
 const categoryNames:Record<string,string>={
  complete:'任务完成',bounty:'指定奖励',reserved:'指定扣分',
@@ -99,11 +102,18 @@ const historyPath=()=>'/points/history?year='+historyYear.value+
  '&month='+encodeURIComponent(historyMonth.value)+
  '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)+
  '&category='+encodeURIComponent(historyCategory.value)
-function chooseHistoryPeriod(period:string){
- const matched=/^(\d{4})-(0[1-9]|1[0-2]|all)$/.exec(period)
- if(!matched)return
- void goToHistory(1,Number(matched[1]),historyMember.value,historyCategory.value,
-   matched[2]==='all'?'':matched[2])
+function openHistoryFilters(){
+ draftHistoryMember.value=historyMember.value
+ draftHistoryCategory.value=historyCategory.value
+ historyFilterOpen.value=true
+}
+function applyHistoryFilters(){
+ historyFilterOpen.value=false
+ void goToHistory(1,historyYear.value,draftHistoryMember.value,draftHistoryCategory.value)
+}
+function resetHistoryFilterDraft(){
+ draftHistoryMember.value=''
+ draftHistoryCategory.value='all'
 }
 async function goToHistory(page:number,year=historyYear.value,member=historyMember.value,
  category=historyCategory.value,month=historyMonth.value){
@@ -710,26 +720,39 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <template v-if="view==='history'">
      <div class="annual-history-head">
        <b>年度积分明细</b>
-       <div class="annual-filters">
-         <label>年月
-           <select :value="historyPeriod" aria-label="积分历史年月"
-             @change="chooseHistoryPeriod(($event.target as HTMLSelectElement).value)">
-             <optgroup v-for="year in availableYears" :key="year" :label="year+'年'">
-               <option :value="year+'-all'">{{ year }}年全年</option>
-               <option v-for="month in historyMonths" :key="year+'-'+month"
-                 :value="year+'-'+month">{{ year }}年{{ Number(month) }}月</option>
-             </optgroup>
+       <div class="annual-filters" role="group" aria-label="积分明细筛选">
+         <label>年份
+           <select :value="historyYear" aria-label="积分历史年份"
+             @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
+             <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
            </select>
          </label>
+         <label>月份
+           <select :value="historyMonth" aria-label="积分历史月份"
+             @change="goToHistory(1,historyYear,historyMember,historyCategory,($event.target as HTMLSelectElement).value)">
+             <option value="">全年</option>
+             <option v-for="month in historyMonths" :key="month" :value="month">{{ Number(month) }}月</option>
+           </select>
+         </label>
+         <button class="annual-extra-trigger" :class="{selected:historyMoreCount>0}" type="button"
+           :aria-label="historyMoreCount?'成员或分类已筛选，共'+historyMoreCount+'项，点击修改':'筛选成员和分类'"
+           @click="openHistoryFilters">
+           <span>{{ historyMoreCount?'已筛选 '+historyMoreCount:'成员／分类' }}</span>
+           <AppIcon name="chevron-down" :size="15"/>
+         </button>
+       </div>
+     </div>
+     <EditBottomSheet v-if="historyFilterOpen" title="筛选积分明细" @close="historyFilterOpen=false">
+       <form class="annual-more-form" @submit.prevent="applyHistoryFilters">
          <label>成员
-           <select :value="historyMember" @change="goToHistory(1,historyYear,($event.target as HTMLSelectElement).value)">
-             <option value="">全部</option>
+           <select v-model="draftHistoryMember" aria-label="选择积分明细成员">
+             <option value="">全部成员</option>
              <option v-for="person in history?.members||[]" :key="person.userId" :value="person.userId">{{ person.displayName }}</option>
            </select>
          </label>
          <label>分类
-           <select :value="historyCategory" @change="goToHistory(1,historyYear,historyMember,($event.target as HTMLSelectElement).value)">
-             <option value="all">全部</option>
+           <select v-model="draftHistoryCategory" aria-label="选择积分明细分类">
+             <option value="all">全部分类</option>
              <option value="task">任务</option>
              <option value="shopping">购物</option>
              <option value="lottery">抽奖</option>
@@ -738,8 +761,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
              <option value="saving">储值旅行</option>
            </select>
          </label>
-       </div>
-     </div>
+         <div class="annual-more-actions">
+           <button type="button" @click="resetHistoryFilterDraft">重置</button>
+           <button type="submit">应用筛选</button>
+         </div>
+       </form>
+     </EditBottomSheet>
      <div v-if="history" class="annual-members">
        <article v-for="person in history.members" :key="person.userId" class="annual-member">
          <b>{{ person.displayName }}</b>
@@ -1329,12 +1356,26 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .lottery-coupon-row button{flex:none}
 .annual-history-head{display:grid;gap:8px}
 .annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
-.annual-filters{display:grid;grid-template-columns:minmax(0,1.45fr) repeat(2,minmax(0,1fr));gap:7px;align-items:end}
-.annual-filters label{display:grid;gap:3px;min-width:0;font-size:11px;color:#748778}
+.annual-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.85fr) minmax(0,1.3fr);gap:8px;align-items:end}
+.annual-filters label{display:grid;gap:4px;min-width:0;font-size:11px;color:#748778}
 .annual-filters select{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;
-  height:40px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;
-  padding:5px 6px;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:360px){.annual-filters{gap:5px}.annual-filters select{font-size:11px;padding-inline:4px}}
+  height:40px;border:1px solid #d3e4d8;border-radius:9px;background:#fff;color:#345f48;
+  padding:5px 7px;font-size:13px;text-overflow:ellipsis;white-space:nowrap}
+.annual-extra-trigger{display:flex;align-items:center;justify-content:center;gap:5px;
+  min-width:0;width:100%;height:40px;padding:5px 7px;border:1px solid #cfe0d3;border-radius:9px;
+  background:#f5f9f5;color:#477359;font-size:12px;font-weight:650;white-space:nowrap}
+.annual-extra-trigger.selected{border-color:#83bd9a;background:#eaf5ed;color:#2d754e}
+.annual-extra-trigger span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.annual-extra-trigger:focus-visible,.annual-filters select:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.annual-more-form{display:grid;gap:15px}
+.annual-more-form label{display:grid;gap:7px;font-size:13px;font-weight:650;color:#426d53}
+.annual-more-form select{width:100%;min-width:0;min-height:44px;border:1px solid #d3e4d8;
+  border-radius:10px;padding:9px 12px;font-size:14px;color:#345f48;background:#fff}
+.annual-more-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:10px;margin-top:3px}
+.annual-more-actions button{min-height:44px;border-radius:10px;border:1px solid #cde1d1;
+  background:#f6faf6;color:#477359;font-weight:650}
+.annual-more-actions button[type=submit]{border-color:#43866a;background:#43866a;color:white}
+@media(max-width:360px){.annual-filters{gap:5px}.annual-filters select,.annual-extra-trigger{font-size:11px;padding-inline:4px}}
 .annual-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .annual-member{display:grid;align-content:start;gap:7px;padding:10px;min-width:0;background:#f7faf6;border:1px solid #e2ece3;border-radius:11px}
 .annual-member>b{font-size:13px;color:#355f47;overflow-wrap:anywhere}
