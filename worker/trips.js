@@ -115,7 +115,9 @@ export async function tripsRoute(request,db,path,session){
       if(filters.scope==='active')
         clauses.push("status NOT IN ('completed','cancelled')")
       else if(filters.scope==='history')
-        clauses.push("status IN ('completed','cancelled')")
+        clauses.push(filters.outcome==='completed'?"status='completed'":
+          filters.outcome==='missed'?"status='cancelled'":
+          filters.outcome==='skipped'?'0':"status IN ('completed','cancelled')")
       const window=monthWindow(filters.year,filters.month)
       if(window){
         const n=args.length+1
