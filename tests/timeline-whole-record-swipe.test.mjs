@@ -46,3 +46,10 @@ test('swipe remains on the record, while photo edit/delete moves into fullscreen
   assert.match(life,/<PhotoViewer v-if="openPhoto"/)
   assert.match(life,/@close="openPhoto=null" @save="saveViewedPhoto" @delete="deleteViewedPhoto"/)
 })
+
+test('memory author appears beside household/private visibility using the existing member nickname',()=>{
+  assert.match(memory,/<small class="memory-visibility">[\s\S]*?class="memory-audience"[\s\S]*?class="memory-attribution"[\s\S]*?memberName\(m.created_by\)[\s\S]*?<\/small>/)
+  assert.match(life,/\.memory-visibility\{[^}]*white-space:nowrap\}/)
+  assert.match(life,/\.memory-attribution\{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/)
+  assert.match(life,/props\.profiles\.find\(p=>p\.memberUserId===id\)\?\.displayName/)
+})
