@@ -3,9 +3,13 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8')
 
-test('timeline shows image tiles, adds via a small plus, and hides cloud developer text',()=>{
+test('timeline shows photo tiles and a picture-upload icon, not a plus or cloud labels',()=>{
  const template=read('src/components/LifePanel.vue').split('<template>')[1]
  assert.match(template,/class="memory-add-photo"/)
+ assert.match(template,/<AppIcon name="image-upload" :size="19" \/>/)
+ assert.doesNotMatch(template,/<span aria-hidden="true">＋<\/span>/)
+ assert.match(read('src/components/AppIcon.vue'),/name==='image-upload'/)
+ assert.match(template,/@change="uploadAdditionalPhotos\(m.id,\$event\)"/)
  assert.match(template,/<PhotoThumbnail v-for="remote in cloudPhotos\[m.id\]"/)
  assert.match(template,/<PhotoViewer v-if="openPhoto"/)
  assert.doesNotMatch(template,/删除照片（含 R2）|继续添加照片（私人 R2/)
