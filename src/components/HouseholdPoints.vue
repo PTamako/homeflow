@@ -756,27 +756,6 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
    <template v-if="view==='history'">
      <div class="annual-history-head">
        <b>年度积分明细</b>
-       <div class="annual-filters" role="group" aria-label="积分明细筛选">
-         <label>年份
-           <select :value="historyYear" aria-label="积分历史年份"
-             @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
-             <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
-           </select>
-         </label>
-         <label>月份
-           <select :value="historyMonth" aria-label="积分历史月份"
-             @change="goToHistory(1,historyYear,historyMember,historyCategory,($event.target as HTMLSelectElement).value)">
-             <option value="">全年</option>
-             <option v-for="month in historyMonths" :key="month" :value="month">{{ Number(month) }}月</option>
-           </select>
-         </label>
-         <button class="annual-extra-trigger" :class="{selected:historyMoreCount>0}" type="button"
-           :aria-label="historyMoreCount?'成员或分类已筛选，共'+historyMoreCount+'项，点击修改':'筛选成员和分类'"
-           @click="openHistoryFilters">
-           <span>{{ historyMoreCount?'已筛选 '+historyMoreCount:'成员／分类' }}</span>
-           <AppIcon name="chevron-down" :size="15"/>
-         </button>
-       </div>
      </div>
      <EditBottomSheet v-if="historyFilterOpen" title="筛选积分明细" @close="historyFilterOpen=false">
        <form class="annual-more-form" @submit.prevent="applyHistoryFilters">
@@ -815,6 +794,27 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      </div>
      <p class="annual-note">{{ history&&history.year<history.currentYear?
       '年末未用积分已经清零，仅供历史回顾，不能继续兑换。':'当前年度积分将于12月31日结束，次年1月1日清零。' }}</p>
+     <div class="annual-filters" role="group" aria-label="积分明细筛选">
+       <label>年份
+         <select :value="historyYear" aria-label="积分历史年份"
+           @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
+           <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+         </select>
+       </label>
+       <label>月份
+         <select :value="historyMonth" aria-label="积分历史月份"
+           @change="goToHistory(1,historyYear,historyMember,historyCategory,($event.target as HTMLSelectElement).value)">
+           <option value="">全年</option>
+           <option v-for="month in historyMonths" :key="month" :value="month">{{ Number(month) }}月</option>
+         </select>
+       </label>
+       <button class="annual-extra-trigger" :class="{selected:historyMoreCount>0}" type="button"
+         :aria-label="historyMoreCount?'成员或分类已筛选，共'+historyMoreCount+'项，点击修改':'筛选成员和分类'"
+         @click="openHistoryFilters">
+         <span>{{ historyMoreCount?'已筛选 '+historyMoreCount:'成员／分类' }}</span>
+         <AppIcon name="chevron-down" :size="15"/>
+       </button>
+     </div>
      <div class="annual-ledger">
        <div class="annual-ledger-title"><b>积分流水</b><small v-if="historyMatchesFilters">共 {{ history?.total }} 条 · 每页5条</small></div>
        <p v-if="historyBusy&&!historyMatchesFilters" class="points-loading">正在筛选明细…</p>

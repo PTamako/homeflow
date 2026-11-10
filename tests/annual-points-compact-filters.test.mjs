@@ -3,10 +3,11 @@ import {readFileSync} from 'node:fs'
 import test from 'node:test'
 
 const src=readFileSync(new URL('../src/components/HouseholdPoints.vue',import.meta.url),'utf8')
-const section=src.slice(src.indexOf('<div class="annual-filters"'),src.indexOf('<div v-if="history" class="annual-members">'))
+const section=src.slice(src.indexOf('<template v-if="view===\'history\'">'),src.indexOf('<div class="annual-ledger">'))
+const filter=section.slice(section.indexOf('<div class="annual-filters"'))
 
 test('phone shows year, month and more-filters trigger on a single compact row',()=>{
- const header=section.slice(0,section.indexOf('</div>'))
+ const header=filter.slice(0,filter.indexOf('</div>'))
  assert.deepEqual([...header.matchAll(/<label>([^\n]+)/g)].map(m=>m[1]),['年份','月份'])
  assert.equal((header.match(/<select /g)||[]).length,2)
  assert.match(header,/class="annual-extra-trigger"/)
@@ -50,4 +51,18 @@ test('server pagination, totals and existing category/member combinations are pr
  assert.match(src,/'&month='\+encodeURIComponent\(historyMonth\.value\)/)
  assert.match(section,/@change="goToHistory\(1,Number\(\(\$event\.target as HTMLSelectElement\)\.value\)\)"/)
  assert.match(section,/@change="goToHistory\(1,historyYear,historyMember,historyCategory,\(\$event\.target as HTMLSelectElement\)\.value\)"/)
+})
+
+test('year and month controls appear below annual member cards and expiration note, above the ledger',()=>{
+ const heading=section.indexOf('<b>年度积分明细</b>')
+ const cards=section.indexOf('class="annual-members"')
+ const note=section.indexOf('class="annual-note"')
+ const filters=section.indexOf('class="annual-filters"')
+ assert.ok(heading>=0&&cards>heading&&note>cards&&filters>note,
+  'summary cards and annual expiry note must precede the filter controls')
+ assert.ok(src.indexOf('<div class="annual-ledger">')>src.indexOf('class="annual-filters"'),
+  'filters belong immediately above the transaction ledger')
+ assert.equal((section.match(/class="annual-filters"/g)||[]).length,1)
+ assert.doesNotMatch(section.slice(section.indexOf('<div class="annual-history-head">'),
+   section.indexOf('</div>',section.indexOf('<div class="annual-history-head">'))),/annual-filters/)
 })
