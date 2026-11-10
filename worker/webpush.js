@@ -1,6 +1,6 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
-import {jstNotificationDay,saveNotification,ensureScheduledNotification,findScheduledNotification} from './notifications.js'
+import {jstNotificationDay,saveNotification,ensureScheduledNotification,existingScheduledDedupeKeys,findScheduledNotification} from './notifications.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -369,6 +369,21 @@ export async function expiringCouponReminders(db,member,day){
    priority:'normal'
  }))
 }
+// Recount the persisted state of all currently registered devices, not just
+// devices retried in this hour. A later successful retry must turn "partial"
+// into "sent" without underreporting the successful device count.
+export async function scheduledDeliveryTotals(db,{householdId,recipientId,key,day}){
+  const result=await db.prepare(`SELECT
+      SUM(CASE WHEN d.status='sent' THEN 1 ELSE 0 END) AS sent,
+      SUM(CASE WHEN d.status IN ('failed','claimed') THEN 1 ELSE 0 END) AS failed
+    FROM push_subscriptions s JOIN notification_deliveries d
+      ON d.endpoint_hash=s.endpoint_hash
+    WHERE s.household_id=?1 AND s.user_id=?2
+      AND d.notification_key=?3 AND d.sent_on=?4`)
+    .bind(householdId,recipientId,key,day).first()
+  return {sent:Number(result?.sent||0),failed:Number(result?.failed||0)}
+}
+
 export async function runPushSchedule(env,now=Date.now()){
   const pushConfigured=vapidReady(env)
   const db=env.DB
@@ -382,7 +397,8 @@ export async function runPushSchedule(env,now=Date.now()){
   // Every authenticated member receives a daily in-app notice, regardless of Push permissions.
   // Reuse each member's reminder batch for subscribed devices.
   const remindersCache=new Map()
-  const notificationIds=new Map(),scheduledNotices=new Map(),deliveryTotals=new Map()
+  const notificationIds=new Map(),scheduledNotices=new Map(),attemptedNotices=new Set()
+  const alreadyRegistered=new Map()
   const changedHouseholds=new Set()
   const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
     FROM household_members m JOIN users u ON u.id=m.user_id
@@ -396,6 +412,14 @@ export async function runPushSchedule(env,now=Date.now()){
     const scheduledData={...data,items:[
       ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...(data.items||[])]}
     remindersCache.set(member.user_id,scheduledData)
+    // Only one indexed lookup per member in the hourly catch-up phase.
+    // If lookup fails, the idempotent INSERT remains a safe fallback.
+    if(hour!==6&&scheduledData.items.length){
+      try{
+        alreadyRegistered.set(member.user_id,await existingScheduledDedupeKeys(
+          db,member.household_id,member.user_id,day))
+      }catch{console.warn('homeflow_scheduled_keys_lookup_failed')}
+    }
     for(const event of scheduledData.items.slice(0,100)){
       const key=reminderDeliveryKey(event)
       const logicalKey=member.user_id+':'+key
@@ -414,8 +438,9 @@ export async function runPushSchedule(env,now=Date.now()){
   }
   // Write each scheduled notice before sending to devices, not afterwards.
   for(const notice of scheduledNotices.values()){
-    // A new notice is the only reason to write at this stage. Hourly checks
-    // must not overwrite a completed task notification or its read flag.
+    // If the scheduled event already exists, do not send a redundant D1 write.
+    // The fallback INSERT still resolves concurrent new events atomically.
+    if(alreadyRegistered.get(notice.recipientId)?.has(notice.dedupeKey))continue
     if(await ensureScheduledNotification(db,notice)){
       changedHouseholds.add(notice.householdId)
       inbox++
@@ -471,10 +496,7 @@ export async function runPushSchedule(env,now=Date.now()){
         await new Promise(resolve=>setTimeout(resolve,500))
       }
       if(result==='sent')sent++;else failed++
-      const totals=deliveryTotals.get(logicalKey)||{sent:0,failed:0}
-      if(result==='sent')totals.sent++
-      else totals.failed++
-      deliveryTotals.set(logicalKey,totals)
+      attemptedNotices.add(logicalKey)
       await db.prepare(`UPDATE notification_deliveries
         SET status=?1,status_code=?2,attempts=MIN(3,attempts+?6),
           updated_at=CURRENT_TIMESTAMP
@@ -487,9 +509,14 @@ export async function runPushSchedule(env,now=Date.now()){
     }
   }
   // Only notices with a Push attempt need a second status update.
-  for(const [logicalKey,totals] of deliveryTotals){
+  for(const logicalKey of attemptedNotices){
+    const notice=scheduledNotices.get(logicalKey)
+    if(!notice)continue
+    const totals=await scheduledDeliveryTotals(db,{
+      householdId:notice.householdId,recipientId:notice.recipientId,
+      key:notice.dedupeKey.slice('scheduled:'.length),day
+    })
     if(totals.sent||totals.failed){
-      const notice=scheduledNotices.get(logicalKey)
       await saveNotification(db,{...notice,
         sentDevices:totals.sent,failedDevices:totals.failed})
       changedHouseholds.add(notice.householdId)
