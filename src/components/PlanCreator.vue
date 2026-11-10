@@ -180,7 +180,7 @@ async function submit(){
        </template>
       </template>
       <template v-if="form.repeatType==='interval'">
-       <label>间隔天数<input v-model.number="form.intervalDays" type="number" min="1" max="3650" required/></label>
+       <label>间隔天数<input v-model.number="form.intervalDays" type="number" inputmode="numeric" min="1" max="3650" required/></label>
        <label>计算方式<select v-model="form.intervalAnchor">
         <option value="fixed">按原定日期</option><option value="completion">按上次完成日期</option>
        </select></label>
@@ -200,7 +200,7 @@ async function submit(){
      </template>
     </template>
     <template v-else-if="kind==='shopping'">
-     <label>数量<input v-model.number="form.quantity" type="number" min="1" max="9999" required/></label>
+     <label>数量<input v-model.number="form.quantity" type="number" inputmode="numeric" min="1" max="9999" required/></label>
      <label>计划购买日期（可选）<DateField v-model="form.dueOn" /></label>
      <label>处理人<select v-model="form.assignedTo" aria-label="选择购物处理人"
        @change="form.assignedTo&&form.assignedTo!==userId?form.visibility='household':null;form.shoppingSecond===form.assignedTo?form.shoppingSecond='':null">
@@ -278,13 +278,13 @@ async function submit(){
 <style scoped>
 .plan-creator{padding:0;border:0;background:transparent;border-radius:0;margin:0 0 16px;display:grid;gap:12px}
 .plan-creator.compact{margin:0;display:block}
-.plan-creator.compact .creator-trigger{width:38px;height:38px;min-height:38px;min-width:38px;display:grid;place-items:center;
+ .plan-creator.compact .creator-trigger{width:44px;height:44px;min-height:44px;min-width:44px;display:grid;place-items:center;
  padding:0;border:1px solid #c9dfcf;border-radius:11px;background:#f3f9f4;color:#3b8364}
 .plan-creator.compact .creator-trigger:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-creator h2{font-size:15px;margin:0}.plan-creator h3{margin:0;font-size:14px;color:#2a4c3a}
 .creator-trigger{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:11px;min-height:44px;background:#43866a;color:white;font-size:14px;font-weight:700}
 .plan-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.plan-type{border:1px solid #e0e9e1;border-radius:12px;background:#fbfcf9;padding:12px;min-width:0;text-align:left;display:grid;justify-items:start;gap:5px;color:#466e54}
+.plan-type{min-height:86px;touch-action:manipulation;border:1px solid #e0e9e1;border-radius:12px;background:#fbfcf9;padding:12px;min-width:0;text-align:left;display:grid;justify-items:start;gap:5px;color:#466e54}
 .plan-type.selected{border-color:#43866a;background:#eef7ef}.plan-type b{font-size:13px;color:#314637}.plan-type small{font-size:11px;line-height:1.45;color:#7b9082}
 .plan-fields{display:grid;gap:12px;padding-top:12px;border-top:1px solid #e6eee5}
 .plan-fields label{display:grid;gap:5px;min-width:0;color:#5d7769;font-size:12px}
@@ -299,7 +299,7 @@ async function submit(){
 .day-select-group legend{font-size:12px;color:#5d7769;margin-bottom:6px}
 .day-select-group small{font-size:11px;color:#708778}
 .day-select{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
-.plan-fields .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:36px;cursor:pointer;border:1px solid #d9e4db;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
+.plan-fields .day-option{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:44px;cursor:pointer;border:1px solid #d9e4db;border-radius:9px;background:#fff;color:#466e54;font-size:12px}
 .plan-fields .day-option.is-selected{background:#43866a;border-color:#43866a;color:#fff;font-weight:700}
 .day-option:focus-within{outline:2px solid #7bbda1;outline-offset:2px}
 .day-option input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
@@ -314,5 +314,5 @@ async function submit(){
 .creator-tip{font-size:11px;line-height:1.6;color:#7c9183;margin:0}.creator-error{color:#ad513d;font-size:12px}
 .creator-actions{display:flex;gap:9px;justify-content:flex-end}.creator-actions button{min-height:42px;border:0;border-radius:9px;padding:9px 15px}
 .creator-cancel{color:#577864;background:#edf3ec}.creator-save{background:#43866a;color:white;font-weight:700}
-@media(max-width:380px){.plan-type-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:380px){.plan-type-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.plan-type{padding:10px 9px}.plan-type small{font-size:10px}}
 </style>
