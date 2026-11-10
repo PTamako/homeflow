@@ -118,20 +118,25 @@ async function exportArchive(){
         if(size>50*1024*1024)throw Error('照片超过单次 50MB 备份上限，请先逐张导出')
         files['photos/'+id+'/'+String(number).padStart(4,'0')+'.jpg']=bytes
       }
-      const media=await fetch('/api/media?memoryId='+encodeURIComponent(id),{
-        credentials:'same-origin',cache:'no-store'})
-      if(!media.ok)throw Error('云端照片备份列表读取失败')
-      const listing=await media.json() as {cloudAvailable?:boolean;items?:Array<{id:string}>}
-      if(!listing.cloudAvailable)continue
-      for(const item of listing.items||[]){
-        const photo=await fetch('/api/media/'+encodeURIComponent(item.id),{
+      let cursor:string|null=null
+      do{
+        const media=await fetch('/api/media?memoryId='+encodeURIComponent(id)+'&limit=10'+
+          (cursor?'&cursor='+encodeURIComponent(cursor):''),{
           credentials:'same-origin',cache:'no-store'})
-        if(!photo.ok)throw Error('云端照片下载失败，请重试')
-        const bytes=new Uint8Array(await photo.arrayBuffer())
-        size+=bytes.length;count++;number++
-        if(size>50*1024*1024)throw Error('照片超过单次 50MB 备份上限，请先逐张导出')
-        files['photos/'+id+'/'+String(number).padStart(4,'0')+'.jpg']=bytes
-      }
+        if(!media.ok)throw Error('云端照片备份列表读取失败')
+        const listing=await media.json() as {cloudAvailable?:boolean;items?:Array<{id:string}>;nextCursor?:string|null}
+        if(!listing.cloudAvailable)break
+        for(const item of listing.items||[]){
+          const photo=await fetch('/api/media/'+encodeURIComponent(item.id),{
+            credentials:'same-origin',cache:'no-store'})
+          if(!photo.ok)throw Error('云端照片下载失败，请重试')
+          const bytes=new Uint8Array(await photo.arrayBuffer())
+          size+=bytes.length;count++;number++
+          if(size>50*1024*1024)throw Error('照片超过单次 50MB 备份上限，请先逐张导出')
+          files['photos/'+id+'/'+String(number).padStart(4,'0')+'.jpg']=bytes
+        }
+        cursor=listing.nextCursor||null
+      }while(cursor)
     }
     const archive=zipSync(files,{level:0})
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')

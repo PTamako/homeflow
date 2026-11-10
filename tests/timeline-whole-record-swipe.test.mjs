@@ -38,7 +38,11 @@ test('blue edit/red delete remain clipped to a compact top-right action rail for
   assert.match(memory,/:allow-edit="canEdit\(m\)" :allow-delete="canEdit\(m\)"/)
 })
 
-test('photo controls are preserved inside the swipe content without losing their handlers',()=>{
-  assert.match(memory,/@click="removeCloudPhoto\(remote.id\)"/)
-  assert.match(memory,/@click="downloadLocalPhoto\(localPhotoBlobs\[m.id\]\[i\],m.id\+'-'\+\(i\+1\)\+'\.jpg'\)"/)
+test('swipe remains on the record, while photo edit/delete moves into fullscreen preview',()=>{
+  assert.match(memory,/@open="url=>previewCloudPhoto\(remote,m.id,m.title,url\)"/)
+  assert.match(memory,/@click.stop="previewDevicePhoto\(m.id,i,m.title,image\)"/)
+  assert.match(memory,/@change="uploadAdditionalPhotos\(m.id,\$event\)"/)
+  assert.doesNotMatch(memory,/removeCloudPhoto\(remote.id\)|删除照片（含 R2）/)
+  assert.match(life,/<PhotoViewer v-if="openPhoto"/)
+  assert.match(life,/@close="openPhoto=null" @save="saveViewedPhoto" @delete="deleteViewedPhoto"/)
 })

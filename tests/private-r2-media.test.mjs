@@ -167,3 +167,63 @@ test('ZIP restore is idempotent and does not duplicate R2 objects across retries
   assert.equal(broken.status,400)
  }finally{f.close()}
 })
+
+test('five-memory metadata lookup returns two per memory and R2 objects are not listed',async()=>{
+ const f=fixture()
+ try{
+  for(let i=0;i<6;i++){
+    const res=await mediaRoute(upload(memoryId,jpeg(64+i)),f.env,'/api/media/upload',session)
+    assert.equal(res.status,201)
+  }
+  const first=await mediaRoute(
+    new Request('https://homeflow.invalid/api/media?memoryIds='+memoryId),
+    f.env,'/api/media',session)
+  assert.equal(first.status,200)
+  const initial=await first.json()
+  assert.equal(initial.items.length,2)
+  let cursor=initial.nextCursors[memoryId]
+  assert.ok(cursor)
+  const ids=new Set(initial.items.map(x=>x.id))
+  let calls=0
+  while(cursor){
+    const response=await mediaRoute(new Request(
+      'https://homeflow.invalid/api/media?memoryId='+memoryId+
+      '&limit=2&cursor='+encodeURIComponent(cursor)),f.env,'/api/media',session)
+    assert.equal(response.status,200)
+    const next=await response.json()
+    for(const item of next.items){assert.equal(ids.has(item.id),false);ids.add(item.id)}
+    cursor=next.nextCursor;calls++
+    assert.ok(calls<5,'must terminate')
+  }
+  assert.equal(ids.size,6)
+  assert.equal(f.media.objects.size,6,'metadata-only reads must not write/delete objects')
+  const invalid=await mediaRoute(new Request(
+    'https://homeflow.invalid/api/media?memoryIds='+Array(6).fill(memoryId).join(',')),
+    f.env,'/api/media',session)
+  assert.equal(invalid.status,400)
+  const empty=await mediaRoute(new Request('https://homeflow.invalid/api/media?memoryIds='),
+    f.env,'/api/media',session)
+  assert.deepEqual((await empty.json()).items,[])
+ }finally{f.close()}
+})
+
+test('photo editing is uploader-only, max 300KiB, and overwrites one private object',async()=>{
+ const f=fixture()
+ try{
+  const first=await mediaRoute(upload(memoryId,jpeg(64)),f.env,'/api/media/upload',session)
+  const {id}=await first.json()
+  const update=(bytes)=>new Request('https://homeflow.invalid/api/media/'+id,
+    {method:'PUT',headers:{'content-type':'image/jpeg'},body:bytes})
+  assert.equal((await mediaRoute(update(jpeg(77)),f.env,'/api/media/'+id,other)).status,404)
+  assert.equal((await mediaRoute(update(jpeg(77)),f.env,'/api/media/'+id,foreign)).status,404)
+  assert.equal((await mediaRoute(update(jpeg(MAX_MEDIA_BYTES+1)),f.env,'/api/media/'+id,session)).status,413)
+  const edited=await mediaRoute(update(jpeg(90)),f.env,'/api/media/'+id,session)
+  assert.equal(edited.status,200)
+  assert.equal((await edited.json()).byteSize,90)
+  assert.equal(f.media.objects.size,1)
+  assert.equal(f.sqlite.prepare('SELECT byte_size FROM media_assets WHERE id=?').get(id).byte_size,90)
+  const readback=await mediaRoute(new Request('https://homeflow.invalid/api/media/'+id),
+    f.env,'/api/media/'+id,session)
+  assert.equal((await readback.arrayBuffer()).byteLength,90)
+ }finally{f.close()}
+})

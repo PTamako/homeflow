@@ -4,6 +4,7 @@ import {computed,onMounted,onBeforeUnmount,nextTick,ref,watch} from 'vue'
 import {listPending,syncPending,removePending,type PendingTaskOp} from './offline-tasks'
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
+import {clearPhotoCache} from './photo-session-cache'
 import GlobalSearch from './components/GlobalSearch.vue'
 import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
@@ -473,6 +474,7 @@ async function submitAuth(){
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
+  clearPhotoCache()
   void setUnreadNotificationCount(0)
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
