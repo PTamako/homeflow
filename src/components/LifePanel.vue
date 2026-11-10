@@ -1025,8 +1025,10 @@ async function importTrip(){
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
 }
-async function uploadPhoto(memoryId:string,blob:Blob){
-  const response=await fetch('/api/media/upload?memoryId='+encodeURIComponent(memoryId),{
+async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
+  const url='/api/media/upload?memoryId='+encodeURIComponent(memoryId)+
+    (restoreKey?'&restoreKey='+encodeURIComponent(restoreKey):'')
+  const response=await fetch(url,{
     method:'POST',credentials:'same-origin',
     headers:{'content-type':'image/jpeg'},body:blob
   })
@@ -1076,9 +1078,11 @@ async function syncLocalPhotos(memoryId:string){
   try{
     const originals=await listLocalPhotos(props.userId,memoryId)
     for(const blob of originals){
+      const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))
+      const marker=Array.from(digest,x=>x.toString(16).padStart(2,'0')).join('')
       const compressed=await compressPhoto(new File([blob],memoryId+'.jpg',{type:'image/jpeg'}))
-      await uploadPhoto(memoryId,compressed)
-      // Never discard the device copy until the server confirms upload.
+      await uploadPhoto(memoryId,compressed,marker)
+      // Only a confirmed R2 upload permits deleting the legacy device copy.
       await deleteLocalPhoto(props.userId,memoryId,0)
       count++
     }

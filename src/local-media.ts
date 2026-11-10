@@ -1,13 +1,19 @@
 // Legacy device photo reader/remover only. New uploads and ZIP restores go to private R2.
 // Do not add IndexedDB photo writes; photos never reside in D1.
 const NAME='homeflow-local-media-v1'
-async function store():Promise<IDBDatabase> {
+// Access only an existing legacy database. Reading cloud-only albums must not
+// create an empty IndexedDB database merely to look for older local pictures.
+async function store():Promise<IDBDatabase|null> {
   return new Promise((resolve,reject)=>{
-    if(!('indexedDB' in window))return reject(Error('本机照片存储不可用'))
+    if(!('indexedDB' in window))return resolve(null)
     const r=indexedDB.open(NAME,1)
-    r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('photos'))r.result.createObjectStore('photos')}
+    let abortedNewDatabase=false
+    r.onupgradeneeded=()=>{
+      abortedNewDatabase=true
+      r.transaction?.abort()
+    }
     r.onsuccess=()=>resolve(r.result)
-    r.onerror=()=>reject(r.error||Error('本机相册打开失败'))
+    r.onerror=()=>abortedNewDatabase?resolve(null):reject(r.error||Error('本机相册打开失败'))
   })
 }
 export const MAX_PHOTO_BYTES=300*1024
@@ -46,6 +52,7 @@ async function compress(file:File):Promise<Blob>{
 }
 export async function listLocalPhotos(userId:string,memoryId:string):Promise<Blob[]>{
   const db=await store()
+  if(!db)return []
   const legacy=userId+':'+memoryId
   const begin=legacy+':'
   const range=IDBKeyRange.bound(begin,begin+'\uffff')
@@ -78,6 +85,7 @@ export async function compressPhoto(file:File):Promise<Blob>{return compress(fil
 /** Remove exactly one device photo after a successful R2 upload or manual delete. */
 export async function deleteLocalPhoto(userId:string,memoryId:string,index:number):Promise<void>{
   const db=await store()
+  if(!db)throw Error('没有需要删除的本机旧照片')
   const base=userId+':'+memoryId
   const tx=db.transaction('photos','readonly')
   const obj=tx.objectStore('photos')
