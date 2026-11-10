@@ -114,7 +114,7 @@ async function confirmGoalCompleted(){
   }))return
   confirmBusy.value=true;error.value=''
   try{
-    // Server always verifies actual Kakebo net plus the saved settings,
+    // The server recomputes the Kakebo cash-flow estimate plus saved settings,
     // regardless of any client-rendered progress bar.
     await api('/plans/complete','POST',{
       kind:'goal',id:target.value,periodKey:key,completed:!wasCompleted
