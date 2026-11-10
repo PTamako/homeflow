@@ -22,6 +22,8 @@ test('plan creator presents type selection first and renders the form only on th
 test('back navigation keeps the draft when returning to the same type',()=>{
  assert.match(script,/function backToChoices\(\)\{[\s\S]*?step.value='choose'/)
  assert.match(script,/if\(kind.value!==value\)\{/)
+ assert.match(script,/Object.assign\(form,defaultForm\(\)\)/)
+ assert.match(script,/const form=reactive\(defaultForm\(\)\)/)
  assert.match(script,/step.value='details'/)
  assert.match(template,/@click="backToChoices"/)
  assert.match(template,/返回选择类型/)
