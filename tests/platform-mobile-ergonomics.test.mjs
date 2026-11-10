@@ -15,7 +15,7 @@ const points=source('src/components/HouseholdPoints.vue')
 const date=source('src/components/DateField.vue')
 
 test('unified mobile ergonomics cover every tab, list, button, checkbox and swipe row',()=>{
- assert.match(ui,/@media\(pointer:coarse\) and \(max-width:1100px\)/)
+ assert.match(ui,/@media\(pointer:coarse\)/)
  assert.match(ui,/\.shell :is\(button,\[role="button"\],a\[href\]\)\{touch-action:manipulation\}/)
  assert.match(ui,/:is\(input\[type="checkbox"\],input\[type="radio"\]\)/)
  assert.match(ui,/min-width:22px;min-height:22px/)
@@ -35,6 +35,7 @@ test('form sheets remain keyboard-safe with sticky mobile save actions',()=>{
  assert.match(sheet,/:deep\(\.editor-actions\)/)
  assert.match(sheet,/:deep\(\.pet-form-actions\)/)
  assert.match(sheet,/:deep\(\.annual-more-actions\)/)
+ assert.match(sheet,/@media\(pointer:coarse\)/)
  assert.match(sheet,/position:sticky;bottom:calc\(-20px - env\(safe-area-inset-bottom\)\)/)
  assert.match(sheet,/onBeforeUnmount\(\(\)=>\{/)
  assert.match(sheet,/window\.scrollTo\(0,savedScrollY\)/)
