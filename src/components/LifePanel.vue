@@ -638,7 +638,15 @@ const routineSubjectIsPet=computed(()=>props.profiles.some(p=>p.id===routineSubj
 watch(routineSubject,id=>{
   routineHealthType.value=props.profiles.some(p=>p.id===id&&p.type==='pet')?'other':''
 })
-const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(new Date().toISOString().slice(0,10)),memoryVisibility=ref<'private'|'household'>('household')
+const memoryTitle=ref(''),memoryStory=ref(''),memoryDate=ref(today()),memoryVisibility=ref<'private'|'household'>('household')
+function closeMemoryForm(){
+ if(busy.value)return
+ showMemoryForm.value=false
+ memoryTitle.value='';memoryStory.value='';memoryDate.value=today()
+ memoryVisibility.value='household';photoFiles.value=[]
+ error.value=''
+ finishPhotoPicker()
+}
 const planMemoryDraft=ref<null|{
  kind:'wish'|'trip';id:string;title:string;happenedOn:string;story:string;visibility:'private'|'household';sourceVisibility:'private'|'household'
 }>(null)
@@ -673,6 +681,11 @@ const photoVersions=ref<Record<string,number>>({})
 type OpenPhoto={kind:'cloud'|'local';src:string;title:string;memoryId:string;id?:string;index?:number;uploadedBy?:string}
 const openPhoto=ref<OpenPhoto|null>(null),viewerBusy=ref(false)
 const paste=ref(''),importTargetId=ref(''),preview=ref<Row|null>(null),tripDetail=ref<Row|null>(null),tripProgress=ref<Row[]>([])
+function closeTripImport(){
+ if(busy.value)return
+ tripImportOpen.value=false
+ paste.value='';importTargetId.value='';preview.value=null;error.value=''
+}
 const convertWishEdit=ref<{id:string;title:string;destination:string}|null>(null)
 const tripItemEdit=ref<{id:string;title:string;quantity:number|null}|null>(null)
 function tripParticipantNames(item:Row){
@@ -1059,7 +1072,7 @@ async function importTrip(){
     message:'会更新原旅行内容，但不会删除已完成事项。确定更新吗？'}))return
   await update(()=>api('/trips/import','POST',{payload:preview.value?.payload,
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
-  if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
+  if(!error.value)closeTripImport()
 }
 async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
   const url='/api/media/upload?memoryId='+encodeURIComponent(memoryId)+
@@ -1213,8 +1226,7 @@ async function addMemory(){
         failedPhotos.push(file.name+'：'+(e as Error).message)
       }
     }
-    memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
-    showMemoryForm.value=false
+    closeMemoryForm()
     await fetchMode()
     if(failedPhotos.length)notify('回忆已保存，'+failedPhotos.length+' 张照片未上传：'+failedPhotos.join('；'),'warning')
     else if(!toast.value)notify('回忆已保存')
@@ -2123,7 +2135,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <AppIcon name="check" :size="17"/> 完成整趟旅行
             </button>
           </div>
-           <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="tripImportOpen=false">
+           <EditBottomSheet v-if="tripImportOpen" title="导入行程 JSON" :close-disabled="busy" @close="closeTripImport">
            <div class="trip-import">
             <label>导入到哪个旅行项目？
               <select v-model="importTargetId" aria-label="选择导入旅行项目"><option value="">新建旅行项目</option><option v-for="t in trips" :key="t.id" :value="t.id">{{ t.title }}</option></select>
@@ -2177,7 +2189,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             aria-label="添加回忆" title="添加回忆"
             @click="showMemoryForm=true"><AppIcon name="plus" :size="19" /></button>
         </div>
-        <EditBottomSheet v-if="showMemoryForm" title="添加回忆" :close-disabled="busy" @close="showMemoryForm=false">
+        <EditBottomSheet v-if="showMemoryForm" title="添加回忆" :close-disabled="busy" @close="closeMemoryForm">
         <form id="new-memory-form" class="life-form" @submit.prevent="addMemory">
           <input v-model.trim="memoryTitle" required maxlength="150" placeholder="今天有什么值得记住？"/>
           <label>发生日期<DateField v-model="memoryDate" required /></label>
@@ -2193,7 +2205,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               @cancel="finishPhotoPicker()"
               @change="finishPhotoPicker();photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <button :disabled="busy">保存到时光轴</button>
-          <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
+          <button type="button" class="life-cancel" :disabled="busy" @click="closeMemoryForm">取消</button>
         </form>
         </EditBottomSheet>
 
