@@ -27,7 +27,7 @@ test('tampered image bytes, missing audit record or extra untracked file reject 
  await assert.rejects(verifyBackupManifest(altered,manifest),/backup_checksum_mismatch/)
  const missing={...original};delete missing['points-and-rewards-audit.json']
  await assert.rejects(verifyBackupManifest(missing,manifest),/missing_or_invalid_backup_entry/)
- const extra={...original,'photos/'+memory+'/0002.jpg':new Uint8Array([1])}
+ const extra={...original,['photos/'+memory+'/0002.jpg']:new Uint8Array([1])}
  await assert.rejects(verifyBackupManifest(extra,manifest),/backup_manifest_incomplete/)
 })
 test('malformed manifests cannot claim duplicate entries or write outside backup paths',async()=>{
