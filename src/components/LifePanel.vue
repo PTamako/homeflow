@@ -2135,9 +2135,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <option value="private">仅自己</option>
             </select>
           </label>
-          <label>可选照片（每张最多 300 KB）
+          <label>照片（可选）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">{{ cloudEnabled?'照片只存私人 R2，不额外保存到手机':'云端暂不可用，无法上传照片，也不会写入本机照片存储' }}</p>
           <button :disabled="busy">保存到时光轴</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
@@ -2167,30 +2166,38 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <SwipeActions :id="m.id" scope="memories" :allow-edit="canEdit(m)" :allow-delete="canEdit(m)"
             @edit="edit('memories',m)" @delete="removeItem('memories',m)">
             <div class="memory-swipe-body">
-              <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
-          <label v-if="cloudEnabled&&m.created_by===props.userId" class="life-caption">
-              继续添加照片（私人 R2 · 300 KB/张）
-              <input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="busy"
-                @change="uploadAdditionalPhotos(m.id,$event)" />
-            </label>
-            <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
-            <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
-              <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
-              <button v-if="remote.uploadedBy===props.userId" type="button" class="life-link"
-                @click="removeCloudPhoto(remote.id)">删除照片（含 R2）</button>
-            </div>
-          </div>
-          <div v-if="photos[m.id]?.length" class="memory-photos">
-            <div v-for="(image,i) in photos[m.id]" :key="image">
-              <img :src="image" :alt="m.title+' 照片 '+(i+1)" loading="lazy"/>
-              <button type="button" class="life-link" @click="downloadLocalPhoto(localPhotoBlobs[m.id][i],m.id+'-'+(i+1)+'.jpg')">保存照片</button>
-              <button type="button" class="life-link" @click="removeDevicePhoto(m.id,i)">删除本机照片</button>
-            </div>
-            <button v-if="cloudEnabled&&m.created_by===props.userId" type="button"
-              class="life-link" :disabled="busy" @click="syncLocalPhotos(m.id)">
-              将本机照片同步到私人云端
-            </button>
-          </div>
+              <div class="memory-swipe-heading">
+                <time>{{ m.happened_on }}</time>
+                <div class="memory-heading-content">
+                  <h3>{{ m.title }}</h3>
+                  <label v-if="cloudEnabled&&m.created_by===props.userId" class="memory-add-photo"
+                    title="添加照片" aria-label="添加照片">
+                    <span aria-hidden="true">＋</span>
+                    <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+                      aria-label="添加照片" :disabled="busy" @change="uploadAdditionalPhotos(m.id,$event)"/>
+                  </label>
+                </div>
+              </div>
+              <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
+                <PhotoThumbnail v-for="remote in cloudPhotos[m.id]"
+                  :key="remote.id+'-'+(photoVersions[remote.id]||0)"
+                  :id="remote.id" :user-id="props.userId" :title="m.title"
+                  @open="url=>previewCloudPhoto(remote,m.id,m.title,url)"/>
+              </div>
+              <button v-if="photoCursors[m.id]" type="button" class="memory-more-photos"
+                :disabled="photoPageBusy[m.id]" @click.stop="loadMorePhotos(m.id)">
+                {{ photoPageBusy[m.id]?'正在加载…':'查看更多照片' }}
+              </button>
+              <div v-if="photos[m.id]?.length" class="memory-photos">
+                <button v-for="(image,i) in photos[m.id]" :key="image"
+                  type="button" class="memory-photo-button" :aria-label="'放大查看：'+m.title"
+                  @click.stop="previewDevicePhoto(m.id,i,m.title,image)">
+                  <img :src="image" :alt="m.title+' 照片 '+(i+1)" loading="lazy"/>
+                </button>
+              </div>
+              <button v-if="photos[m.id]?.length&&cloudEnabled&&m.created_by===props.userId"
+                type="button" class="memory-more-photos" :disabled="busy"
+                @click.stop="syncLocalPhotos(m.id)">同步旧照片</button>
           <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
             </div>
           </SwipeActions>
@@ -2200,6 +2207,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         <button v-if="!listLoading&&listCursors.memories" type="button" class="life-more" :disabled="pageBusy.memories"
           @click="loadMore('memories')">加载更多回忆</button>
       </section>
+      <PhotoViewer v-if="openPhoto" :src="openPhoto.src" :title="openPhoto.title"
+        :busy="viewerBusy"
+        :can-edit="openPhoto.kind==='cloud'?openPhoto.uploadedBy===props.userId:cloudEnabled"
+        :can-delete="openPhoto.kind==='cloud'?openPhoto.uploadedBy===props.userId:true"
+        @close="openPhoto=null" @save="saveViewedPhoto" @delete="deleteViewedPhoto"/>
     </template>
     <EditBottomSheet v-if="convertWishEdit" title="由心愿创建旅行" :close-disabled="busy" @close="convertWishEdit=null">
      <form class="life-form" @submit.prevent="submitConvertWish">
@@ -2346,6 +2358,20 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .memory :deep(.swipe-actions button){height:72px;flex:0 0 72px}
 .memory-photos img{width:100%;height:165px;object-fit:cover;border-radius:12px}
 .memory-photos button{margin-top:3px}
+.memory-heading-content{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.memory-heading-content h3{min-width:0;flex:1}
+.memory-add-photo{flex:none;display:grid;place-items:center;position:relative;
+ width:34px;height:34px;border:1px solid #c8ddcc;border-radius:50%;
+ background:#eff7f0;color:#45876a;font-size:25px;line-height:1;cursor:pointer}
+.memory-add-photo input{position:absolute;inset:0;opacity:0;width:100%;height:100%;
+ cursor:pointer;font-size:0}
+.memory-add-photo:focus-within{outline:2px solid #43866a;outline-offset:2px}
+.memory-photo-button{display:block;width:100%;aspect-ratio:1;overflow:hidden;padding:0;
+ border:0;border-radius:12px;background:#edf2ed;cursor:zoom-in;margin:0!important}
+.memory-photo-button img{display:block;width:100%;height:100%;object-fit:cover}
+.memory-more-photos{display:block;width:100%;margin:9px 0 6px;padding:7px;border:0;
+ border-radius:9px;background:#edf5ed;color:#43866a;font-size:12px;font-weight:650}
+.memory-more-photos:disabled{opacity:.6}
 @media(max-width:720px){.life-grid{grid-template-columns:1fr}.life-card{padding:17px}}
 
 /* Shared icon language and responsive form guards */
