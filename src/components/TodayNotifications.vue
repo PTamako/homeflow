@@ -27,6 +27,9 @@ const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|nu
 const highlightedId=ref('')
 const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
+// A push deep-link performs its own focused load. Do not start a second
+// ordinary tab request that invalidates it on the next Vue watcher tick.
+let focusedReceivedLoad=false
 // Capture the row touched before any live-refresh can move a different row beneath the finger.
 let pressedReadId:string|null=null
 function timeOf(value:string|null){
@@ -212,12 +215,15 @@ async function open(item:Notice){
 }
 async function showIncomingNotification(id:string){
  if(!props.active||!/^[a-f0-9-]{36}$/i.test(id))return
+ focusedReceivedLoad=true
  expanded.value=true
  view.value='received'
  // Load the actual scoped row first; never auto-read an unseen replacement
  // simply because a historical Push still points to the same inbox ID.
  const version=props.focusNotificationVersion
- const loaded=await load(true,id)
+ let loaded=false
+ try{loaded=await load(true,id)}
+ finally{focusedReceivedLoad=false}
  const focused=loaded?notices.value.find(item=>item.id===id):null
  const versionMatches=(version==null||version==='scheduled')
    ?!focused?.lastCompletionKey:version===focused?.lastCompletionKey
@@ -234,6 +240,7 @@ watch(()=>[props.focusRequest,props.active],()=>{
   void showIncomingNotification(props.focusNotificationId)
 },{immediate:true})
 watch(view,()=>{
+ if(focusedReceivedLoad&&view.value==='received')return
  // Switching to pending does not fetch an inbox page; explicitly invalidate
  // any in-flight received/sent response so it cannot repaint stale rows.
  generation++
