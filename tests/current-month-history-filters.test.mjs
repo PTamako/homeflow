@@ -22,7 +22,7 @@ test('annual point history defaults to JST year/month, retains separate annual t
  assert.match(src,/aria-label="积分历史年月"/)
  assert.match(src,/:value="historyPeriod"/)
  assert.match(src,/:value="year\+'-all'"/)
- assert.match(src,/year\+'-'+month/);
+ assert.match(src,/year\+'-'\+month/);
  assert.match(src,/matched\[2\]==='all'\?'':matched\[2\]/)
 })
 
