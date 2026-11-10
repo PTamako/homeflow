@@ -4,9 +4,11 @@ import {readFileSync} from 'node:fs'
 
 const source=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
 
-test('history filter has its own spacing below status tabs on mobile',()=>{
- assert.match(source,/\.plan-view-toolbar \.archive-toolbar>\.life-filter-trigger\s*\{[^}]*margin:12px 0 3px auto/s)
- assert.match(source,/<button v-if="planScope==='history'" type="button" class="life-filter-trigger"/)
+test('history year and month selectors sit together below status tabs on mobile',()=>{
+ assert.match(source,/\.plan-view-toolbar \.plan-history-date-filters\{margin:10px 0 4px\}/)
+ assert.match(source,/<div v-if="planScope==='history'" class="archive-date-filters plan-history-date-filters"/)
+ assert.match(source,/aria-label="历史记录年份"/)
+ assert.match(source,/aria-label="历史记录月份"/)
 })
 
 test('trip import dropdown uses consistent iOS styling rather than native gray pill',()=>{

@@ -31,7 +31,7 @@ type YearEntry={userId:string;visibility:'household'|'private';amount:number;con
  ticketCost:number|null;prizePoints:number|null;eventId:string|null}
 type YearHistory={year:number;currentYear:number;members:YearMember[];entries:YearEntry[];
  page:number;pageSize:number;total:number;totalPages:number;
- memberFilter:string;categoryFilter:string}
+ memberFilter:string;categoryFilter:string;monthFilter:string}
 type LotteryDraw={id:string;userId:string;displayName?:string;
  kind:'empty'|'five'|'six'|'ten'|'twenty'|'fifty'|'double'|'ticket'|'shop'|'wish';
  cost:number;points:number;createdAt:string;month:string;ticketCouponId?:string|null}
@@ -49,11 +49,13 @@ const quantityChoice=ref<Record<string,number>>({})
 const redemptionPage=ref(1),groupPage=ref(1)
 const history=ref<YearHistory|null>(null)
 const historyYear=ref(new Date(Date.now()+9*3600000).getUTCFullYear())
+const historyMonth=ref(String(new Date(Date.now()+9*3600000).getUTCMonth()+1).padStart(2,'0'))
 const historyMember=ref('')
 const historyCategory=ref('all')
 const historyPage=ref(1)
 const historyMatchesFilters=computed(()=>Boolean(history.value&&
  history.value.year===historyYear.value&&history.value.page===historyPage.value&&
+ history.value.monthFilter===historyMonth.value&&
  history.value.memberFilter===historyMember.value&&
  history.value.categoryFilter===historyCategory.value))
 const visibleHistoryEntries=computed(()=>historyMatchesFilters.value?history.value?.entries||[]:[])
@@ -92,14 +94,15 @@ function stepQuantity(item:Reward,delta:number){
   [item.id]:Math.max(1,Math.min(99,remaining,quantityFor(item)+delta))}
 }
 const historyPath=()=>'/points/history?year='+historyYear.value+
+ '&month='+encodeURIComponent(historyMonth.value)+
  '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)+
  '&category='+encodeURIComponent(historyCategory.value)
 async function goToHistory(page:number,year=historyYear.value,member=historyMember.value,
- category=historyCategory.value){
+ category=historyCategory.value,month=historyMonth.value){
  if(!props.active||!expanded.value||view.value!=='history'||busy.value)return
  const token=++historyRequest
  historyPage.value=page;historyYear.value=year;historyMember.value=member
- historyCategory.value=category
+ historyCategory.value=category;historyMonth.value=month
  historyBusy.value=true;historyError.value=''
  try{
   const next=await fetchJSON(historyPath()) as YearHistory
@@ -703,6 +706,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
          <label>年度
            <select :value="historyYear" @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+           </select>
+         </label>
+         <label>月份
+           <select :value="historyMonth" aria-label="积分历史月份" @change="goToHistory(1,historyYear,historyMember,historyCategory,($event.target as HTMLSelectElement).value)">
+             <option value="">全年</option>
+             <option v-for="month in Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))" :key="month" :value="month">{{ Number(month) }}月</option>
            </select>
          </label>
          <label>成员

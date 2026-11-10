@@ -12,10 +12,12 @@ test('Plans focus deep links wait for rendering and keep row under mobile safe a
   assert.match(life,/focusPlanFromToday/)
 })
 
-test('Plan navigation uses a single compact filter panel and hides disabled month control',()=>{
+test('Plan navigation keeps inline year and month filters in a compact panel',()=>{
   assert.match(life,/class="plan-view-toolbar"/)
-  assert.match(life,/<label v-if="planYear">月份/)
-  assert.doesNotMatch(life,/<select v-model="planMonth" :disabled="!planYear"/)
+  assert.match(life,/class="archive-date-filters plan-history-date-filters"/)
+  assert.match(life,/<select v-model="planYear" aria-label="历史记录年份"/)
+  assert.match(life,/<select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份"/)
+  assert.match(life,/<option value="">全年<\/option>/)
   assert.ok(life.indexOf('class="life-card plan-recap"')>life.indexOf('class="life-grid"'),
     'Plan recap should follow the list, not push plan rows below the fold')
 })
