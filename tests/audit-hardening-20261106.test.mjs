@@ -116,7 +116,7 @@ test('scheduled notice IDs are stable per account, day and reminder key',async()
 
 test('06:00 in-app reminder exists without VAPID or any device subscription',async()=>{
  const now=Date.parse('2026-11-05T21:00:00.000Z'),day='2026-11-06'
- const records=[]
+ const records=[],inserted=new Set()
  const db={
    prepare(sql){
      const q={
@@ -124,7 +124,14 @@ test('06:00 in-app reminder exists without VAPID or any device subscription',asy
        bind(...args){this.args=args;return this},
        all:async()=>({results:sql.includes('FROM household_members m JOIN users u')
          ?[{user_id:actor,household_id:'family'}]:[]}),
-       run:async()=>{records.push({sql,args:q.args});return {meta:{changes:1}}}
+       run:async()=>{
+         if(sql.includes('INSERT INTO notification_inbox')){
+           if(inserted.has(q.args[0]))return {meta:{changes:0}}
+           inserted.add(q.args[0])
+         }
+         records.push({sql,args:q.args})
+         return {meta:{changes:1}}
+       }
      }
      return q
    },
@@ -138,10 +145,9 @@ test('06:00 in-app reminder exists without VAPID or any device subscription',asy
  const first=await runPushSchedule(env,now),second=await runPushSchedule(env,now)
  assert.equal(first.sent,0)
  assert.equal(first.inbox,1)
- assert.equal(second.inbox,1)
+ assert.equal(second.inbox,0,'hourly replay must not create or rewrite existing reminders')
  const notices=records.filter(x=>x.sql.includes('INSERT INTO notification_inbox'))
- assert.equal(notices.length,2)
- assert.equal(notices[0].args[0],notices[1].args[0])
- assert.equal(notices[0].args[3],actor)
- assert.equal(notices[0].args[11],day)
+ assert.equal(notices.length,1)
+ assert.equal(notices[0].args[2],actor)
+ assert.equal(notices[0].args[8],day)
 })
