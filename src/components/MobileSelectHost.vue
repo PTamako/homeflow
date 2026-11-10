@@ -26,9 +26,9 @@ function sourceSelect(event:Event):HTMLSelectElement|null{
  return target instanceof Element?target.closest('select'):null
 }
 function shouldEnhance(select:HTMLSelectElement|null){
- return !!select&&supportsMobileSheet()&&!select.disabled&&!select.multiple&&
-  select.size<=1&&select.options.length>0&&!select.hasAttribute('data-native-select')&&
-  !select.closest('[inert]')
+ return !!select&&supportsMobileSheet()&&!select.disabled&&!select.matches(':disabled')&&
+  !select.multiple&&select.size<=1&&select.options.length>0&&
+  !select.hasAttribute('data-native-select')&&!select.closest('[inert]')
 }
 function readHeading(select:HTMLSelectElement){
  const aria=select.getAttribute('aria-label')||select.getAttribute('title')
@@ -56,7 +56,7 @@ function openSelect(select:HTMLSelectElement){
 function closeSelect(){activeSelect.value=null;keyword.value=''}
 function choose(option:MobileSelectChoice){
  const select=activeSelect.value
- if(!select||option.disabled||!select.isConnected||select.disabled){closeSelect();return}
+ if(!select||option.disabled||!select.isConnected||select.matches(':disabled')){closeSelect();return}
  // The select remains the single source of truth. Vue's regular change
  // listener (and every existing business-specific @change handler) runs once.
  closeSelect()
