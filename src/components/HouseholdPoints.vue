@@ -1055,8 +1055,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 /* The tappable area stays comfortable, but only the inner 15px glyph is visible.
    Fixed min/max sizes prevent iOS/PWA button sizing from stretching the circle. */
 .points-rule-help{display:inline-flex;align-items:center;justify-content:center;
-  flex:0 0 26px;width:26px;height:26px;min-width:26px;max-width:26px;
-  min-height:26px;max-height:26px;padding:0;margin:0;align-self:center;
+  flex:0 0 44px;width:44px;height:44px;min-width:44px;max-width:44px;
+  min-height:44px;max-height:44px;padding:0;margin:0;align-self:center;
   border:0;border-radius:50%;background:transparent;color:#527962;
   font-size:10px;line-height:1;appearance:none;-webkit-appearance:none}
 .points-rule-help .points-help-glyph{display:inline-flex;align-items:center;justify-content:center;
@@ -1272,7 +1272,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-result>div{display:grid;gap:4px}
  .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
  .lottery-odds{position:relative;min-width:0}
- .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:26px}
+ .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:44px}
  .lottery-odds-toggle{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:0;
    border:0;background:none;color:#4a8265;font-size:12px;text-align:left;cursor:pointer}
  .lottery-odds-toggle:focus-visible{outline:2px solid #43866a;outline-offset:2px}
