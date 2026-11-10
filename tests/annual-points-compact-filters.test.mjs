@@ -25,7 +25,7 @@ test('single period selector supports monthly and full-year choices across all y
  assert.match(fields,/<optgroup v-for="year in availableYears"/)
  assert.match(fields,/<option :value="year\+'-all'">/)
  assert.match(fields,/<option v-for="month in historyMonths"/)
- assert.match(fields,/:value="year\+'-'+month"/)
+ assert.match(fields,/:value="year\+'-'\+month"/)
  assert.match(src,/const historyPeriod=computed\(\(\)=>historyYear\.value\+'-'\+\(historyMonth\.value\|\|'all'\)\)/)
  assert.match(src,/const historyMonths=Array\.from\(\{length:12\}/)
  assert.match(src,/function chooseHistoryPeriod\(period:string\)/)
