@@ -79,7 +79,7 @@ function onPointerDown(event:PointerEvent){
 }
 function onClick(event:MouseEvent){
  // Also catch VoiceOver activation and a click forwarded by a <label>.
- if(event.detail>0&&event.pointerType==='mouse')return
+ if(event.detail>0&&'pointerType' in event&&event.pointerType==='mouse')return
  intercept(event)
 }
 function onKeydown(event:KeyboardEvent){
