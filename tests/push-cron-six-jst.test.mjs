@@ -1,15 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {scheduledRunPhase} from '../worker/schedule-policy.js'
 
-test('production push runs at 06:00 and 08:00 JST, Preview disabled',()=>{
-  const toml=readFileSync(new URL('../wrangler.toml',import.meta.url),'utf8')
-  const prod=toml.split('[env.preview]')[0]
-  assert.match(prod,/crons\s*=\s*\["0 21,23 \* \* \*"\]/)
-  assert.match(toml,/\[env.preview.triggers\]\s*crons\s*=\s*\[\]/)
-  const utc=new Date('2026-11-04T21:00:00Z')
-  assert.equal(new Date(utc.getTime()+9*3600000).toISOString().slice(11,16),'06:00')
-  assert.equal(new Date(utc.getTime()+9*3600000).toISOString().slice(0,10),'2026-11-05')
-  const retry=new Date('2026-11-04T23:00:00Z')
-  assert.equal(new Date(retry.getTime()+9*3600000).toISOString().slice(11,16),'08:00')
+test('Production uses only one hourly Cron trigger, Preview has none',()=>{
+ const toml=readFileSync(new URL('../wrangler.toml',import.meta.url),'utf8')
+ const prod=toml.split('[env.preview]')[0]
+ assert.match(prod,/crons\s*=\s*\["0 \* \* \* \*"\]/)
+ assert.doesNotMatch(prod,/crons\s*=\s*\[[^\]]*,\s*"/)
+ assert.match(toml,/\[env.preview.triggers\]\s*crons\s*=\s*\[\]/)
+ const make=hour=>({cron:'0 * * * *',scheduledTime:Date.UTC(2026,10,10,hour-9)})
+ assert.equal(scheduledRunPhase(make(6)),'daily')
+ assert.equal(scheduledRunPhase(make(8)),'catchup')
+ assert.equal(scheduledRunPhase(make(10)),'catchup')
 })
