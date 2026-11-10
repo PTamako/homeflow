@@ -43,5 +43,5 @@ test('plan add button shares existing plan toolbar instead of taking a separate 
  assert.match(toolbar,/class="plan-view-heading"[\s\S]*<PlanCreator v-if="planScope==='active'" compact/)
  assert.match(creator,/:class="\['plan-creator',\{compact:props.compact\}\]"/)
  assert.match(creator,/:aria-label="props.compact\?'新增计划':undefined"/)
- assert.match(creator,/<EditBottomSheet v-if="opened" title="新增计划"/)
+ assert.match(creator,/<EditBottomSheet v-if="opened" :title="step==='choose'\?'新增计划':selected\?\.label\|\|'填写计划'"/)
 })
