@@ -914,7 +914,7 @@ onBeforeUnmount(()=>{
               <form class="today-postpone-form" @submit.prevent="postponeToday(row)">
                 <label>延期到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
                 <div class="today-decision-actions">
-                  <button type="button" class="outline" @click="closePostpone">取消</button>
+                  <button type="button" class="outline" :disabled="todayActionBusy" @click="closePostpone()">取消</button>
                   <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认延期</button>
                 </div>
               </form>
