@@ -84,6 +84,10 @@ export const POINTS_AUDIT_SOURCES=[
  ['rewardGroupOrders','reward_group_orders',"household_id=?1",'created_at,id'],
  ['rewardGroupContributions','reward_group_contributions',"household_id=?1",'created_at,id'],
  ['lotteryDraws','household_lottery_draws',"household_id=?1",'created_at,id'],
+ // Only the signed-in holder can export voucher use and wish-target records.
+ // This is an audit-only archive, never part of the restore replay.
+ ['lotteryCoupons','lottery_coupons',"household_id=?1 AND user_id=?2",'created_at,id'],
+ ['rewardCouponDiscounts','reward_coupon_discounts',"household_id=?1 AND user_id=?2",'created_at,coupon_id'],
  ['completionPoints','completion_points',"household_id=?1 AND (visibility='household' OR earner_user_id=?2)",'earned_at,kind,source_id,occurrence_on'],
  ['completionAdjustments','completion_point_adjustments',"household_id=?1 AND (visibility='household' OR earner_user_id=?2)",'earned_at,kind,source_id,occurrence_on'],
  ['dualSplits','dual_completion_splits',"household_id=?1 AND (visibility='household' OR user_id=?2)",'earned_at,kind,source_id,occurrence_on,user_id'],
