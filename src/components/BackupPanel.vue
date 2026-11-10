@@ -45,6 +45,24 @@ const {toast,notify}=usePageToast()
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
 const readonlySharedCount=ref(0)
+function clearRestoreDraft(){
+ selectedFile.value=null;preview.value=null;photos.value={}
+ readonlySharedCount.value=0;archiveIntegrity.value='';restoreCounts.value={}
+}
+function closeRestoreSheet(force=false){
+ if(pending.value&&!force)return
+ restoreSheetOpen.value=false
+ clearRestoreDraft()
+ error.value='';status.value=''
+}
+function selectArchiveFile(event:Event){
+ const input=event.target as HTMLInputElement
+ const file=input.files?.[0]||null
+ // Let the same ZIP be selected again after a failed preview or cancellation.
+ input.value=''
+ void chooseArchive(file)
+}
+
 const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
 const ownMemoryIds=computed(()=>new Set((preview.value?.records.memories||[]).map(item=>String(item.id))))
 const previewPhotoCount=computed(()=>Object.keys(photos.value).filter(path=>
@@ -235,7 +253,11 @@ async function chooseArchive(file:File|null){
     notify('校验完成：可恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
       ' 条本人记录和 '+previewPhotoCount.value+' 张照片；另存 '+readonlySharedCount.value+
       ' 条他人共享回忆和 '+readonlyPhotoCount.value+' 张只读照片')
-  }catch(e){error.value=(e as Error).message;preview.value=null}
+  }catch(e){
+    const message=(e as Error).message
+    clearRestoreDraft()
+    error.value=message
+  }
   finally{pending.value=false}
 }
 async function restore(){
@@ -275,7 +297,7 @@ async function restore(){
     const count=Object.values(restoreCounts.value).reduce((n,i)=>n+i,0)
     status.value=''
     notify('恢复完成：新增 '+count+' 条记录，恢复到私人 R2 照片 '+restoredPhotos+' 张（不占本机照片存储）')
-    restoreSheetOpen.value=false
+    closeRestoreSheet(true)
   }catch(e){
     error.value='恢复未全部完成：'+(e as Error).message+'。已有记录未被覆盖，可以重新导入继续。'
   }finally{pending.value=false}
@@ -309,7 +331,7 @@ async function restore(){
     </div>
     <div class="backup-section">
       <button type="button" class="backup-restore-entry" :aria-expanded="restoreSheetOpen" @click="restoreSheetOpen=true">恢复备份 · 选择文件</button>
-      <EditBottomSheet v-if="restoreSheetOpen" title="恢复备份" :close-disabled="pending" @close="restoreSheetOpen=false">
+      <EditBottomSheet v-if="restoreSheetOpen" title="恢复备份" :close-disabled="pending" @close="closeRestoreSheet">
       <div class="backup-restore-content">
       <p class="backup-caption">选择 ZIP / JSON 文件，仅补充缺失记录</p>
       <div class="backup-file-row">
@@ -319,7 +341,7 @@ async function restore(){
             accept=".zip,.json,application/zip,application/json"
             aria-label="选择 HomeFlow 备份文件"
             :disabled="pending"
-            @change="chooseArchive(($event.target as HTMLInputElement).files?.[0]||null)" />
+            @change="selectArchiveFile" />
         </label>
         <span class="backup-file-name" :title="selectedFile?.name||''">
           {{ selectedFile?.name||'未选择文件' }}
