@@ -35,7 +35,7 @@ function backToChoices(){
  scrollStepToTop()
 }
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
-const form=reactive({
+const defaultForm=()=>({
  title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
  monthWeekday:2,monthWeekNumbers:[2,4] as number[],monthDays:[Number(today().slice(-2))] as number[],leaveUnscheduled:false,
  intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,
@@ -46,6 +46,7 @@ const form=reactive({
  startDate:'',endDate:'',budgetAmount:0,
  tripParticipants:props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
 })
+const form=reactive(defaultForm())
 const isPet=computed(()=>props.profiles.some(p=>p.id===form.subjectProfileId&&p.type==='pet'))
 const onceDraft=ref(newOneTimeTaskDraft(today(),props.userId))
 const oncePet=computed(()=>props.profiles.some(p=>p.id===onceDraft.value.subjectProfileId&&p.type==='pet'))
@@ -53,13 +54,11 @@ const selected=computed(()=>choices.find(c=>c.id===kind.value))
 function choose(value:PlanKind){
  // Returning from the form to the same type must not discard the draft.
  if(kind.value!==value){
-  kind.value=value;form.title='';form.repeatType='once';form.monthlyMode='day'
-  form.monthWeekday=2;form.monthWeekNumbers=[2,4]
-  form.monthDays=[Number(form.date.slice(-2))];form.weekdays=[utcWeekday(form.date)]
-  form.assignedTo=props.userId||'';form.shoppingSecond='';form.visibility='household'
-  form.tripParticipants=props.members?.map(m=>m.id)||[props.userId||''].filter(Boolean)
-  form.wishRemindEnabled=false;form.wishRemindAdvanceDays=0
+  // Switching plan types begins a fresh draft; going back to the same type
+  // preserves every field, including one-time tasks and trip participants.
+  Object.assign(form,defaultForm())
   onceDraft.value=newOneTimeTaskDraft(today(),props.userId)
+  kind.value=value
  }
  step.value='details'
  error.value=''
