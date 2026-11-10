@@ -10,8 +10,8 @@ const pet=read('components/PetHealthPanel.vue')
 const reminder=read('components/ImportantReminders.vue')
 
 test('new plans clear all reactive fields and one-off draft after success or cancel',()=>{
- assert.match(plan,/function dismiss\(\)\{[\s\S]*?opened\.value=false;step\.value='choose';kind\.value=null[\s\S]*?Object\.assign\(form,defaultForm\(\)\)[\s\S]*?onceDraft\.value=newOneTimeTaskDraft/)
- assert.match(plan,/emit\('created',[\s\S]*?dismiss\(\)/)
+ assert.match(plan,/function dismiss\(force=false\)\{[\s\S]*?opened\.value=false;step\.value='choose';kind\.value=null[\s\S]*?Object\.assign\(form,defaultForm\(\)\)[\s\S]*?onceDraft\.value=newOneTimeTaskDraft/)
+ assert.match(plan,/emit\('created',[\s\S]*?dismiss\(true\)/)
  assert.match(plan,/:close-disabled="busy" @close="dismiss"/)
 })
 test('memory creation cancels title, story, date, visibility, and pending photos',()=>{
