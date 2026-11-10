@@ -1124,14 +1124,14 @@ async function uploadAdditionalPhotos(memoryId:string,event:Event){
   busy.value=true;error.value=''
   const uploader=props.userId
   const uploaded:Array<{id:string;uploadedBy:string}>=[]
-  let failed=0
+  const failed:string[]=[]
   try{
     for(const file of files){
       try{
         const created=await uploadPhoto(memoryId,await compressPhoto(file))
         if(!created?.id)throw Error('photo_upload_missing_id')
         uploaded.push({id:created.id,uploadedBy:uploader})
-      }catch{failed++}
+      }catch(e){failed.push(file.name+'：'+(e as Error).message)}
     }
     // Keep all loaded memory pages, cursors, other photos, and scroll position.
     // Successful uploads affect only their own memory; no fetchMode/loadPhotos.
@@ -1141,7 +1141,7 @@ async function uploadAdditionalPhotos(memoryId:string,event:Event){
       const known=new Set(existing.map(photo=>photo.id))
       cloudPhotos.value[memoryId]=[...uploaded.filter(photo=>!known.has(photo.id)),...existing]
     }
-    if(failed)error.value=uploaded.length+' 张成功，'+failed+' 张未上传，请重新选择照片重试。'
+    if(failed.length)error.value=uploaded.length+' 张成功，'+failed.length+' 张未上传：'+failed.join('；')
     else notify('已上传 '+uploaded.length+' 张照片')
   }finally{busy.value=false}
 }
@@ -1177,20 +1177,19 @@ async function addMemory(){
   try{
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
       happenedOn:memoryDate.value,visibility:memoryVisibility.value})
-    let failedPhotos=0
+    const failedPhotos:string[]=[]
     if(result.id)for(const file of photoFiles.value.slice(0,10)){
       try{
         await uploadPhoto(result.id,await compressPhoto(file))
-      }catch{
-        // No local fallback. User may re-select the original Photos file
-        // on the existing memory card if any uploads failed.
-        failedPhotos++
+      }catch(e){
+        // No local fallback. Failed originals remain in the iOS Photos app.
+        failedPhotos.push(file.name+'：'+(e as Error).message)
       }
     }
     memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
     showMemoryForm.value=false
     await fetchMode()
-    if(failedPhotos)notify('回忆已保存，但 '+failedPhotos+' 张照片上传失败，未写入手机。请在回忆下重新选图重试。','warning')
+    if(failedPhotos.length)notify('回忆已保存，'+failedPhotos.length+' 张照片未上传：'+failedPhotos.join('；'),'warning')
     else if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
@@ -2154,7 +2153,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             </select>
           </label>
           <label @click.capture="beginPhotoPicker()">照片（可选）
-            <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
               @cancel="finishPhotoPicker()"
               @change="finishPhotoPicker();photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <button :disabled="busy">保存到时光轴</button>
@@ -2193,7 +2192,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <label v-if="cloudEnabled&&m.created_by===props.userId" class="memory-add-photo"
                     title="添加照片" aria-label="添加照片" @click.capture="beginPhotoPicker()">
                     <AppIcon name="image-upload" :size="19" />
-                    <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+                    <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
                       aria-label="添加照片" :disabled="busy"
                       @cancel="finishPhotoPicker()" @change="uploadAdditionalPhotos(m.id,$event)"/>
                   </label>
