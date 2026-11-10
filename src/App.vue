@@ -11,6 +11,7 @@ import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import EditBottomSheet from './components/EditBottomSheet.vue'
+import MobileSelectHost from './components/MobileSelectHost.vue'
 import AppIcon from './components/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
 import SwipeActions from './components/SwipeActions.vue'
@@ -1034,6 +1035,8 @@ onBeforeUnmount(()=>{
 
         <span>{{ n.label }}</span></button>
     </nav>
+    <!-- Platform-wide touch enhancement for native single-choice dropdowns. -->
+    <MobileSelectHost/>
   </div>
 </template>
 
