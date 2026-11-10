@@ -304,7 +304,7 @@ async function toggleAnniversaryArchive(item:Row){
   finally{busy.value=false}
 }
 async function removeItem(kind:EditableKind,item:Row){
- if(!canEdit(item))return
+ if(!canEdit(item)||busy.value)return
  const warning=kind==='memories'?'回忆进入回收站后暂时保留云端照片以便恢复；永久清空回收站时将删除 R2 中的照片。本机未同步照片需自行清理。':
    kind==='routines'?'删除定期计划？以前的完成记录会保留。':'确定删除这条记录吗？'
  if(!await confirmAction({title:'删除记录',confirmLabel:'确认删除',danger:true,message:warning}))return
@@ -1034,14 +1034,18 @@ async function saveTripItem(){
  finally{busy.value=false}
 }
 async function removeTripItem(item:Row){
-  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||busy.value)return
+  const trip=tripDetail.value
+  if(!trip||trip.createdBy!==props.userId||busy.value)return
   if(!await confirmAction({title:'删除旅行明细',confirmLabel:'确认删除',danger:true,
     message:'删除这条旅行明细吗？关联的打勾记录也将清除。'}))return
+  if(busy.value||tripDetail.value?.id!==trip.id)return
+  busy.value=true;error.value=''
   try{
-    await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'DELETE')
-    await selectTrip(tripDetail.value.id)
+    await api('/trips/'+trip.id+'/items/'+encodeURIComponent(item.externalId),'DELETE')
+    await selectTrip(trip.id)
     notify('旅行明细已删除')
   }catch(e){error.value=(e as Error).message}
+  finally{busy.value=false}
 }
 async function previewTrip(){
   try{const data=JSON.parse(paste.value);const result=await api('/trips/import','POST',{preview:true,payload:data,targetTripId:importTargetId.value||null})
