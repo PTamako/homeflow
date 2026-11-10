@@ -412,6 +412,17 @@ const memoryYear=ref(''),memoryMonth=ref('')
 const yearOptions=Array.from({length:16},(_,i)=>String(Number(today().slice(0,4))-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const recapYear=ref(today().slice(0,4)),recapMonth=ref(today().slice(5,7))
+const recapDraftYear=ref(recapYear.value),recapDraftMonth=ref(recapMonth.value)
+function openRecapForm(){
+ recapDraftYear.value=recapYear.value;recapDraftMonth.value=recapMonth.value
+ recapError.value='';recapFormOpen.value=true
+}
+function closeRecapForm(){
+ if(recapBusy.value)return
+ recapFormOpen.value=false
+ recapDraftYear.value=recapYear.value;recapDraftMonth.value=recapMonth.value
+ recapError.value=''
+}
 const recap=ref<null|{month:string;total:number;counts:Record<string,number>;note:string}>(null)
 const recapBusy=ref(false),recapError=ref('')
 const recapLabels:Record<string,string>={tasks:'一次性任务',routines:'定期事项',shopping:'购物计划',wishes:'实现心愿',savings:'储值核验',trips:'完成旅行'}
@@ -419,13 +430,14 @@ async function loadRecap(){
  if(recapBusy.value)return
  recapBusy.value=true;recapError.value='';recap.value=null
  try{
-  const data=await api('/plans/summary?month='+encodeURIComponent(recapYear.value+'-'+recapMonth.value))
-  recap.value=data
+  const year=recapDraftYear.value,month=recapDraftMonth.value
+  const data=await api('/plans/summary?month='+encodeURIComponent(year+'-'+month))
+  recapYear.value=year;recapMonth.value=month;recap.value=data
   recapFormOpen.value=false
  }catch(e){recapError.value=(e as Error).message}
  finally{recapBusy.value=false}
 }
-watch([recapYear,recapMonth],()=>{recap.value=null;recapError.value=''})
+
 const historicalGoalPeriods=ref<GoalPeriodArchive[]>([])
 const historicalGoalDetail=ref<{goal:Row;periodKey:string}|null>(null)
 const historicalGoalDetailLoading=ref('')
@@ -438,6 +450,36 @@ const anniversaryVisibleCount=ref(pageLimit)
 const todayAnniversaryVisibleCount=ref(pageLimit)
 const anniversaryView=ref<'upcoming'|'past'>('upcoming')
 const anniversaryYear=ref(''),anniversaryMonth=ref('')
+const draftAnniversaryYear=ref(''),draftAnniversaryMonth=ref('')
+const draftMemoryYear=ref(''),draftMemoryMonth=ref('')
+function openAnniversaryFilter(){
+ draftAnniversaryYear.value=anniversaryYear.value
+ draftAnniversaryMonth.value=anniversaryMonth.value
+ anniversaryFilterOpen.value=true
+}
+function closeAnniversaryFilter(){
+ anniversaryFilterOpen.value=false
+ draftAnniversaryYear.value=anniversaryYear.value
+ draftAnniversaryMonth.value=anniversaryMonth.value
+}
+function applyAnniversaryFilter(){
+ anniversaryFilterOpen.value=false
+ anniversaryYear.value=draftAnniversaryYear.value
+ anniversaryMonth.value=draftAnniversaryYear.value?draftAnniversaryMonth.value:''
+}
+function openMemoryFilter(){
+ draftMemoryYear.value=memoryYear.value;draftMemoryMonth.value=memoryMonth.value
+ memoryFilterOpen.value=true
+}
+function closeMemoryFilter(){
+ memoryFilterOpen.value=false
+ draftMemoryYear.value=memoryYear.value;draftMemoryMonth.value=memoryMonth.value
+}
+function applyMemoryFilter(){
+ memoryFilterOpen.value=false
+ memoryYear.value=draftMemoryYear.value
+ memoryMonth.value=draftMemoryYear.value?draftMemoryMonth.value:''
+}
 // The same shared "items" ref also stores Today's, Plans' and Memories' rows.
 // Never render it under a different anniversary tab while its request is pending.
 const anniversaryLoadedKey=ref('')
@@ -1303,6 +1345,8 @@ watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
 watch(anniversaryYear,value=>{if(!value)anniversaryMonth.value=''})
 watch(planYear,value=>{if(!value)planMonth.value=''})
 watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
+watch(draftAnniversaryYear,value=>{if(!value)draftAnniversaryMonth.value=''})
+watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
 </script>
 
 <template>
@@ -1351,24 +1395,24 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </div>
         <div v-if="anniversaryView==='past'" class="anniversary-filter-row">
           <button type="button" class="life-filter-trigger" :aria-expanded="anniversaryFilterOpen"
-            @click="anniversaryFilterOpen=true">
+            @click="openAnniversaryFilter">
             <span>筛选日期 · {{ anniversaryYear?(anniversaryYear+' 年'+(anniversaryMonth?' · '+Number(anniversaryMonth)+' 月':'')):'全部' }}</span>
             <AppIcon name="chevron-down" :size="15" />
           </button>
         </div>
         </div>
-        <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="anniversaryFilterOpen=false">
+        <EditBottomSheet v-if="anniversaryView==='past'&&anniversaryFilterOpen" title="筛选过去的重要日子" @close="closeAnniversaryFilter">
         <div class="archive-date-filters">
-          <label>年份<select v-model="anniversaryYear" aria-label="纪念日历史年份">
+          <label>年份<select v-model="draftAnniversaryYear" aria-label="纪念日历史年份">
             <option value="">全部年份</option>
             <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
           </select></label>
-          <label>月份<select v-model="anniversaryMonth" :disabled="!anniversaryYear" aria-label="纪念日历史月份">
+          <label>月份<select v-model="draftAnniversaryMonth" :disabled="!draftAnniversaryYear" aria-label="纪念日历史月份">
             <option value="">全年</option>
             <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
           </select></label>
         </div>
-        <button class="life-more" type="button" @click="anniversaryFilterOpen=false">完成</button>
+        <button class="life-more" type="button" @click="applyAnniversaryFilter">完成</button>
         </EditBottomSheet>
         <p v-if="!anniversaryRowsReady&&listLoading" class="life-empty anniversary-empty" role="status">正在读取{{ anniversaryView==='past'?'过去的日子':'即将到来的日子' }}…</p>
         <p v-else-if="anniversaryRowsReady&&!listLoading&&!error&&!upcomingAnniversaries.length" class="life-empty anniversary-empty">
@@ -2153,14 +2197,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
       </div>
       <section class="life-card plan-recap">
        <div class="life-heading"><AppIcon name="clipboard-check" :size="18" /> 月度回顾
-         <button type="button" class="life-filter-trigger" @click="recapFormOpen=true">选择月份</button>
+         <button type="button" class="life-filter-trigger" @click="openRecapForm">选择月份</button>
        </div>
-       <EditBottomSheet v-if="recapFormOpen" title="生成月度回顾" :close-disabled="recapBusy" @close="recapFormOpen=false">
+       <EditBottomSheet v-if="recapFormOpen" title="生成月度回顾" :close-disabled="recapBusy" @close="closeRecapForm">
          <div class="plan-recap-controls">
-          <label>年份<select v-model="recapYear" aria-label="回顾年份">
+          <label>年份<select v-model="recapDraftYear" aria-label="回顾年份">
             <option v-for="y in yearOptions" :key="y" :value="y">{{ y }} 年</option>
           </select></label>
-          <label>月份<select v-model="recapMonth" aria-label="回顾月份">
+          <label>月份<select v-model="recapDraftMonth" aria-label="回顾月份">
             <option v-for="m in monthOptions" :key="m" :value="m">{{ Number(m) }} 月</option>
           </select></label>
           <button type="button" :disabled="recapBusy" @click="loadRecap">{{ recapBusy?'统计中…':'生成回顾' }}</button>
@@ -2209,21 +2253,21 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
         </form>
         </EditBottomSheet>
 
-        <button type="button" class="life-filter-trigger" @click="memoryFilterOpen=true">筛选日期 · {{ memoryYear||'全部' }}</button>
-        <EditBottomSheet v-if="memoryFilterOpen" title="筛选时光轴" @close="memoryFilterOpen=false">
+        <button type="button" class="life-filter-trigger" @click="openMemoryFilter">筛选日期 · {{ memoryYear||'全部' }}</button>
+        <EditBottomSheet v-if="memoryFilterOpen" title="筛选时光轴" @close="closeMemoryFilter">
         <div class="archive-date-filters">
           <label>年份
-            <select v-model="memoryYear" aria-label="回忆年份"><option value="">全部年份</option>
+            <select v-model="draftMemoryYear" aria-label="回忆年份"><option value="">全部年份</option>
               <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
             </select>
           </label>
           <label>月份
-            <select v-model="memoryMonth" :disabled="!memoryYear" aria-label="回忆月份"><option value="">全年</option>
+            <select v-model="draftMemoryMonth" :disabled="!draftMemoryYear" aria-label="回忆月份"><option value="">全年</option>
               <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
             </select>
           </label>
         </div>
-        <button class="life-more" type="button" @click="memoryFilterOpen=false">完成</button>
+        <button class="life-more" type="button" @click="applyMemoryFilter">完成</button>
         </EditBottomSheet>
 
         <p v-if="listLoading" class="life-caption" role="status">正在读取时光轴…</p>
