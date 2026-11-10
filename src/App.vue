@@ -1016,7 +1016,7 @@ onBeforeUnmount(()=>{
               <DateField v-model="adopted" />
             </label>
             <div class="field-wide profile-form-actions">
-              <button type="button" class="outline" :disabled="profileSaving" @click="closeProfileForm">取消</button>
+              <button type="button" class="outline" :disabled="profileSaving" @click="closeProfileForm()">取消</button>
               <button type="submit" class="primary" :disabled="profileSaving">
                 {{ petType==='person'?'添加成员':'添加宠物' }}
               </button>
