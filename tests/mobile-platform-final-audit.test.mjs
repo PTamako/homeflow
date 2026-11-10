@@ -6,14 +6,19 @@ const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
 const components=readdirSync(new URL('../src/components/',import.meta.url))
  .filter(file=>file.endsWith('.vue')).map(file=>'src/components/'+file)
 const views=['src/App.vue',...components]
+const helpers=readdirSync(new URL('../src/',import.meta.url))
+ .filter(file=>/\.(?:ts|mjs|js)$/.test(file))
+ .map(file=>'src/'+file)
+const appSources=[...views,...helpers]
 const confirm=source('src/components/ConfirmActionSheet.vue')
 const modal=source('src/components/EditBottomSheet.vue')
 const picker=source('src/components/MobileSelectHost.vue')
 const ui=source('src/ui-system.css')
 
-test('every HomeFlow Vue view avoids blocking native confirm/alert/prompt',()=>{
+test('all HomeFlow Vue views and app helpers avoid native confirm/alert/prompt',()=>{
  assert.ok(views.length>=30)
- for(const path of views){
+ assert.ok(appSources.length>=50)
+ for(const path of appSources){
   const code=source(path)
   assert.doesNotMatch(code,/\b(?:window\.)?(?:confirm|alert|prompt)\s*\(/,
    path+' should use a safe touch-first sheet or non-blocking notice')
