@@ -6,7 +6,7 @@ import {notificationStatus,notificationTitle,notificationMessageRemainder} from 
 
 type Notice={
  id:string;kind:'task'|'routine'|'shopping'|'family'|'system';sourceId:string|null;dedupeKey:string|null;
- title:string;message:string;deliveryStatus:'sent'|'partial'|'failed';
+ title:string;message:string;deliveryStatus:'sent'|'partial'|'failed'|'quiet'|'app_only';
  sentDevices:number;failedDevices:number;createdAt:string;readAt:string|null;lastCompletionKey?:string|null;
  senderUserId:string|null;recipientUserId:string;senderName:string;recipientName:string
 }
@@ -35,12 +35,14 @@ function readStateLabel(item:Notice){
  return view.value==='sent'?'对方未读':'未读'
 }
 function deliveryDetail(item:Notice){
- if(item.sentDevices===0)return '仅应用内'
- return item.failedDevices>0?'部分推送已受理':'推送服务已受理'
+ if(item.sentDevices>0)return item.failedDevices>0?'部分推送已受理':'推送服务已受理'
+ if(item.deliveryStatus==='quiet')return '安静时段 · 暂不推送'
+ if(item.deliveryStatus==='failed')return '推送失败 · 已保留站内'
+ return '仅应用内'
 }
 function deliveryTone(item:Notice){
- if(item.sentDevices===0)return 'app-only'
- return item.failedDevices>0?'partial':'sent'
+ if(item.sentDevices>0)return item.failedDevices>0?'partial':'sent'
+ return item.deliveryStatus==='failed'?'partial':'app-only'
 }
 // Resolve notification participants from the household's existing linked profiles.
 // Keep login emails out of the UI and avoid extra D1 queries for each notice.

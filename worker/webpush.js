@@ -253,20 +253,33 @@ async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,n
   for(const sub of subscriptions){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     const key=meta?.dedupeKey?.startsWith('lottery:')?keyPrefix:keyPrefix+':'+minute
-    const claimed=await db.prepare(`INSERT OR IGNORE INTO notification_deliveries
+    const claimed=await db.prepare(`INSERT INTO notification_deliveries
       (endpoint_hash,notification_key,sent_on,status,attempts)
-      VALUES(?1,?2,?3,'claimed',1)`).bind(sub.endpoint_hash,key,day).run()
+      VALUES(?1,?2,?3,'claimed',1)
+      ON CONFLICT(endpoint_hash,notification_key,sent_on) DO UPDATE SET
+        status='claimed',attempts=attempts+1,updated_at=CURRENT_TIMESTAMP
+      WHERE notification_deliveries.status IN ('failed','claimed')
+        AND notification_deliveries.attempts < 3
+        AND notification_deliveries.updated_at <= datetime('now','-15 minutes')`)
+      .bind(sub.endpoint_hash,key,day).run()
     if(!claimed.meta?.changes){already++;continue}
-    let status=0,result='failed'
-    try{
-      const response=await deliver(sub,env,payload)
-      status=response.status
-      result=response.ok?'sent':status===404||status===410?'gone':'failed'
-    }catch{}
+    let status=0,result='failed',extraAttempts=0
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        const response=await deliver(sub,env,payload)
+        status=response.status
+        result=response.ok?'sent':status===404||status===410?'gone':'failed'
+      }catch{result='failed';status=0}
+      const transient=status===0||status===408||status===429||status>=500
+      if(result!=='failed'||!transient||attempt===1)break
+      extraAttempts++
+      await new Promise(resolve=>setTimeout(resolve,500))
+    }
     if(result==='sent')sent++;else failed++
     await db.prepare(`UPDATE notification_deliveries SET status=?1,status_code=?2,
-      updated_at=CURRENT_TIMESTAMP WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
-      .bind(result,status,sub.endpoint_hash,key,day).run()
+      attempts=MIN(3,attempts+?6),updated_at=CURRENT_TIMESTAMP
+      WHERE endpoint_hash=?3 AND notification_key=?4 AND sent_on=?5`)
+      .bind(result,status,sub.endpoint_hash,key,day,extraAttempts).run()
     if(result==='gone')await db.prepare('DELETE FROM push_subscriptions WHERE endpoint_hash=?1 AND user_id=?2')
       .bind(sub.endpoint_hash,userId).run()
   }
@@ -364,7 +377,7 @@ export async function runPushSchedule(env,now=Date.now()){
   const annualExpiry=annualPointsExpiryEvent(day)
   const {results:subscriptions=[]}=pushConfigured
     ?await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
-      FROM push_subscriptions ORDER BY user_id LIMIT 20`).all():{results:[]}
+      FROM push_subscriptions ORDER BY user_id LIMIT 200`).all():{results:[]}
   let sent=0,failed=0,checked=0,inbox=0
   // Every authenticated member receives a daily in-app notice, regardless of Push permissions.
   // Reuse each member's reminder batch for subscribed devices.
@@ -373,7 +386,7 @@ export async function runPushSchedule(env,now=Date.now()){
   const changedHouseholds=new Set()
   const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
     FROM household_members m JOIN users u ON u.id=m.user_id
-    WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 20`).all()
+    WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 200`).all()
   for(const member of members){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
@@ -394,7 +407,8 @@ export async function runPushSchedule(env,now=Date.now()){
       scheduledNotices.set(logicalKey,{
         id:notificationId,householdId:member.household_id,recipientId:member.user_id,
         kind:['task','routine','shopping'].includes(event.kind)?event.kind:'system',
-        sourceId:event.id==='annual-points-expiry'?null:event.id,title:event.title,message,localDay:day,dedupeKey:'scheduled:'+key
+        sourceId:event.id==='annual-points-expiry'?null:event.id,title:event.title,message,localDay:day,dedupeKey:'scheduled:'+key,
+        deliveryReason:quietAtHour(data.quietHours,hour)?'quiet':'app_only'
       })
     }
   }

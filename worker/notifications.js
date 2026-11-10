@@ -11,7 +11,8 @@ const CURSOR=/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\|[0-9a-f-]{36}$/i
 export async function saveNotification(db,item){
   const day=item.localDay||jstNotificationDay()
   const status=item.sentDevices>0
-    ?(item.failedDevices>0?'partial':'sent'):'failed'
+    ?(item.failedDevices>0?'partial':'sent'):
+    item.failedDevices>0?'failed':item.deliveryReason==='quiet'?'quiet':'app_only'
   await db.prepare(`INSERT INTO notification_inbox
     (id,household_id,sender_user_id,recipient_user_id,kind,source_id,title,message,
       delivery_status,sent_devices,failed_devices,local_day,dedupe_key,last_completion_key)
@@ -34,7 +35,9 @@ export async function saveNotification(db,item){
         THEN NULL ELSE notification_inbox.read_at END,
       last_completion_key=CASE WHEN ?14=1 AND ?15 IS NOT NULL
         THEN ?15 ELSE notification_inbox.last_completion_key END,
-      delivery_status=CASE WHEN notification_inbox.sent_devices>0 AND excluded.sent_devices=0
+      delivery_status=CASE WHEN
+        (notification_inbox.sent_devices>0 OR notification_inbox.failed_devices>0)
+        AND excluded.sent_devices=0 AND excluded.failed_devices=0
         THEN notification_inbox.delivery_status ELSE excluded.delivery_status END,
       sent_devices=MAX(notification_inbox.sent_devices,excluded.sent_devices),
       failed_devices=excluded.failed_devices`)
