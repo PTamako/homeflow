@@ -5,10 +5,11 @@ import {readFileSync} from 'node:fs'
 const source=readFileSync(new URL('../src/components/HouseholdPoints.vue',import.meta.url),'utf8')
 const slash=String.fromCharCode(92)
 
-test('joint reward dialogs use real newline escapes, not literal backslash-n text',()=>{
- const dialogs=source.split('\n').filter(x=>x.includes('window.confirm(')&&
+test('joint reward action sheets preserve line breaks for pooled order confirmation',()=>{
+ const dialogs=source.split('\n').filter(x=>x.includes('message:')&&
   (x.includes('创建「')||x.includes('确认出资 ')||x.includes('取消「')))
  assert.equal(dialogs.length,3)
+ assert.doesNotMatch(source,/window\.confirm\(/)
  for(const dialog of dialogs){
   assert.ok(dialog.includes(slash+'n'),'confirmation has a readable line break')
   assert.ok(!dialog.includes(slash+slash+'n'),'literal \\n must not render')

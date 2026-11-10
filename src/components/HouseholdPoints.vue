@@ -3,6 +3,10 @@ import {computed,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import LotteryCelebration from './LotteryCelebration.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import PageToast from './PageToast.vue'
+import {useConfirmAction} from '../use-confirm-action'
+import {usePageToast} from '../page-toast'
 
 type MemberPoints={userId:string;displayName:string;sharedPoints:number;monthPoints:number;availablePoints:number;
  routinePoints:number;level:number;title:string;progress:number;nextLevelIn:number}
@@ -43,6 +47,8 @@ type Lottery={month:string;cost:number;limit:number;used:number;history:LotteryD
  odds:{kind:string;rate:number;label:string}[]}
 
 const props=defineProps<{active:boolean;userId:string;syncRevision:number}>()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
+const {toast,notify}=usePageToast()
 const data=ref<Summary|null>(null),shop=ref<Shop|null>(null),loading=ref(false),busy=ref(false),error=ref('')
 const view=ref<'shop'|'achievements'|'lottery'|'history'>('shop')
 const quantityChoice=ref<Record<string,number>>({})
@@ -428,7 +434,8 @@ async function redeemWishCoupon(){
  const coupon=wishCouponDraft.value
  const choice=wishCouponOptions.value.find(c=>c.goalId===wishCouponGoal.value)
  if(!coupon||!choice||busy.value||wishCouponBusy.value)return
- if(!window.confirm('确认将 ¥100 虚拟储值奖励计入「'+choice.wishTitle+'」？\n这不是实际存款，也不会写入家計簿。'))return
+ if(!await confirmAction({title:'核销心愿加速券',confirmLabel:'确认核销',
+  message:'确认将 ¥100 虚拟储值奖励计入「'+choice.wishTitle+'」？\n这不是实际存款，也不会写入家計簿。'}))return
  await mutate(()=>fetchJSON('/lottery/coupons/redeem-wish','POST',{
   couponId:coupon.id,requestId:crypto.randomUUID(),wishId:choice.wishId,goalId:choice.goalId
  }),'心愿加速券已核销，虚拟奖励 ¥100 已计入储值进度')
@@ -445,7 +452,7 @@ function applyCouponFromSheet(coupon:Coupon){
 async function mutate(work:()=>Promise<unknown>,success:string){
  if(busy.value)return
  busy.value=true;error.value=''
- try{await work();await refresh();window.alert(success)}
+ try{await work();await refresh();notify(success)}
  catch(e){error.value=(e as Error).message}
  finally{busy.value=false}
 }
@@ -465,7 +472,9 @@ async function saveReward(){
  if(!error.value)resetForm()
 }
 async function toggleActive(item:Reward){
- if(!window.confirm(item.active?'下架「'+item.title+'」？已有兑换记录会保留。':'重新上架「'+item.title+'」？'))return
+ if(!await confirmAction({title:item.active?'下架家庭奖励':'重新上架家庭奖励',
+   confirmLabel:item.active?'确认下架':'确认上架',danger:item.active,
+   message:item.active?'下架「'+item.title+'」？已有兑换记录会保留。':'重新上架「'+item.title+'」？'}))return
  const payload={title:item.title,description:item.description,icon:item.icon,
   points:item.points,stock:item.stock,active:!item.active,goalCreditYen:item.goalCreditYen||0}
  await mutate(()=>fetchJSON('/rewards/'+encodeURIComponent(item.id),'PATCH',payload),
@@ -477,9 +486,10 @@ async function redeem(item:Reward){
  if(item.stock!==null&&item.redeemedCount+quantity>item.stock){error.value='商品剩余数量不足';return}
  if(points.value<total){error.value='可用积分不足';return}
  if(item.goalCreditYen>0){await askLinkedWish(item,'redeem',quantity);return}
- if(!window.confirm('确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+
-  (discount?'？\n已使用 95 折券，减免 '+discount+' 分。':'？')+
-  '\n兑换后无法自动退款，经验值不会扣除。'))return
+ if(!await confirmAction({title:'确认兑换家庭奖励',confirmLabel:'确认兑换',
+  message:'确定花费 '+total+' 积分兑换「'+item.title+'」×'+quantity+
+   (discount?'？\n已使用 95 折券，减免 '+discount+' 分。':'？')+
+   '\n兑换后无法自动退款，经验值不会扣除。'}))return
  const requestId=crypto.randomUUID()
  const couponId=discount?availableShopCoupon.value?.id:null
  redemptionPage.value=1
@@ -489,7 +499,8 @@ async function redeem(item:Reward){
 }
 async function startPool(item:Reward){
  if(item.goalCreditYen>0){await askLinkedWish(item,'pool');return}
- if(!window.confirm('创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'))return
+ if(!await confirmAction({title:'创建合力兑换',confirmLabel:'确认创建',
+  message:'创建「'+item.title+'」的合力兑换？\n家人可以各自出积分，凑齐 '+item.points+' 分后才能兑现。'}))return
  const requestId=crypto.randomUUID()
  groupPage.value=1
  await mutate(()=>fetchJSON('/rewards/pool','POST',{rewardId:item.id,requestId}),
@@ -505,7 +516,9 @@ async function submitWishReward(){
     '，并将 ¥'+yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？':
   '创建「'+item.title+'」的合力兑换，凑齐后将 ¥'+
     yen.toLocaleString('ja-JP')+' 奖励额度计入「'+choice.wishTitle+'」的关联储值？'
- if(!window.confirm(message+'\n奖励额度不代表实际存款，也不会写入家計簿。'))return
+ if(!await confirmAction({title:action==='redeem'?'确认兑换并关联心愿':'创建合力兑换并关联心愿',
+  confirmLabel:action==='redeem'?'确认兑换':'确认创建',
+  message:message+'\n奖励额度不代表实际存款，也不会写入家計簿。'}))return
  const requestId=crypto.randomUUID()
  const couponId=action==='redeem'&&selectedCouponDiscount(item,quantity)?
    availableShopCoupon.value?.id:null
@@ -532,23 +545,27 @@ async function contributePool(item:GroupOrder){
    error.value='本次出资请填写 1～'+remaining+' 的整数';return
  }
  if(amount>points.value){error.value='当前可用积分不足';return}
- if(!window.confirm('确认出资 '+amount+' 分给「'+item.title+'」？\n只扣你的可用积分，未凑齐时仍可取消并返还。'))return
+ if(!await confirmAction({title:'确认合力出资',confirmLabel:'确认出资',
+  message:'确认出资 '+amount+' 分给「'+item.title+'」？\n只扣你的可用积分，未凑齐时仍可取消并返还。'}))return
  const requestId=crypto.randomUUID()
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/contribute','POST',
   {points:amount,requestId}),'已出资 '+amount+' 分')
  if(!error.value)poolContributionOpen.value=''
 }
 async function cancelPool(item:GroupOrder){
- if(!window.confirm('取消「'+item.title+'」的合力兑换？\n未凑齐的订单可以取消，双方已出的积分都会返还。'))return
+ if(!await confirmAction({title:'取消合力兑换',confirmLabel:'确认取消',danger:true,
+  message:'取消「'+item.title+'」的合力兑换？\n未凑齐的订单可以取消，双方已出的积分都会返还。'}))return
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/cancel','POST'),
   '合力兑换已取消，积分已返还')
 }
 async function fulfillPool(item:GroupOrder){
- if(!window.confirm('确认「'+item.title+'」已由家人兑现吗？'))return
+ if(!await confirmAction({title:'确认合力奖励已兑现',confirmLabel:'确认已兑现',
+  message:'确认「'+item.title+'」已由家人兑现吗？'}))return
  await mutate(()=>fetchJSON('/rewards/pool/'+item.id+'/fulfill','POST'),'已确认兑现')
 }
 async function fulfill(item:Redemption){
- if(!window.confirm('确认「'+item.title+'」已经兑现了吗？'))return
+ if(!await confirmAction({title:'确认奖励已兑现',confirmLabel:'确认已兑现',
+  message:'确认「'+item.title+'」已经兑现了吗？'}))return
  await mutate(()=>fetchJSON('/rewards/redemptions/'+item.id,'PATCH',{status:'fulfilled'}),
   '已标记兑现')
 }
@@ -558,6 +575,9 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 
 <template>
  <LotteryCelebration :draw="lotteryLastDraw"/>
+ <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+   @confirm="acceptConfirm" @cancel="cancelConfirm"/>
+ <PageToast :toast="toast"/>
  <section class="points-board panel" :class="{'points-board--collapsed':!expanded}" aria-label="家庭成长积分">
    <button v-if="!expanded" type="button" class="points-entry" :aria-expanded="expanded"
      aria-controls="points-expanded" @click="openDetails">
@@ -1035,8 +1055,8 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 /* The tappable area stays comfortable, but only the inner 15px glyph is visible.
    Fixed min/max sizes prevent iOS/PWA button sizing from stretching the circle. */
 .points-rule-help{display:inline-flex;align-items:center;justify-content:center;
-  flex:0 0 26px;width:26px;height:26px;min-width:26px;max-width:26px;
-  min-height:26px;max-height:26px;padding:0;margin:0;align-self:center;
+  flex:0 0 44px;width:44px;height:44px;min-width:44px;max-width:44px;
+  min-height:44px;max-height:44px;padding:0;margin:0;align-self:center;
   border:0;border-radius:50%;background:transparent;color:#527962;
   font-size:10px;line-height:1;appearance:none;-webkit-appearance:none}
 .points-rule-help .points-help-glyph{display:inline-flex;align-items:center;justify-content:center;
@@ -1252,7 +1272,7 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
  .lottery-result>div{display:grid;gap:4px}
  .lottery-result b{font-size:14px}.lottery-result small{font-size:11px;color:#668774}
  .lottery-odds{position:relative;min-width:0}
- .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:26px}
+ .lottery-odds-heading{display:flex;align-items:center;gap:1px;min-height:44px}
  .lottery-odds-toggle{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:0;
    border:0;background:none;color:#4a8265;font-size:12px;text-align:left;cursor:pointer}
  .lottery-odds-toggle:focus-visible{outline:2px solid #43866a;outline-offset:2px}

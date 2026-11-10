@@ -7,9 +7,10 @@ const management=readFileSync(new URL('../src/components/ManagePage.vue',import.
 const points=readFileSync(new URL('../src/components/HouseholdPoints.vue',import.meta.url),'utf8')
 
 test('installed PWA can navigate to a genuinely new HTML document',()=>{
-  const refresh=app.match(/function refreshToLatest\(\)\{([\s\S]*?)\n\}/)?.[1]
+  const refresh=app.match(/async function refreshToLatest\(\)\{([\s\S]*?)\n\}/)?.[1]
   assert.ok(refresh)
-  assert.ok(refresh.includes('window.confirm('),'protect unsaved data from accidental reload')
+  assert.ok(refresh.includes('await confirmAction('),'protect unsaved data with explicit mobile confirmation')
+  assert.ok(refresh.includes("title:'刷新到最新版本'"),'show the consequences before reload')
   assert.ok(refresh.includes("target.searchParams.set('_hf_refresh',String(Date.now()))"))
   assert.ok(refresh.includes('window.location.replace(target.pathname+target.search+target.hash)'))
   assert.ok(!refresh.includes('window.location.reload()'))

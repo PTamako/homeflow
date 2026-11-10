@@ -1,5 +1,6 @@
 <script lang="ts">
 let activeSheetLocks=0
+let sheetOrder=0
 let savedBodyOverflow=''
 let savedBodyPosition=''
 let savedBodyTop=''
@@ -12,6 +13,7 @@ import {nextTick,onBeforeUnmount,onMounted,ref,useId} from 'vue'
 const props=withDefaults(defineProps<{title:string;closeDisabled?:boolean}>(),{closeDisabled:false})
 const emit=defineEmits<{close:[]}>()
 const dialog=ref<HTMLElement|null>(null)
+const layerZIndex=ref(10001)
 const titleId=useId()
 let previousFocus:HTMLElement|null=null
 
@@ -37,7 +39,11 @@ function onKeydown(event:KeyboardEvent){
 }
 onMounted(()=>{
  previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null
+ if(activeSheetLocks===0)sheetOrder=0
  lockSheetScroll()
+ // Teleported siblings do not follow component parent order. The newest
+ // nested sheet must be visually and interactively above its parent.
+ layerZIndex.value=10000+(++sheetOrder)
  void nextTick(()=>dialog.value?.focus({preventScroll:true}))
 })
 onBeforeUnmount(()=>{
@@ -73,7 +79,7 @@ function unlockSheetScroll(){
 
 <template>
  <Teleport to="body">
-  <div class="edit-sheet-layer" @keydown="onKeydown">
+  <div class="edit-sheet-layer" :style="{zIndex:layerZIndex}" @keydown="onKeydown">
    <div class="edit-sheet-scrim" aria-hidden="true" @click="requestClose"></div>
    <section ref="dialog" class="edit-sheet-dialog" role="dialog" aria-modal="true"
      :aria-labelledby="titleId" tabindex="-1">
@@ -90,7 +96,7 @@ function unlockSheetScroll(){
 </template>
 
 <style scoped>
-.edit-sheet-layer{position:fixed;inset:0;z-index:10000;isolation:isolate;
+.edit-sheet-layer{position:fixed;inset:0;isolation:isolate;
  pointer-events:none}
 .edit-sheet-scrim{position:absolute;inset:0;pointer-events:auto;
  background:rgb(20 35 28 / 43%);animation:sheet-fade .2s ease-out both}
@@ -106,8 +112,8 @@ function unlockSheetScroll(){
  gap:12px;padding:8px 18px 11px;border-bottom:1px solid #e8eee9;flex:none}
 .edit-sheet-header h2{margin:0;font-size:16px;line-height:1.4;color:#2f4a38;
  font-weight:750;min-width:0;overflow-wrap:anywhere}
-.edit-sheet-close{display:grid;place-items:center;flex:none;width:30px;height:30px;
- min-width:30px;min-height:30px;padding:0;border:0;border-radius:50%;
+.edit-sheet-close{display:grid;place-items:center;flex:none;width:44px;height:44px;
+ min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;
  background:#f1f5f1;color:#66826e;font-size:23px;line-height:1}
 .edit-sheet-close:disabled{opacity:.45}
 .edit-sheet-close:focus-visible{outline:2px solid #43866a;outline-offset:2px}

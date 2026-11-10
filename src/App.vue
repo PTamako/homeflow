@@ -11,6 +11,8 @@ import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
 import ProfileEditor from './components/ProfileEditor.vue'
 import EditBottomSheet from './components/EditBottomSheet.vue'
+import ConfirmActionSheet from './components/ConfirmActionSheet.vue'
+import {useConfirmAction} from './use-confirm-action'
 import MobileSelectHost from './components/MobileSelectHost.vue'
 import AppIcon from './components/AppIcon.vue'
 import StatusBadge from './components/StatusBadge.vue'
@@ -40,6 +42,7 @@ function memberName(id:string|null|undefined){
  return profiles.value.find(p=>p.memberUserId===id)?.displayName||members.value.find(m=>m.id===id)?.loginName||(id===user.value?.id?'我':'家庭成员')
 }
 // Distinguish session loading from signed-out state.
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const authReady=ref(false)
 const authFailure=ref('')
 const updateReady=ref(false)
@@ -57,8 +60,9 @@ function checkServiceWorkerUpdate(){
   lastServiceWorkerCheck=now
   void navigator.serviceWorker.getRegistration().then(reg=>reg?.update()).catch(()=>{})
 }
-function refreshToLatest(){
-  if(!window.confirm('刷新到最新版本？将从网络重新加载，尚未保存的输入内容会丢失。'))return
+async function refreshToLatest(){
+  if(!await confirmAction({title:'刷新到最新版本',confirmLabel:'刷新应用',
+    message:'将从网络重新加载。尚未保存的输入内容会丢失，请先确认已保存。'}))return
   // An installed iOS PWA may resume an old JS snapshot. A unique navigation
   // URL re-requests the HTML shell instead of just resuming that snapshot.
   const target=new URL(window.location.href)
@@ -540,7 +544,8 @@ function openPostpone(row:TodayEntry){
 }
 async function skipToday(row:TodayEntry){
  if(row.done||todayActionBusy.value)return
- if(!confirm('跳过这次事项？会保留历史记录，不会标记为完成。'))return
+ if(!await confirmAction({title:'跳过本期事项',confirmLabel:'确认跳过',danger:true,
+   message:'跳过这次事项？会保留历史记录，不会标记为完成。'}))return
  todayActionBusy.value=true
  try{
    const date=tokyoToday()
@@ -1029,6 +1034,8 @@ onBeforeUnmount(()=>{
         @logout="logout" />
     </main>
     <PageToast :toast="toast" />
+    <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+      @confirm="acceptConfirm" @cancel="cancelConfirm"/>
     <nav v-if="authReady&&user" class="nav" aria-label="页面导航">
       <button v-for="n in nav" :key="n.id" :class="['nav-item',{selected:tab===n.id}]" @click="navigateTab(n.id)">
         <AppIcon :name="n.icon" :size="23" />
