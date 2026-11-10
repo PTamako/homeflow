@@ -330,7 +330,7 @@ onMounted(()=>{
           <small v-if="netLoaded">估算完成率 {{ goalProgress.toFixed(1) }}%</small>
           <small>已确认实际存款：未核验（未接入银行余额）。</small>
           <small v-if="periodFuture"><StatusBadge code="not_started" label="期间尚未开始" /></small>
-          <small v-else>以上为家庭净收支加期初金额、手动调整及虚拟奖励的估算，不等于实际存款。手动调整也不是入金凭证；奖励不写入家計簿。自动结算与积分按此估算口径计算。</small>
+          <small v-else>以上为家庭净收支加期初金额、手动调整及虚拟奖励的估算，不代表实际存款。手动调整也不是入金凭证；奖励不写入家計簿。自动结算与积分按此估算口径计算。</small>
         </div>
         <small v-if="kind==='trip'&&!owner" class="hint">共享旅行只显示已关联消费的合计，原始账单仍仅管理员可查看。</small>
         <label v-if="canModify" class="adjustment-label">调整额（日元，可为负数）
