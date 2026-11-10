@@ -10,7 +10,7 @@ test('new images are never persisted to the phones IndexedDB, even if cloud uplo
  assert.doesNotMatch(life,/saveLocalPhoto|restoreLocalPhoto/)
  assert.doesNotMatch(local,/objectStore\('photos'\)\.put\(|\.put\(blob,/)
  assert.match(life,/if\(photoFiles\.value\.length&&!cloudEnabled\.value\)/)
- assert.match(life,/failedPhotos\+\+/)
+ assert.match(life,/failedPhotos\.push\(file\.name/)
  assert.match(life,/uploadAdditionalPhotos/)
  assert.match(local,/abortedNewDatabase=true/)
 })
