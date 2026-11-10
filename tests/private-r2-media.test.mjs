@@ -268,7 +268,7 @@ test('failed metadata activation still leaves a durable R2 cleanup tombstone',as
 
 
 test('streamed uploads and edits reject oversized bodies without trusting Content-Length',async()=>{
- const req=(bytes,declared)=>new Request('https://homeflow.invalid/api/media/upload',{
+ const req=(bytes,declared)=>new Request('https://homeflow.invalid/api/media/upload?memoryId='+memoryId,{
   method:'POST',duplex:'half',
   headers:{'content-type':'image/jpeg',...(declared?{'content-length':declared}:{})},
   body:new ReadableStream({start(controller){
