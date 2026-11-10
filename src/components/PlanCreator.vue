@@ -160,7 +160,7 @@ async function submit(){
     <div class="creator-step-heading creator-details-heading">
      <span class="creator-step-counter">第 2 步 / 共 2 步 · 填写信息</span>
      <button type="button" class="creator-step-back" :disabled="busy" @click="backToChoices">
-      <AppIcon name="chevron-left" :size="17"/> 返回选择类型
+      <AppIcon name="chevron-down" :size="17" class="creator-back-chevron"/> 返回选择类型
      </button>
     </div>
     <label v-if="kind!=='routine'||form.repeatType!=='once'">计划名称<input v-model.trim="form.title" required maxlength="150" placeholder="计划名称"/></label>
@@ -334,6 +334,7 @@ async function submit(){
 .creator-step-back{display:inline-flex;align-items:center;justify-content:center;
  gap:4px;min-height:44px;border:1px solid #cddfd2;border-radius:10px;
  background:#f5faf6;color:#397b5a;padding:8px 12px;font-size:13px;font-weight:700}
+.creator-back-chevron{transform:rotate(90deg)}
 .creator-step-back:disabled{opacity:.5}
 .creator-step-back:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
