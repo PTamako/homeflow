@@ -66,7 +66,23 @@ export async function mediaRoute(request,env,path,session){
    const bytes=new Uint8Array(await request.arrayBuffer())
    if(bytes.length>MAX_MEDIA_BYTES)return json({error:'photo_exceeds_300kb'},413)
    if(bytes.length<16||!signatures[mime](bytes))return json({error:'unsupported_photo'},400)
-   const id=crypto.randomUUID(),sha=await sha256(id)
+   // Idempotent ZIP restore: retrying a partial restore must not duplicate
+   // pictures. Never expose the original digest or private storage key.
+   const restoreKey=new URL(request.url).searchParams.get('restoreKey')
+   if(restoreKey!==null&&!/^[0-9a-f]{64}$/.test(restoreKey))
+     return json({error:'invalid_restore_key'},400)
+   const seed=restoreKey?await sha256(h+':'+u+':'+memoryId+':'+restoreKey):null
+   const id=seed?
+     seed.slice(0,8)+'-'+seed.slice(8,12)+'-4'+seed.slice(13,16)+'-8'+seed.slice(17,20)+'-'+seed.slice(20,32):
+     crypto.randomUUID()
+   if(seed){
+     const existing=await db.prepare(`SELECT id,deleted_at FROM media_assets
+       WHERE id=?1 AND household_id=?2 AND uploaded_by=?3 AND memory_id=?4`)
+       .bind(id,h,u,memoryId).first()
+     if(existing?.deleted_at)return json({error:'photo_cleanup_pending'},409)
+     if(existing)return json({ok:true,id,reused:true},200)
+   }
+   const sha=await sha256(id)
    const storageKey='private/'+h+'/'+id+'/'+sha.slice(0,10)
    try{await env.MEDIA.put(storageKey,bytes,{httpMetadata:{contentType:mime}})}
    catch{return json({error:'photo_upload_failed'},503)}
