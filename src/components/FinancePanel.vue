@@ -6,6 +6,8 @@ import {computed,onMounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import StatusBadge from './StatusBadge.vue'
 import PageToast from './PageToast.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import {usePageToast} from '../page-toast'
 type Item=Record<string,any>
 const props=defineProps<{trips:Item[];goals:Item[];owner:boolean;canAdjust?:boolean;embeddedKind?:'trip'|'goal';embeddedId?:string;initialPeriodKey?:string;fixedPeriodKey?:string;initialCompletedPeriods?:string[]}>()
@@ -17,6 +19,7 @@ const linkedPageSize=5
 const linkedVisibleCount=ref(linkedPageSize)
 const visibleLinks=computed(()=>links.value.slice(0,linkedVisibleCount.value))
 const {toast,notify,clear:clearToast}=usePageToast()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const options=computed(()=>kind.value==='trip'?props.trips:props.goals)
 const selected=computed(()=>options.value.find(x=>x.id===target.value))
 const canModify=computed(()=>props.owner||props.canAdjust===true)
@@ -71,7 +74,7 @@ function defaultDates(){
   end.value=dateYmd()
 }
 const ledgerErrors:Record<string,string>={
-  goal_not_funded:'家計簿核算金额尚未达到储值目标，本期继续保留未完成。',
+  goal_not_funded:'家計簿收支差额估算尚未达到储值目标，本期继续保留未完成。',
   ledger_verification_unavailable:'家計簿联动不可用，无法核验达标，完成状态没有改变。',
   owner_required_for_ledger_verification:'需要家庭管理员核验储值目标。',
   invalid_goal_period:'期间还未到期或日期不正确，请检查储值计划日期。',
@@ -104,23 +107,31 @@ async function refreshCompletionMarks(){
 }
 async function confirmGoalCompleted(){
   if(kind.value!=='goal'||!selected.value||confirmBusy.value||!goalPeriodDue.value)return
-  confirmBusy.value=true;error.value=''
   const key=currentMarkKey.value,wasCompleted=alreadyCompleted.value
+  if(!wasCompleted&&!await confirmAction({
+    title:'确认储值估算达标',confirmLabel:'按估算确认完成',
+    message:'HomeFlow 仅根据家計簿家庭收支净额、期初金额、手动调整及虚拟奖励估算储值进度，并未核验银行实际存款。\n请先核对实际储值金额，确认后将依据该估算更新完成状态及相关积分。'
+  }))return
+  confirmBusy.value=true;error.value=''
   try{
-    // Server always verifies actual Kakebo net plus the saved settings,
+    // The server recomputes the Kakebo cash-flow estimate plus saved settings,
     // regardless of any client-rendered progress bar.
     await api('/plans/complete','POST',{
       kind:'goal',id:target.value,periodKey:key,completed:!wasCompleted
     })
     if(wasCompleted)completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
     else completedPeriods.value=[...completedPeriods.value,key]
-    notify(wasCompleted?'已撤销本期达标确认':'已核验完成')
+    notify(wasCompleted?'已撤销本期达标确认':'已按家庭收支估算确认完成')
     emit('completed',!wasCompleted,key)
   }catch(e){error.value=(e as Error).message}
   finally{confirmBusy.value=false}
 }
 async function settleRecurringGoal(){
  if(!recurringGoal.value||!selected.value||!goalPeriodDue.value||confirmBusy.value)return
+ if(!await confirmAction({
+   title:'按收支估算结算',confirmLabel:'确认按估算结算',
+   message:'结算依据是家計簿家庭收支净额加手动调整，并非银行实际存款记录。\n系统自动结算同样采用这一估算口径；确认前请核对本期实际储值，结算可能改变家庭积分。'
+ }))return
  confirmBusy.value=true;error.value=''
  try{
    const data=await api('/goals/'+encodeURIComponent(target.value)+'/periods/settle','POST',
@@ -129,7 +140,7 @@ async function settleRecurringGoal(){
    if(data.status==='met'){
      if(!completedPeriods.value.includes(key))completedPeriods.value=[...completedPeriods.value,key]
    }else completedPeriods.value=completedPeriods.value.filter(x=>x!==key)
-   notify(data.status==='met'?'本期已结算 · 达标':
+   notify(data.status==='met'?'本期已结算 · 收支估算达标':
      '本期已结算 · 不足 '+fmt(Math.max(0,Number(data.differenceAmount||0)))+'，记录已保存')
    emit('completed',data.status==='met',key)
  }catch(e){error.value=(e as Error).message}
@@ -310,15 +321,16 @@ onMounted(()=>{
         <div v-else class="summary">
           <span>{{ modeLabel }}目标金额 {{ fmt(Number(selected?.target_amount||0)) }}</span>
           <span v-if="!recurringGoal">期初储值额 {{ fmt(opening) }}</span>
-          <span>{{ recurringGoal?'本期':'所选期间' }}收支差额 {{ netLoaded?signed(net):'尚未读取' }}</span>
+          <span>{{ recurringGoal?'本期':'所选期间' }}家庭收支净额（估算） {{ netLoaded?signed(net):'尚未读取' }}</span>
           <span>本{{ recurringGoal?'期':'' }}手动调整 {{ signed(Number(adjustment)||0) }}</span>
           <span v-if="kind==='goal'&&!recurringGoal&&rewardCreditYen>0" class="reward-credit-line">
             家庭奖励抵扣额度 +¥{{ Number(rewardCreditYen).toLocaleString('ja-JP') }}
           </span>
-          <strong v-if="netLoaded">{{ recurringGoal?'本期预计储值':'储值进度金额' }} {{ signed(goalTotal) }}</strong>
-          <small v-if="netLoaded">本{{ recurringGoal?'期':'' }}完成率 {{ goalProgress.toFixed(1) }}%</small>
+          <strong v-if="netLoaded">储值进度估算 {{ signed(goalTotal) }}</strong>
+          <small v-if="netLoaded">估算完成率 {{ goalProgress.toFixed(1) }}%</small>
+          <small>已确认实际存款：未核验（未接入银行余额）。</small>
           <small v-if="periodFuture"><StatusBadge code="not_started" label="期间尚未开始" /></small>
-          <small v-else>仅为收支估算，含家庭奖励额度；奖励不代表实际存款，也不会写入家計簿。</small>
+          <small v-else>以上为家庭净收支加期初金额、手动调整及虚拟奖励的估算，不代表实际存款。手动调整也不是入金凭证；奖励不写入家計簿。自动结算与积分按此估算口径计算。</small>
         </div>
         <small v-if="kind==='trip'&&!owner" class="hint">共享旅行只显示已关联消费的合计，原始账单仍仅管理员可查看。</small>
         <label v-if="canModify" class="adjustment-label">调整额（日元，可为负数）
@@ -357,14 +369,14 @@ onMounted(()=>{
           <button v-else-if="owner" type="button" :disabled="busy" @click="loadCandidates(false)">{{ busy?'查询中…':'选择家計簿账单' }}</button>
         </div>
         <div v-if="kind==='goal'&&owner" class="goal-completion-panel">
-          <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="已确认达标" /></p>
+          <p v-if="!recurringGoal&&alreadyCompleted" class="hint"><StatusBadge code="met" label="收支估算已达标" /></p>
           <p v-else-if="!recurringGoal&&!goalPeriodDue" class="hint"><StatusBadge code="not_started" label="储值计划尚未开始" /></p>
           <button v-if="recurringGoal" type="button" :disabled="confirmBusy||busy||!goalPeriodDue"
-            @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'核验并结算本期' }}</button>
+            @click="settleRecurringGoal">{{ confirmBusy?'正在核验…':'按收支估算结算本期' }}</button>
           <button v-else type="button" :disabled="confirmBusy||busy||!goalPeriodDue" @click="confirmGoalCompleted">
-            {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销达标确认':'核验达标并完成' }}
+            {{ confirmBusy?'正在核验…':alreadyCompleted?'撤销达标确认':'按估算确认完成' }}
           </button>
-          <small class="hint">请先保存调整，再核验。</small>
+          <small class="hint">请先保存调整，并核对实际储值。系统只核对收支估算，不验证银行存款。</small>
         </div>
         <template v-if="kind==='trip'&&owner">
           <h3 v-if="links.length" class="trip-finance-list-title">已关联 · {{ links.length }} 笔</h3>
@@ -387,6 +399,8 @@ onMounted(()=>{
     </template>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <PageToast :toast="toast" />
+    <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+      @confirm="acceptConfirm" @cancel="cancelConfirm" />
   </section>
 </template>
 <style scoped>

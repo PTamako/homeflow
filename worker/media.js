@@ -189,7 +189,13 @@ export async function mediaRoute(request,env,path,session){
      objectStored=true
      const activated=await db.prepare(`UPDATE media_assets
        SET deleted_at=NULL WHERE id=?1 AND household_id=?2
-         AND uploaded_by=?3 AND deleted_at IS NOT NULL`)
+         AND uploaded_by=?3 AND deleted_at IS NOT NULL
+         -- The memory can be archived/deleted while R2.put is in flight.
+         -- Never activate an object after its parent is no longer accessible.
+         AND EXISTS (SELECT 1 FROM memories m
+           WHERE m.id=media_assets.memory_id AND m.household_id=?2
+             AND m.deleted_at IS NULL
+             AND (m.visibility='household' OR m.created_by=?3))`)
        .bind(id,h,u).run()
      if(Number(activated.meta?.changes)!==1)throw Error('metadata_activation_failed')
      return json({ok:true,id,byteSize:bytes.length},201)

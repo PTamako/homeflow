@@ -244,6 +244,29 @@ test('a future-dated upload reservation is skipped until safe to clean',async()=
  }finally{f.close()}
 })
 
+
+test('an in-flight upload never reactivates an archived or permanently erased memory',async()=>{
+ for(const deletion of ['soft','hard']){
+  const f=fixture()
+  try{
+   const put=f.media.put.bind(f.media)
+   f.media.put=async(key,bytes)=>{
+    await put(key,bytes)
+    if(deletion==='soft')
+     f.sqlite.prepare("UPDATE memories SET deleted_at=CURRENT_TIMESTAMP WHERE id=?").run(memoryId)
+    else f.sqlite.prepare('DELETE FROM memories WHERE id=?').run(memoryId)
+   }
+   const result=await mediaRoute(upload(memoryId,jpeg()),f.env,'/api/media/upload',session)
+   assert.equal(result.status,503,deletion+' deletion must prevent activation')
+   const active=f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets WHERE deleted_at IS NULL').get().n
+   assert.equal(active,0,'not a single unreferenced object may be activated')
+   const stale=f.sqlite.prepare('SELECT COUNT(*) AS n FROM media_assets WHERE deleted_at IS NOT NULL').get().n
+   assert.equal(stale,0,'compensation should clean metadata after successful R2 deletion')
+   assert.equal(f.media.objects.size,0,'R2 must not retain the raced photo')
+  }finally{f.close()}
+ }
+})
+
 test('failed metadata activation still leaves a durable R2 cleanup tombstone',async()=>{
  const f=fixture()
  try{
