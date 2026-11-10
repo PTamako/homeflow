@@ -277,7 +277,8 @@ const bootstrapIssue=ref<'missing'|'too_short'|null>(null)
 const login=ref(''),password=ref(''),displayName=ref(''),householdName=ref('我们的小家'),bootstrapSecret=ref(''),invite=ref(''),recoveryCode=ref(''),recoveryConfirm=ref('')
 const name=ref(''),petType=ref<'pet'|'person'>('pet'),birth=ref(''),adopted=ref('')
 const showProfileForm=ref(false),profileSaving=ref(false)
-function closeProfileForm(){
+function closeProfileForm(force=false){
+  if(profileSaving.value&&!force)return
   showProfileForm.value=false
   name.value='';petType.value='pet';birth.value='';adopted.value=''
 }
@@ -537,9 +538,14 @@ async function loadTodayPage(reset=true):Promise<boolean>{
 async function reloadToday(){await loadTodayPage(true)}
 const postponeKey=ref(''),postponeOn=ref(''),todayActionBusy=ref(false)
 const tomorrowJst=()=>new Date(Date.parse(tokyoToday()+'T00:00:00Z')+86400000).toISOString().slice(0,10)
+function closePostpone(force=false){
+ if(todayActionBusy.value&&!force)return
+ postponeKey.value='';postponeOn.value=''
+}
 function openPostpone(row:TodayEntry){
  if(row.routine||row.done)return
- postponeKey.value=postponeKey.value===row.key?'':row.key
+ if(postponeKey.value===row.key){closePostpone();return}
+ postponeKey.value=row.key
  postponeOn.value=tomorrowJst()
 }
 async function skipToday(row:TodayEntry){
@@ -572,9 +578,10 @@ async function postponeToday(row:TodayEntry){
  try{
    await api('/plans/today-action','POST',{kind:row.kind,id:row.task?.id||row.plan?.id,
      on:date,action:'postponed',to:postponeOn.value})
-   postponeKey.value=''
+   const selectedDate=postponeOn.value
+   closePostpone(true)
    await reloadToday()
-   notify('已延期至 '+postponeOn.value)
+   notify('已延期至 '+selectedDate)
  }catch(e){error.value=(e as Error).message}
  finally{todayActionBusy.value=false}
 }
@@ -722,7 +729,7 @@ async function addProfile(){
     await api('/family/profiles','POST',{displayName:name.value,type:petType.value,
       birthday:birth.value||null,adoptedOn:petType.value==='pet'?adopted.value||null:null})
     await profileSaved()
-    closeProfileForm()
+    closeProfileForm(true)
   }catch(e){error.value=(e as Error).message}
   finally{profileSaving.value=false}
 }
@@ -903,11 +910,11 @@ onBeforeUnmount(()=>{
                   @click="row.task?openPlans('task',row.task.id,'',row.done):row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
                   {{ row.done?'查看计划':'去处理' }}</button>
               </div>
-              <EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key" title="延期待办" :close-disabled="todayActionBusy" @close="postponeKey=''">
+              <EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key" title="延期待办" :close-disabled="todayActionBusy" @close="closePostpone">
               <form class="today-postpone-form" @submit.prevent="postponeToday(row)">
                 <label>延期到哪一天？<DateField v-model="postponeOn" :min="tomorrowJst()" required/></label>
                 <div class="today-decision-actions">
-                  <button type="button" class="outline" @click="postponeKey=''">取消</button>
+                  <button type="button" class="outline" @click="closePostpone">取消</button>
                   <button type="submit" class="primary" :disabled="todayActionBusy||postponeOn<=tokyoToday()">确认延期</button>
                 </div>
               </form>
@@ -1009,7 +1016,7 @@ onBeforeUnmount(()=>{
               <DateField v-model="adopted" />
             </label>
             <div class="field-wide profile-form-actions">
-              <button type="button" class="outline" @click="closeProfileForm">取消</button>
+              <button type="button" class="outline" :disabled="profileSaving" @click="closeProfileForm">取消</button>
               <button type="submit" class="primary" :disabled="profileSaving">
                 {{ petType==='person'?'添加成员':'添加宠物' }}
               </button>
