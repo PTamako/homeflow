@@ -12,7 +12,7 @@ test('plan list survives asynchronous refresh without collapsing the scrolled do
  const beforeResults=refresh.slice(0,refresh.indexOf('const results=await Promise.allSettled('))
  assert.doesNotMatch(beforeResults,/items\.value=\[\];other\.value=\[\];goals\.value=\[\];trips\.value=\[\]/)
  assert.match(plans,/const planListReady=ref\(false\)/)
- assert.match(plans,/<div v-if="planListReady" class="life-grid" :aria-busy="listLoading"/)
+ assert.match(plans,/<div v-if="planListReady" class="life-grid" :class="\{\x27life-grid--stale\x27:planGridStale\}" :aria-hidden="planGridStale" :aria-busy="listLoading"/)
  assert.doesNotMatch(plans,/<div v-else class="life-grid">/)
  assert.match(refresh,/if\(currentMode==='plans'\)planListReady\.value=true/)
  assert.match(refresh,/const requested=new Set\(kinds\)/)
@@ -20,11 +20,11 @@ test('plan list survives asynchronous refresh without collapsing the scrolled do
 })
 
 test('background refresh retains the current task page but a filter change resets it',()=>{
- assert.match(plans,/const queryKey=\[selected,planScope\.value,planYear\.value,planMonth\.value,planOutcome\.value\]\.join\('\|'\)/)
- assert.match(plans,/const previousTaskPage=queryKey===lastPlanQueryKey\?taskPage\.value:0/)
+ assert.match(plans,/const queryKey=planQueryKey\.value/)
+ assert.match(plans,/const previousTaskPage=queryKey===lastPlanQueryKey\.value\?taskPage\.value:0/)
  assert.match(plans,/while\(pages\[i\]\.nextCursor&&\(pages\[i\]\.items\|\|\[\]\)\.length<needed\)/)
  assert.match(plans,/taskPage\.value=Math\.min\(previousTaskPage,/)
- assert.match(plans,/lastPlanQueryKey=queryKey/)
+ assert.match(plans,/lastPlanQueryKey\.value=queryKey/)
 })
 
 test('bottom sheets pin iOS page scroll and restore original position on final close',()=>{

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {nextTick,ref,watch} from 'vue'
+import {computed,nextTick,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import ImportantReminders from './ImportantReminders.vue'
 import {notificationStatus,notificationTitle,notificationMessageRemainder} from '../notification-status.mjs'
@@ -16,10 +16,21 @@ const props=defineProps<{active:boolean;todayDate:string;userId:string;todayEntr
 const emit=defineEmits<{unreadChange:[number];openPlan:[string,string,string,boolean];focusHandled:[string]}>()
 const expanded=ref(false),view=ref<'pending'|'received'|'sent'>('received')
 const notices=ref<Notice[]>([]),cursor=ref<string|null>(null),unread=ref(0)
+// A response belongs to one account, JST date and notification tab.
+// Keep the previous page in memory during same-tab refreshes, but never
+// render it under a newly selected tab while the new request is pending.
+const loadedNoticeScope=ref('')
+const noticeScope=computed(()=>[props.userId,props.todayDate,view.value].join('|'))
+const visibleNotices=computed(()=>view.value!=='pending'&&
+ loadedNoticeScope.value===noticeScope.value?notices.value:[])
 const loading=ref(false),moreBusy=ref(false),error=ref(''),reading=ref<string|null>(null),bulkReading=ref(false)
 const highlightedId=ref('')
 const pendingReminders=ref<{refresh:()=>Promise<void>|void}|null>(null)
 let generation=0
+let viewEpoch=0
+// A push deep-link performs its own focused load. Do not start a second
+// ordinary tab request that invalidates it on the next Vue watcher tick.
+let focusedReceivedLoad=false
 // Capture the row touched before any live-refresh can move a different row beneath the finger.
 let pressedReadId:string|null=null
 function timeOf(value:string|null){
@@ -65,21 +76,23 @@ function memberDisplayName(userId:string|null){
  return profile?.displayName?.trim()||'未设置姓名'
 }
 async function load(reset=true,focusId=''):Promise<boolean>{
- if(!props.active)return false
- const request=++generation,day=props.todayDate
+ if(!props.active||(!reset&&loadedNoticeScope.value!==noticeScope.value))return false
+ const request=++generation,day=props.todayDate,account=props.userId
+ const requestedView=view.value,requestedScope=noticeScope.value
  if(reset){loading.value=true;error.value='';cursor.value=null}
  else moreBusy.value=true
  try{
-  const params=new URLSearchParams({view:view.value==='pending'?'received':view.value})
+  const params=new URLSearchParams({view:requestedView==='pending'?'received':requestedView})
   if(!reset&&cursor.value)params.set('before',cursor.value)
-  if(reset&&focusId&&view.value==='received')params.set('focus',focusId)
+  if(reset&&focusId&&requestedView==='received')params.set('focus',focusId)
   const response=await fetch('/api/notifications/today?'+params,{
     credentials:'same-origin',cache:'no-store'
   })
   if(!response.ok)throw Error('通知读取失败')
   const data=await response.json()
-  if(request!==generation||day!==props.todayDate)return false
-  if(view.value!=='pending'){
+  if(request!==generation||day!==props.todayDate||account!==props.userId||
+     requestedView!==view.value||!props.active)return false
+  if(requestedView!=='pending'){
    const items:Notice[]=data.items||[]
    if(reset){
     const focused=data.focusItem as Notice|null
@@ -90,11 +103,12 @@ async function load(reset=true,focusId=''):Promise<boolean>{
     notices.value=[...notices.value,...items.filter(item=>!existing.has(item.id))]
    }
    cursor.value=data.nextCursor||null
+   loadedNoticeScope.value=requestedScope
   }
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   emit('unreadChange',unread.value)
   // Push arriving while the pending tab is open should immediately remove delivered items.
-  if(view.value==='pending')await pendingReminders.value?.refresh()
+  if(requestedView==='pending')await pendingReminders.value?.refresh()
   return true
  }catch(e){
   if(request===generation)error.value=(e as Error).message
@@ -109,7 +123,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
  // Capture identity and revision BEFORE awaiting a network request. Do not
  // mutate an old Vue row reference after a background refresh replaces it.
  const id=item.id,revision=item.lastCompletionKey??null
- const account=props.userId
+ const account=props.userId,scope=noticeScope.value,epoch=viewEpoch
  reading.value=id
  error.value=''
  try{
@@ -119,6 +133,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
    headers:{'content-type':'application/json'},
    body:JSON.stringify({expectedCompletionKey:revision})
   })
+  if(account!==props.userId||scope!==noticeScope.value||epoch!==viewEpoch)return
   if(r.status===409){
    await load(true)
    error.value='这条通知刚刚更新，请确认最新内容后再标记'
@@ -128,7 +143,7 @@ async function changeReadState(item:Notice,markAsRead:boolean){
   const data=await r.json()
   if(data.notificationId!==id||data.read!==markAsRead)
    throw Error('通知身份校验失败，请刷新重试')
-  if(account!==props.userId)return
+  if(account!==props.userId||scope!==noticeScope.value||epoch!==viewEpoch)return
   // Invalidate any stale list fetch begun before this write was acknowledged.
   generation++
   loading.value=false
@@ -141,13 +156,13 @@ async function changeReadState(item:Notice,markAsRead:boolean){
   unread.value=Math.max(0,Number(data.unreadCount)||0)
   // One source of truth for Today's red dot and the Home Screen PWA badge.
   emit('unreadChange',unread.value)
- }catch(e){error.value=(e as Error).message}
+ }catch(e){if(account===props.userId&&scope===noticeScope.value&&epoch===viewEpoch)error.value=(e as Error).message}
  finally{if(reading.value===id)reading.value=null}
 }
 async function markAllRead(){
  if(!props.active||view.value!=='received'||unread.value===0||
    bulkReading.value||reading.value)return
- const account=props.userId,day=props.todayDate
+ const account=props.userId,day=props.todayDate,epoch=viewEpoch
  bulkReading.value=true
  error.value=''
  try{
@@ -158,7 +173,7 @@ async function markAllRead(){
   const data=await response.json()
   if(data.ok!==true||!Number.isInteger(data.unreadCount)||data.unreadCount<0)
    throw Error('未读数量同步失败，请刷新重试')
-  if(account!==props.userId||day!==props.todayDate)return
+  if(account!==props.userId||day!==props.todayDate||view.value!=='received'||epoch!==viewEpoch)return
   // Ignore any list response initiated before the write completed.
   generation++
   loading.value=false
@@ -170,7 +185,7 @@ async function markAllRead(){
   emit('unreadChange',unread.value)
   if(unread.value>0)void load(true)
  }catch(e){
-  if(account===props.userId&&day===props.todayDate)
+  if(account===props.userId&&day===props.todayDate&&epoch===viewEpoch)
    error.value=(e as Error).message
  }finally{bulkReading.value=false}
 }
@@ -202,12 +217,15 @@ async function open(item:Notice){
 }
 async function showIncomingNotification(id:string){
  if(!props.active||!/^[a-f0-9-]{36}$/i.test(id))return
+ focusedReceivedLoad=true
  expanded.value=true
  view.value='received'
  // Load the actual scoped row first; never auto-read an unseen replacement
  // simply because a historical Push still points to the same inbox ID.
  const version=props.focusNotificationVersion
- const loaded=await load(true,id)
+ let loaded=false
+ try{loaded=await load(true,id)}
+ finally{focusedReceivedLoad=false}
  const focused=loaded?notices.value.find(item=>item.id===id):null
  const versionMatches=(version==null||version==='scheduled')
    ?!focused?.lastCompletionKey:version===focused?.lastCompletionKey
@@ -223,7 +241,16 @@ watch(()=>[props.focusRequest,props.active],()=>{
  if(props.active&&props.focusRequest>0&&props.focusNotificationId)
   void showIncomingNotification(props.focusNotificationId)
 },{immediate:true})
-watch(view,()=>{if(view.value!=='pending')void load(true)})
+watch(view,()=>{
+ viewEpoch++
+ if(focusedReceivedLoad&&view.value==='received')return
+ // Switching to pending does not fetch an inbox page; explicitly invalidate
+ // any in-flight received/sent response so it cannot repaint stale rows.
+ generation++
+ loading.value=false;moreBusy.value=false
+ highlightedId.value='';pressedReadId=null
+ if(view.value!=='pending')void load(true)
+})
 defineExpose({refresh:()=>load(true)})
 </script>
 
@@ -261,10 +288,10 @@ defineExpose({refresh:()=>load(true)})
       @open-plan="(kind,id,periodKey,done)=>emit('openPlan',kind,id,periodKey,done)" />
    </div>
    <template v-else>
-   <p v-if="loading" class="notice-muted" role="status">正在读取…</p>
+   <p v-if="loading||(!error&&loadedNoticeScope!==noticeScope)" class="notice-muted" role="status">正在读取…</p>
    <p v-else-if="error" class="notice-error" role="alert">{{ error }} <button type="button" @click="load(true)">重试</button></p>
-   <p v-else-if="!notices.length" class="notice-empty">今天暂无通知</p>
-   <div v-for="item in notices" :id="'today-notification-'+item.id" :key="item.id"
+   <p v-else-if="!visibleNotices.length" class="notice-empty">今天暂无通知</p>
+   <div v-for="item in visibleNotices" :id="'today-notification-'+item.id" :key="item.id"
      :class="['notice-item',{'notice-focused':highlightedId===item.id,
         'notice-item--annual':item.dedupeKey?.startsWith('scheduled:system:annual-points-expiry:')}]">
     <div class="notice-item-top">

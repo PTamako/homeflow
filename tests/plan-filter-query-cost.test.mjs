@@ -56,6 +56,6 @@ test('history filter requests the right route, isolates categories and hides sta
  assert.match(source,/if\(\['shopping','wish','goal','trip'\]\.includes\(planType\.value\)\)q\.set\('kind',planType\.value\)/)
  assert.doesNotMatch(source,/items\.value=\[\];other\.value=\[\];goals\.value=\[\];trips\.value=\[\]/)
  assert.match(source,/if\(!requested\.has\(kind\)\)assignRows\(kind,\[\]\)/)
- assert.match(source,/<p v-if="listLoading&&!planListReady" class="life-caption" role="status">正在读取计划…<\/p>/)
+ assert.match(source,/<p v-if="listLoading&&\(!planListReady\|\|planGridStale\)" class="life-caption" role="status">正在读取计划…<\/p>/)
  assert.match(source,/<div v-if="planListReady" class="life-grid"/)
 })
