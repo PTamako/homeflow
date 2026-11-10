@@ -23,12 +23,15 @@ import {parseRoutineAssignmentBonus} from '../routine-assignment-validation.mjs'
 import {sortPlanTasks} from '../plan-task-sort.mjs'
 import {activeSwipeId} from '../swipe-state'
 import PageToast from './PageToast.vue'
+import ConfirmActionSheet from './ConfirmActionSheet.vue'
+import {useConfirmAction} from '../use-confirm-action'
 import {usePageToast} from '../page-toast'
 import {tripDurationDays,longTripNeedsConfirmation,tripPointsPerPerson,longTripWarning} from '../trip-reward-confirmation.mjs'
 
 const props=defineProps<{mode:'today'|'family'|'plans'|'memories';userId:string;isOwner:boolean;profileRevision:number;profiles:Array<{id:string;displayName:string;type:string;memberUserId?:string|null}>;members?:Array<{id:string;loginName:string;role?:string}>;tasks?:Record<string,any>[];focusPlanType?:string;focusPlanId?:string;focusPlanPeriodKey?:string;focusPlanScope?:'active'|'history';focusPlanFromToday?:boolean;focusPlanRequest?:number;openPlanCreator?:boolean;syncRevision?:number}>()
 const emit=defineEmits<{editProfile:[id:string];tasksChanged:[];openPlans:[kind:string,id?:string,periodKey?:string,done?:boolean];backToToday:[];clearPlanFocus:[];planFocusSettled:[requestId:number]}>()
 const {toast,notify,clear:clearToast}=usePageToast()
+const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 watch(()=>props.mode,clearToast)
 type Row=Record<string,any>
 type GoalPeriodArchive={goalId:string;title:string;goalMode:'monthly'|'yearly';periodKey:string;periodStart:string;periodEnd:string;targetAmount:number;actualAmount:number|null;differenceAmount:number|null;status:'pending'|'met'|'shortfall';settledAt:string|null}
@@ -287,7 +290,8 @@ async function toggleAnniversaryArchive(item:Row){
   const synthetic=item.source==='profile_birthday'
   if(!(synthetic?canEditBirthday(item):canEdit(item))||busy.value)return
   const restoring=!!item.archived_at
-  if(!restoring&&!confirm('归档后不再提醒，但记录会保留在「过去的日子」。确定归档吗？'))return
+  if(!restoring&&!await confirmAction({title:'归档重要日子',confirmLabel:'确认归档',
+   message:'归档后不再提醒，但记录会保留在「过去的日子」。确定归档吗？'}))return
   busy.value=true;error.value=''
   try{
     await api('/anniversaries/'+item.id+'/'+(restoring?'restore':'archive'),'POST')
@@ -303,7 +307,7 @@ async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
  const warning=kind==='memories'?'回忆进入回收站后暂时保留云端照片以便恢复；永久清空回收站时将删除 R2 中的照片。本机未同步照片需自行清理。':
    kind==='routines'?'删除定期计划？以前的完成记录会保留。':'确定删除这条记录吗？'
- if(!confirm(warning))return
+ if(!await confirmAction({title:'删除记录',confirmLabel:'确认删除',danger:true,message:warning}))return
  await update(()=>api('/'+kind+'/'+item.id,'DELETE'),'已删除')
  if(!error.value){editing.value=null;if(kind==='trips'&&tripDetail.value?.id===item.id)tripDetail.value=null}
 }
@@ -383,7 +387,8 @@ async function scheduleUnplanned(t:Row){
    expectedUpdatedAt:t.updatedAt})
 }
 async function deleteOnce(t:Row){
-  if(!confirm('删除这项一次性计划吗？'))return
+  if(!await confirmAction({title:'删除一次性计划',confirmLabel:'确认删除',danger:true,
+    message:'删除这项一次性计划吗？'}))return
   await onceChange(t,{},'DELETE')
 }
 watch(()=>props.focusPlanType,type=>{
@@ -570,7 +575,8 @@ function routineNextDue(r:Row){return String(r.nextDueOn||r.next_due_on||'')}
 function canCompleteRoutineEarly(r:Row){return !!r.earlyPeriodOn&&r.enabled!==0}
 async function completeRoutineEarly(r:Row){
   if(!canCompleteRoutineEarly(r)||busy.value||!routineCompletable(r))return
-  if(!confirm('确认提前完成「'+r.title+'」本期？仅本期归档，下期仍按计划生成。'))return
+  if(!await confirmAction({title:'提前完成定期任务',confirmLabel:'确认完成',
+    message:'确认提前完成「'+r.title+'」本期？仅本期归档，下期仍按计划生成。'}))return
   await update(()=>api('/routines/'+r.id+'/mark','POST',
     {date:today(),periodOn:r.earlyPeriodOn,status:'completed',early:true}),'本期已提前完成')
   if(!error.value)emit('tasksChanged')
@@ -578,7 +584,8 @@ async function completeRoutineEarly(r:Row){
 async function completeCurrentRoutine(r:Row,status:'completed'|'skipped'){
  if(status==='completed'&&!routineCompletable(r))return
   if(!r.currentPeriodOn||r.currentStatus!=='pending'||busy.value)return
-  if(status==='skipped'&&!confirm('跳过本期？会保留一条历史记录。'))return
+  if(status==='skipped'&&!await confirmAction({title:'跳过本期',confirmLabel:'确认跳过',danger:true,
+    message:'跳过本期？会保留一条历史记录。'}))return
   await update(()=>api('/routines/'+r.id+'/mark','POST',
     {date:today(),periodOn:r.currentPeriodOn,status}),
     status==='completed'?'本期已完成':'本期已跳过')
@@ -586,9 +593,10 @@ async function completeCurrentRoutine(r:Row,status:'completed'|'skipped'){
 }
 async function undoRoutineHistory(r:Row){
   if(!r.periodOn||r.status==='missed'||busy.value)return
-  if(!confirm(r.periodOn<today()?
-    '撤销后本期已过期，将记录为「未完成」，不返回今日待办。对应的自动护理记录也会撤销。确定吗？':
-    '撤销这一期的记录？如果日期仍有效，可重新在今日待办勾选。对应的自动护理记录也会撤销。'))return
+  if(!await confirmAction({title:'撤销定期任务记录',confirmLabel:'确认撤销',danger:true,
+    message:r.periodOn<today()?
+      '撤销后本期已过期，将记录为「未完成」，不返回今日待办。对应的自动护理记录也会撤销。确定吗？':
+      '撤销这一期的记录？如果日期仍有效，可重新在今日待办勾选。对应的自动护理记录也会撤销。'}))return
   await update(()=>api('/routines/'+r.id+'/mark','POST',
     {date:today(),periodOn:r.periodOn,recordOn:r.markOccurrenceOn||r.periodOn,status:'open'}),'已撤销本期记录')
   if(!error.value)emit('tasksChanged')
@@ -602,9 +610,10 @@ function canUndoOnce(t:Row){return canEdit(t)||taskCompletable(t)}
 async function undoOnce(t:Row){
   if(!t.completedAt||busy.value||!canUndoOnce(t))return
   const expired=!!t.dueOn&&t.dueOn<today()
-  if(!confirm(expired?
-    '撤销后已过计划日期，将记录为「未完成」，不返回今日待办。确定撤销吗？':
-    '撤销完成？计划日期仍有效时，将重新回到相应日期的待办。'))return
+  if(!await confirmAction({title:'撤销一次性任务完成',confirmLabel:'确认撤销',danger:true,
+    message:expired?
+      '撤销后已过计划日期，将记录为「未完成」，不返回今日待办。确定撤销吗？':
+      '撤销完成？计划日期仍有效时，将重新回到相应日期的待办。'}))return
   await update(()=>api('/tasks/'+t.id,'PATCH',{completed:false}),
     expired?'已撤销，任务记为未完成':'已撤销完成')
   if(!error.value)emit('tasksChanged')
@@ -987,12 +996,14 @@ async function completeTrip(){
  const trip=tripDetail.value
  if(!trip||trip.createdBy!==props.userId||trip.status==='completed'||busy.value)return
  const unfinished=tripItineraryItems.value.length-tripItineraryCompleted.value
- if(!confirm(unfinished>0
-   ?'还有 '+unfinished+' 项行程未勾选，但不影响旅行完成和积分。确定旅行已结束并结算参与人积分吗？'
-   :'确定旅行已结束并结算参与人积分吗？'))return
+ if(!await confirmAction({title:'结束旅行并结算积分',confirmLabel:'确认完成',
+   message:unfinished>0
+    ?'还有 '+unfinished+' 项行程未勾选，但不影响旅行完成和积分。确定旅行已结束并结算参与人积分吗？'
+    :'确定旅行已结束并结算参与人积分吗？'}))return
  const days=tripDays(trip)
  const needsExtraConfirmation=longTripNeedsConfirmation(days)
- if(needsExtraConfirmation&&!confirm(longTripWarning(days)))return
+ if(needsExtraConfirmation&&!await confirmAction({title:'超长旅行二次确认',confirmLabel:'确认结算',
+    message:longTripWarning(days)}))return
  busy.value=true;error.value=''
  try{
   await api('/trips/'+encodeURIComponent(trip.id),'PATCH',
@@ -1023,8 +1034,9 @@ async function saveTripItem(){
  finally{busy.value=false}
 }
 async function removeTripItem(item:Row){
-  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||
-    !confirm('删除这条旅行明细吗？关联的打勾记录也将清除。'))return
+  if(!tripDetail.value||tripDetail.value.createdBy!==props.userId||busy.value)return
+  if(!await confirmAction({title:'删除旅行明细',confirmLabel:'确认删除',danger:true,
+    message:'删除这条旅行明细吗？关联的打勾记录也将清除。'}))return
   try{
     await api('/trips/'+tripDetail.value.id+'/items/'+encodeURIComponent(item.externalId),'DELETE')
     await selectTrip(tripDetail.value.id)
@@ -1039,7 +1051,8 @@ async function previewTrip(){
 async function importTrip(){
   if(!preview.value)return
   const change=preview.value.changes
-  if(change==='update'&&!confirm('会更新原旅行内容，但不会删除已完成事项。确定更新吗？'))return
+  if(change==='update'&&!await confirmAction({title:'更新现有旅行',confirmLabel:'确认更新',
+    message:'会更新原旅行内容，但不会删除已完成事项。确定更新吗？'}))return
   await update(()=>api('/trips/import','POST',{payload:preview.value?.payload,
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
@@ -1089,8 +1102,9 @@ async function saveViewedPhoto(blob:Blob){
 }
 async function deleteViewedPhoto(){
   const selected=openPhoto.value
-  if(!selected||viewerBusy.value||
-    !confirm('确定永久删除这张照片吗？删除后无法恢复。'))return
+  if(!selected||viewerBusy.value)return
+  if(!await confirmAction({title:'永久删除照片',confirmLabel:'永久删除',danger:true,
+    message:'确定永久删除这张照片吗？删除后无法恢复。'}))return
   viewerBusy.value=true;error.value=''
   try{
     if(selected.kind==='cloud'&&selected.id){
@@ -1279,6 +1293,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   <section class="life-area">
     <p v-if="error" role="alert" class="life-error">{{ error }}</p>
     <PageToast :toast="toast" />
+ <ConfirmActionSheet v-if="confirmRequest" :request="confirmRequest"
+   @confirm="acceptConfirm" @cancel="cancelConfirm"/>
 
     <template v-if="mode==='today'">
       <!-- Extra reminders are pinned above today's checklist in App.vue; here only anniversaries remain. -->
