@@ -232,19 +232,33 @@ export function jstYearWindow(year){
  return {start,end}
 }
 
+export function jstMonthWindow(year,month){
+ const start=new Date(Date.UTC(year,month-1,1,-9)).toISOString()
+ const end=new Date(Date.UTC(year,month,1,-9)).toISOString()
+ return {start,end}
+}
+
 export async function pointsHistoryRoute(request,db,session){
  if(request.method!=='GET')return json({error:'method_not_allowed'},405)
  const url=new URL(request.url)
- const current=new Date(Date.now()+9*3600000).getUTCFullYear()
+ const jstNow=new Date(Date.now()+9*3600000)
+ const current=jstNow.getUTCFullYear()
  const selected=url.searchParams.get('year')||String(current)
+ // An unfiltered request defaults to the current JST month. Explicit
+ // year-only requests from older clients continue to show the full year.
+ const selectedMonth=url.searchParams.get('month')??(url.searchParams.has('year')?
+   '':String(jstNow.getUTCMonth()+1).padStart(2,'0'))
  const pageText=url.searchParams.get('page')||'1'
  const requestedMember=url.searchParams.get('member')||''
  const selectedCategory=url.searchParams.get('category')||'all'
  if(!validYear(selected,current)||!/^\d{1,5}$/.test(pageText)||
+   !/^(|0[1-9]|1[0-2])$/.test(selectedMonth)||
    Number(pageText)<1||Number(pageText)>9999||
    (requestedMember.length>100)||!Object.hasOwn(POINTS_CATEGORY_FILTERS,selectedCategory))
    return json({error:'invalid_input'},400)
  const year=Number(selected),page=Number(pageText),{start,end}=jstYearWindow(year)
+ // Monthly filtering affects only the event list; the summary stays annual.
+ const detailWindow=selectedMonth?jstMonthWindow(year,Number(selectedMonth)):{start,end}
  const h=session.household_id,u=session.user_id
  const raw=annualPointLedgerSql()
  const display=pointsDisplayLedgerSql(raw)
@@ -273,11 +287,11 @@ export async function pointsHistoryRoute(request,db,session){
     FROM display WHERE ${period} AND (?5='' OR userId=?5)
       AND ${categoryRule}
     ORDER BY datetime(stamp) DESC,category DESC,label DESC,eventId DESC
-    LIMIT 5 OFFSET ?6`).bind(h,start,end,u,requestedMember,(page-1)*5).all(),
+    LIMIT 5 OFFSET ?6`).bind(h,detailWindow.start,detailWindow.end,u,requestedMember,(page-1)*5).all(),
   db.prepare(`${display}
     SELECT COUNT(*) AS total FROM display WHERE ${period}
       AND (?5='' OR userId=?5) AND ${categoryRule}`)
-      .bind(h,start,end,u,requestedMember).first()
+      .bind(h,detailWindow.start,detailWindow.end,u,requestedMember).first()
  ])
  const byUser=new Map((totals.results||[]).map(x=>[x.userId,x]))
  const rows=(members.results||[]).map(member=>{
@@ -292,7 +306,7 @@ export async function pointsHistoryRoute(request,db,session){
  })
  const total=Number(count?.total)||0
  return json({year,currentYear:current,members:rows,memberFilter:requestedMember,
-   categoryFilter:selectedCategory,
+   categoryFilter:selectedCategory,monthFilter:selectedMonth,
    entries:(history.results||[]).map(x=>({
      ...x,amount:Number(x.amount),contribution:Number(x.contribution),
      ticketCost:x.ticketCost===null?null:Number(x.ticketCost),
