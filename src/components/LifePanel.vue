@@ -1865,8 +1865,9 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
                   <b class="detail-name">{{ period.title }} · {{ period.periodKey }}{{ period.goalMode==='monthly'?'月':'年' }}</b>
                   <small>截止：{{ period.periodEnd }} · 目标 ¥{{ Number(period.targetAmount).toLocaleString('ja-JP') }}</small>
                   <small v-if="period.actualAmount!==null">
-                    实际估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
-                    <StatusBadge :code="period.status==='pending'?'verification_pending':period.status" /> ·
+                    收支估算 ¥{{ Number(period.actualAmount).toLocaleString('ja-JP') }} ·
+                    <StatusBadge :code="period.status==='pending'?'verification_pending':period.status"
+                      :label="period.status==='met'?'估算达标':period.status==='shortfall'?'估算不足':undefined" /> ·
                     {{ Number(period.differenceAmount)>0?'不足 ¥'+Number(period.differenceAmount).toLocaleString('ja-JP'):
                        Number(period.differenceAmount)<0?'超额 ¥'+Math.abs(Number(period.differenceAmount)).toLocaleString('ja-JP'):'差额 ¥0' }}
                   </small>
