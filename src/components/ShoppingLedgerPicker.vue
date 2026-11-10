@@ -114,13 +114,13 @@ onMounted(()=>{void check()})
 .ledger-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 .ledger-dates label{display:grid;gap:5px;min-width:0;font-size:12px;color:#607c6d}
 .ledger-dates input{width:100%;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #cadbd1;border-radius:9px;padding:9px;font-size:12px;background:#fff}
-.ledger-entry{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:8px 0;border-bottom:1px solid #e1ebe4}
-.ledger-entry span{min-width:0;overflow-wrap:anywhere}
-.shopping-ledger button{border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
+.ledger-entry{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;padding:10px 0;border-bottom:1px solid #e1ebe4;min-width:0}
+.ledger-entry span{flex:1;min-width:0;overflow-wrap:anywhere}.ledger-entry button{flex:0 1 auto;max-width:55%}
+.shopping-ledger button{min-height:44px;touch-action:manipulation;border:0;border-radius:9px;padding:9px;font-size:12px;background:#478869;color:#fff}
 .shopping-ledger button:disabled{opacity:.5}.shopping-ledger .ledger-close{background:#e4eee7;color:#3e775a}
 .shopping-ledger .ledger-unlink{background:#fff;color:#ac5e4c;border:1px solid #edc8bf}
 .shopping-linked{display:grid;gap:8px;padding:9px 0;border-top:1px solid #d9eadf}
 .shopping-linked>b{font-size:12px;color:#496c59}
 .ledger-error{color:#a14d37;font-size:12px}
-@media(max-width:600px){.ledger-dates{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.ledger-dates{grid-template-columns:minmax(0,1fr)}.shopping-ledger>.ledger-search{width:100%}.ledger-entry button{max-width:48%;font-size:12px}.ledger-entry{align-items:center}}
 </style>
