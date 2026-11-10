@@ -1,3 +1,5 @@
+> **2026-11-10 R2 私有相册发布前要求**：只存在一个 `homeflow-family-media` Bucket；其 managed r2.dev Domain 必须 disabled，自定义域名列表为空。生产 `[[r2_buckets]]` 绑定 `MEDIA`；Preview 不绑定（测试保持本机存储），不得公开 Bucket。对两个 D1 分别执行仅一次 `0051_private_media_cleanup.sql` 并登记，校验 media_assets.deleted_at 存在、所有外键有效、原有照片/积分不变，再合并部署。验证 300KiB 上传拒绝、私有与家庭读权限、单张删除与 R2 重试、回收站永久清除、ZIP 云端备份；真机相册与离线问题仍需验收。
+
 > **2026-11-10 新增 08:00 JST 补发检查与通知状态迁移**：生产 Cron 06:00 和 08:00，08:00 不重复结算储值或清理积分；静音成员到 08:00 结束时补发原未送达通知，已发送者不重复，08:00 仍静音则只保留站内。0050 迁移为通知表安全重建，保留所有 ID/已读/去重字段，先 Preview 后 Production 应用并登记，验证外键 0；新代码健康检查要求已完成此迁移。ZIP 只读核对附带本人奖励券与折扣流水，不重发奖励；原有数据库内容及两个成员的安静时间保持不变。
 
 > **2026-11-09 生产/预览最新已核验基线（本轮审查前）**：GitHub main `988372c` 的 Validate 和 Deploy 工作流已成功；Cloudflare Production/Preview 均已部署该版本，各自 D1 已登记 **51/51** 条迁移，最新为 `0049_lottery_balanced_coupons.sql`，`PRAGMA foreign_key_check` 均为 0。生产存在 2 条家庭成员关系、4 条 Push 订阅（不等于实际设备数/通知送达）。继续保留 Issue #4 的真实手机、双账号、离线/ZIP 和家計簿端到端验收。

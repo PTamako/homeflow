@@ -9,7 +9,7 @@ import {syncStateRoute,bumpHouseholdRevision,bumpMemberRevision,personalMutation
 import {planSummaryRoute} from './plan-summary.js'
 import {searchRoute} from './search.js'
 import {tripsRoute} from './trips.js'
-import {mediaRoute} from './media.js'
+import {mediaRoute,runMediaCleanup} from './media.js'
 import {remindersRoute} from './reminders.js'
 import {backupRoute} from './backup.js'
 import {pushRoute,runPushSchedule,sendCompletionFeedback} from './webpush.js'
@@ -59,7 +59,7 @@ async function routeRequest(request,env,ctx,state){
         if(path==='/api/push/config'||path==='/api/push/subscriptions'||path==='/api/push/send-now'||path==='/api/push/send-task'||path==='/api/push/send-family')return pushRoute(request,env,path,session)
         if(path==='/api/reminders'||path==='/api/reminders/snooze'||path==='/api/reminders/preferences'||path==='/api/reminders/item')return remindersRoute(request,env.DB,session)
         if(path==='/api/export')return backupRoute(request,env.DB,session)
-        if(path==='/api/recycle'||path==='/api/recycle/restore'||path==='/api/recycle/empty')return recycleRoute(request,env.DB,path,session)
+        if(path==='/api/recycle'||path==='/api/recycle/restore'||path==='/api/recycle/empty')return recycleRoute(request,env.DB,path,session,env)
         if(path==='/api/portable'||path.startsWith('/api/portable/'))return portableRoute(request,env.DB,path,session)
         if(path==='/api/finance'||path.startsWith('/api/finance/'))return financeRoute(request,env,path,session,onComplete)
         if(path==='/api/tasks'||path.startsWith('/api/tasks/'))
@@ -152,6 +152,8 @@ export default {
       }
       // Purge expired inbox rows on the existing 06:00 JST cron; tasks/plans are never deleted.
       if(!catchUp)try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
+      // Daily recovery for R2 deletes that failed after a user removed photos.
+      if(!catchUp)try{await runMediaCleanup(env)}catch{console.warn('homeflow_r2_cleanup_failed')}
       // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
         {job:jobNames[index],...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:

@@ -11,6 +11,11 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
+# Private bucket: no public domain, no r2.dev access, objects only through session-authenticated Worker.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "homeflow-family-media"
+
 [triggers]
 crons = ["0 * * * *"] # One free-tier trigger: hourly; daily at 06:00 JST, quiet-hour catch-up through 23:00 JST
 

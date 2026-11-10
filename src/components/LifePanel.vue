@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
 import {computed,ref,watch,nextTick,onBeforeUnmount,onMounted} from 'vue'
-import {listLocalPhotos,saveLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
+import {listLocalPhotos,saveLocalPhoto,deleteLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import {upcomingWithinDays} from '../today-presentation.mjs'
 import FinancePanel from './FinancePanel.vue'
@@ -297,7 +297,7 @@ async function toggleAnniversaryArchive(item:Row){
 }
 async function removeItem(kind:EditableKind,item:Row){
  if(!canEdit(item))return
- const warning=kind==='memories'?'删除回忆后，本机照片不会一起删除，请先备份。':
+ const warning=kind==='memories'?'回忆进入回收站后暂时保留云端照片以便恢复；永久清空回收站时将删除 R2 中的照片。本机未同步照片需自行清理。':
    kind==='routines'?'删除定期计划？以前的完成记录会保留。':'确定删除这条记录吗？'
  if(!confirm(warning))return
  await update(()=>api('/'+kind+'/'+item.id,'DELETE'),'已删除')
@@ -1025,13 +1025,51 @@ async function importTrip(){
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
 }
+async function uploadPhoto(memoryId:string,blob:Blob){
+  const response=await fetch('/api/media/upload?memoryId='+encodeURIComponent(memoryId),{
+    method:'POST',credentials:'same-origin',
+    headers:{'content-type':'image/jpeg'},body:blob
+  })
+  if(!response.ok){
+    const info=await response.json().catch(()=>({error:'photo_upload_failed'}))
+    throw Error(String(info.error||'photo_upload_failed'))
+  }
+}
 async function removeCloudPhoto(id:string){
-  if(!confirm('删除这张云端照片吗？本机原图不会删除。'))return
+  if(!confirm('永久删除这张照片？R2 云端文件也会删除，此操作不能撤销。'))return
   try{
-    await api('/media/'+id,'DELETE')
+    const result=await api('/media/'+id,'DELETE')
     await loadPhotos()
-    notify('云端照片已删除')
+    notify(result.pendingCleanup?'照片已隐藏，R2 删除失败后会自动重试':'R2 云端照片已删除')
   }catch(e){error.value=(e as Error).message}
+}
+async function removeDevicePhoto(memoryId:string,index:number){
+  if(!confirm('永久删除这张仅存本机的照片？'))return
+  try{
+    await deleteLocalPhoto(props.userId,memoryId,index)
+    await loadPhotos()
+    notify('本机照片已删除')
+  }catch(e){error.value=(e as Error).message}
+}
+async function syncLocalPhotos(memoryId:string){
+  if(!cloudEnabled.value||busy.value)return
+  busy.value=true;error.value=''
+  let count=0
+  try{
+    const originals=await listLocalPhotos(props.userId,memoryId)
+    for(const blob of originals){
+      const compressed=await compressPhoto(new File([blob],memoryId+'.jpg',{type:'image/jpeg'}))
+      await uploadPhoto(memoryId,compressed)
+      // Never discard the device copy until the server confirms upload.
+      await deleteLocalPhoto(props.userId,memoryId,0)
+      count++
+    }
+    await loadPhotos()
+    notify('已将 '+count+' 张照片同步到私人 R2 云相册')
+  }catch(e){
+    error.value='已同步 '+count+' 张，剩余照片仍在本机：'+(e as Error).message
+    await loadPhotos()
+  }finally{busy.value=false}
 }
 async function addMemory(){
   if(!memoryTitle.value.trim()||!memoryDate.value)return
@@ -1040,16 +1078,16 @@ async function addMemory(){
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
       happenedOn:memoryDate.value,visibility:memoryVisibility.value})
     if(result.id)for(const f of photoFiles.value.slice(0,10)){
-      await saveLocalPhoto(props.userId,result.id,f)
+      const compressed=await compressPhoto(f)
       if(cloudEnabled.value){
         try{
-          const compressed=await compressPhoto(f)
-          const sent=await fetch('/api/media/upload?memoryId='+encodeURIComponent(result.id),{
-            method:'POST',credentials:'same-origin',
-            headers:{'content-type':'image/jpeg'},body:compressed})
-          if(!sent.ok)notify('本机照片已保存，但云端备份部分失败','warning')
-        }catch{notify('本机照片已保存，但云端暂不可用','warning')}
-      }
+          await uploadPhoto(result.id,compressed)
+          // Photos successfully stored in R2 are not duplicated in IndexedDB.
+        }catch{
+          await saveLocalPhoto(props.userId,result.id,f)
+          notify('云端照片上传失败，已保存至本机，稍后可同步','warning')
+        }
+      }else await saveLocalPhoto(props.userId,result.id,f)
     }
     memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
     showMemoryForm.value=false
@@ -1992,9 +2030,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <option value="private">仅自己</option>
             </select>
           </label>
-          <label>可选照片（仅存本机）
+          <label>可选照片（每张最多 300 KB）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">{{ cloudEnabled?'本机与云端保存':'照片仅存本机，请备份' }}</p>
+          <p class="life-caption">{{ cloudEnabled?'保存在私人 R2 云相册，可同步家庭共享照片':'照片仅存本机，可通过 ZIP 备份' }}</p>
           <button :disabled="busy">保存到时光轴</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
@@ -2029,14 +2067,19 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
               <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
               <button v-if="remote.uploadedBy===props.userId" type="button" class="life-link"
-                @click="removeCloudPhoto(remote.id)">删除云端照片</button>
+                @click="removeCloudPhoto(remote.id)">删除照片（含 R2）</button>
             </div>
           </div>
           <div v-if="photos[m.id]?.length" class="memory-photos">
             <div v-for="(image,i) in photos[m.id]" :key="image">
               <img :src="image" :alt="m.title+' 照片 '+(i+1)" loading="lazy"/>
               <button type="button" class="life-link" @click="downloadLocalPhoto(localPhotoBlobs[m.id][i],m.id+'-'+(i+1)+'.jpg')">保存照片</button>
+              <button type="button" class="life-link" @click="removeDevicePhoto(m.id,i)">删除本机照片</button>
             </div>
+            <button v-if="cloudEnabled&&m.created_by===props.userId" type="button"
+              class="life-link" :disabled="busy" @click="syncLocalPhotos(m.id)">
+              将本机照片同步到私人云端
+            </button>
           </div>
           <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
             </div>

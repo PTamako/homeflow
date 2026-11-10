@@ -28,7 +28,7 @@ const files=['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.
   '0032_settlement_origin.sql','0033_completion_points.sql','0034_rewards_shop.sql',
   '0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql',
   '0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql',
-  '0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql','0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql']
+  '0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql','0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql','0051_private_media_cleanup.sql']
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')

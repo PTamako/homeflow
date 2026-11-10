@@ -10,8 +10,12 @@ async function store():Promise<IDBDatabase> {
     r.onerror=()=>reject(r.error||Error('本机相册打开失败'))
   })
 }
+export const MAX_PHOTO_BYTES=300*1024
+/** Both cloud and offline photos use <= 300KiB JPEG. Quality-only compression
+ * is insufficient for noisy iPhone images, so dimensions also shrink. */
 async function compress(file:File):Promise<Blob>{
-  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)throw Error('仅支持 12MB 以下的 JPEG/PNG/WebP')
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)
+    throw Error('仅支持 12MB 以下的 JPEG/PNG/WebP')
   const src=URL.createObjectURL(file)
   try{
     const image=new Image()
@@ -20,12 +24,24 @@ async function compress(file:File):Promise<Blob>{
     if(image.naturalWidth*image.naturalHeight>35000000)throw Error('图片尺寸过大')
     const ratio=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight))
     const canvas=document.createElement('canvas')
-    canvas.width=Math.max(1,Math.round(image.naturalWidth*ratio))
-    canvas.height=Math.max(1,Math.round(image.naturalHeight*ratio))
+    let width=Math.max(1,Math.round(image.naturalWidth*ratio))
+    let height=Math.max(1,Math.round(image.naturalHeight*ratio))
     const ctx=canvas.getContext('2d')
     if(!ctx)throw Error('图片处理失败')
-    ctx.drawImage(image,0,0,canvas.width,canvas.height)
-    return new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('照片压缩失败')),'image/jpeg',0.8))
+    const jpeg=(quality:number)=>new Promise<Blob>((resolve,reject)=>
+      canvas.toBlob(blob=>blob?resolve(blob):reject(Error('照片压缩失败')),'image/jpeg',quality))
+    for(let step=0;step<12;step++){
+      canvas.width=width;canvas.height=height
+      ctx.drawImage(image,0,0,width,height)
+      for(const quality of [0.82,0.68,0.52,0.38,0.24]){
+        const blob=await jpeg(quality)
+        if(blob.size<=MAX_PHOTO_BYTES)return blob
+      }
+      if(width<=64&&height<=64)break
+      width=Math.max(1,Math.round(width*0.76))
+      height=Math.max(1,Math.round(height*0.76))
+    }
+    throw Error('照片无法压缩到 300KB 以下')
   }finally{URL.revokeObjectURL(src)}
 }
 export async function saveLocalPhoto(userId:string,memoryId:string,file:File){
@@ -84,3 +100,24 @@ export async function restoreLocalPhoto(userId:string,memoryId:string,blob:Blob,
 }
 
 export async function compressPhoto(file:File):Promise<Blob>{return compress(file)}
+
+/** Remove exactly one device photo after a successful R2 upload or manual delete. */
+export async function deleteLocalPhoto(userId:string,memoryId:string,index:number):Promise<void>{
+  const db=await store()
+  const base=userId+':'+memoryId
+  const tx=db.transaction('photos','readonly')
+  const obj=tx.objectStore('photos')
+  const keys=obj.getAllKeys(IDBKeyRange.bound(base+':',base+':\uffff'))
+  const legacy=obj.get(base)
+  const all=await new Promise<IDBValidKey[]>((resolve,reject)=>{
+    tx.oncomplete=()=>resolve([...(legacy.result?[base]:[]),...(keys.result||[])])
+    tx.onerror=()=>reject(tx.error||Error('本机照片读取失败'))
+  }).catch(e=>{db.close();throw e})
+  if(!Number.isSafeInteger(index)||index<0||index>=all.length){db.close();throw Error('照片序号已失效')}
+  await new Promise<void>((resolve,reject)=>{
+    const write=db.transaction('photos','readwrite')
+    write.objectStore('photos').delete(all[index])
+    write.oncomplete=()=>resolve()
+    write.onerror=()=>reject(write.error||Error('本机照片删除失败'))
+  }).finally(()=>db.close())
+}
