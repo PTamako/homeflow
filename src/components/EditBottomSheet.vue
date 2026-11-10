@@ -155,7 +155,7 @@ function unlockSheetScroll(){
 @keyframes sheet-fade{from{opacity:0}to{opacity:1}}
 @keyframes sheet-slide{from{transform:translate(-50%,32px);opacity:.9}
  to{transform:translate(-50%,0);opacity:1}}
-@media(pointer:coarse) and (max-width:1100px){
+@media(pointer:coarse){
  .edit-sheet-header{padding-inline:16px}
  .edit-sheet-content{padding:12px 15px calc(20px + env(safe-area-inset-bottom));
   scroll-padding-bottom:calc(110px + env(safe-area-inset-bottom))}
