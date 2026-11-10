@@ -333,7 +333,7 @@ async function restore(){
   font-size:17px;line-height:1.4;color:#26392f}
 .backup-help{position:static;display:inline-flex;align-items:center;flex:none}
 .backup-help-trigger{display:inline-flex;align-items:center;justify-content:center;
-  width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:0;
+  width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;
   border-radius:50%;background:transparent;color:#527962;appearance:none;-webkit-appearance:none}
 .backup-help-glyph{display:inline-flex;align-items:center;justify-content:center;
   width:15px;height:15px;min-width:15px;min-height:15px;box-sizing:border-box;
