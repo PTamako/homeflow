@@ -1115,7 +1115,7 @@ async function uploadAdditionalPhotos(memoryId:string,event:Event){
   const files=Array.from(input.files||[]).slice(0,10)
   input.value=''
   if(!files.length||busy.value)return
-  if(!cloudEnabled.value){error.value='私人云端不可用，未保存到手机，请联网后重试。';return}
+  if(!cloudEnabled.value){error.value='照片上传暂不可用，请联网后重试。';return}
   busy.value=true;error.value=''
   let completed=0,failed=0
   try{
@@ -1123,9 +1123,9 @@ async function uploadAdditionalPhotos(memoryId:string,event:Event){
       try{await uploadPhoto(memoryId,await compressPhoto(file));completed++}
       catch{failed++}
     }
-    await loadPhotos()
+    await loadPhotos(activeFetch,true)
     if(failed)error.value=completed+' 张成功，'+failed+' 张未上传且未存本地，请重新选择原图重试。'
-    else notify('照片已上传至私人 R2：'+completed+' 张')
+    else notify('已上传 '+completed+' 张照片')
   }finally{busy.value=false}
 }
 async function syncLocalPhotos(memoryId:string){
@@ -1143,17 +1143,17 @@ async function syncLocalPhotos(memoryId:string){
       await deleteLocalPhoto(props.userId,memoryId,0)
       count++
     }
-    await loadPhotos()
-    notify('已将 '+count+' 张照片同步到私人 R2 云相册')
+    await loadPhotos(activeFetch,true)
+    notify('已同步 '+count+' 张照片')
   }catch(e){
-    error.value='已同步 '+count+' 张，剩余照片仍在本机：'+(e as Error).message
-    await loadPhotos()
+    error.value='已同步 '+count+' 张，剩余旧照片请稍后重试：'+(e as Error).message
+    await loadPhotos(activeFetch,true)
   }finally{busy.value=false}
 }
 async function addMemory(){
   if(!memoryTitle.value.trim()||!memoryDate.value)return
   if(photoFiles.value.length&&!cloudEnabled.value){
-    error.value='R2 云端暂不可用，照片不会保存到手机。请联网后重试。'
+    error.value='照片上传暂不可用，请联网后重试。'
     return
   }
   error.value='';busy.value=true
@@ -1232,6 +1232,7 @@ onBeforeUnmount(()=>{
   for(const x of photoUrls)URL.revokeObjectURL(x)
   document.removeEventListener('visibilitychange',refreshOnResume)
 })
+watch(()=>[props.mode,props.userId],()=>{openPhoto.value=null})
 watch(()=>[props.mode,props.userId,props.profileRevision,props.syncRevision],fetchMode,{immediate:true})
 watch([planScope,planType,planYear,planMonth],()=>{
   historicalGoalDetailRequest++
