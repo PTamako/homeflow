@@ -30,7 +30,9 @@ test('both completion paths guard long trips and pass acknowledgement to API',()
  const server=readFileSync(new URL('../worker/trips.js',import.meta.url),'utf8')
  for(const file of [list,editor]){
   assert.match(file,/longTripNeedsConfirmation\(days\)/)
-  assert.match(file,/confirm\(longTripWarning\(days\)\)/)
+  assert.match(file,/message:longTripWarning\(days\)/)
+  assert.match(file,/await confirmAction\(\{/)
+  assert.doesNotMatch(file,/if\(!confirm\(/)
   assert.match(file,/longTripConfirmed:true/)
  }
  assert.match(server,/trip\.status!=='completed'/)
