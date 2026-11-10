@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DateField from './DateField.vue'
 import {computed,ref,watch,nextTick,onBeforeUnmount,onMounted} from 'vue'
-import {listLocalPhotos,saveLocalPhoto,deleteLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
+import {listLocalPhotos,deleteLocalPhoto,downloadLocalPhoto,compressPhoto} from '../local-media'
 import {anniversaryMilestoneLabel} from '../anniversary-milestones.mjs'
 import {upcomingWithinDays} from '../today-presentation.mjs'
 import FinancePanel from './FinancePanel.vue'
@@ -1025,8 +1025,10 @@ async function importTrip(){
     visibility:'household',targetTripId:importTargetId.value||null,confirmReplace:change==='update'}))
   if(!error.value){paste.value='';preview.value=null;tripImportOpen.value=false}
 }
-async function uploadPhoto(memoryId:string,blob:Blob){
-  const response=await fetch('/api/media/upload?memoryId='+encodeURIComponent(memoryId),{
+async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
+  const url='/api/media/upload?memoryId='+encodeURIComponent(memoryId)+
+    (restoreKey?'&restoreKey='+encodeURIComponent(restoreKey):'')
+  const response=await fetch(url,{
     method:'POST',credentials:'same-origin',
     headers:{'content-type':'image/jpeg'},body:blob
   })
@@ -1051,6 +1053,24 @@ async function removeDevicePhoto(memoryId:string,index:number){
     notify('本机照片已删除')
   }catch(e){error.value=(e as Error).message}
 }
+async function uploadAdditionalPhotos(memoryId:string,event:Event){
+  const input=event.target as HTMLInputElement
+  const files=Array.from(input.files||[]).slice(0,10)
+  input.value=''
+  if(!files.length||busy.value)return
+  if(!cloudEnabled.value){error.value='私人云端不可用，未保存到手机，请联网后重试。';return}
+  busy.value=true;error.value=''
+  let completed=0,failed=0
+  try{
+    for(const file of files){
+      try{await uploadPhoto(memoryId,await compressPhoto(file));completed++}
+      catch{failed++}
+    }
+    await loadPhotos()
+    if(failed)error.value=completed+' 张成功，'+failed+' 张未上传且未存本地，请重新选择原图重试。'
+    else notify('照片已上传至私人 R2：'+completed+' 张')
+  }finally{busy.value=false}
+}
 async function syncLocalPhotos(memoryId:string){
   if(!cloudEnabled.value||busy.value)return
   busy.value=true;error.value=''
@@ -1058,9 +1078,11 @@ async function syncLocalPhotos(memoryId:string){
   try{
     const originals=await listLocalPhotos(props.userId,memoryId)
     for(const blob of originals){
+      const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))
+      const marker=Array.from(digest,x=>x.toString(16).padStart(2,'0')).join('')
       const compressed=await compressPhoto(new File([blob],memoryId+'.jpg',{type:'image/jpeg'}))
-      await uploadPhoto(memoryId,compressed)
-      // Never discard the device copy until the server confirms upload.
+      await uploadPhoto(memoryId,compressed,marker)
+      // Only a confirmed R2 upload permits deleting the legacy device copy.
       await deleteLocalPhoto(props.userId,memoryId,0)
       count++
     }
@@ -1073,26 +1095,29 @@ async function syncLocalPhotos(memoryId:string){
 }
 async function addMemory(){
   if(!memoryTitle.value.trim()||!memoryDate.value)return
+  if(photoFiles.value.length&&!cloudEnabled.value){
+    error.value='R2 云端暂不可用，照片不会保存到手机。请联网后重试。'
+    return
+  }
   error.value='';busy.value=true
   try{
     const result=await api('/memories','POST',{title:memoryTitle.value,story:memoryStory.value,
       happenedOn:memoryDate.value,visibility:memoryVisibility.value})
-    if(result.id)for(const f of photoFiles.value.slice(0,10)){
-      const compressed=await compressPhoto(f)
-      if(cloudEnabled.value){
-        try{
-          await uploadPhoto(result.id,compressed)
-          // Photos successfully stored in R2 are not duplicated in IndexedDB.
-        }catch{
-          await saveLocalPhoto(props.userId,result.id,f)
-          notify('云端照片上传失败，已保存至本机，稍后可同步','warning')
-        }
-      }else await saveLocalPhoto(props.userId,result.id,f)
+    let failedPhotos=0
+    if(result.id)for(const file of photoFiles.value.slice(0,10)){
+      try{
+        await uploadPhoto(result.id,await compressPhoto(file))
+      }catch{
+        // No local fallback. User may re-select the original Photos file
+        // on the existing memory card if any uploads failed.
+        failedPhotos++
+      }
     }
     memoryTitle.value='';memoryStory.value='';memoryVisibility.value='household';photoFiles.value=[]
     showMemoryForm.value=false
     await fetchMode()
-    if(!toast.value)notify('回忆已保存')
+    if(failedPhotos)notify('回忆已保存，但 '+failedPhotos+' 张照片上传失败，未写入手机。请在回忆下重新选图重试。','warning')
+    else if(!toast.value)notify('回忆已保存')
   }catch(e){error.value=(e as Error).message}
   finally{busy.value=false}
 }
@@ -2032,7 +2057,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </label>
           <label>可选照片（每张最多 300 KB）
             <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
-          <p class="life-caption">{{ cloudEnabled?'保存在私人 R2 云相册，可同步家庭共享照片':'照片仅存本机，可通过 ZIP 备份' }}</p>
+          <p class="life-caption">{{ cloudEnabled?'照片只存私人 R2，不额外保存到手机':'云端暂不可用，无法上传照片，也不会写入本机照片存储' }}</p>
           <button :disabled="busy">保存到时光轴</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
@@ -2063,7 +2088,12 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @edit="edit('memories',m)" @delete="removeItem('memories',m)">
             <div class="memory-swipe-body">
               <div class="memory-swipe-heading"><time>{{ m.happened_on }}</time><h3>{{ m.title }}</h3></div>
-          <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
+          <label v-if="cloudEnabled&&m.created_by===props.userId" class="life-caption">
+              继续添加照片（私人 R2 · 300 KB/张）
+              <input type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="busy"
+                @change="uploadAdditionalPhotos(m.id,$event)" />
+            </label>
+            <div v-if="cloudPhotos[m.id]?.length" class="memory-photos cloud">
             <div v-for="remote in cloudPhotos[m.id]" :key="remote.id">
               <img :src="'/api/media/'+remote.id" :alt="m.title+' 云端照片'" loading="lazy"/>
               <button v-if="remote.uploadedBy===props.userId" type="button" class="life-link"

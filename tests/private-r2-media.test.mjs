@@ -140,3 +140,30 @@ test('trash retains R2 photos until permanent empty; then deletes R2 and D1 meta
   assert.equal(f.media.objects.size,0)
  }finally{f.close()}
 })
+
+test('ZIP restore is idempotent and does not duplicate R2 objects across retries',async()=>{
+ const f=fixture()
+ try{
+  const sourceBytes=jpeg(90)
+  const key=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBytes)),
+    x=>x.toString(16).padStart(2,'0')).join('')
+  const url='https://homeflow.invalid/api/media/upload?memoryId='+memoryId+'&restoreKey='+key
+  const send=()=>mediaRoute(new Request(url,{method:'POST',
+    headers:{'content-type':'image/jpeg'},body:sourceBytes}),f.env,'/api/media/upload',session)
+  const first=await send()
+  assert.equal(first.status,201)
+  const firstId=(await first.json()).id
+  const second=await send()
+  assert.equal(second.status,200)
+  const repeat=await second.json()
+  assert.equal(repeat.id,firstId)
+  assert.equal(repeat.reused,true)
+  assert.equal(f.media.objects.size,1)
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM media_assets').get().n,1)
+  const broken=await mediaRoute(new Request(
+    'https://homeflow.invalid/api/media/upload?memoryId='+memoryId+'&restoreKey=invalid',
+    {method:'POST',headers:{'content-type':'image/jpeg'},body:sourceBytes}),
+    f.env,'/api/media/upload',session)
+  assert.equal(broken.status,400)
+ }finally{f.close()}
+})

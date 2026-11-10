@@ -44,7 +44,7 @@ test('essential recovery warnings remain available without flooding the main UI'
  assert.match(backup,/document\.addEventListener\('keydown',closeHelpOnEscape\)/)
  assert.match(template,/恢复不会覆盖原记录/)
  assert.match(template,/两位家庭成员需各自备份/)
- assert.match(template,/不含密码、未同步任务和云端照片/)
+ assert.match(template,/不含密码与未同步任务/)
  assert.match(template,/<div v-if="preview" class="backup-preview">/)
  assert.match(template,/previewRecordCount/)
  assert.match(template,/previewPhotoCount/)
@@ -55,9 +55,11 @@ test('essential recovery warnings remain available without flooding the main UI'
  assert.match(backup,/confirm:true/)
 })
 
-test('backup and restore logic continues to preserve local photos and portable checks',()=>{
+test('backup reads legacy local photos but restores photos only to private cloud',()=>{
  assert.match(backup,/listLocalPhotos\(props.userId,id\)/)
- assert.match(backup,/restoreLocalPhoto\(props.userId,match\[1\]/)
+ assert.doesNotMatch(backup,/restoreLocalPhoto\(/)
+ assert.match(backup,/\/api\/media\/upload\?memoryId=/)
+ assert.match(backup,/restoreKey/)
  assert.match(backup,/snapshot.format!=='homeflow.portable'/)
  assert.match(backup,/zipSync\(files,\{level:0\}\)/)
  assert.match(backup,/unzipSync\(raw,/)
@@ -65,6 +67,6 @@ test('backup and restore logic continues to preserve local photos and portable c
 })
 
 test('export entry warns about unsynced tasks and device-local pictures',()=>{
- assert.match(template,/仅备份当前账号与本机照片/)
- assert.match(template,/请先同步待办，其他设备需分别备份/)
+ assert.match(template,/备份当前账号及可访问的云端照片/)
+ assert.match(template,/请先同步待办/)
 })

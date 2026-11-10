@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed,onBeforeUnmount,onMounted,ref} from 'vue'
 import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate'
-import {listLocalPhotos,restoreLocalPhoto} from '../local-media'
+import {listLocalPhotos,compressPhoto} from '../local-media'
 import AppIcon from './AppIcon.vue'
 import PageToast from './PageToast.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
@@ -178,7 +178,7 @@ async function chooseArchive(file:File|null){
     }
     preview.value=snapshot
     notify('校验完成：可以恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
-      ' 条记录和 '+Object.keys(photos.value).length+' 张本机照片')
+      ' 条记录和 '+Object.keys(photos.value).length+' 张待恢复云端照片')
   }catch(e){error.value=(e as Error).message;preview.value=null}
   finally{pending.value=false}
 }
@@ -203,13 +203,21 @@ async function restore(){
       if(!match||!ownMemories.has(match[1]))continue
       const raw=new Uint8Array(bytes)
       const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',raw))
-      const marker=Array.from(digest.slice(0,12),x=>x.toString(16).padStart(2,'0')).join('')
-      await restoreLocalPhoto(props.userId,match[1],new Blob([raw.buffer as ArrayBuffer],{type:'image/jpeg'}),marker)
+      const marker=Array.from(digest,x=>x.toString(16).padStart(2,'0')).join('')
+      // ZIP restore is cloud-only: no IndexedDB photo write, even on failure.
+      // The original ZIP file remains available to retry a partial restore.
+      const compressed=await compressPhoto(new File([raw],match[2]+'.jpg',{type:'image/jpeg'}))
+      const upload=await fetch('/api/media/upload?memoryId='+encodeURIComponent(match[1])+
+        '&restoreKey='+marker,{
+        method:'POST',credentials:'same-origin',cache:'no-store',
+        headers:{'content-type':'image/jpeg'},body:compressed
+      })
+      if(!upload.ok)throw Error('私人 R2 照片恢复失败，请保持 ZIP 文件并联网重试')
       restoredPhotos++
     }
     const count=Object.values(restoreCounts.value).reduce((n,i)=>n+i,0)
     status.value=''
-    notify('恢复完成：新增 '+count+' 条记录，恢复照片 '+restoredPhotos+' 张')
+    notify('恢复完成：新增 '+count+' 条记录，恢复到私人 R2 照片 '+restoredPhotos+' 张（不占本机照片存储）')
     restoreSheetOpen.value=false
   }catch(e){
     error.value='恢复未全部完成：'+(e as Error).message+'。已有记录未被覆盖，可以重新导入继续。'
@@ -229,7 +237,7 @@ async function restore(){
           <strong>备份与恢复说明</strong>
           <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
           <p>ZIP 另含积分、抽奖、本人奖励券（含使用与到期）、商城折扣流水的只读核对档案。为避免重复发分或发券，恢复操作不会重新导入这类流水；完整账本灾难恢复需使用 D1 备份。</p>
-          <p>不含密码、未同步任务和云端照片；其他设备的本机照片须分别备份。请妥善保存 ZIP 文件。</p>
+          <p>包含当前账号可读取的云端及旧本机照片；不含密码与未同步任务。恢复照片时只上传私人 R2，不写入手机的照片数据库。手动下载 ZIP 仍会占用你选择的保存位置。</p>
         </div>
       </span>
     </div>
@@ -238,7 +246,7 @@ async function restore(){
         <h3>下载备份</h3>
         <small v-if="lastExportAt">上次：{{ lastExportAt.slice(0,10) }}</small>
       </div>
-      <p class="backup-caption">仅备份当前账号与本机照片，另附家庭积分只读历史档案；请先同步待办，其他设备需分别备份。</p>
+      <p class="backup-caption">备份当前账号及可访问的云端照片，包含本设备尚未迁移的旧照片；请先同步待办。手动下载 ZIP 会占用保存位置空间。</p>
       <button type="button" class="backup-download" :disabled="pending" @click="exportArchive">
         {{ pending?'处理中…':'下载备份' }}
       </button>
@@ -262,7 +270,7 @@ async function restore(){
         </span>
       </div>
       <div v-if="preview" class="backup-preview">
-        <p>校验通过：{{ previewRecordCount }} 条记录 · {{ previewPhotoCount }} 张本机照片</p>
+        <p>校验通过：{{ previewRecordCount }} 条记录 · {{ previewPhotoCount }} 张待恢复到 R2 的照片</p>
         <button type="button" class="backup-restore" :disabled="pending" @click="restore">确认恢复</button>
       </div>
       </div>

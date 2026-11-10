@@ -1,13 +1,19 @@
-// Photos are private to this browser/device until the user enables R2.
-// The app never stores photo bytes in Cloudflare D1.
+// Legacy device photo reader/remover only. New uploads and ZIP restores go to private R2.
+// Do not add IndexedDB photo writes; photos never reside in D1.
 const NAME='homeflow-local-media-v1'
-async function store():Promise<IDBDatabase> {
+// Access only an existing legacy database. Reading cloud-only albums must not
+// create an empty IndexedDB database merely to look for older local pictures.
+async function store():Promise<IDBDatabase|null> {
   return new Promise((resolve,reject)=>{
-    if(!('indexedDB' in window))return reject(Error('本机照片存储不可用'))
+    if(!('indexedDB' in window))return resolve(null)
     const r=indexedDB.open(NAME,1)
-    r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('photos'))r.result.createObjectStore('photos')}
+    let abortedNewDatabase=false
+    r.onupgradeneeded=()=>{
+      abortedNewDatabase=true
+      r.transaction?.abort()
+    }
     r.onsuccess=()=>resolve(r.result)
-    r.onerror=()=>reject(r.error||Error('本机相册打开失败'))
+    r.onerror=()=>abortedNewDatabase?resolve(null):reject(r.error||Error('本机相册打开失败'))
   })
 }
 export const MAX_PHOTO_BYTES=300*1024
@@ -44,19 +50,9 @@ async function compress(file:File):Promise<Blob>{
     throw Error('照片无法压缩到 300KB 以下')
   }finally{URL.revokeObjectURL(src)}
 }
-export async function saveLocalPhoto(userId:string,memoryId:string,file:File){
-  const blob=await compress(file)
-  const db=await store()
-  const key=userId+':'+memoryId+':'+crypto.randomUUID()
-  return new Promise<void>((resolve,reject)=>{
-    const tx=db.transaction('photos','readwrite')
-    tx.objectStore('photos').put(blob,key)
-    tx.oncomplete=()=>{db.close();resolve()}
-    tx.onerror=()=>{db.close();reject(tx.error||Error('照片存储失败'))}
-  })
-}
 export async function listLocalPhotos(userId:string,memoryId:string):Promise<Blob[]>{
   const db=await store()
+  if(!db)return []
   const legacy=userId+':'+memoryId
   const begin=legacy+':'
   const range=IDBKeyRange.bound(begin,begin+'\uffff')
@@ -84,26 +80,12 @@ export async function downloadLocalPhoto(blob:Blob,name:string){
 }
 
 
-/** Restore one original locally compressed photo with an idempotent key. */
-export async function restoreLocalPhoto(userId:string,memoryId:string,blob:Blob,sourceKey:string):Promise<void>{
-  if(!/^[0-9a-f-]{36}$/i.test(memoryId)||blob.type!=='image/jpeg'||blob.size>5*1024*1024)
-    throw new Error('照片文件无效')
-  if(!/^[a-zA-Z0-9_.-]{1,120}$/.test(sourceKey))throw new Error('照片恢复标记无效')
-  const db=await store()
-  return new Promise<void>((resolve,reject)=>{
-    const tx=db.transaction('photos','readwrite')
-    tx.objectStore('photos').put(blob,userId+':'+memoryId+':restore-'+sourceKey)
-    tx.oncomplete=()=>{db.close();resolve()}
-    tx.onerror=()=>{db.close();reject(tx.error||new Error('照片恢复失败'))}
-    tx.onabort=()=>{db.close();reject(tx.error||new Error('照片恢复被取消'))}
-  })
-}
-
 export async function compressPhoto(file:File):Promise<Blob>{return compress(file)}
 
 /** Remove exactly one device photo after a successful R2 upload or manual delete. */
 export async function deleteLocalPhoto(userId:string,memoryId:string,index:number):Promise<void>{
   const db=await store()
+  if(!db)throw Error('没有需要删除的本机旧照片')
   const base=userId+':'+memoryId
   const tx=db.transaction('photos','readonly')
   const obj=tx.objectStore('photos')
