@@ -49,7 +49,7 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
  <section class="search-panel">
   <form @submit.prevent="load(false)">
    <label>查找计划、任务、纪念日与回忆
-    <input v-model="keyword" @input="resetFilters" maxlength="60" placeholder="输入关键词" required autocomplete="off"/>
+    <input v-model="keyword" @input="resetFilters" maxlength="60" placeholder="输入关键词" required autocomplete="off" enterkeyhint="search" inputmode="search"/>
    </label>
    <div class="search-filters">
     <select v-model="kind" @change="resetFilters" aria-label="搜索类型">
@@ -85,14 +85,14 @@ const years=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
 .search-panel{position:static;width:100%;max-height:none;overflow:visible;background:transparent;border:0;border-radius:0;box-shadow:none;padding:0;display:grid;gap:12px}
 .search-panel form{display:grid;gap:8px}
 .search-panel label{display:grid;gap:5px;font-size:12px}
-.search-panel input,.search-panel select{width:100%;min-width:0;min-height:39px;border:1px solid #dce5de;border-radius:9px;padding:7px;background:white;color:#24382d}
+.search-panel input,.search-panel select{width:100%;min-width:0;min-height:44px;border:1px solid #dce5de;border-radius:9px;padding:7px;background:white;color:#24382d}
 .search-filters{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.75fr);gap:5px}
 .search-filters select{font-size:12px;padding:5px}
-.search-submit,.search-more{background:#43866a;color:white;border:0;border-radius:10px;padding:8px 12px;font-size:12px}
+.search-submit,.search-more{min-height:44px;background:#43866a;color:white;border:0;border-radius:10px;padding:8px 12px;font-size:12px}
 .search-results{display:grid;gap:2px}
-.search-results button{min-width:0;overflow-wrap:anywhere;border:0;border-bottom:1px solid #edf0eb;padding:8px 2px;text-align:left;background:white;display:grid;gap:3px}
+.search-results button{min-height:52px;min-width:0;overflow-wrap:anywhere;border:0;border-bottom:1px solid #edf0eb;padding:8px 2px;text-align:left;background:white;display:grid;gap:3px}
 .search-results small{color:#839287;font-size:11px}
 .search-error{color:#a04f3b;font-size:12px}
 .search-close{border:0;background:transparent;font-size:12px;color:#739481}
-@media(max-width:520px){.search-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.search-filters select:first-child{grid-column:1/-1}}
+@media(max-width:520px){.search-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.search-filters select:first-child{grid-column:1/-1}.search-panel input,.search-panel select{font-size:16px}.search-results{overscroll-behavior:contain}}
 </style>

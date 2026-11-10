@@ -1,0 +1,85 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+
+const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
+const ui=source('src/ui-system.css')
+const global=source('src/style.css')
+const sheet=source('src/components/EditBottomSheet.vue')
+const mobile=source('src/components/MobileSelectHost.vue')
+const plans=source('src/components/PlanCreator.vue')
+const search=source('src/components/GlobalSearch.vue')
+const photo=source('src/components/PhotoViewer.vue')
+const ledger=source('src/components/ShoppingLedgerPicker.vue')
+const points=source('src/components/HouseholdPoints.vue')
+const date=source('src/components/DateField.vue')
+
+test('unified mobile ergonomics cover every tab, list, button, checkbox and swipe row',()=>{
+ assert.match(ui,/@media\(pointer:coarse\) and \(max-width:1100px\)/)
+ assert.match(ui,/\.shell :is\(button,\[role="button"\],a\[href\]\)\{touch-action:manipulation\}/)
+ assert.match(ui,/:is\(input\[type="checkbox"\],input\[type="radio"\]\)/)
+ assert.match(ui,/min-width:22px;min-height:22px/)
+ assert.match(ui,/\.shell :is\(\.today-category-tabs,\.plan-filter-tabs,\.notice-tabs,\.archive-tabs,\.points-tabs\)/)
+ assert.match(ui,/\.shell :is\(\.once-task-editor,\.detail-editor,\.plan-creator/)
+ assert.match(global,/.section-add-button\{[^}]*width:44px;height:44px;/)
+ assert.match(global,/@media\(pointer:coarse\)/)
+ assert.match(global,/env\(safe-area-inset-bottom\)/)
+ assert.match(ui,/@media\(max-width:380px\)/)
+})
+
+test('form sheets remain keyboard-safe with sticky mobile save actions',()=>{
+ assert.match(sheet,/scroll-padding-block-end:calc\(110px \+ env\(safe-area-inset-bottom\)\)/)
+ assert.match(sheet,/min-height:44px/)
+ assert.match(sheet,/font-size:16px/)
+ assert.match(sheet,/:deep\(\.creator-actions\)/)
+ assert.match(sheet,/:deep\(\.editor-actions\)/)
+ assert.match(sheet,/:deep\(\.pet-form-actions\)/)
+ assert.match(sheet,/:deep\(\.annual-more-actions\)/)
+ assert.match(sheet,/position:sticky;bottom:calc\(-20px - env\(safe-area-inset-bottom\)\)/)
+ assert.match(sheet,/onBeforeUnmount\(\(\)=>\{/)
+ assert.match(sheet,/window\.scrollTo\(0,savedScrollY\)/)
+})
+
+test('plan creation uses 44px actions, number keypad and a compact two-column mobile picker',()=>{
+ assert.match(plans,/.plan-creator.compact .creator-trigger\{width:44px;height:44px;/)
+ assert.match(plans,/.plan-fields .day-option\{[^}]*min-height:44px;/)
+ assert.match(plans,/@media\(max-width:380px\)\{\.plan-type-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/)
+ assert.match(plans,/v-model.number="form.quantity" type="number" inputmode="numeric"/)
+ assert.match(plans,/v-model.number="form.intervalDays" type="number" inputmode="numeric"/)
+ assert.match(plans,/<EditBottomSheet v-if="opened" title="新增计划"/)
+})
+
+test('search, receipts and photo preview use bottom sheets and thumb-sized actions',()=>{
+ assert.match(search,/<EditBottomSheet v-if="open" title="全站搜索"/)
+ assert.match(search,/enterkeyhint="search" inputmode="search"/)
+ assert.match(search,/.search-results button\{min-height:52px;/)
+ assert.match(ui,/.shell .search-panel\{\s*position:static/)
+ assert.match(ledger,/<EditBottomSheet title="查看关联账单"/)
+ assert.match(ledger,/.shopping-ledger button\{min-height:44px;/)
+ assert.match(ledger,/.ledger-entry\{display:flex;/)
+ assert.match(photo,/touch-action:pinch-zoom/)
+ assert.match(photo,/.photo-viewer-actions button,.photo-viewer-tools button\{min-height:44px;/)
+ assert.match(photo,/env\(safe-area-inset-bottom\)/)
+})
+
+test('points marketplace and annual ledger have large buttons without losing paging',()=>{
+ assert.match(points,/.quantity-stepper button\{display:grid;place-items:center;min-width:44px;min-height:44px;/)
+ assert.match(points,/.link-btn\{border:0;[^}]*min-height:44px;/)
+ assert.match(points,/.redeem-btn,.save-btn\{min-height:44px;/)
+ assert.match(points,/.points-tabs button\{min-height:44px;/)
+ assert.match(points,/historyMatchesFilters&&history&&history.totalPages>1/)
+ assert.match(points,/<EditBottomSheet v-if="historyFilterOpen" title="筛选积分明细"/)
+})
+
+test('native dates remain iOS-native and choosing items never adds backend or local storage calls',()=>{
+ assert.match(date,/type="date"/)
+ assert.match(date,/:min="min"/)
+ assert.match(date,/:max="max"/)
+ assert.match(date,/@input="update"/)
+ assert.match(date,/aria-label="清空日期"/)
+ const hostScript=mobile.slice(0,mobile.indexOf('</script>'))
+ assert.doesNotMatch(hostScript,/fetch\(|localStorage|sessionStorage|indexedDB|document\.cookie/)
+ assert.match(hostScript,/select\.dispatchEvent\(new Event\('change',\{bubbles:true\}\)\)/)
+ assert.match(hostScript,/if\(select\.value===option\.value\)return/)
+ assert.match(hostScript,/select\.matches\(':disabled'\)/)
+})

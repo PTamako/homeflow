@@ -43,7 +43,7 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .family-section-heading h2{margin:0;display:flex;align-items:center;gap:10px;min-width:0}
 .family-section-heading h2{flex:1}
 .family-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:none;min-width:0}
-.section-add-button{display:inline-grid;place-items:center;flex:0 0 38px;width:38px;height:38px;min-width:38px;
+.section-add-button{display:inline-grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;
   padding:0;border:1px solid #c9dfcf;border-radius:11px;background:#f3f9f4;color:#3b8364;
   touch-action:manipulation}
 .section-add-button:hover{background:#e8f4eb;border-color:#a8ceb5}
@@ -245,3 +245,17 @@ input[type="date"]::-webkit-date-and-time-value{text-align:left;min-width:0}
 .task-meta .hf-status,.once-task-summary .hf-status,.life-row small .hf-status{
   vertical-align:middle;margin-inline:1px;
 }
+
+/* All tabs: one-handed action access and iPhone/iPad safe-area behavior. */
+@media(pointer:coarse){
+ .nav{padding-bottom:calc(10px + env(safe-area-inset-bottom));overscroll-behavior-x:contain}
+ .nav-item{min-height:54px;touch-action:manipulation}
+ .section-add-button,.profile-button,.pet-profile-trigger{touch-action:manipulation}
+ .topbar .search-trigger{min-width:44px;min-height:44px}
+ .auth-content :is(input,button){min-height:44px}
+ :is(.search-trigger,.section-add-button,.pet-profile-trigger,.nav-item):focus-visible{
+  outline:2px solid #43866a;outline-offset:2px;
+ }
+}
+@media(max-width:380px){.topbar{padding-inline:12px}.brand{font-size:18px}
+ .brand-icon{width:34px;height:34px}}

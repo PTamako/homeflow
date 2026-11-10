@@ -68,9 +68,11 @@ test('swipe controls have 44px affordance and accessible keyboard focus',()=>{
  assert.match(swipe,/@keydown.enter.self="activateRow"/)
 })
 
-test('mobile search behaves as a bounded sheet and daily page retains one swipe-per-task',()=>{
- assert.match(css,/\.shell \.search-panel\{\s*position:fixed/)
- assert.match(css,/max-height:calc\(100dvh - env\(safe-area-inset-top\) - 100px\)/)
+test('mobile global search stays inside its bounded bottom sheet and daily items retain swipe actions',()=>{
+ assert.match(css,/\.shell \.search-panel\{\s*position:static/)
+ assert.match(css,/max-height:none/)
+ assert.match(read('src/components/GlobalSearch.vue'),/<EditBottomSheet v-if="open" title="全站搜索"/)
+ assert.match(read('src/components/EditBottomSheet.vue'),/max-height:calc\(100dvh - 14px\)/)
  assert.match(css,/\.shell \.nav\{/)
  assert.match(app,/scope="today-unified"/)
  assert.match(life,/scope="shopping"/)

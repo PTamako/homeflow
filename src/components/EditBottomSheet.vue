@@ -112,12 +112,44 @@ function unlockSheetScroll(){
 .edit-sheet-close:disabled{opacity:.45}
 .edit-sheet-close:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .edit-sheet-content{min-height:0;overflow:auto;overscroll-behavior:contain;
+ scroll-padding-block-end:calc(110px + env(safe-area-inset-bottom));
  -webkit-overflow-scrolling:touch;padding:16px 18px calc(18px + env(safe-area-inset-bottom))}
 .edit-sheet-content :deep(input),.edit-sheet-content :deep(select),
-.edit-sheet-content :deep(textarea){max-width:100%}
+.edit-sheet-content :deep(textarea){max-width:100%;min-width:0}
+.edit-sheet-content :deep(button){touch-action:manipulation}
+.edit-sheet-content :deep(button:focus-visible){outline:2px solid #43866a;outline-offset:2px}
+.edit-sheet-content :deep(input:focus-visible),
+.edit-sheet-content :deep(select:focus-visible),
+.edit-sheet-content :deep(textarea:focus-visible){outline:2px solid #43866a;outline-offset:1px}
 @keyframes sheet-fade{from{opacity:0}to{opacity:1}}
 @keyframes sheet-slide{from{transform:translate(-50%,32px);opacity:.9}
  to{transform:translate(-50%,0);opacity:1}}
+@media(pointer:coarse) and (max-width:1100px){
+ .edit-sheet-header{padding-inline:16px}
+ .edit-sheet-content{padding:12px 15px calc(20px + env(safe-area-inset-bottom));
+  scroll-padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+ .edit-sheet-content :deep(input:not([type="checkbox"]):not([type="radio"])),
+ .edit-sheet-content :deep(select),
+ .edit-sheet-content :deep(textarea){font-size:16px;min-height:44px}
+ .edit-sheet-content :deep(input[type="checkbox"]),
+ .edit-sheet-content :deep(input[type="radio"]){min-width:22px;min-height:22px}
+ .edit-sheet-content :deep(button){min-height:44px}
+ .edit-sheet-content :deep(.creator-actions),
+ .edit-sheet-content :deep(.editor-actions),
+ .edit-sheet-content :deep(.task-push-actions),
+ .edit-sheet-content :deep(.pet-form-actions),
+ .edit-sheet-content :deep(.plan-memory-actions),
+ .edit-sheet-content :deep(.annual-more-actions){
+  position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom));
+  z-index:2;margin-top:12px;padding:10px 0 calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to bottom,#fff9,#fff 16px);
+  box-shadow:0 -7px 15px #fff9;
+ }
+ .edit-sheet-content :deep(.creator-actions button),
+ .edit-sheet-content :deep(.editor-actions button),
+ .edit-sheet-content :deep(.task-push-actions button),
+ .edit-sheet-content :deep(.annual-more-actions button){min-width:0;min-height:46px}
+}
 @media(prefers-reduced-motion:reduce){.edit-sheet-scrim,.edit-sheet-dialog{animation:none}}
 @media(min-width:760px){
  .edit-sheet-dialog{bottom:16px;border-radius:22px;max-height:calc(100dvh - 32px)}
