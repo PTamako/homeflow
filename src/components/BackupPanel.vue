@@ -39,8 +39,12 @@ onBeforeUnmount(()=>{
 })
 const {toast,notify}=usePageToast()
 const selectedFile=ref<File|null>(null),photos=ref<Record<string,Uint8Array>>({}),restoreCounts=ref<Record<string,number>>({})
+const readonlySharedCount=ref(0)
 const previewRecordCount=computed(()=>preview.value?Object.values(preview.value.records).reduce((count,items)=>count+items.length,0):0)
-const previewPhotoCount=computed(()=>Object.keys(photos.value).length)
+const ownMemoryIds=computed(()=>new Set((preview.value?.records.memories||[]).map(item=>String(item.id))))
+const previewPhotoCount=computed(()=>Object.keys(photos.value).filter(path=>
+  ownMemoryIds.value.has(path.split('/')[1])).length)
+const readonlyPhotoCount=computed(()=>Object.keys(photos.value).length-previewPhotoCount.value)
 function bodyOk(snapshot:any):snapshot is Snapshot{
   if(!snapshot||snapshot.format!=='homeflow.portable'||snapshot.schemaVersion!==1||
     !snapshot.records||typeof snapshot.records!=='object')return false
@@ -95,7 +99,24 @@ async function exportArchive(){
       }while(cursor)
       audit[key]=entries
     }
+    // Other family members' shared records and pictures are archived, but
+    // their authorship must never be overwritten by ordinary JSON restore.
+    const sharedMemories:Record<string,unknown>[]=[]
+    let sharedCursor:string|null=null
+    do{
+      const page=await api('/portable/shared-memories'+
+        (sharedCursor?'?cursor='+encodeURIComponent(sharedCursor):''))
+      if(page.dataset!=='sharedMemories'||!Array.isArray(page.items))
+        throw Error('家庭共享回忆备份读取失败')
+      sharedMemories.push(...page.items)
+      if(sharedMemories.length>50000)throw Error('共享回忆过多，请分批备份')
+      sharedCursor=typeof page.nextCursor==='string'?page.nextCursor:null
+    }while(sharedCursor)
     const files:Record<string,Uint8Array>={
+      'shared-memories-readonly.json':strToU8(JSON.stringify({
+        format:'homeflow.shared-memories',schemaVersion:1,
+        restorePolicy:'read-only-original-creators',items:sharedMemories
+      })),
       'homeflow.json':strToU8(JSON.stringify(snapshot)),
       'points-and-rewards-audit.json':strToU8(JSON.stringify({
         format:'homeflow.points-audit',schemaVersion:1,exportedAt:snapshot.exportedAt,
@@ -107,7 +128,8 @@ async function exportArchive(){
     if(size>50*1024*1024)throw Error('备份内容超过 50MB，请使用 D1 数据库备份')
     // Include device-only and private R2 photos, only for memories in this
     // authenticated user's export. No bucket/public URLs or object keys.
-    for(const m of snapshot.records.memories||[]){
+    // Uses only the authenticated photo API: no R2 List or public endpoint.
+    for(const m of [...(snapshot.records.memories||[]),...sharedMemories]){
       const id=String(m.id)
       if(!/^[0-9a-f-]{36}$/i.test(id))continue
       let number=0
@@ -142,12 +164,13 @@ async function exportArchive(){
     save(archive,'homeflow-backup-'+new Date().toISOString().slice(0,10)+'.zip','application/zip')
     lastExportAt.value=new Date().toISOString()
     try{localStorage.setItem(backupStorageKey,lastExportAt.value)}catch{}
-    notify('备份文件已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+' 条记录，'+count+' 张本机和云端照片')
+    notify('备份已生成：'+Object.values(snapshot.records).reduce((n,list)=>n+list.length,0)+
+      ' 条本人记录，'+sharedMemories.length+' 条他人共享回忆（只读），共 '+count+' 张照片')
   }catch(e){error.value=(e as Error).message}
   finally{pending.value=false}
 }
 async function chooseArchive(file:File|null){
-  selectedFile.value=file;preview.value=null;photos.value={};error.value='';status.value=''
+  selectedFile.value=file;preview.value=null;photos.value={};readonlySharedCount.value=0;error.value='';status.value=''
   if(!file)return
   pending.value=true
   try{
@@ -160,10 +183,18 @@ async function chooseArchive(file:File|null){
         if(fileInfo.originalSize>55*1024*1024)throw Error('单个备份文件过大')
         expanded+=fileInfo.originalSize
         if(expanded>65*1024*1024)throw Error('备份解压后过大')
-        return fileInfo.name==='homeflow.json'||/^photos\/[0-9a-f-]{36}\/\d{4}\.jpg$/i.test(fileInfo.name)
+        return fileInfo.name==='homeflow.json'||fileInfo.name==='shared-memories-readonly.json'||
+          /^photos\/[0-9a-f-]{36}\/\d{4}\.jpg$/i.test(fileInfo.name)
       }})
       if(!files['homeflow.json'])throw Error('不是有效的 HomeFlow 备份')
       snapshot=JSON.parse(strFromU8(files['homeflow.json'])) as Snapshot
+      if(files['shared-memories-readonly.json']){
+        const shared=JSON.parse(strFromU8(files['shared-memories-readonly.json']))
+        if(shared?.format!=='homeflow.shared-memories'||shared?.schemaVersion!==1||
+          !Array.isArray(shared.items)||shared.items.length>50000)
+          throw Error('家庭共享回忆附件无效')
+        readonlySharedCount.value=shared.items.length
+      }
       for(const [key,data] of Object.entries(files)){
         if(/^photos\/[0-9a-f-]{36}\/\d{4}\.jpg$/i.test(key)){
           if(data.length>5*1024*1024)throw Error('照片文件过大')
@@ -182,8 +213,9 @@ async function chooseArchive(file:File|null){
       }
     }
     preview.value=snapshot
-    notify('校验完成：可以恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
-      ' 条记录和 '+Object.keys(photos.value).length+' 张待恢复云端照片')
+    notify('校验完成：可恢复 '+Object.values(snapshot.records).reduce((n,a)=>n+a.length,0)+
+      ' 条本人记录和 '+previewPhotoCount.value+' 张照片；另存 '+readonlySharedCount.value+
+      ' 条他人共享回忆和 '+readonlyPhotoCount.value+' 张只读照片')
   }catch(e){error.value=(e as Error).message;preview.value=null}
   finally{pending.value=false}
 }
@@ -242,7 +274,7 @@ async function restore(){
           <strong>备份与恢复说明</strong>
           <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
           <p>ZIP 另含积分、抽奖、本人奖励券（含使用与到期）、商城折扣流水的只读核对档案。为避免重复发分或发券，恢复操作不会重新导入这类流水；完整账本灾难恢复需使用 D1 备份。</p>
-          <p>包含当前账号可读取的云端及旧本机照片；不含密码与未同步任务。恢复照片时只上传私人 R2，不写入手机的照片数据库。手动下载 ZIP 仍会占用你选择的保存位置。</p>
+          <p>ZIP 含本人记录、可查看的家庭共享回忆及其照片。其他人创建的共享回忆作为只读档案保存，需要原创建者自行恢复以保留归属。照片恢复到私人 R2，不写入手机相册数据库。</p>
         </div>
       </span>
     </div>
@@ -274,7 +306,8 @@ async function restore(){
         </span>
       </div>
       <div v-if="preview" class="backup-preview">
-        <p>校验通过：{{ previewRecordCount }} 条记录 · {{ previewPhotoCount }} 张待恢复到 R2 的照片</p>
+        <p>校验通过：{{ previewRecordCount }} 条本人记录 · {{ previewPhotoCount }} 张可恢复照片</p>
+        <p v-if="readonlySharedCount||readonlyPhotoCount">另外保存 {{ readonlySharedCount }} 条他人共享回忆 · {{ readonlyPhotoCount }} 张只读照片（须由原创建者恢复）</p>
         <button type="button" class="backup-restore" :disabled="pending" @click="restore">确认恢复</button>
       </div>
       </div>
