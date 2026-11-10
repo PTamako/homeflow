@@ -66,6 +66,8 @@ const availableYears=computed(()=>{
  const latest=new Date(Date.now()+9*3600000).getUTCFullYear()
  return Array.from({length:Math.max(1,latest-2025)},(_,i)=>latest-i)
 })
+const historyMonths=Array.from({length:12},(_,i)=>String(12-i).padStart(2,'0'))
+const historyPeriod=computed(()=>historyYear.value+'-'+(historyMonth.value||'all'))
 const historyMemberName=(id:string)=>history.value?.members.find(m=>m.userId===id)?.displayName||'家庭成员'
 const categoryNames:Record<string,string>={
  complete:'任务完成',bounty:'指定奖励',reserved:'指定扣分',
@@ -97,6 +99,12 @@ const historyPath=()=>'/points/history?year='+historyYear.value+
  '&month='+encodeURIComponent(historyMonth.value)+
  '&page='+historyPage.value+'&member='+encodeURIComponent(historyMember.value)+
  '&category='+encodeURIComponent(historyCategory.value)
+function chooseHistoryPeriod(period:string){
+ const matched=/^(\d{4})-(0[1-9]|1[0-2]|all)$/.exec(period)
+ if(!matched)return
+ void goToHistory(1,Number(matched[1]),historyMember.value,historyCategory.value,
+   matched[2]==='all'?'':matched[2])
+}
 async function goToHistory(page:number,year=historyYear.value,member=historyMember.value,
  category=historyCategory.value,month=historyMonth.value){
  if(!props.active||!expanded.value||view.value!=='history'||busy.value)return
@@ -703,15 +711,14 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
      <div class="annual-history-head">
        <b>年度积分明细</b>
        <div class="annual-filters">
-         <label>年度
-           <select :value="historyYear" @change="goToHistory(1,Number(($event.target as HTMLSelectElement).value))">
-             <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
-           </select>
-         </label>
-         <label>月份
-           <select :value="historyMonth" aria-label="积分历史月份" @change="goToHistory(1,historyYear,historyMember,historyCategory,($event.target as HTMLSelectElement).value)">
-             <option value="">全年</option>
-             <option v-for="month in Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))" :key="month" :value="month">{{ Number(month) }}月</option>
+         <label>年月
+           <select :value="historyPeriod" aria-label="积分历史年月"
+             @change="chooseHistoryPeriod(($event.target as HTMLSelectElement).value)">
+             <optgroup v-for="year in availableYears" :key="year" :label="year+'年'">
+               <option :value="year+'-all'">{{ year }}年全年</option>
+               <option v-for="month in historyMonths" :key="year+'-'+month"
+                 :value="year+'-'+month">{{ year }}年{{ Number(month) }}月</option>
+             </optgroup>
            </select>
          </label>
          <label>成员
@@ -1322,9 +1329,12 @@ const dateText=(stamp:string)=>stamp?new Date(stamp).toLocaleDateString('zh-CN',
 .lottery-coupon-row button{flex:none}
 .annual-history-head{display:grid;gap:8px}
 .annual-history-head>b,.annual-ledger-title>b{font-size:14px;color:#426b50}
-.annual-filters{display:flex;flex-wrap:wrap;align-items:end;gap:8px}
+.annual-filters{display:grid;grid-template-columns:minmax(0,1.45fr) repeat(2,minmax(0,1fr));gap:7px;align-items:end}
 .annual-filters label{display:grid;gap:3px;min-width:0;font-size:11px;color:#748778}
-.annual-filters select{min-width:90px;max-width:160px;height:35px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;padding:5px 7px;font-size:13px}
+.annual-filters select{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;
+  height:40px;border:1px solid #d3e4d8;border-radius:8px;background:#fff;color:#345f48;
+  padding:5px 6px;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:360px){.annual-filters{gap:5px}.annual-filters select{font-size:11px;padding-inline:4px}}
 .annual-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .annual-member{display:grid;align-content:start;gap:7px;padding:10px;min-width:0;background:#f7faf6;border:1px solid #e2ece3;border-radius:11px}
 .annual-member>b{font-size:13px;color:#355f47;overflow-wrap:anywhere}
