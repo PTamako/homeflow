@@ -28,9 +28,9 @@ test('rapid category changes reject late old-view responses, including switching
 })
 
 test('read acknowledgments never invalidate the newly selected view mid-flight',()=>{
- assert.match(inbox,/const account=props\.userId,scope=noticeScope\.value/)
- assert.match(inbox,/account!==props\.userId\|\|scope!==noticeScope\.value\)return/)
- assert.match(inbox,/day!==props\.todayDate\|\|view\.value!=='received'\)return/)
+ assert.match(inbox,/const account=props\.userId,scope=noticeScope\.value,epoch=viewEpoch/)
+ assert.match(inbox,/account!==props\.userId\|\|scope!==noticeScope\.value\|\|epoch!==viewEpoch\)return/)
+ assert.match(inbox,/day!==props\.todayDate\|\|view\.value!=='received'\|\|epoch!==viewEpoch\)return/)
  assert.match(inbox,/focusedReceivedLoad&&view\.value==='received'\)return/)
  assert.match(inbox,/viewEpoch\+\+/)
  assert.match(inbox,/scope!==noticeScope\.value\|\|epoch!==viewEpoch\)return/)
