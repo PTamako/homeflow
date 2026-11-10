@@ -2173,7 +2173,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                   <h3>{{ m.title }}</h3>
                   <label v-if="cloudEnabled&&m.created_by===props.userId" class="memory-add-photo"
                     title="添加照片" aria-label="添加照片">
-                    <span aria-hidden="true">＋</span>
+                    <AppIcon name="image-upload" :size="19" />
                     <input type="file" multiple accept="image/jpeg,image/png,image/webp"
                       aria-label="添加照片" :disabled="busy" @change="uploadAdditionalPhotos(m.id,$event)"/>
                   </label>
@@ -2363,7 +2363,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .memory-heading-content h3{min-width:0;flex:1}
 .memory-add-photo{flex:none;display:grid;place-items:center;position:relative;
  width:34px;height:34px;border:1px solid #c8ddcc;border-radius:50%;
- background:#eff7f0;color:#45876a;font-size:25px;line-height:1;cursor:pointer}
+ background:#eff7f0;color:#45876a;cursor:pointer}
 .memory-add-photo input{position:absolute;inset:0;opacity:0;width:100%;height:100%;
  cursor:pointer;font-size:0}
 .memory-add-photo:focus-within{outline:2px solid #43866a;outline-offset:2px}

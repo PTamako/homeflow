@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   name: 'sun'|'clipboard-check'|'images'|'house'|'paw'|'users'|'calendar-heart'|'repeat'|
-    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'|'gift'|'award'|'handshake'|'ticket'|'history'|'link'
+    'heart'|'wallet'|'shopping'|'plane'|'book-heart'|'bell'|'archive'|'plus'|'image-upload'|'shield'|'check'|'chevron-down'|'ellipsis'|'settings'|'gift'|'award'|'handshake'|'ticket'|'history'|'link'
   size?: number
 }>(), {size:22})
 </script>
@@ -18,6 +18,12 @@ withDefaults(defineProps<{
     <template v-else-if="name==='images'">
       <rect x="3" y="3" width="14" height="14" rx="2"/><path d="m3 12 3-3 4 4 2-2 5 5"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/>
       <circle cx="12.5" cy="7.5" r="1"/>
+    </template>
+    <template v-else-if="name==='image-upload'">
+      <path d="M14 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"/>
+      <circle cx="8.5" cy="8.5" r="1.5"/>
+      <path d="m3 17 5-5 3 3 2-2 2 2"/>
+      <path d="m17 18 3-3 3 3M20 15v7"/>
     </template>
     <template v-else-if="name==='house'">
       <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21v-8h6v8"/>
