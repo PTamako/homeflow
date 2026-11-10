@@ -14,6 +14,7 @@ import EditBottomSheet from './EditBottomSheet.vue'
 import PhotoThumbnail from './PhotoThumbnail.vue'
 import PhotoViewer from './PhotoViewer.vue'
 import {invalidatePhoto,setPhotoCacheUser} from '../photo-session-cache'
+import {beginPhotoPicker,finishPhotoPicker} from '../photo-picker-foreground.mjs'
 import ShoppingLedgerPicker from './ShoppingLedgerPicker.vue'
 import ReminderItemEditor from './ReminderItemEditor.vue'
 import SwipeActions from './SwipeActions.vue'
@@ -1045,6 +1046,7 @@ async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
     const info=await response.json().catch(()=>({error:'photo_upload_failed'}))
     throw Error(String(info.error||'photo_upload_failed'))
   }
+  return await response.json() as {id:string;byteSize?:number;reused?:boolean}
 }
 function previewCloudPhoto(remote:{id:string;uploadedBy:string},memoryId:string,title:string,url:string){
   openPhoto.value={kind:'cloud',id:remote.id,uploadedBy:remote.uploadedBy,
@@ -1111,21 +1113,36 @@ async function loadMorePhotos(memoryId:string){
   finally{photoPageBusy.value[memoryId]=false}
 }
 async function uploadAdditionalPhotos(memoryId:string,event:Event){
+  // Returning from the native picker is not a page navigation. In particular,
+  // cancelling it must not make even a single network request or DOM update.
+  finishPhotoPicker()
   const input=event.target as HTMLInputElement
   const files=Array.from(input.files||[]).slice(0,10)
   input.value=''
   if(!files.length||busy.value)return
   if(!cloudEnabled.value){error.value='照片上传暂不可用，请联网后重试。';return}
   busy.value=true;error.value=''
-  let completed=0,failed=0
+  const uploader=props.userId
+  const uploaded:Array<{id:string;uploadedBy:string}>=[]
+  let failed=0
   try{
     for(const file of files){
-      try{await uploadPhoto(memoryId,await compressPhoto(file));completed++}
-      catch{failed++}
+      try{
+        const created=await uploadPhoto(memoryId,await compressPhoto(file))
+        if(!created?.id)throw Error('photo_upload_missing_id')
+        uploaded.push({id:created.id,uploadedBy:uploader})
+      }catch{failed++}
     }
-    await loadPhotos(activeFetch,true)
-    if(failed)error.value=completed+' 张成功，'+failed+' 张未上传且未存本地，请重新选择原图重试。'
-    else notify('已上传 '+completed+' 张照片')
+    // Keep all loaded memory pages, cursors, other photos, and scroll position.
+    // Successful uploads affect only their own memory; no fetchMode/loadPhotos.
+    if(uploaded.length&&props.mode==='memories'&&props.userId===uploader&&
+       items.value.some(item=>item.id===memoryId)){
+      const existing=cloudPhotos.value[memoryId]||[]
+      const known=new Set(existing.map(photo=>photo.id))
+      cloudPhotos.value[memoryId]=[...uploaded.filter(photo=>!known.has(photo.id)),...existing]
+    }
+    if(failed)error.value=uploaded.length+' 张成功，'+failed+' 张未上传，请重新选择照片重试。'
+    else notify('已上传 '+uploaded.length+' 张照片')
   }finally{busy.value=false}
 }
 async function syncLocalPhotos(memoryId:string){
@@ -2136,8 +2153,10 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <option value="private">仅自己</option>
             </select>
           </label>
-          <label>照片（可选）
-            <input type="file" multiple accept="image/jpeg,image/png,image/webp" @change="photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
+          <label @click.capture="beginPhotoPicker()">照片（可选）
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+              @cancel="finishPhotoPicker()"
+              @change="finishPhotoPicker();photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <button :disabled="busy">保存到时光轴</button>
           <button type="button" class="life-cancel" :disabled="busy" @click="showMemoryForm=false">取消</button>
         </form>
@@ -2172,10 +2191,11 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
                 <div class="memory-heading-content">
                   <h3>{{ m.title }}</h3>
                   <label v-if="cloudEnabled&&m.created_by===props.userId" class="memory-add-photo"
-                    title="添加照片" aria-label="添加照片">
+                    title="添加照片" aria-label="添加照片" @click.capture="beginPhotoPicker()">
                     <AppIcon name="image-upload" :size="19" />
                     <input type="file" multiple accept="image/jpeg,image/png,image/webp"
-                      aria-label="添加照片" :disabled="busy" @change="uploadAdditionalPhotos(m.id,$event)"/>
+                      aria-label="添加照片" :disabled="busy"
+                      @cancel="finishPhotoPicker()" @change="uploadAdditionalPhotos(m.id,$event)"/>
                   </label>
                 </div>
               </div>

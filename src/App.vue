@@ -5,6 +5,7 @@ import {listPending,syncPending,removePending,type PendingTaskOp} from './offlin
 import {validLocalPassword,registerPassword,loginPassword} from './auth-crypto'
 import LifePanel from './components/LifePanel.vue'
 import {clearPhotoCache} from './photo-session-cache'
+import {isPhotoPickerOpen,skipPhotoPickerForeground,resetPhotoPickerGuard} from './photo-picker-foreground.mjs'
 import GlobalSearch from './components/GlobalSearch.vue'
 import ManagePage from './components/ManagePage.vue'
 import PetHealthPanel from './components/PetHealthPanel.vue'
@@ -475,6 +476,7 @@ async function submitAuth(){
 }
 async function logout(){
   clearPhotoCache()
+  resetPhotoPickerGuard()
   void setUnreadNotificationCount(0)
   // A browser push endpoint must not keep receiving the old user's private notifications.
   try{
@@ -617,7 +619,7 @@ async function discardPending(id:string){
 // One cheap D1 read every 25 seconds while a PWA is visible.
 const SHARED_SYNC_MS=25000
 async function checkRemoteChanges(){
- if(syncBusy||!user.value||document.visibilityState!=='visible'||!navigator.onLine)return
+ if(syncBusy||!user.value||document.visibilityState!=='visible'||!navigator.onLine||isPhotoPickerOpen())return
  const id=user.value.id
  syncBusy=true
  try{
@@ -674,6 +676,9 @@ function onOnline(){
 }
 function onForeground(){
  if(document.visibilityState!=='visible'||!user.value)return
+ // Native iOS photo pickers trigger focus and visibilitychange without navigation.
+ // Consuming these events avoids resetting memory pages when the user cancels.
+ if(skipPhotoPickerForeground())return
  checkServiceWorkerUpdate()
  const now=Date.now()
  if(now-lastVisibleRefresh<1800)return
