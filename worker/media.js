@@ -41,16 +41,75 @@ export async function runMediaCleanup(env,householdId=null){
 export async function mediaRoute(request,env,path,session){
  const db=env.DB,h=session.household_id,u=session.user_id
  if(path==='/api/media'&&request.method==='GET'){
-   const memoryId=new URL(request.url).searchParams.get('memoryId')
+   const params=new URL(request.url).searchParams
+   const memoryId=params.get('memoryId')
+   const idsParam=params.get('memoryIds')
    if(memoryId&&!uuid.test(memoryId))return json({error:'invalid_input'},400)
-   const query=`SELECT a.id,a.memory_id AS memoryId,a.uploaded_by AS uploadedBy,
-     a.mime_type AS mimeType,a.byte_size AS byteSize,a.created_at AS createdAt
-     FROM media_assets a JOIN memories m ON m.id=a.memory_id
-     WHERE a.household_id=?1 AND a.deleted_at IS NULL AND m.deleted_at IS NULL
-     AND (m.visibility='household' OR m.created_by=?2)`+
-     (memoryId?' AND a.memory_id=?3':'')+' ORDER BY a.created_at DESC,a.id DESC LIMIT 250'
-   const {results}=await db.prepare(query).bind(...(memoryId?[h,u,memoryId]:[h,u])).all()
-   return json({items:results||[],cloudAvailable:!!env.MEDIA})
+   if(memoryId&&idsParam!==null)return json({error:'invalid_input'},400)
+   const cloudAvailable=!!env.MEDIA
+   const baseWhere="a.household_id=?1 AND a.deleted_at IS NULL AND m.deleted_at IS NULL "+
+     "AND (m.visibility='household' OR m.created_by=?2)"
+   const columns="a.id,a.memory_id AS memoryId,a.uploaded_by AS uploadedBy,"+
+     "a.mime_type AS mimeType,a.byte_size AS byteSize,a.created_at AS createdAt"
+   if(idsParam!==null){
+     // First two thumbnails for up to five currently displayed memories.
+     // One D1 statement, zero R2 list operations and no offscreen reads.
+     const ids=idsParam.split(',')
+     if(ids.length<1||ids.length>5||new Set(ids).size!==ids.length||
+        !ids.every(id=>uuid.test(id)))return json({error:'invalid_input'},400)
+     const marks=ids.map((_,i)=>'?'+(i+3)).join(',')
+     const sql='WITH ranked AS (SELECT '+columns+
+       ',ROW_NUMBER() OVER (PARTITION BY a.memory_id ORDER BY a.created_at DESC,a.id DESC) AS rn'+
+       ' FROM media_assets a JOIN memories m ON m.id=a.memory_id WHERE '+baseWhere+
+       ' AND a.memory_id IN ('+marks+')) '+
+       'SELECT * FROM ranked WHERE rn<=3 ORDER BY memoryId,createdAt DESC,id DESC'
+     const {results=[]}=await db.prepare(sql).bind(h,u,...ids).all()
+     const grouped={}
+     for(const row of results){
+       if(!grouped[row.memoryId])grouped[row.memoryId]=[]
+       grouped[row.memoryId].push(row)
+     }
+     const items=[],nextCursors={}
+     for(const id of ids){
+       const rows=grouped[id]||[]
+       const shown=rows.slice(0,2)
+       items.push(...shown.map(({rn,...item})=>item))
+       nextCursors[id]=rows.length>2&&shown.length?
+         shown[shown.length-1].createdAt+'|'+shown[shown.length-1].id:null
+     }
+     return json({items,nextCursors,cloudAvailable})
+   }
+   if(memoryId){
+     const requested=Number(params.get('limit')||5)
+     const raw=params.get('cursor')||''
+     if(!Number.isInteger(requested)||requested<1||requested>10||raw.length>100)
+       return json({error:'invalid_input'},400)
+     let date='',id=''
+     if(raw){
+       const sep=raw.lastIndexOf('|')
+       if(sep<=0)return json({error:'invalid_input'},400)
+       date=raw.slice(0,sep);id=raw.slice(sep+1)
+       if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9:.]+$/.test(date)||!uuid.test(id))
+         return json({error:'invalid_input'},400)
+     }
+     const args=[h,u,memoryId]
+     const cursorSql=raw?' AND (a.created_at<?4 OR (a.created_at=?4 AND a.id<?5))':''
+     if(raw)args.push(date,id)
+     args.push(requested+1)
+     const sql='SELECT '+columns+' FROM media_assets a JOIN memories m ON m.id=a.memory_id '+
+       'WHERE '+baseWhere+' AND a.memory_id=?3'+cursorSql+
+       ' ORDER BY a.created_at DESC,a.id DESC LIMIT ?'+args.length
+     const {results=[]}=await db.prepare(sql).bind(...args).all()
+     const items=results.slice(0,requested),last=items[items.length-1]
+     const nextCursor=results.length>requested&&last?last.createdAt+'|'+last.id:null
+     return json({items,nextCursor,cloudAvailable})
+   }
+   // Legacy endpoint for authenticated callers that need the full catalog.
+   // Timeline itself uses the bounded memoryIds endpoint instead.
+   const sql='SELECT '+columns+' FROM media_assets a JOIN memories m ON m.id=a.memory_id '+
+     'WHERE '+baseWhere+' ORDER BY a.created_at DESC,a.id DESC LIMIT 250'
+   const {results=[]}=await db.prepare(sql).bind(h,u).all()
+   return json({items:results,cloudAvailable})
  }
  if(path==='/api/media/upload'&&request.method==='POST'){
    if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
@@ -116,6 +175,32 @@ export async function mediaRoute(request,env,path,session){
      'content-security-policy':"default-src 'none'; sandbox",
      'referrer-policy':'no-referrer'
    }})
+ }
+ if(match&&request.method==='PUT'){
+   if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
+   // Only the uploader can edit their photo; viewing a family-shared
+   // memory never grants another member edit/delete permissions.
+   const photo=await db.prepare(`SELECT a.storage_key FROM media_assets a
+     JOIN memories m ON m.id=a.memory_id
+     WHERE a.id=?1 AND a.household_id=?2 AND a.uploaded_by=?3
+       AND a.deleted_at IS NULL AND m.deleted_at IS NULL
+       AND (m.visibility='household' OR m.created_by=?3)`)
+     .bind(match[1],h,u).first()
+   if(!photo)return json({error:'not_found'},404)
+   const mime=(request.headers.get('content-type')||'').split(';')[0].toLowerCase()
+   if(mime!=='image/jpeg'||Number(request.headers.get('content-length')||0)>MAX_MEDIA_BYTES)
+     return json({error:'photo_too_large_or_unsupported'},413)
+   const bytes=new Uint8Array(await request.arrayBuffer())
+   if(bytes.length<16||bytes.length>MAX_MEDIA_BYTES||!signatures['image/jpeg'](bytes))
+     return json({error:'invalid_photo'},413)
+   try{
+     // Replace the existing private object, rather than accumulating revisions.
+     await env.MEDIA.put(photo.storage_key,bytes,{httpMetadata:{contentType:mime}})
+     await db.prepare(`UPDATE media_assets SET mime_type=?1,byte_size=?2
+       WHERE id=?3 AND household_id=?4 AND uploaded_by=?5 AND deleted_at IS NULL`)
+       .bind(mime,bytes.length,match[1],h,u).run()
+     return json({ok:true,byteSize:bytes.length})
+   }catch{return json({error:'photo_edit_failed'},503)}
  }
  if(match&&request.method==='DELETE'){
    if(!env.MEDIA)return json({error:'cloud_photo_storage_not_enabled'},503)
