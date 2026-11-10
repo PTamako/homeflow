@@ -30,6 +30,15 @@ const advanceOf=(item:Reminder)=>prefOf(item)?.advanceDays??advanceDays.value
 const priorityOf=(item:Reminder)=>prefOf(item)?.priority||'normal'
 const againOn=ref('')
 const selectedSnoozeId=ref('')
+function closeSnoozeSheet(force=false){
+ if(snoozing.value&&!force)return
+ selectedSnoozeId.value='';againOn.value='';snoozeError.value=''
+}
+function openSnoozeSheet(item:Reminder){
+ const key=item.kind+':'+item.id
+ if(selectedSnoozeId.value===key){closeSnoozeSheet();return}
+ selectedSnoozeId.value=key;againOn.value=tomorrow.value;snoozeError.value=''
+}
 const tomorrow=computed(()=>shiftDay(props.todayDate,1))
 const maxSnoozeDate=computed(()=>shiftDay(props.todayDate,365))
 const visibleSnoozes=computed(()=>[...snoozed.value]
@@ -91,7 +100,7 @@ async function snooze(item:Reminder,againDate?:string){
   items.value=items.value.filter(x=>x.kind!==item.kind||x.id!==item.id)
   snoozed.value=snoozed.value.filter(x=>x.kind!==item.kind||x.id!==item.id)
   snoozed.value.unshift({kind:item.kind,id:item.id,untilOn})
-  selectedSnoozeId.value='';againOn.value=''
+  closeSnoozeSheet(true)
   notify(againDate?'已设置指定日期再提醒':'已设置明天再提醒')
  }catch(e){snoozeError.value=(e as Error).message}
  finally{snoozing.value=false}
@@ -206,7 +215,7 @@ onBeforeUnmount(()=>{requestId++})
        <button class="snooze-button" type="button" :disabled="snoozing"
         @click="snooze(item)">明天</button>
        <button class="snooze-button" type="button" :disabled="snoozing"
-        @click="selectedSnoozeId=selectedSnoozeId===item.kind+':'+item.id?'':item.kind+':'+item.id;againOn=tomorrow">选日期</button>
+        @click="openSnoozeSheet(item)">选日期</button>
        <button v-if="['task','routine','shopping','trip'].includes(item.kind)" class="snooze-button" type="button"
         @click="settingItemKey=settingItemKey===item.kind+':'+item.id?'':item.kind+':'+item.id">单项设置</button>
        <EditBottomSheet v-if="settingItemKey===item.kind+':'+item.id" title="单项提醒设置" :close-disabled="savingItem" @close="settingItemKey=''">
@@ -222,7 +231,7 @@ onBeforeUnmount(()=>{requestId++})
         <button v-if="prefOf(item)" type="button" :disabled="savingItem" @click="saveItem(item,advanceDays,'normal',true)">重置</button>
        </div>
        </EditBottomSheet>
-       <EditBottomSheet v-if="selectedSnoozeId===item.kind+':'+item.id" title="选择再次提醒日期" :close-disabled="snoozing" @close="selectedSnoozeId=''">
+       <EditBottomSheet v-if="selectedSnoozeId===item.kind+':'+item.id" title="选择再次提醒日期" :close-disabled="snoozing" @close="closeSnoozeSheet">
        <div class="snooze-calendar">
         <DateField v-model="againOn" :min="tomorrow" :max="maxSnoozeDate" aria-label="重新提醒日期"/>
         <button type="button" :disabled="snoozing||!againOn||againOn<tomorrow||againOn>maxSnoozeDate"
