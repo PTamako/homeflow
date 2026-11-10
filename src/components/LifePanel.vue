@@ -41,7 +41,7 @@ const listLoading=ref(false)
 // Keep the current plan list mounted while a refresh is pending, including when
 // an editor closes or another household member triggers a sync.
 const planListReady=ref(false)
-let lastPlanQueryKey=''
+const lastPlanQueryKey=ref('')
 let activeFetch=0
 // A deep link may refresh more than once while remote revisions synchronize.
 // Only the first successful focus for this navigation is allowed to scroll.
@@ -408,6 +408,11 @@ watch(()=>props.focusPlanRequest,()=>{
 
 // History defaults to the current JST calendar month; never fetch all years initially.
 const planYear=ref(today().slice(0,4)),planMonth=ref(today().slice(5,7))
+const planQueryKey=computed(()=>[planType.value,planScope.value,planYear.value,
+ planMonth.value,planOutcome.value].join('|'))
+// Preserve old DOM height during iOS navigation without flashing rows from
+// the previous filter. Same-filter refreshes retain their visible list.
+const planGridStale=computed(()=>lastPlanQueryKey.value!==planQueryKey.value)
 const memoryYear=ref(''),memoryMonth=ref('')
 const yearOptions=Array.from({length:16},(_,i)=>String(Number(today().slice(0,4))-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
@@ -896,8 +901,8 @@ async function fetchMode(){
       // Only read the category that the user actually opened. The full view
       // still fetches all six; wishes also need goals for linked funding labels.
       const selected=planType.value
-      const queryKey=[selected,planScope.value,planYear.value,planMonth.value,planOutcome.value].join('|')
-      const previousTaskPage=queryKey===lastPlanQueryKey?taskPage.value:0
+      const queryKey=planQueryKey.value
+      const previousTaskPage=queryKey===lastPlanQueryKey.value?taskPage.value:0
       const kinds=planRequestKinds(selected).filter(kind=>
         planScope.value!=='history'||planOutcome.value==='all'||planOutcome.value==='completed'||
         (planOutcome.value==='skipped'&&kind==='routines')||
@@ -944,7 +949,7 @@ async function fetchMode(){
       })
       taskPage.value=Math.min(previousTaskPage,
         Math.max(0,Math.ceil(taskRows.value.length/pageLimit)-1))
-      lastPlanQueryKey=queryKey
+      lastPlanQueryKey.value=queryKey
       historicalGoalPeriods.value=goalArchivePath?pages[kinds.length].items||[]:[]
       historicalGoalCursor.value=goalArchivePath?pages[kinds.length].nextCursor||null:null
       const actionIndex=kinds.length+(goalArchivePath?1:0)
@@ -1497,8 +1502,8 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
         </div>
       </div>
       </div>
-      <p v-if="listLoading&&!planListReady" class="life-caption" role="status">正在读取计划…</p>
-      <div v-if="planListReady" class="life-grid" :aria-busy="listLoading" :inert="listLoading">
+      <p v-if="listLoading&&(!planListReady||planGridStale)" class="life-caption" role="status">正在读取计划…</p>
+      <div v-if="planListReady" class="life-grid" :class="{'life-grid--stale':planGridStale}" :aria-hidden="planGridStale" :aria-busy="listLoading" :inert="listLoading||planGridStale">
         <section v-if="planScope==='history'&&(skippedTodayActions.length||skippedActionCursor)"
           class="life-card skipped-action-history">
           <h2 class="life-heading"><AppIcon name="archive" :size="20"/> 跳过记录</h2>
@@ -2453,7 +2458,7 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
 .plan-task-subtle:focus-visible,.plan-task-action:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .plan-task-action:disabled{opacity:.55}
 @media(max-width:370px){.plan-task-next{flex-basis:100%}}
-.life-area{margin:23px 0 5px}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:flex-start;gap:9px;font-size:12px;margin:0;min-width:0}.trip-item input[type="checkbox"]{flex:0 0 19px;width:19px;height:19px;margin:1px 0 0;accent-color:#43866a}.trip-item-text{min-width:0;line-height:1.5;overflow-wrap:anywhere}.trip-item-text strong{white-space:nowrap;color:#4f715b;font-size:12px}.trip-day{border-top:1px solid #e8ece6;padding:11px 0}.trip-day>.life-heading{margin-bottom:10px!important;display:flex;align-items:center;gap:7px}.trip-day :deep(.swipe-content){padding:0;background:transparent}.trip-day .trip-detail-row{padding:7px 0}
+.life-area{margin:23px 0 5px}.life-grid--stale{visibility:hidden;pointer-events:none}.life-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;align-items:start}.life-card{background:#fff;border:1px solid #eeebe5;border-radius:18px;padding:20px;margin:0 0 16px;box-shadow:0 4px 16px #28332807}.life-card h2{font-size:17px;margin:0 0 11px}.life-card h3{font-size:15px}.life-caption{font-size:11px;line-height:1.7;color:#82948b}.life-empty{font-size:12px;color:#9ba69d;text-align:center;padding:14px 0}.life-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f0eee9;font-size:13px}.life-row label{display:flex;align-items:center;gap:8px}.life-row small{display:block;color:#87968b;margin-top:4px}.life-form{display:grid;gap:9px;margin-top:14px}.life-form input,.life-form select,.life-form textarea,.trip-import textarea{width:100%;padding:9px 11px;min-height:40px;border-radius:10px;border:1px solid #e0e7df;background:#fff;color:#283b30;font-size:13px}.life-form label{font-size:12px;color:#738477;display:grid;gap:5px}.life-form button,.trip-preview button{background:#478969;border:none;border-radius:10px;color:white;padding:10px 12px;font-weight:700}.life-link{color:#4a896b;background:#edf5ed;border:0;border-radius:9px;padding:8px;white-space:nowrap;font-size:12px}.life-error{background:#fff0eb;color:#a14d36;padding:12px;border-radius:10px;font-size:12px}.life-notice{background:#e5f2e8;color:#317355;padding:10px;border-radius:10px;font-size:12px}.trip-detail,.trip-import{padding:14px;background:#f6f8f2;border-radius:12px;margin-top:12px}.trip-import summary{cursor:pointer;font-size:13px;font-weight:700}.trip-import textarea{margin:10px 0}.trip-item{display:flex;align-items:flex-start;gap:9px;font-size:12px;margin:0;min-width:0}.trip-item input[type="checkbox"]{flex:0 0 19px;width:19px;height:19px;margin:1px 0 0;accent-color:#43866a}.trip-item-text{min-width:0;line-height:1.5;overflow-wrap:anywhere}.trip-item-text strong{white-space:nowrap;color:#4f715b;font-size:12px}.trip-day{border-top:1px solid #e8ece6;padding:11px 0}.trip-day>.life-heading{margin-bottom:10px!important;display:flex;align-items:center;gap:7px}.trip-day :deep(.swipe-content){padding:0;background:transparent}.trip-day .trip-detail-row{padding:7px 0}
 .trip-detail-row{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;min-width:0;flex-wrap:nowrap}
 .trip-detail-row .trip-item{min-width:0;flex:1;overflow-wrap:anywhere;align-items:flex-start}.trip-detail-row .trip-item :deep(.status-badge){flex:none;margin-left:auto}
 .trip-item.done span{color:#9aa99d;text-decoration:line-through}
