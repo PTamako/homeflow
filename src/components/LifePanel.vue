@@ -223,7 +223,7 @@ const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref('
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 const showMemoryForm=ref(false)
-const anniversaryFilterOpen=ref(false),planFilterOpen=ref(false),memoryFilterOpen=ref(false)
+const anniversaryFilterOpen=ref(false),memoryFilterOpen=ref(false)
 const recapFormOpen=ref(false),tripImportOpen=ref(false)
 function closeAnniversaryForm(){
   showAnniversaryForm.value=false
@@ -398,9 +398,10 @@ watch(()=>props.focusPlanRequest,()=>{
   else void fetchMode()
 })
 
-const planYear=ref(''),planMonth=ref('')
+// History defaults to the current JST calendar month; never fetch all years initially.
+const planYear=ref(today().slice(0,4)),planMonth=ref(today().slice(5,7))
 const memoryYear=ref(''),memoryMonth=ref('')
-const yearOptions=Array.from({length:16},(_,i)=>String(new Date().getFullYear()-i))
+const yearOptions=Array.from({length:16},(_,i)=>String(Number(today().slice(0,4))-i))
 const monthOptions=Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))
 const recapYear=ref(today().slice(0,4)),recapMonth=ref(today().slice(5,7))
 const recap=ref<null|{month:string;total:number;counts:Record<string,number>;note:string}>(null)
@@ -1388,22 +1389,20 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
             @click="changePlanScope('history')">已完成／历史</button>
         </div>
-        <button v-if="planScope==='history'" type="button" class="life-filter-trigger" @click="planFilterOpen=true">筛选日期 · {{ planYear||'全部' }}</button>
-        <EditBottomSheet v-if="planScope==='history'&&planFilterOpen" title="筛选历史计划" @close="planFilterOpen=false">
-        <div class="archive-date-filters">
+        <div v-if="planScope==='history'" class="archive-date-filters plan-history-date-filters" role="group" aria-label="历史计划年月筛选">
           <label>年份
-            <select v-model="planYear" aria-label="历史记录年份"><option value="">全部年份</option>
+            <select v-model="planYear" aria-label="历史记录年份">
+              <option value="">全部年份</option>
               <option v-for="year in yearOptions" :key="year" :value="year">{{ year }} 年</option>
             </select>
           </label>
-          <label v-if="planYear">月份
-            <select v-model="planMonth" aria-label="历史记录月份"><option value="">全年</option>
+          <label>月份
+            <select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份">
+              <option value="">全年</option>
               <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
             </select>
           </label>
         </div>
-        <button class="life-more" type="button" @click="planFilterOpen=false">完成</button>
-        </EditBottomSheet>
       </div>
       </div>
       <p v-if="listLoading&&!planListReady" class="life-caption" role="status">正在读取计划…</p>
@@ -2506,6 +2505,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   font-size:12px;line-height:1.35;white-space:nowrap
 }
 .plan-view-toolbar .archive-date-filters{margin:12px 0 6px;gap:8px}
+.plan-view-toolbar .plan-history-date-filters{margin:10px 0 4px}
 .plan-view-toolbar .archive-date-filters label{font-size:11px}
 .plan-view-toolbar .archive-date-filters select{min-height:38px}
 .plan-view-toolbar .archive-tabs button{min-height:37px}
