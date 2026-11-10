@@ -3,7 +3,7 @@ import {json,readBody} from './security.js'
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const COST=5
-const MONTHLY_LIMIT=7
+const MONTHLY_LIMIT=10
 const HISTORY_PAGE_SIZE=5
 const MAX_HISTORY_PAGE=10000
 export const lotteryOdds=[
@@ -151,7 +151,7 @@ export async function lotteryRoute(request,db,path,session,onDraw=null,choosePri
             AND c.kind='ticket' AND c.used_at IS NULL
             AND c.expires_on>=date(?8,'+9 hours'))))
       AND (SELECT COUNT(*) FROM household_lottery_draws l
-        WHERE l.household_id=?2 AND l.user_id=?3 AND l.month_on=?5)<7
+        WHERE l.household_id=?2 AND l.user_id=?3 AND l.month_on=?5)<${MONTHLY_LIMIT}
       AND NOT EXISTS(SELECT 1 FROM household_lottery_draws l
         WHERE l.household_id=?2 AND l.user_id=?3 AND l.client_request_id=?4)`
   try{
