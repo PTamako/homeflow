@@ -44,6 +44,12 @@ test('new delivery states preserve existing inbox read/dedupe and correctly reco
  assert.equal(sqlite.prepare("SELECT delivery_status FROM notification_inbox WHERE id='new'").get().delivery_status,'sent')
  await saveNotification(db,{...base,deliveryReason:'quiet'})
  assert.equal(sqlite.prepare("SELECT delivery_status FROM notification_inbox WHERE id='new'").get().delivery_status,'sent')
+ const partial={...base,id:'partial',dedupeKey:'partial',sentDevices:1,failedDevices:1}
+ await saveNotification(db,partial)
+ await saveNotification(db,{...partial,sentDevices:0,failedDevices:0,deliveryReason:'app_only'})
+ const preserved=sqlite.prepare("SELECT delivery_status,failed_devices FROM notification_inbox WHERE id='partial'").get()
+ assert.equal(preserved.delivery_status,'partial')
+ assert.equal(preserved.failed_devices,1)
  sqlite.close()
 })
 test('private coupon and discounts are exported in audit-only ZIP, not replayed as awards',()=>{

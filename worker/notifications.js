@@ -40,7 +40,8 @@ export async function saveNotification(db,item){
         AND excluded.sent_devices=0 AND excluded.failed_devices=0
         THEN notification_inbox.delivery_status ELSE excluded.delivery_status END,
       sent_devices=MAX(notification_inbox.sent_devices,excluded.sent_devices),
-      failed_devices=excluded.failed_devices`)
+      failed_devices=CASE WHEN excluded.sent_devices=0 AND excluded.failed_devices=0
+        THEN notification_inbox.failed_devices ELSE excluded.failed_devices END`)
     .bind(item.id,item.householdId,item.senderId||null,item.recipientId,
       item.kind,item.sourceId||null,String(item.title||'').slice(0,90),
       String(item.message||'').slice(0,160),status,
