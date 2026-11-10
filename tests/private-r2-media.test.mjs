@@ -28,7 +28,7 @@ function fixture(){
   prepare(sql){const statement=sqlite.prepare(sql);let args=[]
    return {bind(...values){args=values;return this},
     async first(){return statement.get(...args)||null},
-    async all(){return {results:statement.all(...args)},
+    async all(){return {results:statement.all(...args)}},
     async run(){return {meta:{changes:Number(statement.run(...args).changes)}}}}
   },
   async batch(statements){
