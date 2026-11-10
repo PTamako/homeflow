@@ -11,7 +11,7 @@ test('plan History defaults to the current JST year and month; both selectors st
  assert.match(src,/select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份"/)
  assert.match(src,/<option value="">全部年份<\/option>/)
  assert.match(src,/<option value="">全年<\/option>/)
- assert.match(src,/watch\(\[planScope,planYear,planMonth\],\(\)=>\{if\(props\.mode==='plans'\)void fetchMode\(\)\}\)/)
+ assert.match(src,/watch\(\[planScope,planYear,planMonth,planOutcome\],\(\)=>\{if\(props\.mode==='plans'\)void fetchMode\(\)\}\)/)
 })
 
 test('annual point history defaults to JST year/month, retains separate annual total cards',()=>{
