@@ -13,15 +13,19 @@ test('lottery tab keeps the draw card and rules, while all draw history moves to
  assert.doesNotMatch(source,/goToLotteryPage|lotteryPageBusy|lotteryPageError/)
 })
 
-test('points ledger provides independent year, household member and category selectors',()=>{
+test('points ledger keeps year/month selectors and member/category filtering in a sheet',()=>{
  assert.match(source,/const historyCategory=ref\('all'\)/)
  assert.match(source,/category='\+encodeURIComponent\(historyCategory\.value\)/)
  for(const [value,label] of [
-  ['all','全部'],['task','任务'],['shopping','购物'],['lottery','抽奖'],
+  ['all','全部分类'],['task','任务'],['shopping','购物'],['lottery','抽奖'],
   ['shop','商城'],['achievement','挑战成就'],['saving','储值旅行']
  ]){
   assert.ok(source.includes('<option value="'+value+'">'+label+'</option>'),label)
  }
+ assert.match(source,/aria-label="积分历史年份"/)
+ assert.match(source,/aria-label="积分历史月份"/)
+ assert.match(source,/v-model="draftHistoryMember"/)
+ assert.match(source,/v-model="draftHistoryCategory"/)
  assert.match(source,/const historyMatchesFilters=computed/)
  assert.match(source,/v-for="\(entry,i\) in visibleHistoryEntries"/)
  assert.match(source,/historyMatchesFilters&&history&&history\.totalPages>1/)

@@ -19,11 +19,12 @@ test('annual point history defaults to JST year/month, retains separate annual t
  assert.match(src,/const historyMonth=ref\(String\(new Date\(Date\.now\(\)\+9\*3600000\)\.getUTCMonth\(\)\+1\)\.padStart\(2,'0'\)\)/)
  assert.match(src,/history\.value\.monthFilter===historyMonth\.value/)
  assert.match(src,/month='\+encodeURIComponent\(historyMonth\.value\)/)
- assert.match(src,/aria-label="积分历史年月"/)
- assert.match(src,/:value="historyPeriod"/)
- assert.match(src,/:value="year\+'-all'"/)
- assert.match(src,/year\+'-'\+month/);
- assert.match(src,/matched\[2\]==='all'\?'':matched\[2\]/)
+ assert.match(src,/aria-label="积分历史年份"/)
+ assert.match(src,/aria-label="积分历史月份"/)
+ assert.match(src,/<option value="">全年<\/option>/)
+ assert.match(src,/<option v-for="year in availableYears"/)
+ assert.match(src,/v-for="month in historyMonths"/)
+ assert.match(src,/@click="openHistoryFilters"/)
 })
 
 test('JST month boundaries handle December, January and leap February',()=>{
