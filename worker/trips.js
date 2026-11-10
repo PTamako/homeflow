@@ -41,7 +41,7 @@ function validatedTripPayload(p){
   if(!idOk(t.externalId)||!textOk(t.title)||!textOk(t.destination)||!dateOk(t.startDate)||!dateOk(t.endDate)||
     t.startDate>t.endDate||!textOk(t.timeZone,80)||!list(t.participants,20)||!t.participants.length||
     !t.participants.every(idOk)||!/^[A-Z]{3}$/.test(t.currency)||!object(t.budget)||!amountOk(t.budget.amount)||
-    t.budget.currency!==t.currency||!['estimate','confirmed'].includes(t.budget.status)||!list(t.days,120)||!t.days.length)return 'invalid_trip'
+    t.budget.currency!==t.currency||!['estimate','confirmed'].includes(t.budget.status)||!list(t.days,366)||!t.days.length)return 'invalid_trip'
   const collections=[['tasks',500],['packingLists',100],['bookings',100],['reminders',300]]
   for(const [key,max] of collections)if(t[key]!==undefined&&!list(t[key],max))return 'invalid_'+key
   const seen=new Set()

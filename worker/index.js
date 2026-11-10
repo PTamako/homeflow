@@ -133,7 +133,12 @@ export default {
   async scheduled(controller,env,ctx){
     if(!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
-      const jobs=await Promise.allSettled([runPushSchedule(env),runGoalSettlementSchedule(env),expireOldRewardPools(env.DB)])
+      // Do not repeat point settlements, expiry, or cleanup at 08:00.
+      const catchUp=controller?.cron==='0 23 * * *'
+      const jobNames=catchUp?['quiet-hour-catch-up']:['push','savings','annual-points-expiry']
+      const jobs=await Promise.allSettled(catchUp?
+        [runPushSchedule(env)]:
+        [runPushSchedule(env),runGoalSettlementSchedule(env),expireOldRewardPools(env.DB)])
       // These automated writes bypass fetch(); only touched households advance.
       const changed=new Set(jobs.flatMap(job=>job.status==='fulfilled'?
         (job.value?.changedHouseholds||[]):[]))
@@ -142,11 +147,11 @@ export default {
         catch{console.warn('homeflow_scheduled_sync_failed')}
       }
       // Purge expired inbox rows on the existing 06:00 JST cron; tasks/plans are never deleted.
-      try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
+      if(!catchUp)try{await purgeOldNotifications(env.DB)}catch{console.warn('homeflow_notification_purge_failed')}
       // Aggregate-only diagnostics: never log titles, account IDs, or ledger transactions.
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
-        {job:['push','savings','annual-points-expiry'][index],...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
-        {job:['push','savings','annual-points-expiry'][index],failed:1,reason:'unexpected'})
+        {job:jobNames[index],...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
+        {job:jobNames[index],failed:1,reason:'unexpected'})
       console.info('homeflow_daily_jobs',JSON.stringify(summary))
     })())
   }

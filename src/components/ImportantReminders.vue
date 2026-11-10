@@ -265,7 +265,7 @@ onBeforeUnmount(()=>{requestId++})
         <label>结束<select v-model="quietEnd"><option v-for="hour in 24" :key="hour-1" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</option></select></label>
        </div>
        <button class="snooze-button" type="button" :disabled="savingAdvance" @click="saveQuiet">保存安静时段</button>
-       <small>仅影响每日定时推送，不影响手动通知家人或「今日通知」记录。每日 06:00 推送，安静时段不通知。</small>
+       <small>仅影响每日定时推送，不影响手动通知家人或「今日通知」记录。每日 06:00 推送；若安静时间到 08:00 结束，会在 08:00 补发当天未送达的定时提醒，已发送的不重复。08:00 仍在安静时段的提醒仅保留应用内。</small>
       </div>
     </div>
     <div v-if="mode!=='list'&&snoozed.length" class="snoozed-items">

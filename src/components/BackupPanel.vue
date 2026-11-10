@@ -16,7 +16,7 @@ const order=['familyProfiles','wishes','trips','goals','tasks','anniversaries','
 // An immutable audit attachment is kept for manual verification and D1 recovery,
  // never re-imported as awards, which would duplicate family points.
 const auditOrder=['rewardItems','rewardRedemptions','rewardGroupOrders',
- 'rewardGroupContributions','lotteryDraws','completionPoints',
+ 'rewardGroupContributions','lotteryDraws','lotteryCoupons','rewardCouponDiscounts','completionPoints',
  'completionAdjustments','dualSplits','shoppingPoints','shoppingJoint',
  'weeklyChallenges','goalRewards','tripRewards','monthlyAchievements']
 const pending=ref(false),error=ref(''),status=ref(''),preview=ref<Snapshot|null>(null)
@@ -212,7 +212,7 @@ async function restore(){
         <div v-if="helpOpen" id="backup-help-popover" class="backup-help-popover" role="note">
           <strong>备份与恢复说明</strong>
           <p>恢复不会覆盖原记录，也无法撤销之前的误编辑。两位家庭成员需各自备份。</p>
-          <p>ZIP 另含积分、抽奖、商城历史的只读核对档案。为避免重复发分，恢复操作不会重新导入这类流水；完整账本灾难恢复需使用 D1 备份。</p>
+          <p>ZIP 另含积分、抽奖、本人奖励券（含使用与到期）、商城折扣流水的只读核对档案。为避免重复发分或发券，恢复操作不会重新导入这类流水；完整账本灾难恢复需使用 D1 备份。</p>
           <p>不含密码、未同步任务和云端照片；其他设备的本机照片须分别备份。请妥善保存 ZIP 文件。</p>
         </div>
       </span>

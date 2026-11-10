@@ -167,9 +167,9 @@ test('sent notices show recipient read status separately from push delivery stat
  assert.match(ui,/notice-state-unread/)
  assert.match(ui,/notice-state-time/)
  assert.match(ui,/function deliveryDetail\(item:Notice\)/)
- assert.match(ui,/if\(item\.sentDevices===0\)return '仅应用内'/)
+ assert.match(ui,/if\(item\.deliveryStatus==='quiet'\)return '安静时段 · 暂不推送'/)
  assert.match(ui,/function deliveryTone\(item:Notice\)/)
- assert.match(ui,/return item\.failedDevices>0\?'partial':'sent'/)
+ assert.match(ui,/return item\.deliveryStatus==='failed'\?'partial':'app-only'/)
  assert.match(ui,/notice-delivery-'\+deliveryTone\(item\)/)
  for(const tone of ['sent','partial','app-only']){
    assert.match(ui,new RegExp('\\.notice-delivery-'+tone+'\\{'))
