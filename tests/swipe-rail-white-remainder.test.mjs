@@ -6,19 +6,19 @@ const read=name=>readFileSync(new URL('../src/components/'+name+'.vue',import.me
 const swipe=read('SwipeActions')
 const life=read('LifePanel')
 
-test('the shared swipe rail has a white remainder beneath compact actions',()=>{
+test('the shared swipe rail hides its white background behind full-height colored actions',()=>{
  assert.match(swipe,/\.swipe-actions\{[^}]*background:#fff/)
  assert.match(swipe,/\.swipe-actions \.edit\{background:#558bc9\}/)
  assert.match(swipe,/\.swipe-actions \.delete\{background:#d76178\}/)
  assert.match(swipe,/\.swipe-row\.is-open \.swipe-actions/)
 })
 
-test('task actions stretch to the full row, while timeline keeps compact actions',()=>{
+test('task and timeline action buttons both stretch to the full row',()=>{
  assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions\)\{align-items:stretch;background:#fff\}/)
  assert.match(life,/\.plan-task-item\[data-swipe-item\] :deep\(\.swipe-actions button\)\{\s*align-self:stretch;height:auto;min-height:0;flex:0 0 72px/)
  assert.doesNotMatch(life,/\.plan-task-item :deep\(\.swipe-actions\)\{align-items:flex-start/)
- assert.match(life,/\.memory :deep\(\.swipe-actions\)\{align-items:flex-start;background:#fff\}/)
- assert.match(life,/\.memory :deep\(\.swipe-actions button\)\{height:72px;flex:0 0 72px\}/)
+ assert.match(life,/\.memory :deep\(\.swipe-actions\)\{align-items:stretch;background:#fff\}/)
+ assert.match(life,/\.memory :deep\(\.swipe-actions button\)\{align-self:stretch;height:auto;min-height:0;flex:0 0 72px\}/)
 })
 
 test('the task body stays opaque and timeline stays one swipe surface',()=>{
