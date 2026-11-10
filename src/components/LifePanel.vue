@@ -2249,7 +2249,7 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
               @cancel="finishPhotoPicker()"
               @change="finishPhotoPicker();photoFiles=Array.from(($event.target as HTMLInputElement).files||[]).slice(0,10)"/></label>
           <button :disabled="busy">保存到时光轴</button>
-          <button type="button" class="life-cancel" :disabled="busy" @click="closeMemoryForm">取消</button>
+          <button type="button" class="life-cancel" :disabled="busy" @click="closeMemoryForm()">取消</button>
         </form>
         </EditBottomSheet>
 
