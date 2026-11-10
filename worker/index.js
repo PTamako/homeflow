@@ -134,7 +134,11 @@ export default {
     if(!await verifiedDatabase(env))return
     ctx.waitUntil((async()=>{
       // Do not repeat point settlements, expiry, or cleanup at 08:00.
-      const catchUp=controller?.cron==='0 23 * * *'
+      // One Cron expression runs at 21:00/23:00 UTC; the fire time distinguishes
+      // 06:00 normal maintenance from the 08:00 quiet-hour delivery-only pass.
+      // A missing Cron identity (e.g. test/manual call) keeps the original 06:00 path.
+      const scheduledJstHour=new Date((controller?.scheduledTime??Date.now())+9*3600000).getUTCHours()
+      const catchUp=controller?.cron==='0 21,23 * * *'&&scheduledJstHour===8
       const jobNames=catchUp?['quiet-hour-catch-up']:['push','savings','annual-points-expiry']
       const jobs=await Promise.allSettled(catchUp?
         [runPushSchedule(env)]:

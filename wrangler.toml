@@ -12,7 +12,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [triggers]
-crons = ["0 21 * * *", "0 23 * * *"] # 06:00 JST plus 08:00 JST quiet-hour catch-up
+crons = ["0 21,23 * * *"] # One free-tier trigger: 06:00 JST and 08:00 JST catch-up
 
 [vars]
 APP_ENV = "production"
