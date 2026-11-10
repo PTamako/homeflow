@@ -18,7 +18,7 @@ const searchable=computed(()=>shouldSearchMobileSelect(options.value,
   activeSelect.value?.dataset.mobileSearch==='always'))
 
 function supportsMobileSheet(){
- return window.matchMedia('(pointer: coarse) and (max-width: 1100px)').matches
+ return window.matchMedia('(pointer: coarse)').matches
 }
 function sourceSelect(event:Event):HTMLSelectElement|null{
  const target=event.target
