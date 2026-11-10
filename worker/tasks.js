@@ -146,7 +146,12 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       // It no longer belongs to Active and must not be checked again from Today.
       if(filters.scope==='active')where.push("completed_at IS NULL AND (due_on IS NULL OR due_on>=date('now','+9 hours'))")
       if(filters.scope==='unscheduled')where.push('completed_at IS NULL AND due_on IS NULL')
-      if(filters.scope==='history')where.push("(completed_at IS NOT NULL OR (completed_at IS NULL AND due_on<date('now','+9 hours')))")
+      if(filters.scope==='history'){
+        where.push(filters.outcome==='completed'?'completed_at IS NOT NULL':
+          filters.outcome==='missed'?"completed_at IS NULL AND due_on<date('now','+9 hours')":
+          filters.outcome==='skipped'?'0':
+          "(completed_at IS NOT NULL OR (completed_at IS NULL AND due_on<date('now','+9 hours')))")
+      }
       const window=monthWindow(filters.year,filters.month)
       if(window){
         where.push(column+'>=?'+(args.length+1)+' AND '+column+'<?'+(args.length+2))

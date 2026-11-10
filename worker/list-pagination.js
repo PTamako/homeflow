@@ -4,14 +4,17 @@ const uuidPattern=/^[0-9a-f-]{36}$/i
 
 export function listFilters(url) {
   const p=new URL(url).searchParams
-  if(!['limit','scope','year','month','cursor'].some(key=>p.has(key)))return null
+  if(!['limit','scope','year','month','cursor','outcome'].some(key=>p.has(key)))return null
   const limit=p.has('limit')?Number(p.get('limit')):5
   const scope=p.get('scope')||'all'
   const year=p.get('year')||''
   const month=p.get('month')||''
+  const outcome=p.get('outcome')||'all'
   const raw=p.get('cursor')||''
   if(!Number.isInteger(limit)||limit<1||limit>30||
     !['all','active','history','unscheduled'].includes(scope)||
+    !['all','completed','skipped','missed'].includes(outcome)||
+    (outcome!=='all'&&scope!=='history')||
     (year&&!/^(19|20|21)\d{2}$/.test(year))||
     (month&&!/^(0?[1-9]|1[0-2])$/.test(month))||
     (month&&!year)||raw.length>120)return {invalid:true}
@@ -23,7 +26,7 @@ export function listFilters(url) {
       date.length>36||!uuidPattern.test(id))return {invalid:true}
     cursor={date,id}
   }
-  return {limit,scope,year,month:month?month.padStart(2,'0'):'',cursor}
+  return {limit,scope,year,month:month?month.padStart(2,'0'):'',outcome,cursor}
 }
 
 export function monthWindow(year,month){
@@ -74,6 +77,8 @@ export async function listPage(db,table,session,filters,options={}){
     // Never defer the status transition until the next JST calendar day.
     if(filters.scope==='active')clauses.push('completed_at IS NULL')
     if(filters.scope==='history')clauses.push('completed_at IS NOT NULL')
+    if(filters.scope==='history'&&filters.outcome!=='all'&&filters.outcome!=='completed')
+      clauses.push('0')
     // The "待安排" tab includes shopping items without a planned purchase date.
     // Filter before keyset paging so an unseen item cannot be skipped by a
     // client-side filter of only the first 5 results.
@@ -86,7 +91,9 @@ export async function listPage(db,table,session,filters,options={}){
     if(filters.scope==='active')push("(archived_at IS NULL AND (repeat_mode!='once' OR event_date>={0}))",localDate)
   }else if(table==='wishes'){
     if(filters.scope==='active')clauses.push("status NOT IN ('completed','cancelled')")
-    if(filters.scope==='history')clauses.push("status IN ('completed','cancelled')")
+    if(filters.scope==='history')clauses.push(filters.outcome==='completed'?"status='completed'":
+      filters.outcome==='missed'?"status='cancelled'":
+      filters.outcome==='skipped'?'0':"status IN ('completed','cancelled')")
   }else if(table==='goals'){
     // One-time goals archive when confirmed; recurring goals archive after
     // their final target date, while each period remains available by key.
@@ -100,6 +107,12 @@ export async function listPage(db,table,session,filters,options={}){
       clauses.push("((goal_mode='once' AND (reserved_amount>=target_amount OR "+doneMark+")) OR "+
         "(goal_mode!='once' AND target_on IS NOT NULL AND target_on<?"+(args.length+1)+"))")
     if(filters.scope==='active'||filters.scope==='history')args.push(localDate)
+    if(filters.scope==='history'&&filters.outcome!=='all'){
+      // Completed one-off goals are archived here. Monthly/yearly outcomes
+      // come from the separately paged goal-period archive.
+      if(filters.outcome==='completed')clauses.push("goal_mode='once'")
+      else clauses.push('0')
+    }
   }else if(table==='routines'){
     if(filters.scope==='active')clauses.push('enabled=1')
     if(filters.scope==='history')clauses.push('enabled=0')

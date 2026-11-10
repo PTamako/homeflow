@@ -313,11 +313,14 @@ const jstDate=(timestamp:string)=>{
  return Number.isFinite(time)?new Date(time+9*3600000).toISOString().slice(0,10):''
 }
 const planScope=ref<'active'|'history'>(props.focusPlanScope||'active')
+type HistoryOutcome='all'|'completed'|'skipped'|'missed'
+const planOutcome=ref<HistoryOutcome>('completed')
 type SkippedTodayAction={kind:'task'|'shopping'|'wish'|'goal'|'trip';id:string;title:string;originalOn:string;actedAt:string}
 const skippedTodayActions=ref<SkippedTodayAction[]>([]),skippedActionCursor=ref<string|null>(null),skippedActionBusy=ref(false)
 function skippedActionPath(cursor?:string|null){
  const q=new URLSearchParams({limit:'5'})
  if(['shopping','wish','goal','trip'].includes(planType.value))q.set('kind',planType.value)
+ else if(planType.value==='routine')q.set('kind','task')
  if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
  if(cursor)q.set('cursor',cursor)
  return '/plans/action-history?'+q.toString()
@@ -463,8 +466,9 @@ function listPath(kind:string,cursor?:string|null){
     }
   }else{
     q.set('scope',planType.value==='unscheduled'&&['tasks','shopping'].includes(kind)?'unscheduled':planScope.value)
-    if(planScope.value==='history'&&planYear.value){
-      q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)
+    if(planScope.value==='history'){
+      q.set('outcome',planOutcome.value)
+      if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
     }
   }
   if((kind==='routines'||kind==='tasks')&&planScope.value==='active'&&planType.value!=='unscheduled')
@@ -496,7 +500,7 @@ async function toggleHistoricalGoalPeriod(period:GoalPeriodArchive){
   }
 }
 function historicalGoalPath(cursor?:string|null){
-  const q=new URLSearchParams({limit:String(pageLimit)})
+  const q=new URLSearchParams({limit:String(pageLimit),outcome:planOutcome.value})
   if(planYear.value){q.set('year',planYear.value);if(planMonth.value)q.set('month',planMonth.value)}
   if(cursor)q.set('cursor',cursor)
   return '/goals/period-archive?'+q.toString()
@@ -828,13 +832,17 @@ async function fetchMode(){
       // Only read the category that the user actually opened. The full view
       // still fetches all six; wishes also need goals for linked funding labels.
       const selected=planType.value
-      const queryKey=[selected,planScope.value,planYear.value,planMonth.value].join('|')
+      const queryKey=[selected,planScope.value,planYear.value,planMonth.value,planOutcome.value].join('|')
       const previousTaskPage=queryKey===lastPlanQueryKey?taskPage.value:0
-      const kinds=planRequestKinds(selected)
+      const kinds=planRequestKinds(selected).filter(kind=>
+        planScope.value!=='history'||planOutcome.value==='all'||planOutcome.value==='completed'||
+        (planOutcome.value==='skipped'&&kind==='routines')||
+        (planOutcome.value==='missed'&&kind!=='shopping'))
       const paths=kinds.map(kind=>listPath(kind))
-      const goalArchivePath=planScope.value==='history'&&['all','goal'].includes(selected)?
-        historicalGoalPath():null
-      const actionPath=planScope.value==='history'?skippedActionPath():null
+      const goalArchivePath=planScope.value==='history'&&planOutcome.value!=='skipped'&&
+        ['all','goal'].includes(selected)?historicalGoalPath():null
+      const actionPath=planScope.value==='history'&&['all','skipped'].includes(planOutcome.value)?
+        skippedActionPath():null
       // A failing category must not make every completed shared plan disappear.
       // Display successful household-visible categories and surface a retry hint.
       const results=await Promise.allSettled([...paths.map(path=>api(path)),
@@ -1251,12 +1259,12 @@ onBeforeUnmount(()=>{
 })
 watch(()=>[props.mode,props.userId],()=>{openPhoto.value=null})
 watch(()=>[props.mode,props.userId,props.profileRevision,props.syncRevision],fetchMode,{immediate:true})
-watch([planScope,planType,planYear,planMonth],()=>{
+watch([planScope,planType,planYear,planMonth,planOutcome],()=>{
   historicalGoalDetailRequest++
   historicalGoalDetail.value=null
   historicalGoalDetailLoading.value=''
 })
-watch([planScope,planYear,planMonth],()=>{if(props.mode==='plans')void fetchMode()})
+watch([planScope,planYear,planMonth,planOutcome],()=>{if(props.mode==='plans')void fetchMode()})
 watch([memoryYear,memoryMonth],()=>{if(props.mode==='memories')void fetchMode()})
 watch([anniversaryView,anniversaryYear,anniversaryMonth],()=>{
   anniversaryVisibleCount.value=pageLimit
@@ -1389,7 +1397,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           <button type="button" :class="{selected:planScope==='history'}" :aria-pressed="planScope==='history'"
             @click="changePlanScope('history')">已完成／历史</button>
         </div>
-        <div v-if="planScope==='history'" class="archive-date-filters plan-history-date-filters" role="group" aria-label="历史计划年月筛选">
+        <div v-if="planScope==='history'" class="archive-date-filters plan-history-date-filters" role="group" aria-label="历史计划年月与状态筛选">
           <label>年份
             <select v-model="planYear" aria-label="历史记录年份">
               <option value="">全部年份</option>
@@ -1400,6 +1408,14 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             <select v-model="planMonth" :disabled="!planYear" aria-label="历史记录月份">
               <option value="">全年</option>
               <option v-for="month in monthOptions" :key="month" :value="month">{{ Number(month) }} 月</option>
+            </select>
+          </label>
+          <label>状态
+            <select v-model="planOutcome" aria-label="历史计划状态">
+              <option value="completed">已完成</option>
+              <option value="skipped">已跳过</option>
+              <option value="missed">未完成</option>
+              <option value="all">全部状态</option>
             </select>
           </label>
         </div>
@@ -1694,7 +1710,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
           </nav>
 
         </section>
-        <section v-if="planType==='all'||planType==='wish'" class="life-card">
+        <section v-if="(planType==='all'||planType==='wish')&&(planScope!=='history'||planOutcome!=='skipped')" class="life-card">
           <h2 class="life-heading"><AppIcon name="heart" :size="21" /> 心愿计划</h2>
           <template v-for="w in items" :key="w.id">
             <div :id="'plan-item-'+w.id" :class="{'focused-plan-entry':isFocused(w)}">
@@ -1758,7 +1774,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="loadMore('wishes')">加载更多心愿</button>
 
         </section>
-        <section v-if="planType==='all'||planType==='goal'" class="life-card">
+        <section v-if="(planType==='all'||planType==='goal')&&(planScope!=='history'||planOutcome!=='skipped')" class="life-card">
           <h2 class="life-heading"><AppIcon name="wallet" :size="21" /> {{ planScope==='history'?'储值计划 · 结算历史':'储值计划' }}</h2>
           <template v-if="planScope==='history'">
             <div v-for="period in historicalGoalPeriods" :key="period.goalId+':'+period.periodKey"
@@ -1843,7 +1859,8 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
             @click="loadMore('goals')">加载更多目标</button>
 
         </section>
-        <section v-if="planType==='all'||planType==='shopping'||(planType==='unscheduled'&&visibleShopping.length>0)" class="life-card shopping-plans-card">
+        <section v-if="(planType==='all'||planType==='shopping'||(planType==='unscheduled'&&visibleShopping.length>0))&&
+          (planScope!=='history'||!['skipped','missed'].includes(planOutcome))" class="life-card shopping-plans-card">
           <h2 class="life-heading"><AppIcon name="shopping" :size="21" /> 购物计划</h2>
           <template v-for="s in visibleShopping" :key="s.id">
             <div :id="'plan-item-'+s.id" class="shopping-plan-entry" :class="{'focused-plan-entry':isFocused(s)}">
@@ -1930,7 +1947,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 
 
         </section>
-        <section v-if="planType==='all'||planType==='trip'" class="life-card">
+        <section v-if="(planType==='all'||planType==='trip')&&(planScope!=='history'||planOutcome!=='skipped')" class="life-card">
           <div class="trip-section-header">
             <h2 class="life-heading"><AppIcon name="plane" :size="21" /> 旅行计划</h2>
             <button type="button" class="trip-import-trigger" @click="tripImportOpen=true">导入行程</button>
@@ -2505,7 +2522,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
   font-size:12px;line-height:1.35;white-space:nowrap
 }
 .plan-view-toolbar .archive-date-filters{margin:12px 0 6px;gap:8px}
-.plan-view-toolbar .plan-history-date-filters{margin:10px 0 4px}
+.plan-view-toolbar .plan-history-date-filters{margin:10px 0 4px;grid-template-columns:repeat(3,minmax(0,1fr))}
 .plan-view-toolbar .archive-date-filters label{font-size:11px}
 .plan-view-toolbar .archive-date-filters select{min-height:38px}
 .plan-view-toolbar .archive-tabs button{min-height:37px}

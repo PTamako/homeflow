@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs'
 const source=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
 
 test('history year and month selectors sit together below status tabs on mobile',()=>{
- assert.match(source,/\.plan-view-toolbar \.plan-history-date-filters\{margin:10px 0 4px\}/)
+ assert.match(source,/\.plan-view-toolbar \.plan-history-date-filters\{margin:10px 0 4px;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/)
  assert.match(source,/<div v-if="planScope==='history'" class="archive-date-filters plan-history-date-filters"/)
  assert.match(source,/aria-label="历史记录年份"/)
  assert.match(source,/aria-label="历史记录月份"/)

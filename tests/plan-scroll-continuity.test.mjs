@@ -20,7 +20,7 @@ test('plan list survives asynchronous refresh without collapsing the scrolled do
 })
 
 test('background refresh retains the current task page but a filter change resets it',()=>{
- assert.match(plans,/const queryKey=\[selected,planScope\.value,planYear\.value,planMonth\.value\]\.join\('\|'\)/)
+ assert.match(plans,/const queryKey=\[selected,planScope\.value,planYear\.value,planMonth\.value,planOutcome\.value\]\.join\('\|'\)/)
  assert.match(plans,/const previousTaskPage=queryKey===lastPlanQueryKey\?taskPage\.value:0/)
  assert.match(plans,/while\(pages\[i\]\.nextCursor&&\(pages\[i\]\.items\|\|\[\]\)\.length<needed\)/)
  assert.match(plans,/taskPage\.value=Math\.min\(previousTaskPage,/)

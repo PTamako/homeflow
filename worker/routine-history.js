@@ -85,7 +85,9 @@ export async function routineHistory(db,request,session){
   const rules=results||[]
   if(!rules.length)return json({items:[],nextCursor:null})
   const candidates=[]
-  const maxPerRule=filters.limit+3
+  // Sparse matches (e.g. a completed-only view after several missed weeks)
+  // require scanning beyond the visible page before applying the status filter.
+  const maxPerRule=filters.outcome==='all'?filters.limit+3:Math.max(60,filters.limit*12)
   // Rule revisions live in repeat_config; historical dates remain unchanged
   // after a user edits the frequency, weekday, title, or pet association.
   const versions=rules.flatMap(rule=>routineVersions(rule).filter(v=>
@@ -173,8 +175,17 @@ export async function routineHistory(db,request,session){
     if(seen.has(key))return false
     seen.add(key);return true
   })
-  const items=unique.slice(0,filters.limit),last=items.at(-1)
-  return json({items,nextCursor:unique.length>filters.limit&&last?last.periodOn+'|'+last.id:null})
+  const matching=unique.filter(row=>filters.outcome==='all'||
+    (filters.outcome==='completed'&&row.status==='completed')||
+    (filters.outcome==='skipped'&&row.status==='skipped')||
+    (filters.outcome==='missed'&&row.status==='missed'))
+  const items=matching.slice(0,filters.limit)
+  // If a bounded scan found fewer matches than requested, advance the cursor
+  // beyond the scanned rows, not beyond the last matching one. This avoids
+  // losing old matches and lets a sparse status filter reach older periods.
+  const next=matching.length>filters.limit?items.at(-1):
+    unique.length>filters.limit?unique.at(-1):null
+  return json({items,nextCursor:next?next.periodOn+'|'+next.id:null})
 }
 
 export async function routinePeriodDetail(db,rule,on,session){
