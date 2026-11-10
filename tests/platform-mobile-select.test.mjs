@@ -55,5 +55,5 @@ test('native form value semantics, disabled fields and desktop mouse remain unch
  assert.match(host,/role="listbox"/)
  assert.match(host,/v-if="searchable"/)
  assert.match(host,/class="mobile-select-empty"/)
- assert.match(host,/matchMedia\('\(pointer: coarse\) and \(max-width: 1100px\)'\)/)
+ assert.match(host,/matchMedia\('\(pointer: coarse\)'\)/)
 })
