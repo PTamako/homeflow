@@ -2219,7 +2219,7 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
               <button v-if="photos[m.id]?.length&&cloudEnabled&&m.created_by===props.userId"
                 type="button" class="memory-more-photos" :disabled="busy"
                 @click.stop="syncLocalPhotos(m.id)">同步旧照片</button>
-          <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> {{ m.visibility==='private'?'私人回忆':'家庭共享' }}</small>
+          <p>{{ m.story }}</p><small class="memory-visibility"><AppIcon :name="m.visibility==='private'?'shield':'house'" :size="14" /> <span class="memory-audience">{{ m.visibility==='private'?'私人回忆':'家庭共享' }}</span><span class="memory-attribution" :title="'来自：'+memberName(m.created_by)">· 来自：{{ memberName(m.created_by) }}</span></small>
             </div>
           </SwipeActions>
           <LifeItemEditor v-if="editing?.kind==='memories'&&editing.item.id===m.id"
@@ -2401,7 +2401,9 @@ watch(memoryYear,value=>{if(!value)memoryMonth.value=''})
 .life-section-heading .section-add-button{flex:none}
 .life-heading{display:flex;align-items:center;gap:9px;color:#293f34;min-width:0}
 .life-heading :deep(.app-icon){color:#43866a}
-.memory-visibility{display:inline-flex;align-items:center;gap:5px}
+.memory-visibility{display:inline-flex;align-items:center;gap:5px;max-width:100%;white-space:nowrap}
+.memory-visibility :deep(.app-icon),.memory-audience{flex:none}
+.memory-attribution{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .life-form,.life-card,.life-row,.trip-import,.trip-detail{min-width:0;max-width:100%}
 .life-row>*{min-width:0;overflow-wrap:anywhere}
 .life-row>button{flex:none}
