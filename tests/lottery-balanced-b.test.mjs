@@ -258,3 +258,31 @@ test('yearly history excludes free-ticket and wish-coupon events from the Shop f
   assert.equal((await query('shop',2)).entries.length,0)
  }finally{sqlite.close()}
 })
+
+
+test('monthly ten-draw cap counts free tickets without charging twice, and blocks the eleventh draw',async()=>{
+ const {sqlite,db}=fixture()
+ try{
+  earn(sqlite,'alice',40)
+  const first=await draw(db,alice,'ticket')
+  assert.equal(first.status,201)
+  const ticket=(await coupons(db,alice)).find(c=>c.id===first.body.draw.id)
+  assert.equal(ticket.kind,'ticket')
+  const free=await draw(db,alice,'six',{ticketCouponId:ticket.id})
+  assert.equal(free.status,201)
+  assert.equal(free.body.draw.cost,0)
+  const replay=await draw(db,alice,'empty',{requestId:free.requestId,ticketCouponId:ticket.id})
+  assert.equal(replay.status,200)
+  for(let i=0;i<8;i++)assert.equal((await draw(db,alice,'empty')).status,201)
+  const summary=await lotteryRoute(new Request('https://homeflow.invalid/api/lottery'),
+   db,'/api/lottery',alice)
+  const result=await summary.json()
+  assert.equal(result.limit,10)
+  assert.equal(result.used,10)
+  assert.equal(result.used+Math.max(0,result.limit-result.used),10)
+  assert.equal((await draw(db,alice,'empty')).status,409)
+  assert.equal((await draw(db,bob,'empty')).status,409,'free ticket cannot cross household members')
+  assert.equal((await coupons(db,alice)).find(c=>c.id===ticket.id).status,'used')
+  assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0)
+ }finally{sqlite.close()}
+})
