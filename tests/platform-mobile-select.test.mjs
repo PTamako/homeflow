@@ -40,7 +40,7 @@ test('global mobile select host covers all tabs, dialogs and forms',()=>{
 })
 
 test('native form value semantics, disabled fields and desktop mouse remain unchanged',()=>{
- assert.match(host,/!select\.disabled&&!select\.multiple&&/)
+ assert.match(host,/!select\.disabled&&!select\.matches\(':disabled'\)&&/)
  assert.match(host,/select\.size<=1&&select\.options\.length>0/)
  assert.match(host,/!select\.hasAttribute\('data-native-select'\)/)
  assert.match(host,/if\(event\.pointerType==='mouse'\)return/)
@@ -48,7 +48,7 @@ test('native form value semantics, disabled fields and desktop mouse remain unch
  assert.match(host,/select\.dispatchEvent\(new Event\('input',\{bubbles:true\}\)\)/)
  assert.match(host,/select\.dispatchEvent\(new Event\('change',\{bubbles:true\}\)\)/)
  assert.match(host,/if\(select\.value===option\.value\)return/)
- assert.match(host,/if\(!select\|\|option\.disabled\|\|!select\.isConnected\|\|select\.disabled\)/)
+ assert.match(host,/if\(!select\|\|option\.disabled\|\|!select\.isConnected\|\|select\.matches\(':disabled'\)\)/)
  assert.match(host,/const group=option\.parentElement instanceof HTMLOptGroupElement/)
  assert.match(host,/class="mobile-select-option"/)
  assert.match(host,/:aria-selected="item\.value===chosen"/)
