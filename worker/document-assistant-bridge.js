@@ -52,9 +52,16 @@ export async function documentAssistantBridge(request,env){
   if(p.assignee!=null && (typeof p.assignee!=='string'||!USER.test(p.assignee)))
     return json({ok:false,error:'invalid_assignee'},400)
   if(p.visibility==='private'&&p.assignee && p.assignee!==actor)return json({ok:false,error:'private_assignment_forbidden'},403)
+  const bonus=p.bonusPoints===undefined?0:p.bonusPoints;
+  if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)return json({ok:false,error:'invalid_bonus'},400)
+  const assignedOther=!!p.assignee&&p.assignee!==actor;
+  if(assignedOther&&(p.visibility!=='household'||bonus<1))
+    return json({ok:false,error:'other_assignee_requires_confirmed_bonus'},422)
+  if(!assignedOther&&bonus!==0)
+    return json({ok:false,error:'bonus_only_for_other_assignee'},422)
   const id=await stableUuid(msg.idempotency_key)
   const body={title:p.title,notes:'文书助手确认事项',visibility:p.visibility,dueOn:p.dueOn,
-    assigneeUserId:p.assignee||null,remindEnabled:p.remindEnabled,clientRequestId:id,bonusPoints:0}
+    assigneeUserId:p.assignee||null,remindEnabled:p.remindEnabled,clientRequestId:id,bonusPoints:bonus}
   const session={user_id:member.user_id,household_id:member.household_id}
   const delegated=new Request(new URL('/api/tasks',request.url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
   const response=await tasksRoute(delegated,env.DB,'/api/tasks',session)
