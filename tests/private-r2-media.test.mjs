@@ -57,10 +57,11 @@ const jpeg=(length=64)=>{
  return bytes
 }
 
-test('one private bucket binding; no R2 in preview; public access stays disabled in config',()=>{
- const toml=read('wrangler.toml'),prod=toml.split('[env.preview]')[0],preview=toml.split('[env.preview]')[1]
- assert.match(prod,/\[\[r2_buckets\]\][\s\S]*?binding = "MEDIA"[\s\S]*?bucket_name = "homeflow-family-media"/)
- assert.doesNotMatch(preview,/\[\[r2_buckets\]\]/)
+test('one private production bucket; retired preview config stays absent; public access disabled',()=>{
+ const toml=read('wrangler.toml')
+ assert.match(toml,/\[\[r2_buckets\]\][\s\S]*?binding = "MEDIA"[\s\S]*?bucket_name = "homeflow-family-media"/)
+ assert.equal((toml.match(/\[\[r2_buckets\]\]/g)||[]).length,1)
+ assert.doesNotMatch(toml,/\[env\.preview(?:\.|\])/)
  assert.doesNotMatch(toml,/public_bucket\\s*=|custom_domain\\s*=/i)
  assert.equal(MAX_MEDIA_BYTES,300*1024)
  assert.match(read('src/local-media.ts'),/MAX_PHOTO_BYTES=300\*1024/)
