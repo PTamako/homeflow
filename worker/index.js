@@ -1,3 +1,4 @@
+import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -38,6 +39,7 @@ async function routeRequest(request,env,ctx,state){
     if(path==='/api' || path.startsWith('/api/')){
       // Always check the physical database identity before accessing any private records.
       if(!await verifiedDatabase(env))return json({error:'environment_or_database_not_ready'},503)
+      if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
