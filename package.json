@@ -10,8 +10,7 @@
     "test": "node --test tests/*.test.mjs",
     "check": "npm run test && npm run build",
     "worker:dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler deploy --env preview"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "vue": "^3.5.22",

@@ -1,3 +1,5 @@
+> **2026-11-12：HomeFlow Preview 已正式弃用。** Cloudflare `homeflow-preview` Worker 与同名 D1 已按用户要求退役，后续只部署 `homeflow` 生产 Worker 与同名生产 D1。开发验证使用本地测试、GitHub CI 和 Wrangler dry-run，**不得再执行 `wrangler deploy --env preview`、创建 Preview D1 或在生产库重放历史迁移**。以下较早的 Preview/Production 双环境流程仅是历史记录，均已失效。
+
 > **旅行积分规则（2026-11-08，0045 已在 Preview / Production D1 验证，Worker 部署待合并）**：旅行积分按实际完成事件冻结，每人每天10分，超过30天完成时二次确认，完成奖励按实际天数计算，不设120天上限；支出汇总可供共享旅行参与人查看，但家計簿明细仍仅管理员可操作。新 D1 迁移 0044 已按 Preview → Production 顺序执行且外键检查正常，目前两边均为 46/46，不得重放旧 SQL。当前自动化结果以 GitHub Actions 为准，双账号 iPhone 实机与 Push 锁屏效果仍待验收。\n\n> 2026-11-06 最新验收：PR #148 已通过 CI、Preview → Production 部署和双环境健康检查；D1 均记录 29 条迁移，必需索引一致。真实 iPhone/iPad 双账号、通知横幅和 ZIP 恢复仍需设备端验证，详见 Issue #4。\n\n## 年度积分规则（日本时间）
 - 自 2027 年 1 月 1 日起，所有可用家庭积分、私人积分、年度贡献分、成长经验（XP）和等级均按当年 1 月 1 日 00:00 起产生的流水重新计算；每年元旦自动清零，无需跑清库脚本，也不删除旧积分及兑换历史。
 - 12 月 31 日在「今天 → 今日通知」持续红字显示 **请在今日内用完所有积分**。每日 06:00 JST 的 Cron 为全部家庭成员产生应用内未读通知，并尽力向已授权设备发送高优先级 Web Push。无推送订阅时仍可见应用内提醒；离线、未授权或 Apple 推送服务故障时无法保证锁屏送达。
@@ -30,7 +32,7 @@ Vue 3 + TypeScript + Vite PWA / Cloudflare Workers + D1；照片以 IndexedDB �
 
 ## 安全与费用
 
-独立账户、家庭权限、私人记录保护、D1 生产/预览隔离；不共享家計簿 D1，不自动新增消费记录，也不自动开通任何 Cloudflare 付费服务。
+独立账户、家庭权限、私人记录保护、单一生产 D1（Preview 环境已弃用）；不共享家計簿 D1，不自动新增消费记录，也不自动开通任何 Cloudflare 付费服务。
 
 ## 本地开发
 
@@ -42,7 +44,7 @@ npm run check
 npm run dev
 ```
 
-部署代码前先检查 D1 迁移：历史 0001–0013 中多项曾通过 Cloudflare API 手动执行，0014/0015 也分别已在 Preview 与 Production 安全应用且核对。Wrangler 迁移追踪未必同步，**禁止直接重放旧迁移或对已有数据库执行批量 ALTER**。新变更必须先完成 CI、Preview D1 安全迁移检查，再核对 Production D1，最后由 GitHub Actions 先 Preview 后 Production 发布 Worker。
+部署代码前先检查 D1 迁移：历史 0001–0013 中多项曾通过 Cloudflare API 手动执行，0014/0015 也分别已在 Preview 与 Production 安全应用且核对。Wrangler 迁移追踪未必同步，**禁止直接重放旧迁移或对已有数据库执行批量 ALTER**。新变更须先完成本地测试、GitHub CI 和 Wrangler dry-run；生产 D1 迁移须单独核查现有结构、备份与幂等安全后才应用，最后通过 GitHub Actions 仅发布 Production Worker。
 
 更多信息： [模块路线](docs/ROADMAP.md)、[旅行 JSON 规则](docs/TRIP_IMPORT.md)、[上线配置与验证](docs/DEPLOY_AND_VERIFY.md)、[真实交付情况](docs/RELEASE_STATUS.md)。
 

@@ -35,22 +35,4 @@ database_name = "homeflow"
 database_id = "3e0205b0-77e2-4259-8ac2-4c56efc43f8a"
 migrations_dir = "migrations"
 
-[env.preview]
-name = "homeflow-preview"
-
-[env.preview.triggers]
-crons = []
-
-[env.preview.vars]
-APP_ENV = "preview"
-
-[env.preview.assets]
-directory = "./dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
-
-[[env.preview.d1_databases]]
-binding = "DB"
-database_name = "homeflow-preview"
-database_id = "da6d49ab-ae80-4bb0-a2d0-18379ebc7d92"
-migrations_dir = "migrations"
+# Preview Worker and D1 retired on 2026-11-12. Production is the only remote environment.
