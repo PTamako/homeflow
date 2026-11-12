@@ -81,7 +81,7 @@ function onPhotoTouchEnd(event:TouchEvent){
  if(lastTap&&now-lastTap<300){toggleZoom();lastTap=0}
  else lastTap=now
 }
-let source:HTMLImageElement|null=null,output:Blob|null=null
+let source:HTMLCanvasElement|null=null,output:Blob|null=null
 let restore={position:'',top:'',width:'',overflow:''},scrollY=0,previousFocus:HTMLElement|null=null
 
 onMounted(()=>{
@@ -112,25 +112,33 @@ async function beginEdit(){
  if(!props.canEdit||props.busy||working.value)return
  working.value=true;error.value=''
  try{
-  const response=await fetch(props.src,{cache:'no-store'})
-  if(!response.ok)throw Error('无法打开照片，请稍后重试')
-  const input=URL.createObjectURL(await response.blob())
-  try{
-   const img=new Image()
-   img.src=input
-   await img.decode()
-   source=img
-  }finally{URL.revokeObjectURL(input)}
+  // iOS installed PWAs can reject fetch(blob:...) after a session-cache
+  // object URL was revoked, even while the already decoded <img> is visible.
+  // Snapshot that displayed image *before* replacing its src with editedUrl.
+  // This uses no extra R2 request or device storage.
+  const visible=imageElement.value
+  if(!visible)throw Error('照片尚未加载，请稍后重试')
+  if(!visible.complete||!visible.naturalWidth||!visible.naturalHeight){
+   try{await visible.decode()}catch{throw Error('照片未能加载，请关闭后重试')}
+  }
+  if(!visible.naturalWidth||!visible.naturalHeight)
+   throw Error('照片尚未加载，请稍后重试')
+  const frozen=document.createElement('canvas')
+  frozen.width=visible.naturalWidth;frozen.height=visible.naturalHeight
+  const context=frozen.getContext('2d')
+  if(!context)throw Error('无法处理照片')
+  context.drawImage(visible,0,0)
+  source=frozen
   editMode.value=true;angle.value=0;cropSquare.value=false;resetZoom()
   await render()
- }catch(e){error.value=(e as Error).message;editMode.value=false}
+ }catch(e){error.value=(e as Error).message;editMode.value=false;source=null;output=null}
  finally{working.value=false}
 }
 async function render(){
  if(!source)return
  const rotated=angle.value%180!==0
- const naturalW=rotated?source.naturalHeight:source.naturalWidth
- const naturalH=rotated?source.naturalWidth:source.naturalHeight
+ const naturalW=rotated?source.height:source.width
+ const naturalH=rotated?source.width:source.height
  const dimension=Math.max(naturalW,naturalH)
  const scale=Math.min(1,1600/dimension)
  const width=Math.max(1,Math.round((cropSquare.value?Math.min(naturalW,naturalH):naturalW)*scale))
@@ -141,8 +149,8 @@ async function render(){
  if(!ctx)throw Error('无法处理照片')
  ctx.translate(width/2,height/2)
  ctx.rotate(angle.value*Math.PI/180)
- ctx.drawImage(source,-source.naturalWidth*scale/2,-source.naturalHeight*scale/2,
-  source.naturalWidth*scale,source.naturalHeight*scale)
+ ctx.drawImage(source,-source.width*scale/2,-source.height*scale/2,
+  source.width*scale,source.height*scale)
  const raw=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(
   b=>b?resolve(b):reject(Error('照片处理失败')),'image/jpeg',0.83))
  output=await compressPhoto(new File([raw],'edited.jpg',{type:'image/jpeg'}))

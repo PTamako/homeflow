@@ -41,3 +41,20 @@ test('photo edits and source switches reset zoom without writing device storage'
  const gestureCode=photo.slice(photo.indexOf('function resetZoom(){'),photo.indexOf('onMounted(()=>{'))
  assert.doesNotMatch(gestureCode,/fetch\(|localStorage|indexedDB|sessionStorage|caches\./)
 })
+
+
+test('PWA photo editor uses the displayed pixels instead of re-fetching a revocable blob URL',()=>{
+ const begin=photo.slice(photo.indexOf('async function beginEdit(){'),photo.indexOf('async function render(){'))
+ const render=photo.slice(photo.indexOf('async function render(){'),photo.indexOf('async function transform('))
+ assert.ok(begin.length>100&&render.length>100)
+ assert.match(begin,/const visible=imageElement\.value/)
+ assert.match(begin,/visible\.complete/)
+ assert.match(begin,/visible\.naturalWidth/)
+ assert.match(begin,/context\.drawImage\(visible,0,0\)/)
+ assert.match(begin,/source=frozen/)
+ assert.doesNotMatch(begin,/fetch\s*\(\s*props\.src|new Image\(\)/)
+ assert.match(render,/source\.width/)
+ assert.match(render,/source\.height/)
+ assert.match(render,/ctx\.drawImage\(source,/)
+ assert.match(photo,/source=null;output=null/)
+})
