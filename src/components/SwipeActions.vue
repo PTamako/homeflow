@@ -146,7 +146,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
       :aria-label="'左滑或点击展开'+[allowEdit?editLabel:'',allowArchive?archiveLabel:'',allowDelete?deleteLabel:''].filter(Boolean).join('/')"
       :aria-expanded="opened" :title="'左滑'+[allowEdit?editLabel:'',allowArchive?archiveLabel:'',allowDelete?deleteLabel:''].filter(Boolean).join('/')"
       @click.stop="toggle">
-      <span class="swipe-chevron" aria-hidden="true"><AppIcon name="ellipsis" :size="19" class="swipe-chevron-icon"/></span>
+      <span class="swipe-chevron" aria-hidden="true"><AppIcon name="chevron-down" :size="19" class="swipe-chevron-icon"/></span>
     </button>
   </div>
   <slot v-else/>
@@ -171,7 +171,7 @@ onBeforeUnmount(()=>{releaseSwipeHelp(key.value);close()})
   border:0;color:#829c8c;border-radius:8px;touch-action:manipulation}
 .swipe-chevron{display:grid;place-items:center;width:26px;height:28px;
   border-radius:9px;background:#f0f4f0;color:#789182}
-.swipe-chevron-icon{transform:none}
+.swipe-chevron-icon{transform:rotate(90deg)}
 .swipe-trigger:active .swipe-chevron{background:#e6eee7}
 .swipe-discovery{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   padding:7px 10px;margin:0 0 5px;border:1px solid #dce9df;
