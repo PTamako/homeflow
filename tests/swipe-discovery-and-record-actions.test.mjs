@@ -27,7 +27,7 @@ test('no permanent blue/red stripes, but hidden swipe actions retain their origi
  assert.match(swipe,/\.swipe-actions \.delete\{background:#d76178\}/)
  assert.match(swipe,/props\.scope!=='today-unified'/)
  assert.match(swipe,/props\.showTrigger&&count\.value>0/)
- assert.match(swipe,/name="ellipsis"/)
+ assert.match(swipe,/name="chevron-down"/)
  assert.match(swipe,/paddingRight:showTriggerUi\?'44px':'0px'/)
  assert.match(swipe,/class="swipe-chevron"/)
  assert.match(swipe,/role="group"/)
