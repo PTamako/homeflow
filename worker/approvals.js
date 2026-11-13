@@ -150,13 +150,14 @@ async function mutate(request,db,id,session,role,action){
  try{
  result=await db.batch([
    db.prepare(`UPDATE household_approval_requests
-     SET status=?1,approver_user_id=?2,reviewed_at=?3,
+     SET status=?1,approver_user_id=?2,
+         reviewed_at=CASE WHEN ?7=1 THEN ?3 ELSE reviewed_at END,
          updated_at=?3,version=version+1
      WHERE request_id=?4 AND household_id=?5
        AND status='pending' AND expires_at>?3
        ${isReview?'AND requester_user_id<>?6':'AND requester_user_id=?6'}`)
     .bind(newStatus,isReview?session.user_id:null,stamp,id,
-      session.household_id,session.user_id),
+      session.household_id,session.user_id,isReview?1:0),
    db.prepare(`INSERT INTO household_approval_events
      (event_id,request_id,actor_user_id,actor_type,action,created_at)
      SELECT ?1,request_id,?2,?3,?4,?5 FROM household_approval_requests
