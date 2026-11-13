@@ -4,6 +4,7 @@ import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
+import {approvalExecutionRoute} from './approval-execution.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -67,6 +68,8 @@ async function routeRequest(request,env,ctx,state){
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(/^\/api\/approvals\/[0-9a-f-]{36}\/execute$/.test(path))
+          return approvalExecutionRoute(request,env,path,session)
         if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
           return approvalRoute(request,env,path,session)
         if(path==='/api/identity/me'||path==='/api/identity/household-members')
