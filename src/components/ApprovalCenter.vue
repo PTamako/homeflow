@@ -29,7 +29,7 @@ const error=ref(''),message=ref('')
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 let epoch=0
 const statusNames:Record<State,string>={
- pending:'待审批',approved:'已批准 · 未入账',
+ pending:'待审批',approved:'已批准 · 待执行',
  rejected:'已拒绝',cancelled:'已取消',executing:'执行中',
  applied:'已生效',failed_retryable:'等待重试',
  failed_final:'执行失败',expired:'已过期',conflict:'处理冲突'
@@ -126,11 +126,21 @@ function changePage(delta:number){
  page.value=Math.max(0,page.value+delta)
  void load(false)
 }
-// A lost target response must be reconciled using the original approval ID.
-// Only the target application's idempotent executor may actually post money.
+// Executing is not a generic effect of HomeFlow approval: the only deployed
+// Draft adapter is Kakeibo's idempotent CASH entry.create executor. Future
+// document / task / study approvals must not show a fake "execute" action.
+function isSupportedExecution(item:Approval){
+ return item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+  item.operation==='finance.entry.create'&&item.resource_type==='finance_entry'
+}
 function canExecute(item:Approval){
- return props.isOwner&&executionEnabled.value&&
+ return props.isOwner&&executionEnabled.value&&isSupportedExecution(item)&&
   (item.status==='approved'||item.status==='failed_retryable')
+}
+function statusLabel(item:Approval){
+ if(item.status==='approved')return isSupportedExecution(item)
+  ?'已批准 · 未入账':'已批准 · 待目标处理'
+ return statusNames[item.status]||'处理中'
 }
 async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  const allowed=kind==='cancel'
@@ -219,7 +229,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      <div class="approval-titleline">
       <b>{{ actionNames[item.operation]||'家庭操作申请' }}</b>
       <span class="approval-state" :data-status="item.status">
-       {{ statusNames[item.status]||'处理中' }}
+       {{ statusLabel(item) }}
       </span>
      </div>
      <div class="approval-meta">
@@ -227,7 +237,9 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       <span>{{ time(item.created_at) }}</span>
      </div>
      <p v-if="item.status==='approved'" class="approval-note">
-      已批准，账本尚未生效
+      {{ isSupportedExecution(item)
+       ?'已批准，账本尚未生效；仍需执行入账。'
+       :'已批准，但当前尚无此操作的安全执行器；目标应用未发生更改。' }}
      </p>
      <p v-else-if="item.status==='failed_retryable'" class="approval-note">
       上次执行结果未确认；请仅通过原审批安全重试，不要再次创建账单。
