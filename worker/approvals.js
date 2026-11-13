@@ -154,7 +154,7 @@ async function mutate(request,db,id,session,role,action){
          updated_at=?3,version=version+1
      WHERE request_id=?4 AND household_id=?5
        AND status='pending' AND expires_at>?3
-       AND requester_user_id<>?6${isReview?'' : ' AND requester_user_id=?6'}`)
+       ${isReview?'AND requester_user_id<>?6':'AND requester_user_id=?6'}`)
     .bind(newStatus,isReview?session.user_id:null,stamp,id,
       session.household_id,session.user_id),
    db.prepare(`INSERT INTO household_approval_events
