@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
+import {createHash} from 'node:crypto'
 import {oauthRoute} from '../worker/oauth.js'
 
 const callback='https://example.test/sso/callback'
@@ -13,6 +14,8 @@ const challenge=async value=>{
  return btoa(String.fromCharCode(...digest)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_')
 }
 const person={user_id:'owner',household_id:'primary',role:'owner',login_name:'test-owner'}
+const authCookies={owner:'a'.repeat(64),member:'b'.repeat(64)}
+const sessionHash=value=>createHash('sha256').update(value).digest('hex')
 function database(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec(`
@@ -22,6 +25,7 @@ function database(){
    CREATE TABLE household_members(household_id TEXT,user_id TEXT,role TEXT,
      PRIMARY KEY(household_id,user_id),FOREIGN KEY(user_id) REFERENCES users(id),
      FOREIGN KEY(household_id) REFERENCES households(id));
+   CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT REFERENCES users(id),expires_at INTEGER);
    CREATE TABLE family_profiles(id TEXT PRIMARY KEY,household_id TEXT,
      member_user_id TEXT,type TEXT,display_name TEXT,archived_at TEXT,created_at TEXT);
    INSERT INTO users VALUES('owner','test-owner',NULL),('member','test-member',NULL);
@@ -32,6 +36,10 @@ function database(){
     ('one','primary','owner','person','小白',NULL,'2026-11-13'),
     ('two','primary','member','person','鸡毛',NULL,'2026-11-13');
  `)
+ for(const [user,cookie] of Object.entries(authCookies)){
+   sqlite.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)')
+     .run(sessionHash(cookie),user,Date.now()+86400000)
+ }
  sqlite.exec(readFileSync(new URL('../migrations/0053_oauth_code_exchange.sql',import.meta.url),'utf8'))
  const db={prepare(sql){
    const stmt=sqlite.prepare(sql);let args=[]
@@ -48,6 +56,8 @@ function database(){
    OAUTH_CLIENT_REDIRECTS:JSON.stringify({[client]:[callback]})}
  const call=async(path,method='GET',data=null,session=person,headers={})=>{
    const h={...headers};let body
+   if(session?.user_id&&authCookies[session.user_id])
+     h.cookie='__Host-hf_session='+authCookies[session.user_id]
    if(data instanceof URLSearchParams){
       body=data.toString();h['content-type']='application/x-www-form-urlencoded'
    }else if(data!=null){body=JSON.stringify(data);h['content-type']='application/json'}
@@ -150,6 +160,35 @@ test('disabled and revoked households lose authorization to identity even with a
    sqlite.prepare("DELETE FROM household_members WHERE user_id='member'").run()
    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM oauth_access_tokens WHERE user_id='member'").get().n,0)
    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM oauth_authorization_codes WHERE user_id='member'").get().n,0)
+ }finally{sqlite.close()}
+})
+
+test('HomeFlow logout revokes an issued code and any access token linked to that session',async()=>{
+ const {sqlite,authorize,exchange,call}=database()
+ try{
+   const grant=await authorize()
+   const code=new URL(grant.body.redirect_uri).searchParams.get('code')
+   // Before exchange: user logs out in HomeFlow. FK cascade purges unused code.
+   sqlite.prepare('DELETE FROM sessions WHERE token_hash=?').run(sessionHash(authCookies.owner))
+   assert.equal((await exchange(code)).status,400)
+   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM oauth_authorization_codes').get().n,0)
+   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM oauth_access_tokens').get().n,0)
+ }finally{sqlite.close()}
+})
+
+test('logging out after token exchange invalidates userinfo immediately',async()=>{
+ const {sqlite,authorize,exchange,call}=database()
+ try{
+   const grant=await authorize()
+   const code=new URL(grant.body.redirect_uri).searchParams.get('code')
+   const token=await exchange(code)
+   assert.equal(token.status,200)
+   sqlite.prepare('DELETE FROM sessions WHERE token_hash=?').run(sessionHash(authCookies.owner))
+   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM oauth_access_tokens').get().n,0)
+   const result=await call('/api/oauth/userinfo','GET',null,null,{
+     authorization:'Bearer '+token.body.access_token
+   })
+   assert.equal(result.status,401)
  }finally{sqlite.close()}
 })
 
