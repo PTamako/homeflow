@@ -51,6 +51,16 @@
 
 ### 1.4 备份真实状态（迁移阻断项）
 
+**2026-11-13 追加：用户明确同意使用其个人 Google Drive 保存四应用生产数据的加密备份。** 已创建私人目录 [四应用生产加密备份 / 2026-11-13-A阶段](https://drive.google.com/drive/folders/1xDPwtw5u42sju89B4bFu9t5o94W0pZH3)，通过 Google Drive 原生元数据验证文件夹 `shared=false`，权限仅 `user:owner`；成功上传了仅含元数据、明确声明 **NOT_A_RESTORABLE_BACKUP** 的 [backup-preflight-status.json](https://drive.google.com/file/d/1dU7JxnHY23Ba6HEhFtcU2sVsGZD7Qgv3/view)，并读回验证其权限仍仅 owner、未共享。**该文件不是 D1 SQL 或 R2 备份，不得作为生产迁移放行依据。**
+
+**最新四库导出结果**：对 HomeFlow、家計簿、知学、文书助手的 Cloudflare D1 Export API 均确认 `status=complete` 且生成临时 SQL 签名下载地址；**实际 SQL 字节尚未安全下载、加密、持久保存到 Google Drive，也没有恢复测试**，临时签名地址会过期。当前跨连接文件传输无法把 Cloudflare 导出下载到本地备份环境：网页读取返回不可访问，本地容器没有互联网 DNS，Cloudflare connector `request` 无法直接读取预签名对象，Google Drive `upload_file` 只接受合法 connector 文件引用（不能直接接受 URL/data URI）。这是**传输能力限制，不是 D1 导出失败**；不要重复制造 SQL 导出任务后误认为备份已完成。禁止将签名链接/SQL/密钥写入公开 GitHub。
+
+**R2 实物逐个只读核验**：Cloudflare R2 GET 成功读取 6 个现有对象（HomeFlow 3 个：772,872 bytes；家計簿 3 个：440,351 bytes；文书助手 0 个），与 LIST 中对应大小逐项一致；在 Cloudflare 内计算全部 6 个文件的 SHA-256，校验摘要和大小已经保存在上述**仅 owner 可访问**的 Drive 检查清单。**没有对象被更改/删除、没有可恢复副本落盘。**
+
+**阶段 A 仍阻断**：需要在可访问 Cloudflare SQL/R2 二进制和 Google Drive 写入的同一工作环境完成传输（例如用户授权的 Cloud Browser/Work 或带有正式凭证的本地安全备份流程）；对实际数据使用独立保存的加密密钥完成加密上传，逐文件验 SHA-256，恢复至隔离的本地 SQLite/测试区验证，绝不恢复覆盖生产库。此时**不需要用户再次确认备份目的地**，已获准；如需用户操作，只提出传输/密钥保管的具体必要步骤。
+
+
+
 **R2 只读对象清单（2026-11-13，再核对）**：`homeflow-family-media` = **3 个对象、772,872 bytes**；`kakeibo-receipts` = **3 个对象、440,351 bytes**；`jp-document-assistant-private` = **0 个对象、0 bytes**。每桶只调用一次元数据 LIST，均未截断；没有读取或修改对象内容。此清单是基线，**尚非 R2 备份**。下一步对这六个既有附件建立安全、可验证的恢复副本或其他可信恢复方案。
 
 **功能隔离的额外结构证据（只读）**：家計簿 296 条 `entries` 按 `type` 为 expense 260 / income 16 / transfer 20。知学 `language_cards` 16,170 条是 licensed 16,000 / generated 170，检查时没有 `source_type=personal`；可继续作为共享学习资源，但收藏/复习是私人状态。HomeFlow 共有 **2 个 linked person profiles + 1 个 unlinked pet profile**，昵称取 linked person，不要用宠物档案匹配账号。
@@ -86,7 +96,7 @@
 
 | 阶段 | 状态 | 已完成 | 进行中 / 未完成 | 生产迁移 | 生产部署/验收 |
 |---|---|---|---|---|---|
-| **A 调查、只读基线、备份** | **进行中** | 读取最新 v1.1 + §3.1；四 repo main SHA/目录/部分迁移和测试；检查 GitHub CI、Cloudflare D1/Workers/R2/Pages；生产关键表计数；发现同名账户冲突风险 | 获取持久化四库可恢复备份、R2 物件清单/恢复方案、全表结构与历史金额摘要、检查 kakeibo bridge CI 失败原因 | **无** | **没有本项目的新部署** |
+| **A 调查、只读基线、备份** | **进行中，备份文件传输阻断正式迁移** | 冻结 v1.1 需求与 §3.1；四库正式表计数/现有迁移、Cloudflare 资源/生产版本、各库 Time Travel bookmark；四 D1 Export API 生成临时 SQL；六个 R2 对象逐项 SHA-256/大小通过；已建私人 Google Drive 文件夹并上传检查清单、确认 owner-only | **未能将实际 SQL/R2 字节加密上传 Google Drive 或恢复验收**；待受控文件传输通道；待全表/金额摘要；已定位家計簿 GitHub deploy 缺 Secrets | **A–F 新迁移零** | **无本项目新功能部署** |
 | **B SSO/昵称/首次登录** | **开发中：HomeFlow PKCE + 授权确认 UI 已通过 CI，Draft PR #305 未上线** | B1 既有会话身份/昵称读取；B2 一次性授权码、PKCE S256、3 分钟令牌、不可重放、审计、HomeFlow 退出时令牌/授权码级联撤销；`/authorize` 显式同意页面，未登录仍用原 HomeFlow 登录，授权页跳过家庭数据和定期轮询；CI [43389573939](https://github.com/PTamako/homeflow/actions/runs/43389573939) success | **仍非完整 SSO**：三 App 的服务端 callback/session、账号映射接入、固定 redirect URI 的配置、生产启动/回退开关、实机 PWA/安全验收待完成；当前非 OIDC ID-token/JWKS | **0053 未执行** | **新身份功能未上线，Draft PR #305 未合并** |
 | **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
 | **D HomeFlow 审批** | **未开始** | 确认现有 session/角色与路由基线 | 工单状态机/事件表/索引、幂等执行器、内部签名接口、通知/UI、异步重试审计 | 无 | 无 |
@@ -120,7 +130,7 @@
 ## 5.1 必须提前通知用户的操作（用户已要求）
 
 - **家計簿 GitHub 自动部署**：GitHub Actions secrets `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 目前在失败的工作流中为空，需要用户通过 GitHub 仓库 Settings → Secrets and variables → Actions（按实际环境选择）安全配置，或由开发方用已授权 Cloudflare 工具部署并验证生产；**不得要求用户将 Token 明文发到聊天或写入本仓库**。此项并非继续编写未上线代码的阻断项。
-- **生产备份的持久安全目的地**：在执行四个正式 D1/R2 改写前，必须有可读取、可恢复、可验证哈希的私有备份。若现有连接无法自动将加密备份安全存入私有位置，再请求用户指定私人备份存储/授权；不得把原始 D1 SQL 或 R2 私件传到公开 GitHub。
+- **备份目的地已经获准并创建，无需再问**：私人 Google Drive 目录已验证 owner-only。当前**阻断的是 Cloudflare 临时 SQL/R2 字节跨工具传送到可加密/可上传的环境**。须在能够安全下载与上传二进制的会话（如 Work Cloud Browser）或用户本地设备使用有权限的 Cloudflare / Google Drive 客户端；若需要用户配合，只需明确安全传输流程和解密密钥的离线保管方式，不要求在聊天或 GitHub 提供密码/Token。不得用临时 SQL 导出/Drive 检查清单替代真正完整备份。
 - **iPhone 双账号实机验证**：阶段 F 请 owner 和 member 各自从独立 PWA 完成授权、登录、注销、切换账号、私人数据/Google OAuth 隔离验收；当前不需要操作。
 - 其他规则无须重复询问，只有发现真实生产数据与明确历史归属冲突，才隔离具体异常行。
 
