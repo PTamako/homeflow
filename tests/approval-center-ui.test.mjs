@@ -34,3 +34,25 @@ test('approval screen updates once when iPhone PWA returns to foreground, withou
  assert.match(view, /!loading\.value&&!busyId\.value\)void load\(true\)/)
  assert.doesNotMatch(view, /setInterval\(/)
 })
+
+test('owner can safely retry a failed target execution only with the original approval ID',()=>{
+ const view=read('../src/components/ApprovalCenter.vue')
+ const server=read('../worker/approval-execution.js')
+ // Backend already accepts exactly these two states and never creates a new approval.
+ assert.match(server,/\['approved','failed_retryable'\]\.includes\(row\.status\)/)
+ assert.match(server,/row\.request_id/)
+ assert.match(view,/function canExecute\(item:Approval\)/)
+ assert.match(view,/props\.isOwner&&executionEnabled\.value&&/)
+ assert.match(view,/item\.status==='approved'\|\|item\.status==='failed_retryable'/)
+ assert.match(view,/\?canExecute\(item\):item\.status==='pending'\)/)
+ assert.match(view,/v-else-if="canExecute\(item\)"/)
+ assert.match(view,/@click="act\(item,'execute'\)"/)
+ assert.match(view,/item\.status==='failed_retryable'\?'安全重试':'执行入账'/)
+ assert.match(view,/原审批 ID 与家計簿的幂等记录核对结果/)
+ assert.match(view,/上次执行结果未确认；请仅通过原审批安全重试/)
+ assert.match(view,/const path=kind==='execute'\?'\/api\/approvals\/'\+id\+'\/execute'/)
+ assert.match(view,/if\(item\.status!==chosenStatus/)
+ assert.match(view,/if\(account!==props\.userId\|\|!props\.active\)return/)
+ // No automatic retries, new approval IDs, or direct financial write route.
+ assert.doesNotMatch(view,/setInterval\(|\/api\/family-finance\/entries/)
+})
