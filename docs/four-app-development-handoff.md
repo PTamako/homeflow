@@ -437,7 +437,7 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `src/FamilyFinanceAccess.vue`：新家庭管理页年度选择、收入/支出/结余总计、月度趋势、分类列表、资产转移单列；原单人旧统计页不在本轮改写。非法年份 400；存在未知交易类型/损坏汇总则 409，禁止静默丢弃真实账目后显示 `complete:true`。不将新 SSO cookie 用于旧 `/api/entries` 写入。
 - 新增以两个真实模拟 HomeFlow 身份与本地 SQLite 的回归，覆盖两人年度数据完全相同、年边界、计数与分类支付方式、未知交易类型 fail-closed、读请求无审计/正式 `entries` 无写动作；另有家庭 UI 静态门槛测试。
 - 实际提交顺序：`e6de15c1647e2bcfdb8ff08b231d54ed9b602ccc`、`3d0fab90474346b81c96a93eb81037e7ac3b7873`、`58e33ca6c8a851136cfbe6a6a2d5be7bc145f957`、`07a4c3b49252a9aebbb7b0794a7e251997951127`、`02d6c693c3c842f9d0d1933c63cf70433d097f2a`、`b36c8387eb4d4000f1dd36b27f300cff86c1011e`（模块说明）、`ef7d713f963d19aaa38ccffa9c7b79f1c1b340d0`（未知类型不能漏算）、`8fffdd369f09a828aa5f9398012c67f6279ae55f`（类型异常回归）。
-- [早期 Validate #43439421706](https://github.com/PTamako/kakebo_jp/actions/runs/43439421706) **success**；针对最新未知交易类型保护的 [Validate #43439846672](https://github.com/PTamako/kakebo_jp/actions/runs/43439846672) 与 [Mobile WebKit #43439846696](https://github.com/PTamako/kakebo_jp/actions/runs/43439846696) **记录时仍运行中**。下次根据实际 GitHub Actions 结论补录，不能提前当成通过。
+- [早期 Validate #43439421706](https://github.com/PTamako/kakebo_jp/actions/runs/43439421706) **success**；针对最新未知交易类型保护的 [Validate #43439846672](https://github.com/PTamako/kakebo_jp/actions/runs/43439846672) **success**、[Mobile WebKit #43439846696](https://github.com/PTamako/kakebo_jp/actions/runs/43439846696) **success**（均经 GitHub Actions 最终结果核对）。家計簿模块说明已追加 CI 结论（文档提交 `5b781795a4a15a11a52dd5b10a33ec923f073979`）。
 - **尚未完成**：C 阶段完整的原统计/所有资产余额明细、SBI/固定费/卡账单账户映射到真实 user_id 及个人权限、成员所有正常记账流程与审批后生效。此年度分组只是共享统计的一个可回归模块，不代表完整 C 阶段验收通过。详情见 [家計簿 C/D 说明](https://github.com/PTamako/kakebo_jp/blob/feature/homeflow-sso-isolated-foundation-20261113/docs/family-finance-stage-c-d.md)。
 
 ### 本轮交接的安全约束与下一个模块
