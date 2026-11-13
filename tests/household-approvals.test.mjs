@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {approvalRoute} from '../worker/approvals.js'
 import {approvalVerificationRoute} from '../worker/approval-verification.js'
+import {approvalSubmissionRoute} from '../worker/approval-submission.js'
 import {createHmac} from 'node:crypto'
 
 const sessions={
@@ -350,3 +351,75 @@ test('backchannel proof fails closed when unconfigured and pending is not execut
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,0)
  }finally{f.sql.close()}
 });
+
+
+test('trusted Kakeibo member submission creates only one HomeFlow pending approval and survives replay',async()=>{
+ const f=fixture()
+ try{
+  const secret='c'.repeat(64)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET=secret
+  f.env.APPROVAL_SUBMISSION_ENABLED='true'
+  const resourceId='f'.repeat(32)
+  const body={household_id:'primary',requester_user_id:'member',
+   resource_id:resourceId,payload_sha256:'a'.repeat(64)}
+  async function submit(payload=body,{stamp=Date.now(),client='kakeibo',
+   signature,headers={}}={}){
+   const raw=JSON.stringify(payload),timestamp=String(stamp)
+   const mac=signature||createHmac('sha256',Buffer.from(secret,'hex'))
+    .update(client+'\n'+timestamp+'\n'+raw).digest('hex')
+   const response=await approvalSubmissionRoute(new Request(
+    'https://homeflow.example.test/api/internal/approvals/submit',{
+     method:'POST',headers:{'content-type':'application/json',
+      'x-approval-client':client,'x-approval-timestamp':timestamp,
+      'x-approval-signature':mac,...headers},body:raw
+    }),f.env)
+   return {status:response.status,body:await response.json()}
+  }
+  let first=await submit()
+  assert.equal(first.status,201,JSON.stringify(first.body))
+  assert.equal(first.body.status,'pending')
+  assert.equal(first.body.applied,false)
+  assert.equal(first.body.ledger_changed,false)
+  assert.equal(first.body.idempotency_key,'kakeibo:finance:'+resourceId)
+  const replay=await submit()
+  assert.equal(replay.status,200,JSON.stringify(replay.body))
+  assert.equal(replay.body.approval_id,first.body.approval_id)
+  assert.equal(replay.body.replayed,true)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,1)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,1)
+  const row=f.sql.prepare('SELECT * FROM household_approval_requests').get()
+  assert.equal(row.requester_user_id,'member')
+  assert.equal(row.resource_id,resourceId)
+  assert.equal(row.payload_sha256,'a'.repeat(64))
+  assert.equal(row.status,'pending')
+  assert.equal(row.approver_user_id,null)
+  assert.equal((await submit({...body,payload_sha256:'b'.repeat(64)})).status,409,
+   'same resource ID and different immutable content cannot create a second approval')
+  assert.equal((await submit({...body,amount:1520})).status,400,
+   'no financial amount may appear in HomeFlow approval journal')
+  assert.equal((await submit(body,{signature:'f'.repeat(64)})).status,403)
+  assert.equal((await submit(body,{stamp:Date.now()-3600000})).status,403)
+  assert.equal((await submit(body,{headers:{origin:'https://homeflow.example.test'}})).status,403)
+  assert.equal((await submit(body,{headers:{cookie:'__Host-hf_session=anything'}})).status,403)
+  assert.equal((await submit({...body,requester_user_id:'stranger'})).status,403)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,1)
+  f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='member'").run()
+  assert.equal((await submit({...body,resource_id:'e'.repeat(32)})).status,401)
+ }finally{f.sql.close()}
+})
+test('backend approval submission never starts without separate flag, secret and production',async()=>{
+ const f=fixture()
+ try{
+  const response=await approvalSubmissionRoute(new Request(
+   'https://homeflow.example.test/api/internal/approvals/submit',
+   {method:'POST'}),f.env)
+  assert.equal(response.status,503)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_SUBMISSION_ENABLED='true'
+  assert.equal((await approvalSubmissionRoute(new Request(
+   'https://homeflow.example.test/api/internal/approvals/submit',
+   {method:'POST'}),f.env)).status,503)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,0)
+ }finally{f.sql.close()}
+})
