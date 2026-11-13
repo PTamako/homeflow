@@ -356,3 +356,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `Deploy HomeFlow` 的 `push` 仍只限 `main`，但加入 `paths-ignore`：`docs/**`、`**/*.md` 和 `.github/workflows/deploy.yml`。**只有本次推送涉及的全部文件都在这些忽略路径中，GitHub 才跳过 Deploy 工作流**；其他代码变更仍会触发正常工作流，不可误以为 A 已放行。
 - `Validate HomeFlow` 的 `.github/workflows/ci.yml` 保留 `pull_request` 与 `push main`，纯文档改动仍跑验证；手动 `workflow_dispatch` 不受文档路径过滤影响（不是自动上线授权）。
 - 此调整用于安全合并 #314 的 A 用户负责状态文档，不能视为 B～E 上线授权；所有功能 Draft 继续保留。合并前核对 GitHub 变更文件清单、CI；合并后检查 `main` 此提交没有运行 `Deploy HomeFlow`。
+
+
+## 9.3 2026-11-13 本轮接续：审批撤回 UI／昵称及知学 CI 语法修复
+
+> **A=待用户完成**，由用户自行完成四套生产 D1／R2 加密备份与隔离恢复；本轮没有启动备份/恢复、生产迁移、正式部署、Preview 资源或功能开关。B～E 保持现有 Draft PR 开发，绝不把 CI 成功写成已经上线。设计书：Google Drive v1.1（ID `1IJ6LIxWDtJ-bPEWp-ynLGXx485GPwpk6rc4_Ry0vHWY`）。
+
+**本轮真实 GitHub 核查（以重新核对的最新 PR HEAD 为准）**：
+- [HomeFlow #305](https://github.com/PTamako/homeflow/pull/305) 仍 Draft，身份代码 HEAD `b8b877388639b1a2b3ac19dbca58ea8072b8a037`，旧 CI 43402025579 success。
+- [HomeFlow #306](https://github.com/PTamako/homeflow/pull/306) 仍 Draft，base 为 #305 的功能分支，**本轮新 HEAD `8c5c6848e5829969062c5fa8f3d63a19394777b7`**；[Validate #43433184629](https://github.com/PTamako/homeflow/actions/runs/43433184629) **success**，包括测试、Vue/TypeScript build、Worker dry-run。
+- [家計簿 #309](https://github.com/PTamako/kakebo_jp/pull/309) 仍 Draft，HEAD `baab1adbad163f0ad6fa377827f0f60de0d1c443`，[Validate #43427933666](https://github.com/PTamako/kakebo_jp/actions/runs/43427933666) success，WebKit #43427933787 success；0022～0026 仍禁止生产迁移。
+- [知学 #179](https://github.com/PTamako/it-study-platform/pull/179) 仍 Draft，最新原提交已包含**0181 HomeFlow 独立生词本**，不能再把它误写为“只有 0180”；最新基础 CI #43430486850 failure（**464 pass / 1 fail**）：`scripts/homeflow-sso-isolated.test.mjs:245` 的字符串含未经转义的英文撇号，导致 SyntaxError，而非迁移或用户数据失败。已在相同分支以 `6a5c8bf954e17b2e99788370ddb739f43e4e218d` 修复字符串；新 [CI #43432554821](https://github.com/PTamako/it-study-platform/actions/runs/43432554821) **本记录时 in_progress，不能宣称成功**。0180/0181 均未生产执行；生词本只是 E 的第一个独立模块，其余私有学习 SQL、PWA 缓存仍不隔离。
+- [文书助手 #97](https://github.com/PTamako/jp-document-assistant/pull/97) 仍 Draft，HEAD `e0bb5f7bfdbb7e9dbae747192be87ff97656076a`，[Pre-merge CI #43410618095](https://github.com/PTamako/jp-document-assistant/actions/runs/43410618095) success，0020～0022 未生产执行。
+- [HomeFlow #314](https://github.com/PTamako/homeflow/pull/314) **此前已合并**，merge commit `275c5cc773fd1bc1338e51bcd6581ba80ff0d8e9`；未重复处理。现 main `.github/workflows/deploy.yml` 的 push/main `paths-ignore` 包括 `docs/**`、`**/*.md` 和部署工作流文件本身；纯交接 Markdown 可独立提交 main 并不自动部署 Worker；CI 仍保留 pull_request 与 push/main。仍禁止合并任意功能 PR。
+
+**本轮实际新增 HomeFlow Stage D 审批模块（仅 Draft #306）**：
+1. `22c332e07668a80e7c9dfa7fc9bad3e2c6847c11`：`src/components/ApprovalCenter.vue` 中普通成员仅可对**本人** `pending` 申请点击「撤回申请」，二次确认，发送已经存在且经服务端同户/本人/状态校验的 `POST /api/approvals/{id}/cancel`；状态变化后重新读取，避免把 approved/applied 误当可撤回。退出页面/切换账号关闭旧确认面板，返回消息不会跨账号写屏。
+2. `e4470c90d7734b975b3d9dfc3d3b593cd147c6c8`、`62ff5d15a6903725df4bc28756475c313459a7b9`：通过 App → ManagePage → ApprovalCenter 传入 HomeFlow 家庭档案 `profiles`；审批申请人**优先**显示 `memberUserId` 映射的 `displayName`，不存在才回退登录名。所有权限判断仍用不可变 user_id，不用昵称做关联。
+3. `8c5c6848e5829969062c5fa8f3d63a19394777b7`：新增 `tests/approval-center-ui.test.mjs`，覆盖待审批本人撤回入口、确认/端点、切号关单、真实家庭昵称的 props 传递；原后端 `household-approvals.test.mjs` 已覆盖本人取消与 owner 后续批准被拒。CI #43433184629 已通过。**不表示推送通知、审批结果联动或生产 UI 已完成。**
+
+**生产只读核对**：Cloudflare 正式 Worker 列表仍有 `homeflow`（最近修改 2026-11-13 12:25 UTC）、`it-study-platform`（06:58 UTC）、`jp-document-assistant`（05:43 UTC），家計簿还在既有 Pages 项目；没有执行本轮生产写入。GitHub 本轮功能分支均未合并，用户备份门槛仍在。真实生产迁移版本及功能开关未在本轮重新查询 D1/Secret，不把上述列表元数据当作迁移验收。
+
+**接续应做**：先查知学 #43432554821 最终 CI；若失败只修最新真实错误。然后优先完成 E 知学其余个人题目/错题/每日进度的安全复合键和 server-side user_id SQL（旧 owner 数据原样保留）、C 个人金融管理和完整全家统计、D 审批目标真实执行范围/通知与失败恢复、E 文书同步受控申请。所有模块先上既有 Draft 分支，逐提交测试和写本文件，确保未备份前绝无生产 SQL/部署。
