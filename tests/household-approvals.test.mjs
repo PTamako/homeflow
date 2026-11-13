@@ -254,6 +254,8 @@ test('expired pending cannot be reviewed; approval state machine rejects impossi
   const created=await f.call(sessions.member,'/api/approvals','POST',entry())
   const id=created.body.request.request_id
   f.sql.prepare('UPDATE household_approval_requests SET expires_at=created_at+1 WHERE request_id=?').run(id)
+  // Do not race the same millisecond that created_at was recorded in CI.
+  await new Promise(resolve=>setTimeout(resolve,15))
   const review=await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',{decision:'approve'})
   assert.equal(review.status,409)
   assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests').get().status,'pending')
