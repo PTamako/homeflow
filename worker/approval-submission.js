@@ -72,19 +72,25 @@ export async function approvalSubmissionRoute(request,env){
  if(![200,201].includes(result.status))return result
  const detail=await result.json()
  const row=detail.request
- if(!row||row.source_app!=='kakebo'||row.target_app!=='kakebo'||
-  row.operation!=='finance.entry.create'||row.resource_type!=='finance_entry'||
-  row.requester_user_id!==body.requester_user_id||
-  row.resource_id!==body.resource_id||
-  row.payload_sha256!==body.payload_sha256||
-  row.idempotency_key!==undefined||
-  !/^[a-f0-9-]{36}$/i.test(row.request_id)||row.applied!==false)
-  // The legacy public shape omits idempotency_key. The idempotent DB record
-  // is authoritative; never manufacture a success from a malformed response.
+ if(!row||!/^[a-f0-9-]{36}$/i.test(row.request_id)||row.applied!==false)
+  return reject('approval_submission_unverified',503)
+ // Public approval list/detail intentionally omits payload digests and
+ // idempotency keys. Query the immutable D1 row rather than weakening that
+ // privacy contract or trusting a client-supplied response field.
+ const committed=await env.DB.prepare('SELECT * FROM household_approval_requests WHERE request_id=?')
+  .bind(row.request_id).first()
+ if(!committed||committed.source_app!=='kakebo'||
+  committed.target_app!=='kakebo'||committed.operation!=='finance.entry.create'||
+  committed.resource_type!=='finance_entry'||
+  committed.household_id!==body.household_id||
+  committed.requester_user_id!==body.requester_user_id||
+  committed.resource_id!==body.resource_id||
+  committed.payload_sha256!==body.payload_sha256||
+  committed.idempotency_key!==key||committed.status!==row.status)
   return reject('approval_submission_unverified',503)
  return json({ok:true,approval_id:row.request_id,status:row.status,
-  resource_id:row.resource_id,payload_sha256:row.payload_sha256,
-  requester_user_id:row.requester_user_id,household_id:body.household_id,
+  resource_id:committed.resource_id,payload_sha256:committed.payload_sha256,
+  requester_user_id:committed.requester_user_id,household_id:body.household_id,
   idempotency_key:key,replayed:detail.replayed===true,
   applied:false,ledger_changed:false},result.status)
 }
