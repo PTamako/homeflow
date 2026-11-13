@@ -164,7 +164,7 @@ async function signedDocumentStatus(f,approval_id,options={}){
  const stamp=String(options.stamp??Date.now());
  const signature=options.signature??createHmac('sha256',
   Buffer.from(options.signWith||secret,'hex'))
-   .update((options.prefix||'jp-document-assistant:status')+'\\n'+stamp+'\\n'+raw)
+   .update((options.prefix||'jp-document-assistant:status')+'\n'+stamp+'\n'+raw)
    .digest('hex');
  const req=new Request(app+'/api/internal/approvals/document-status',{
   method:options.method||'POST',
