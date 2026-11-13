@@ -90,7 +90,7 @@
 | **B SSO/昵称/首次登录** | **开发中：只读身份契约 Draft PR #305，未上线** | 确认 HomeFlow owner/member、家庭昵称源；在独立功能分支实现现有 session 鉴权的 `/api/identity/me` 与 `/api/identity/household-members` 和测试；PR CI 成功 | **真正 OAuth/PKCE SSO 尚未开发**；业务 App 账号链接/会话、PWA 首次登录、撤销/跨账号缓存和实机验收待完成 | **无** | **无；PR #305 未合并** |
 | **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
 | **D HomeFlow 审批** | **未开始** | 确认现有 session/角色与路由基线 | 工单状态机/事件表/索引、幂等执行器、内部签名接口、通知/UI、异步重试审计 | 无 | 无 |
-| **E 文书/知学隔离与跨 App 同步** | **未开始** | 确认文书本地旧身份与知学单人登录模式；只读旧记录数 | identity_links、shared 可写、OAuth 隔离、候选同步审批；学习所有个人表 SQL/前端缓存 user_id 化 | 无 | 无 |
+| **E 文书/知学隔离与跨 App 同步** | **开发中：文书身份链接 Draft PR #97，未上线** | 已确认文书本地 owner user/household ID 与 HomeFlow owner 两种 ID 均不相同（预期的本地身份差异，不是数据归属异常）；已提交一对一不可变映射表的**未执行** SQL 与遗留文书/OAuth 隔离测试，CI 成功 | 真正 HomeFlow 验证链接创建、member 首次账户建立、shared 可写、OAuth 隔离、候选同步审批；知学个人表 SQL/缓存 user_id 化全部待做 | **无** | **无；Draft #97 未合并** |
 | **F 全链路验收与旧鉴权清退** | **未开始** | 加入 §3.1 测试条款 | 两位用户、多站点/iPhone PWA 回归、旧 token 清退门槛、历史/R2/成本比对和回滚演练 | 无 | 无 |
 
 ## 4. 功能提交/PR/CI/部署流水账（每个功能完成立即追加）
@@ -103,13 +103,15 @@
 
 | 2026-11-13 | HomeFlow B1 — read-only `/api/identity/me` 与家庭成员昵称契约 + 五组隔离回归测试 | `feature/homeflow-identity-read-contract-20261113` | `a48752299b0d3253573b274038b10891cefc0560`（模块）/ `0128aa4a637e97fb4eb40ad8709cd72a0d6ab005`（测试）/ `52ee0731c4738f314d66d9a79536b18fe5337efd`（路由） | [Draft #305](https://github.com/PTamako/homeflow/pull/305) **未合并** | [Validate run 43385362454](https://github.com/PTamako/homeflow/actions/runs/43385362454) **success** | 不适用 | **未部署**（A 备份门槛未满足） | 仅测试成功，生产/双人 PWA 验收未执行 |
 
+| 2026-11-13 | 文书助手 B/E — 一对一 HomeFlow↔本地 user ID 的无损链接表 + 老数据保留测试 | `feature/homeflow-identity-link-safety-20261113` | `b6e1d7d9d890154cc193230886356966b01db22f`（迁移文件）/ `b77bf4207094d6fd1cc706a85043a746f629d29b`（测试） | [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) **未合并** | [Pre-merge CI run 43386709400](https://github.com/PTamako/jp-document-assistant/actions/runs/43386709400) **success** | **0020_homeflow_identity_links.sql 未在生产执行** | **未部署**（A 备份及服务端身份链接验收未完成） | 测试成功；生产/实机登录未测 |
+
 ## 5. 已知问题与失败项
 
 1. **已查明 kakebo_jp main GitHub Actions `Deploy Private Kakeibo Bridge` run [43371145070](https://github.com/PTamako/kakebo_jp/actions/runs/43371145070) 失败根因**：job `131706942791` 中测试通过，但在 `Verify Cloudflare production credentials` 步骤因 GitHub repository/environment secret **`CLOUDFLARE_API_TOKEN` 缺失**失败（日志中 `CLOUDFLARE_ACCOUNT_ID` 也为空）；后续部署步骤 skipped。**这不是业务单测失败**。Cloudflare 当前 Worker 100% 版本是既有版本，不证明这次 push 已部署。不得把真实 token 写进本文件；恢复时由有权限人员安全配置 GitHub Actions secrets，或走经认证的 Cloudflare 发布流程，并验证生产版本。
 2. **生产 D1/R2 持久备份未全部完成**；虽然 HomeFlow D1 导出 API 曾 complete，但未证实文件安全落盘和恢复。生产迁移继续阻断。
 3. **家計簿 `payment_sources.name` 唯一主键无法支持两人同名账户**；制定有旧名称兼容的稳定 ID 转换策略前不得在生产逐项重构。
 4. **知学仍有单人认证和个人数据无 user_id 的表**；禁止只开放桥接 ID 后让 member 进入 owner 旧数据。
-5. **文书助手现有单人本地 owner 与 HomeFlow owner 的链接尚未验证**；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
+5. **已在两个生产 D1 内部只读比较**：文书助手本地 owner user ID、household ID 与 HomeFlow 的 owner 对应 ID **并不相等**，但均只有一位 owner，这与旧系统独立身份模型一致，**不是异常数据，也不需要用户重申归属**。Draft #97 为此设计映射表，尚无任何行被生产插入；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
 6. **目前所有新阶段均未完工**；首次 PWA 实机验收尚无执行记录。
 7. HomeFlow **Draft PR #305** 的只读身份契约已经通过 GitHub Validate，但**尚未合并/上线**，不可把它视为 OAuth 统一登录。生产备份门槛完成前不合并；恢复时先看是否有新 commit 或 CI 状态。
 
