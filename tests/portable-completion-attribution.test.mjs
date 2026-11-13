@@ -46,7 +46,7 @@ function fixture(){
      bind(...params){args=params;return this},
      async first(){return statement.get(...args)||null},
      async all(){queryCount++;return {results:statement.all(...args)}},
-     async run(){return {meta:{changes:Number(statement.run(...args).changes)}}
+     async run(){return {meta:{changes:Number(statement.run(...args).changes)}}}
    }},
    async batch(statements){
      sqlite.exec('BEGIN')
