@@ -198,6 +198,23 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 **后续顺序**：A 由用户电脑完成四 D1/三 R2 加密可恢复备份后记录 SHA/隔离恢复报告（绝不贴秘密）；B 先补齐 HomeFlow 与三个业务应用实际 server-side 会话实时撤销/授权、知学统一登录、PWA 前端登录/切换，完成预发布联调；C 基于稳定账户 ID 修正 `payment_sources.name` 主键和同名账户问题，按 owner_user_id 隔离个人金融，保持账本和统计家庭共享；D 仅在 HomeFlow 审核后以幂等事务真正记账，不可将“已批准”当“已生效”；E 文书与知学按真实 user_id 隔离；F iPhone 双人真实验收后逐步清退旧登录。**不要重新创建 Preview 或直接合并 Draft #309、#305、#306、#97**。
 
+
+## 6.3 2026-11-13 阶段 B：跨应用源会话撤销验证完成（代码/自动测试，未上线）
+
+用户明确把生产 D1/R2 备份与隔离恢复延后，计划有电脑后亲自操作；**本次许可仅指继续开发分支与测试，不豁免生产备份门槛**。阶段 A 依旧阻断任何生产迁移、功能 PR 合并或启用开关；本节所有新 SQL 文件均未执行。无新增 Preview、无正式业务数据/资源改写。
+
+| 项目 | 本轮增量 | 最新头 SHA | CI | 生产 |
+|---|---|---|---|---|
+| [HomeFlow Draft #305](https://github.com/PTamako/homeflow/pull/305) | 在尚未执行的 0053 新增短期 `oauth_session_assertions`，与 HomeFlow 原登录 session FK 绑定；OAuth 后端 code 兑换额外签发 15 分钟 server-only assertion，`POST /api/oauth/session-introspect` 精确按 client/user/family/role/session 活性校验；Logout、账号禁用、成员关系删除即时失效，普通校验只读 D1 不写审计；修复旧 OAuth UI 静态测试断言 | `b8b877388639b1a2b3ac19dbca58ea8072b8a037` | [Validate #43402025579](https://github.com/PTamako/homeflow/actions/runs/43402025579) success | 0053 未执行，OAuth OFF |
+| [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) | 未执行 0022 增加 AES-GCM 加密 `session_assertion`，其 `/api/homeflow-sso/me` 每次服务端复核 HomeFlow 原会话；登出、换角色、禁用拒绝 401；新会话永远不接受旧财务 API，`ledger_access:false` | `7f386e16586d17a12ee2ad1617a9519e05065b18` | [Validate #43402915695](https://github.com/PTamako/kakebo_jp/actions/runs/43402915695) success，WebKit [#43400307439](https://github.com/PTamako/kakebo_jp/actions/runs/43400307439)（早期基础版）success | 0022 未执行，SSO OFF，无财务访问 |
+| [文书助手 Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) | 新 0022 未执行迁移：`sessions.auth_source` 默认 legacy，HomeFlow 新 session 必须标记 homeflow 并在服务端加密保存 HomeFlow assertion 1:1；私人读写 `requireSession` 对 HomeFlow session 必须实时后端 introspect，失败或没有 proof 严禁旧账号兜底；既有 legacy 文书、Google OAuth/grant 不改 | `e255ce0de87bd4f0e31a674f38e87d66d778449e` | [Pre-merge #43402597451](https://github.com/PTamako/jp-document-assistant/actions/runs/43402597451) success（Node/Python/SQLite/Vue），此前 43402253437/43402422216 的旧 fixture 与 SQL 字段名错误已修复 | 0020/0021/0022 未执行，SSO OFF |
+
+**HomeFlow 关键提交 SHA**：`57ad1798f532fb1dd87cac3046b45c02fb9098b6`（0053）、`f51976caf0e2ea2f23d0778403705055c56f7c18`（断言签发）、`34079ba4367c9b0f16accf318d9591f35d3d33cd`（单次只读验活）、`7471d0966f13fbef428e068d648289469aa32cff`、`4e59b45d901b1a7a2a7ae00ddb36cca06eda8a05`（路由）、`2b908646997ef4b53f01256267b22bdbb15ccf4e`（回归）、`b8b877388639b1a2b3ac19dbca58ea8072b8a037`（旧静态测试修复）。
+**文书关键提交 SHA**：`a5f6beca50a01211e2c826a559b49db135d20ade`、`fdeef1f7b4841414180c249ae5b8c858322c356b`（迁移）；`d625dfe55c3e63ddb352c19802b451258016b0c4`、`a3d14cb18ec9cf9f948e1e1e716fb42d3ed4dc7b`、`48804bfc6a052ba69622117adac0a8a6c691bd44`（代码）；`8acb666e2b6803281abdc560dba9842bc788c55d`、`89069d3ee6281fba5e21d9d2f69406c021d4c5c3`、`ae7b7b8a4955b72fe7ce290e866934c7a4cd2357`（SQL fixture/回归修复）；`e255ce0de87bd4f0e31a674f38e87d66d778449e`（安全文档）。
+**家計簿关键提交 SHA**：`bd38dfbbf0df1b903cfea85a81a815b3cdf9a900`（身份会话密文表）、`52c0e9049c926d40e5d837eea8044fd0e352b19d`（验活）、`7f386e16586d17a12ee2ad1617a9519e05065b18`（测试）。
+
+**还未完成 / 无法宣称全系统完成**：知学尚未接入 HomeFlow 统一登录或用户级权限隔离；家計簿虽有独立身份会话但没有开放共享账本/资产读、更没有个人金融归属的稳定账户 ID 与审批前置；HomeFlow Draft #306 已有审批请求、决定与审计但不执行真实账务；文书助手共享写权限和跨 App 审批候选仍待开发；三 App 真 iPhone PWA 双人登录、注销、切号缓存隔离仍未验收；Cloudflare 正式资源没有启用本轮功能。下一步按 A→F，**A 备份由用户操作之前只继续离线开发**，B 知学身份及三个 App 受控真实登录，C 个人金融，D 事务审批，E 私人隔离，F 真机验收。严格不得重建 Preview、重复执行迁移或自行清理旧凭证/历史。
+
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
