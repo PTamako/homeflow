@@ -5,6 +5,7 @@ import {json,randomToken,sha256,readBody,nowMs,cookieFrom} from './security.js'
 // Opt-in only: production without OAUTH_ENABLED='true' always fails closed.
 const CODE_TTL_MS = 3 * 60_000
 const ACCESS_TTL_MS = 3 * 60_000
+const SESSION_ASSERTION_TTL_MS = 15 * 60_000
 const CLIENT_ID = /^[a-z][a-z0-9-]{2,48}$/
 const B64URL = /^[A-Za-z0-9_-]{43}$/
 const STATE = /^[A-Za-z0-9._~:-]{16,256}$/
@@ -119,7 +120,7 @@ export async function oauthRoute(request,env,path,session){
       return json({error:'invalid_grant'},400)
     // Unique random consumption marker prevents a concurrent exchange from
     // using the same code even if two requests have the same millisecond.
-    const consumedMarker=randomToken(),token=randomToken()
+    const consumedMarker=randomToken(),token=randomToken(),assertion=randomToken()
     const dbResults=await db.batch([
       db.prepare(`UPDATE oauth_authorization_codes
         SET consumed_at=?1, consumption_marker=?2 WHERE code_hash=?3
@@ -131,6 +132,12 @@ export async function oauthRoute(request,env,path,session){
         FROM oauth_authorization_codes
         WHERE code_hash=?4 AND consumption_marker=?5`)
         .bind(await sha256(token),t+ACCESS_TTL_MS,t,hash,consumedMarker),
+      db.prepare(`INSERT INTO oauth_session_assertions
+        (assertion_hash,client_id,user_id,household_id,session_hash,expires_at,created_at)
+        SELECT ?1,client_id,user_id,household_id,session_hash,?2,?3
+        FROM oauth_authorization_codes
+        WHERE code_hash=?4 AND consumption_marker=?5`)
+        .bind(await sha256(assertion),t+SESSION_ASSERTION_TTL_MS,t,hash,consumedMarker),
       db.prepare(`INSERT INTO oauth_security_events
         (event_id,user_id,client_id,event,created_at)
         SELECT ?1,user_id,client_id,'token_exchanged',?2
@@ -139,10 +146,13 @@ export async function oauthRoute(request,env,path,session){
         .bind(crypto.randomUUID(),t,hash,consumedMarker)
     ])
     if(Number(dbResults?.[0]?.meta?.changes)!==1 ||
-       Number(dbResults?.[1]?.meta?.changes)!==1)
+       Number(dbResults?.[1]?.meta?.changes)!==1 ||
+       Number(dbResults?.[2]?.meta?.changes)!==1)
       return json({error:'invalid_grant'},400)
     return noStore(json({access_token:token,token_type:'Bearer',
-      expires_in:ACCESS_TTL_MS/1000}))
+      expires_in:ACCESS_TTL_MS/1000,
+      // Backend-only liveness capability; never expose to the browser.
+      session_assertion:assertion,session_assertion_expires_in:SESSION_ASSERTION_TTL_MS/1000}))
   }
   if(path==='/api/oauth/userinfo'){
     if(request.method!=='GET')return json({error:'method_not_allowed'},405)
