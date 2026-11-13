@@ -255,6 +255,15 @@ test('end-to-end owner, one-use invitation, private/shared ACL and trip import',
  assert.equal(privateProgress.status,404)
  const sharedProgress=await base('/api/trips/'+converted.body.id+'/progress','POST',{itemId:'shared-pack-check',completed:true},partner)
  assert.equal(sharedProgress.status,200)
+ const firstTripCompletion=sqlite.prepare('SELECT completed_at FROM trip_progress WHERE trip_id=? AND item_id=?')
+   .get(converted.body.id,'shared-pack-check').completed_at
+ const repeatedShared=await base('/api/trips/'+converted.body.id+'/progress','POST',
+   {itemId:'shared-pack-check',completed:true},partner)
+ assert.equal(repeatedShared.status,200)
+ assert.equal(repeatedShared.body.unchanged,true)
+ assert.equal(sqlite.prepare('SELECT completed_at FROM trip_progress WHERE trip_id=? AND item_id=?')
+   .get(converted.body.id,'shared-pack-check').completed_at,firstTripCompletion,
+   'retry must not overwrite the original itinerary completion time')
  const privateReminders=await base('/api/reminders?date=2027-01-15','GET',undefined,partner)
  assert.equal(privateReminders.status,200)
  assert.equal(privateReminders.body.items.some(x=>x.title.includes('检查交通')),false)
