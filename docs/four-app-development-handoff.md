@@ -416,3 +416,32 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 所有上述代码**仅在已有 Draft**，无功能 PR 合并/部署；**本轮在 HomeFlow main 只写本交接 Markdown**，#314 的 docs-only `paths-ignore` 保证 push 不自动触发 Deploy HomeFlow。勿再次处理 #314。
 - 设计书 A–F 仍按 A=用户负责待完成、B/C/D/E=分模块 Draft 持续开发、F=未开始实机联调。HomeFlow 0053/0054/0055、家計簿 0022–0026、知学 0180/0181、文书助手 0020–0022 **均未获本轮生产迁移授权**；本轮没有真实生产 D1 migration/Secret/开关的完整检查，因此需下次再单独只读核对，不能凭代码完成虚报已上线。
 - 下一优先：知学按 user_id 隔离所有个人学习表与端侧缓存；家計簿完整家庭统计/个人余额与账单设置映射；HomeFlow 审批 Push/幂等结果重试；文书共享附件全流程与受审批同步；为各模块增加未登录、跨户、同户配偶越权和断网重试测试。完成新模块就将真实 CI/Commit/PR/部署状态追加本文件。
+
+
+## 9.5 2026-11-13 本 Chat 续开发：文书共享附件删除与家計簿年度统计
+
+> **阶段 A 状态不变：待用户本人完成生产加密备份与隔离恢复验证**。本轮未尝试 A；没有修改 Cloudflare 生产 D1/R2、没有启用 OAuth/审批/金融功能、没有创建 Preview，没有合并任何功能 PR。继续在现有 Draft #97/#309 工作；此前 #305/#306/#179 保持原状。#314 已合并，无重复开发或更改部署保护规则。
+
+### E：文书助手共享附件的安全永久删除
+
+- 原有 [文书助手 Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97)，分支 `feature/homeflow-identity-link-safety-20261113`。功能 `worker/lifecycle.js` 提交 [`06f9fb11`](https://github.com/PTamako/jp-document-assistant/commit/06f9fb11e0ab443de895767a384fe4985385d9ae)、真实 SQLite/模拟 R2 回归 `tests/worker.test.js` 提交 [`6df3a333`](https://github.com/PTamako/jp-document-assistant/commit/6df3a333bc1d0fb4263bf99b1e36a39f5b1ace4a)、模块说明提交 `1e97563b88c7309640c23d5ba7456acc192e6d35`。
+- 已按设计书 R5 扩展**已明确共享的文书附件**：成员与原所有者均可将附件移入回收站/恢复/二次确认后永久删除。R2 实际 object `owner_id` 和墓碑始终保留原主人 ID；实际执行人在 `audit_events(kind='attachment_permanently_deleted',actor_user_id)` 持久审计；不可因删除而误以为历史 owner 是真实 actor。取消共享或私人文书继续服务端 404；永久删除前重新检查仍有共享权限。
+- **R2 完整性**：同一 object 被两附件引用时，删掉一份只移除该 attachment 元数据，最后一个引用消失才精确清理原 R2 key；不做跨用户全桶清理，失败沿用受控删除状态/重试。测试还覆盖双人权限、重复删除无二次审计、共享撤销之后拒绝、R2 原件保存。
+- [文书助手 Pre-merge CI #43438562835](https://github.com/PTamako/jp-document-assistant/actions/runs/43438562835) **success**（真实自动测试，非真机或生产验收）。完整增量说明见该 PR 的 `docs/homeflow-sso-backend-gates.md`。
+- **尚未完成**：整份共享文书跨 owner 永久删除和附件孤儿补偿的所有竞争路径、旧用户名到 HomeFlow 的正式迁移/双人手机验收、跨 App 最小字段审批同步、个人 Google OAuth 独立授权验证。此处只修共享**附件**删除，不冒称全部共享文书安全生命周期已完工。
+
+### C：家計簿真正共享的年度统计接口与家庭 UI
+
+- 原有 [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309)，分支 `feature/homeflow-sso-isolated-foundation-20261113`。
+- `functions/api/family-finance/[[path]].js` 新增 `GET /api/family-finance/shared/year-summary?year=YYYY`：要求业务 App 当前独立 HomeFlow source-session 双向身份验证，读取原家庭全部 `entries`，以 D1 三种分组查询完成年度 12 个月/收入支出资产转移/按分类及支付方式统计，带金额、笔数与结余，**双方同一结果**，没有 owner/member 视角切换；资产转移不重复计算为收入/支出，普通 GET 不产生审计写入。
+- `src/FamilyFinanceAccess.vue`：新家庭管理页年度选择、收入/支出/结余总计、月度趋势、分类列表、资产转移单列；原单人旧统计页不在本轮改写。非法年份 400；存在未知交易类型/损坏汇总则 409，禁止静默丢弃真实账目后显示 `complete:true`。不将新 SSO cookie 用于旧 `/api/entries` 写入。
+- 新增以两个真实模拟 HomeFlow 身份与本地 SQLite 的回归，覆盖两人年度数据完全相同、年边界、计数与分类支付方式、未知交易类型 fail-closed、读请求无审计/正式 `entries` 无写动作；另有家庭 UI 静态门槛测试。
+- 实际提交顺序：`e6de15c1647e2bcfdb8ff08b231d54ed9b602ccc`、`3d0fab90474346b81c96a93eb81037e7ac3b7873`、`58e33ca6c8a851136cfbe6a6a2d5be7bc145f957`、`07a4c3b49252a9aebbb7b0794a7e251997951127`、`02d6c693c3c842f9d0d1933c63cf70433d097f2a`、`b36c8387eb4d4000f1dd36b27f300cff86c1011e`（模块说明）、`ef7d713f963d19aaa38ccffa9c7b79f1c1b340d0`（未知类型不能漏算）、`8fffdd369f09a828aa5f9398012c67f6279ae55f`（类型异常回归）。
+- [早期 Validate #43439421706](https://github.com/PTamako/kakebo_jp/actions/runs/43439421706) **success**；针对最新未知交易类型保护的 [Validate #43439846672](https://github.com/PTamako/kakebo_jp/actions/runs/43439846672) 与 [Mobile WebKit #43439846696](https://github.com/PTamako/kakebo_jp/actions/runs/43439846696) **记录时仍运行中**。下次根据实际 GitHub Actions 结论补录，不能提前当成通过。
+- **尚未完成**：C 阶段完整的原统计/所有资产余额明细、SBI/固定费/卡账单账户映射到真实 user_id 及个人权限、成员所有正常记账流程与审批后生效。此年度分组只是共享统计的一个可回归模块，不代表完整 C 阶段验收通过。详情见 [家計簿 C/D 说明](https://github.com/PTamako/kakebo_jp/blob/feature/homeflow-sso-isolated-foundation-20261113/docs/family-finance-stage-c-d.md)。
+
+### 本轮交接的安全约束与下一个模块
+
+- HomeFlow 仍是唯一身份/家庭档案昵称和审批源；两人财务**同一家庭账本**，个人信用卡等配置按所有者分离；文书私人附件/Google OAuth 不因 owner 或共享而被越权。各 App 写动作仍必须持久记录真实 actor ID。
+- 因用户 A 仍未完成，HomeFlow 0053/0054/0055、家計簿 0022～0026、知学 0180/0181、文书助手 0020～0022 **禁止在生产执行**；所有新功能开关保持 OFF，所有功能 Draft 继续未合并。
+- 接下来应优先：1）查询本节最新 CI 最终结论；2）家計簿已有后台年度 API 与主统计 UI 的完整新身份整合，而非仅孤立卡片；3）文书整份共享永久删除的独立 R2 孤儿清理与私有 OAuth 授权边界；4）知学更大范围 user_id 独立学习表/缓存；5）HomeFlow 审批类型扩展、签名执行、状态回传、失败重试及推送。每个独立模块保留现有 Draft，并持续在本文件记录准确 CI、未上线与失败项。
