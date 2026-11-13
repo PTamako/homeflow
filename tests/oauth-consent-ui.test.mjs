@@ -25,7 +25,7 @@ test('OAuth consent requires a real click and does not auto-redirect or cache to
 test('HomeFlow API token endpoint is backend-only and account scope is server verified',()=>{
  const router=read('worker/index.js')
  const oauth=read('worker/oauth.js')
- assert.match(router,/path==='\/api\/oauth\/token'/)
+ assert.ok(router.includes("path!=='/api/oauth/token'"))
  assert.match(router,/path.startsWith\('\/api\/oauth\/'\)/)
  assert.match(oauth,/request.headers.has\('origin'\)/)
  assert.match(oauth,/redirectAllowed\(env,client_id,redirect_uri\)/)
