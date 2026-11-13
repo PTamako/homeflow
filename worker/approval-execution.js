@@ -27,7 +27,7 @@ async function mac(secret,stamp,raw){
   new TextEncoder().encode('homeflow\n'+stamp+'\n'+raw))
  return Array.from(new Uint8Array(data),x=>x.toString(16).padStart(2,'0')).join('')
 }
-async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=null){
+async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=null,remoteAppliedAt=null){
  const stamp=nowMs()
  try{
   const changes=await db.batch([
@@ -38,7 +38,7 @@ async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=nul
     'last_error_code=?,version=version+1 '+
     "WHERE request_id=? AND household_id=? AND status='executing' "+
     'AND execution_nonce_hash=?')
-    .bind(newStatus,stamp,newStatus,stamp,newStatus,remoteId,errorCode,
+    .bind(newStatus,stamp,newStatus,remoteAppliedAt??stamp,newStatus,remoteId,errorCode,
      row.request_id,row.household_id,row.execution_nonce_hash),
    db.prepare('INSERT INTO household_approval_events '+
     '(event_id,request_id,actor_user_id,actor_type,action,created_at) '+
@@ -166,8 +166,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   result.household_id===row.household_id&&
   result.requester_user_id===row.requester_user_id&&
   result.payload_sha256===row.payload_sha256&&
-  Number.isSafeInteger(result.entry_id)&&result.entry_id>0){
-  const stored=await statusChange(db,row,session,'applied',null,String(result.entry_id))
+  Number.isSafeInteger(result.entry_id)&&result.entry_id>0&&
+  Number.isSafeInteger(result.applied_at)&&result.applied_at>=Number(row.reviewed_at)&&
+  result.applied_at<=nowMs()+60000){
+  const stored=await statusChange(db,row,session,'applied',null,String(result.entry_id),result.applied_at)
   if(stored)return reply({ok:true,status:'applied',approval_id:row.request_id,
    remote_id:String(result.entry_id),applied:true,
    replayed:result.already_applied===true})
