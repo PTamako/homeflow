@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
 import {approvalRoute} from '../worker/approvals.js'
+import {approvalVerificationRoute} from '../worker/approval-verification.js'
+import {createHmac} from 'node:crypto'
 
 const sessions={
  owner:{household_id:'primary',user_id:'owner',role:'owner'},
@@ -257,3 +259,94 @@ test('expired pending cannot be reviewed; approval state machine rejects impossi
   assert.throws(()=>f.sql.prepare("UPDATE household_approval_requests SET status='applied'").run(),/INVALID_APPROVAL_TRANSITION/)
  }finally{f.sql.close()}
 })
+
+
+test('signed backchannel proof verifies exact approved digest and live household, never posts entries',async()=>{
+ const f=fixture()
+ try{
+  const secret='c'.repeat(64)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET=secret
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  const draft=entry('source-bound-proof-0001',{resource_id:'pending-entry-abc123'})
+  const pending=await f.call(sessions.member,'/api/approvals','POST',draft)
+  assert.equal(pending.status,201)
+  const approved=await f.call(sessions.owner,'/api/approvals/'+pending.body.request.request_id+'/review',
+   'POST',{decision:'approve'})
+  assert.equal(approved.status,200)
+  const proof={request_id:pending.body.request.request_id,
+   resource_id:draft.resource_id,household_id:'primary',requester_user_id:'member',
+   payload_sha256:draft.payload_sha256,idempotency_key:draft.idempotency_key,
+   expected_version:null}
+  const tryProof=async(payload=proof,{client='kakeibo',timestamp=Date.now(),
+   signature,headers={}}={})=>{
+   const raw=JSON.stringify(payload),stamp=String(timestamp)
+   const mac=signature??createHmac('sha256',Buffer.from(secret,'hex'))
+    .update(client+'\n'+stamp+'\n'+raw).digest('hex')
+   const response=await approvalVerificationRoute(new Request(
+    'https://homeflow.example.test/api/internal/approvals/verify',{
+     method:'POST',headers:{'content-type':'application/json',
+      'x-approval-client':client,'x-approval-timestamp':stamp,
+      'x-approval-signature':mac,...headers},body:raw
+    }),f.env)
+   return {status:response.status,body:await response.json()}
+  }
+  const eventsBefore=f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n
+  const verified=await tryProof()
+  assert.equal(verified.status,200,JSON.stringify(verified.body))
+  assert.equal(verified.body.verified,true)
+  assert.equal(verified.body.applied,false)
+  assert.equal(verified.body.ledger_changed,false)
+  for(const variant of [
+   {...proof,payload_sha256:'b'.repeat(64)},
+   {...proof,resource_id:'other-draft'},
+   {...proof,requester_user_id:'owner'},
+   {...proof,idempotency_key:'wrong-source-bound-001'},
+   {...proof,household_id:'second'},
+   {...proof,expected_version:0}
+  ]){
+   const mismatch=await tryProof(variant)
+   assert.equal(mismatch.status,409,JSON.stringify(mismatch.body))
+  }
+  assert.equal((await tryProof(proof,{signature:'f'.repeat(64)})).status,403)
+  assert.equal((await tryProof(proof,{timestamp:Date.now()-3600000})).status,403)
+  assert.equal((await tryProof(proof,{headers:{origin:'https://homeflow.example.test'}})).status,403)
+  assert.equal((await tryProof(proof,{headers:{cookie:'__Host-hf_session=secret'}})).status,403)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,eventsBefore,
+   'verification reads must not create noisy approval events')
+  assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests').get().status,'approved')
+  f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='member'").run()
+  assert.equal((await tryProof()).status,409,'revoked requester cannot execute old approval')
+  f.sql.prepare("UPDATE users SET disabled_at=NULL WHERE id='member'").run()
+  f.sql.prepare("UPDATE household_members SET role='member' WHERE user_id='owner'").run()
+  assert.equal((await tryProof()).status,409,'revoked owner review cannot authorize execution')
+ }finally{f.sql.close()}
+});
+test('backchannel proof fails closed when unconfigured and pending is not executable',async()=>{
+ const f=fixture()
+ try{
+  const secret='c'.repeat(64)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET=secret
+  const proof={request_id:'11111111-1111-4111-8111-111111111111',
+   resource_id:'pending-000001',household_id:'primary',requester_user_id:'member',
+   payload_sha256:'a'.repeat(64),idempotency_key:'source-bound-proof-0001'}
+  const stamp=String(Date.now()),raw=JSON.stringify(proof)
+  const mac=createHmac('sha256',Buffer.from(secret,'hex'))
+   .update('kakeibo\n'+stamp+'\n'+raw).digest('hex')
+  const request=()=>new Request('https://homeflow.example.test/api/internal/approvals/verify',{
+   method:'POST',headers:{'content-type':'application/json',
+    'x-approval-client':'kakeibo','x-approval-timestamp':stamp,
+    'x-approval-signature':mac},body:raw})
+  assert.equal((await approvalVerificationRoute(request(),f.env)).status,503)
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  assert.equal((await approvalVerificationRoute(request(),f.env)).status,409,
+   'a correctly signed nonexistent request is still not approved')
+  f.env.APP_ENV='preview'
+  assert.equal((await approvalVerificationRoute(request(),f.env)).status,503)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET='too-short'
+  assert.equal((await approvalVerificationRoute(request(),f.env)).status,503)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,0)
+ }finally{f.sql.close()}
+});
