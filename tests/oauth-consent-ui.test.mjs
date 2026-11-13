@@ -9,6 +9,9 @@ test('external installed PWA can land on /authorize while existing HomeFlow logi
  assert.match(app,/<OAuthConsent v-if="oauthLanding&&authReady&&user&&!authFailure"/)
  assert.match(app,/v-else-if="!user" class="auth-content"/)
  assert.match(app,/@submit.prevent="submitAuth"/)
+ assert.match(app,/if\(oauthLanding\)return/)
+ assert.match(app,/if\(oauthLanding\)\{/)
+ assert.match(app,/!oauthLanding&&user.value&&/)
 })
 
 test('OAuth consent requires a real click and does not auto-redirect or cache tokens',()=>{
