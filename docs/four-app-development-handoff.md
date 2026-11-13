@@ -87,7 +87,7 @@
 | 阶段 | 状态 | 已完成 | 进行中 / 未完成 | 生产迁移 | 生产部署/验收 |
 |---|---|---|---|---|---|
 | **A 调查、只读基线、备份** | **进行中** | 读取最新 v1.1 + §3.1；四 repo main SHA/目录/部分迁移和测试；检查 GitHub CI、Cloudflare D1/Workers/R2/Pages；生产关键表计数；发现同名账户冲突风险 | 获取持久化四库可恢复备份、R2 物件清单/恢复方案、全表结构与历史金额摘要、检查 kakeibo bridge CI 失败原因 | **无** | **没有本项目的新部署** |
-| **B SSO/昵称/首次登录** | **开发中：只读身份契约 Draft PR #305，未上线** | 确认 HomeFlow owner/member、家庭昵称源；在独立功能分支实现现有 session 鉴权的 `/api/identity/me` 与 `/api/identity/household-members` 和测试；PR CI 成功 | **真正 OAuth/PKCE SSO 尚未开发**；业务 App 账号链接/会话、PWA 首次登录、撤销/跨账号缓存和实机验收待完成 | **无** | **无；PR #305 未合并** |
+| **B SSO/昵称/首次登录** | **开发中：HomeFlow 身份 + PKCE 授权基础 Draft PR #305，未上线** | 已有身份 read API/昵称隔离；B2 新增 feature-flag 禁用默认的 3 分钟授权码+S256 PKCE、一次性 CAS 兑换/短令牌/userinfo、精确重定向 allowlist；新迁移 0053 SQL 和单测，CI #43388105347 success | **完整安全单点登录仍未实现**：后端令牌回调验证、业务 App Session、授权确认 UI、实际 client allowlist、审计、token 撤销和 iOS PWA 首次登录测试待做；当前不提供 OIDC ID-token/JWKS | **0053 未执行** | **未部署 B1/B2；PR #305 Draft 未合并** |
 | **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
 | **D HomeFlow 审批** | **未开始** | 确认现有 session/角色与路由基线 | 工单状态机/事件表/索引、幂等执行器、内部签名接口、通知/UI、异步重试审计 | 无 | 无 |
 | **E 文书/知学隔离与跨 App 同步** | **开发中：文书身份链接 Draft PR #97，未上线** | 已确认文书本地 owner user/household ID 与 HomeFlow owner 两种 ID 均不相同（预期的本地身份差异，不是数据归属异常）；已提交一对一不可变映射表的**未执行** SQL 与遗留文书/OAuth 隔离测试，CI 成功 | 真正 HomeFlow 验证链接创建、member 首次账户建立、shared 可写、OAuth 隔离、候选同步审批；知学个人表 SQL/缓存 user_id 化全部待做 | **无** | **无；Draft #97 未合并** |
@@ -100,6 +100,8 @@
 | 2026-11-13 | HomeFlow — 首建跨四项目交接文档；仅记录真实调查状态 | `docs/four-app-handoff-20261113` | `1db3b510332bf3a2a37670584bc9a6bd7aa29aca`（首建）/ `8a15d29d44c3f58ebedf89b952ce2fed9206c17b`（补录）/ `3e984de3867410d93372112658205bbb4b89113a`（squash main） | [#304](https://github.com/PTamako/homeflow/pull/304) **已合并** | [Validate run 43384895765](https://github.com/PTamako/homeflow/actions/runs/43384895765) 成功；main Validate/Deploy 43384895765 后的新 run 已成功 | 不适用 | 文档合并触发既有 main 自动部署成功，**未上线新身份功能** | 文件 main 已重新读取确认 |
 
 **填写准则**：任何生产迁移仅能填「未执行 / 已执行（附 migration、数据库、执行时间、验证 SQL 与 count/hash）/ 失败回滚 / 阻断」。不要只写「迁移好了」。所有部署须附 GitHub Actions run 和 Cloudflare deploy/version ID、100% traffic 证据；中断时能判断是否安全重试。
+
+| 2026-11-13 | HomeFlow B2 — OAuth code+PKCE 禁用默认的后端基础（尚不是完整 SSO） | `feature/homeflow-identity-read-contract-20261113` | `8bd8bc7dc8ad6d63dd8089dd0a756bd05f5974b1` (worker/oauth.js), `acdb93af43c7826ff1bfbb40db75d54e7feb7d71` (0053), `7076fe976d897d5550a5f790a2caea94b5f92344` (router), `2406b7f68c3e4d53e87035a4153495b306bf2c93` (manifest), `253d54ef1a9820419c70f76e7fa6d68adef76f38` (PKCE tests), `9a8d0f949f00863cf3a71a1418199dfb54c571e9` / `89d781f25c770611c794c338f90684c04cef31a7` (legacy count fixture fix) | [Draft #305](https://github.com/PTamako/homeflow/pull/305) **未合并** | 初次 run 43387920629 等因为迁移总数固定写死为 54 导致失败；已修复并由 [run 43388105347](https://github.com/PTamako/homeflow/actions/runs/43388105347) **success** | **0053_oauth_code_exchange.sql 尚未生产执行** | **未部署；OAUTH_ENABLED 默认关闭** | 本地 CI success；真实账号/PWA/回调接入尚未完成 |
 
 | 2026-11-13 | HomeFlow B1 — read-only `/api/identity/me` 与家庭成员昵称契约 + 五组隔离回归测试 | `feature/homeflow-identity-read-contract-20261113` | `a48752299b0d3253573b274038b10891cefc0560`（模块）/ `0128aa4a637e97fb4eb40ad8709cd72a0d6ab005`（测试）/ `52ee0731c4738f314d66d9a79536b18fe5337efd`（路由） | [Draft #305](https://github.com/PTamako/homeflow/pull/305) **未合并** | [Validate run 43385362454](https://github.com/PTamako/homeflow/actions/runs/43385362454) **success** | 不适用 | **未部署**（A 备份门槛未满足） | 仅测试成功，生产/双人 PWA 验收未执行 |
 
@@ -114,6 +116,13 @@
 5. **已在两个生产 D1 内部只读比较**：文书助手本地 owner user ID、household ID 与 HomeFlow 的 owner 对应 ID **并不相等**，但均只有一位 owner，这与旧系统独立身份模型一致，**不是异常数据，也不需要用户重申归属**。Draft #97 为此设计映射表，尚无任何行被生产插入；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
 6. **目前所有新阶段均未完工**；首次 PWA 实机验收尚无执行记录。
 7. HomeFlow **Draft PR #305** 的只读身份契约已经通过 GitHub Validate，但**尚未合并/上线**，不可把它视为 OAuth 统一登录。生产备份门槛完成前不合并；恢复时先看是否有新 commit 或 CI 状态。
+
+## 5.1 必须提前通知用户的操作（用户已要求）
+
+- **家計簿 GitHub 自动部署**：GitHub Actions secrets `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 目前在失败的工作流中为空，需要用户通过 GitHub 仓库 Settings → Secrets and variables → Actions（按实际环境选择）安全配置，或由开发方用已授权 Cloudflare 工具部署并验证生产；**不得要求用户将 Token 明文发到聊天或写入本仓库**。此项并非继续编写未上线代码的阻断项。
+- **生产备份的持久安全目的地**：在执行四个正式 D1/R2 改写前，必须有可读取、可恢复、可验证哈希的私有备份。若现有连接无法自动将加密备份安全存入私有位置，再请求用户指定私人备份存储/授权；不得把原始 D1 SQL 或 R2 私件传到公开 GitHub。
+- **iPhone 双账号实机验证**：阶段 F 请 owner 和 member 各自从独立 PWA 完成授权、登录、注销、切换账号、私人数据/Google OAuth 隔离验收；当前不需要操作。
+- 其他规则无须重复询问，只有发现真实生产数据与明确历史归属冲突，才隔离具体异常行。
 
 ## 6. 恢复时优先的下一批可执行事项
 
