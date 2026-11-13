@@ -9,6 +9,7 @@ function environment(name='preview',database='homeflow-preview',migration='0046_
     prepare(sql){return {
       bind(){return this},
       first:async()=>sql.includes('environment_identity')?{database_name:database,latest_migration:migration,
+         baseline_ready:migration==='0046_reward_wish_savings_credit.sql'?1:0,
          required_migration_ready:migration==='0046_reward_wish_savings_credit.sql'?1:0,reward_credit_ready:1,anniversary_migration_ready:1,anniversary_archive_ready:1,oneoff_migration_ready:1,oneoff_rule_ready:1,
          action_index_ready:1,sync_table_ready:1,member_sync_ready:1,completion_read_ready:1,settlement_origin_ready:1,points_table_ready:1,points_triggers_ready:10,rewards_tables_ready:5,rewards_triggers_ready:4,savings_rewards_ready:1,savings_triggers_ready:4,routine_assignments_ready:1,routine_assignment_index_ready:1,monthly_awards_ready:1,monthly_triggers_ready:5,achievement_credits_ready:1,joint_credits_ready:1,shopping_joint_ready:1,shopping_second_ready:1,second_assignee_ready:1,routine_second_ready:1,travel_view_ready:1,travel_events_ready:1,travel_triggers_ready:2,lottery_migration_ready:1,coupon_migration_ready:1,delivery_migration_ready:1,delivery_state_ready:1,media_migration_ready:1,achievement_migration_ready:1,achievement_rules_ready:1,media_deleted_ready:1,coupon_tables_ready:2,coupon_triggers_ready:5,lottery_table_ready:1}:null,
       all:async()=>({results:[]}),
