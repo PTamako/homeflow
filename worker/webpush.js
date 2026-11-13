@@ -384,15 +384,53 @@ export async function scheduledDeliveryTotals(db,{householdId,recipientId,key,da
   return {sent:Number(result?.sent||0),failed:Number(result?.failed||0)}
 }
 
+// Keyset pagination is essential here: the old first-200 cap silently left
+// later family accounts without daily notices or delivery attempts. Page reads
+// remain one indexed query for the usual two-member household.
+export async function loadScheduledRecipients(db,pushConfigured=true){
+  const pageSize=200
+  const subscriptions=[]
+  if(pushConfigured){
+    let afterUser=null,afterEndpoint=null
+    while(true){
+      const {results=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
+        FROM push_subscriptions
+        WHERE (?1 IS NULL OR user_id>?1 OR (user_id=?1 AND endpoint_hash>?2))
+        ORDER BY user_id,endpoint_hash LIMIT ?3`)
+        .bind(afterUser,afterEndpoint,pageSize).all()
+      subscriptions.push(...results)
+      if(results.length<pageSize)break
+      const last=results.at(-1)
+      afterUser=last.user_id
+      afterEndpoint=last.endpoint_hash
+    }
+  }
+  const members=[]
+  let afterHousehold=null,afterMember=null
+  while(true){
+    const {results=[]}=await db.prepare(`SELECT m.user_id,m.household_id
+      FROM household_members m JOIN users u ON u.id=m.user_id
+      WHERE u.disabled_at IS NULL
+        AND (?1 IS NULL OR m.household_id>?1
+          OR (m.household_id=?1 AND m.user_id>?2))
+      ORDER BY m.household_id,m.user_id LIMIT ?3`)
+      .bind(afterHousehold,afterMember,pageSize).all()
+    members.push(...results)
+    if(results.length<pageSize)break
+    const last=results.at(-1)
+    afterHousehold=last.household_id
+    afterMember=last.user_id
+  }
+  return {subscriptions,members}
+}
+
 export async function runPushSchedule(env,now=Date.now()){
   const pushConfigured=vapidReady(env)
   const db=env.DB
   const jst=new Date(now+9*3600000)
   const day=jst.toISOString().slice(0,10),hour=jst.getUTCHours()
   const annualExpiry=annualPointsExpiryEvent(day)
-  const {results:subscriptions=[]}=pushConfigured
-    ?await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret,user_id,household_id
-      FROM push_subscriptions ORDER BY user_id LIMIT 200`).all():{results:[]}
+  const {subscriptions,members}=await loadScheduledRecipients(db,pushConfigured)
   let sent=0,failed=0,checked=0,inbox=0
   // Every authenticated member receives a daily in-app notice, regardless of Push permissions.
   // Reuse each member's reminder batch for subscribed devices.
@@ -400,9 +438,6 @@ export async function runPushSchedule(env,now=Date.now()){
   const notificationIds=new Map(),scheduledNotices=new Map(),attemptedNotices=new Set()
   const alreadyRegistered=new Map()
   const changedHouseholds=new Set()
-  const {results:members=[]}=await db.prepare(`SELECT m.user_id,m.household_id
-    FROM household_members m JOIN users u ON u.id=m.user_id
-    WHERE u.disabled_at IS NULL ORDER BY m.household_id,m.user_id LIMIT 200`).all()
   for(const member of members){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
