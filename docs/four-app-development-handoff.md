@@ -489,3 +489,23 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 旧测试装载器修复提交 **`5bd62dd8bfb54e24ad92aba5d0e6c037677c66c2`** 后，已实际查询 [知学 #179 Validate #43444534566](https://github.com/PTamako/it-study-platform/actions/runs/43444534566)，**completed/success**。job 内 **Run automated regression tests、Type-check and build frontend、Validate complete D1 migration chain locally** 全部 `success`。此结论覆盖 §9.6.1 的旧失败状态，不可把之前 16 条 mock 失败继续当成最新状态。
 - 最新原 Draft #179 **仍未合并**；通过 CI 后仅在同一功能分支追加模块说明 [`4e0aa78cd3238ccd1055e268f86e5205f162a2ba`](https://github.com/PTamako/it-study-platform/commit/4e0aa78cd3238ccd1055e268f86e5205f162a2ba)，不改变已验收的运行时代码。前次 UI 错误提示修复与主功能均包含在通过的 Workflow HEAD 中。
 - **A 不变：待用户本人完成正式四 D1/三 R2 的加密备份、校验、隔离恢复**。知学 `0180/0181/0182` 只是 SQL 文件、未在生产 D1 执行；`HOMEFLOW_STUDY_SSO_ENABLED` 与 `HOMEFLOW_STUDY_DAILY_PROGRESS_ENABLED` 在正式生产仍不得启用；不得合并功能 Draft 或创建 Preview。后续优先做语言卡与考试/错题完整 user_id 隔离、端侧缓存分区、双人真机验收。
+
+
+## 9.7 2026-11-13 知学语言卡掌握与复习记录按 HomeFlow 用户隔离（E 阶段增量）
+
+> A **待用户本人完成**：本轮没有触碰生产 D1/R2、没有备份/恢复、没有迁移、没有启用 Cloudflare 功能开关、没有新建 Preview、没有合并/部署四 App 功能 PR；继续现有 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 分支 `feature/homeflow-identity-isolated-20261113`。#314 文档-only GitHub Actions 保护已合并，勿重做。
+
+### 本轮新开发的独立、可测试语言学习模块
+
+- **[0183_homeflow_language_progress.sql](https://github.com/PTamako/it-study-platform/blob/feature/homeflow-identity-isolated-20261113/migrations/0183_homeflow_language_progress.sql)**（commit `e6b86c6d0f162a33024d02db47f62b8ab8562135`）新建 `homeflow_language_mastery` 和 `homeflow_language_reviews`，复合主键均为 `(homeflow_user_id,card_id)`，包含掌握布尔/评论次数/连续记住次数/下次复习时间/again-hard-remembered 反馈、CAS 版本号和真实修改人；新增对原用户和资源分离的插入/更新触发器、不可变审计 `homeflow_language_events`、按用户到期查询索引。**旧 `language_card_progress` / `language_card_reviews` 表绝不改写，也不把旧 owner 的学习记录拷给 member**。
+- `worker/homeflow-language.ts`（`2b725b0ca0827e52bd985c60579677e1cd546858`）及 `worker/index.ts`（`7fdddb35568260d34a0d94dd0cf52229cc37240c`）新增**完全独立**的 `/api/homeflow-study/language/{status,cards,mastery,review,legacy/adopt}`：默认 `HOMEFLOW_STUDY_LANGUAGE_ENABLED=OFF`；依赖 `HOMEFLOW_STUDY_SSO_ENABLED`、正式 HTTPS Origin、独立 Session 加密、Source-session HomeFlow introspect，从服务端获得**真实** user_id；每次读写仅用该 ID 作为 SQL 分区，不接受昵称/浏览器提供的 owner_user_id。语言卡页每次最多 30 条，仅读与教学卡的必要公开字段及**自己的**掌握/复习进度，不通过新的 HomeFlow Cookie 解锁原本单用户 `/api/language-progress`、`/api/language-review`。
+- **网络重试与冲突保护**：掌握状态采用当前版本 CAS；复习动作需由客户端提交一次性 request_id，服务端 `request_hash` 在同一 actor 下唯一，并存 `payload_hash` 防止请求 ID 重用时篡改内容。已提交动作重试不会新增复习次数/审计；有冲突或源会话已撤销必须拒绝。复习周期沿用旧 again=10 分钟、hard=6 小时、remembered=1/3/7/14 天分级递增节奏；hard 保留兼容旧 `last_result='again'` 的规则。
+- **只有原管理员可领取旧历史**：`POST /api/homeflow-study/language/legacy/adopt` 必须显式 `confirm:true`，`kind=mastery|reviews`，按 `card_id` 游标每批≤20行，先校验所有旧行数据，再 `INSERT OR IGNORE` 到 HomeFlow owner 的独立表。脏行返回 409、全页无进展/无新审计，旧两表原样保留；重导不覆盖 owner 在新表新改的状态；member 403，不可从旧 session 假装成另一用户。
+- **新 iPhone PWA** `src/StudyHomeFlowLanguage.vue`（`4e2d9bff29e96848e45e3e1acb48629d178598cd`、`08f331b70766f9138515be6855ac4c46ff3fe859`），挂在 `StudyHomeFlowAccess.vue` 且以 `:key="'language:'+identity.user_id"` 隔离账户，支持中日/英语课程卡分页、掌握/取消掌握、三级复习、下次复习、上次网络中断同 request_id 恢复提交、管理员两类旧历史明确确认分批领取；member 不见领取按钮；**不读写任何旧 `localStorage` 学习缓存**。现有完整旧平台仍不可给新 member 用，本组件只是明确隔离的独立功能区。集成 commit `71c0387da16e206b094b8f0e1af07e02c67fe82b`。
+- 自动测试： `scripts/homeflow-sso-isolated.test.mjs` 继续使用真实 SQLite 双 HomeFlow 账号模拟，新增两人同一课程卡不共享掌握与复习、历史仅 owner 显式导入、损坏旧行全页拒绝、版本冲突、唯一 request_id 防重复计次、不同用户可复用同一请求 ID、分页/默认关闭/撤销会话/Origin/演员身份防伪/数据库审计触发器。新增 `scripts/homeflow-pwa-ui.test.mjs` 检查独立路由、账户 key、PWA 不读取旧缓存、复习重试。旧 Worker data URL 测试装载辅助 `scripts/inline-chinese-dictionary.mjs` 仅给旧测试提供 503 默认禁用替身（commit `d8f7b8dc66078f5adfe60132bce9bc38b525d127`），**不削弱真实生产 Worker 身份校验**。
+- 截至本段首次记录，最新 [知学 Validate #43447994442](https://github.com/PTamako/it-study-platform/actions/runs/43447994442) **in_progress**。必须核对最终 GitHub Actions、含本地 D1 migration 链/TypeScript/Vue build/回归；不要虚报 CI 已成功。若失败，先修原 Draft 后附加最新结果/未完成问题。
+
+### 安全状态与剩余项
+
+- 新 **0183 仅为未执行 SQL 文件**；禁止在 A 恢复验证通过前执行 0180/0181/0182/0183 或启用任何新身份/课程开关/合并会自动部署的 PR。HomeFlow main 仅追加交接 Markdown，原 #314 部署 `paths-ignore` 保护继续有效。
+- E 仍未完成：考试题目作答/错题/模拟考/各类语法/听力/日常生词独立同步、完整旧 App localStorage/IndexedDB 账号分区与未完成同步队列隔离、HomeFlow 统一身份跨 App 完整权限、双人 iPhone Safari/PWA 真机验收。新 `StudyHomeFlowLanguage` 属于隔离模块，不代表全面双人开放。
