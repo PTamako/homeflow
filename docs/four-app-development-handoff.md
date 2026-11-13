@@ -517,3 +517,24 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 首轮 481 pass/1 fail 的旧 PWA 提示文案断言（#43447994442）已在 `6bac88b4ce8d77111062673e273e68df6e027fff` 修复，不修改任何身份权限、生产数据或业务逻辑。新增的语言卡双账号/审计/旧数据安全采用/去重/页面隔离测试在第一轮就已经全部通过。
 - 本次**只完成独立语言卡掌握与复习模块**：语言卡不解锁旧考试/错题/模拟考，也未实现完整端侧缓存分区或双人手机真机联调。**A 仍待用户本人完成**；知学 0180～0183 全部仅为未执行 SQL 文件，生产新开关 OFF，Draft 未合并/未部署，绝不能用“CI 绿”代替用户加密备份和隔离恢复验证。
 - 下轮推荐：知学考试练习/错题/模拟考试逐用户真实 D1 隔离、再对端侧缓存和未完成提交队列分区；仍每个模块修改原 Draft、测试通过并更新本交接文件。其他四应用中的 HomeFlow 审批、家計簿全部个人金融资源、文书跨 App 联动均未因此标记完成。
+
+
+## 9.8 2026-11-13 知学考试练习＋错题＋模拟交卷独立账号模块（阶段 E）
+
+> 生产安全 **A=待用户本人完成**，开发者本轮未碰生产 D1/R2、未尝试 A 备份、未执行任何迁移、未创建 Preview、未启用新功能开关、未合并或部署任何功能 Draft。继续原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 原分支 `feature/homeflow-identity-isolated-20261113`；HomeFlow `main` 仅更新本交接 Markdown，利用已验证 #314 docs-only `paths-ignore` 避免 Cloudflare 自动部署。
+
+### 已提交的实际新增代码
+
+- 新 `migrations/0184_homeflow_exam_progress.sql`：按 `homeflow_user_id` 独立创建练习答题 `homeflow_study_attempts`、错题复习 `homeflow_question_review_state`、个人考试成绩 `homeflow_exam_history` 及不可变 actor 审计 `homeflow_exam_events`。**旧 `study_attempts`、`question_review_state`、`exam_history` 不改写、不删除**；现有题库 `questions` 仍可共享，个人正确率和错题永远不可混账。
+- `worker/homeflow-exams.ts` 新的 `/api/homeflow-study/exams/{status,questions,attempts,wrong,history,legacy/adopt}`：只认真实 HomeFlow 独立 HttpOnly Session + 每次源会话核验后的 `user_id`，默认新 `HOMEFLOW_STUDY_EXAMS_ENABLED=OFF`。交卷前绝不下发正确答案；提交由 D1 服务器判分，答案/错题进度/真实 actor 审计在一个原子 D1 batch，稳定 `attempt_id` 同答案幂等不同答案拒绝；家庭双方同题/同答题编号相互独立。管理员旧历史三类 `attempts|reviews|history` 须确认后分批 20 条校验/无损导入、脏行全批拒绝、旧记录不被改写，member 无权采用旧 owner 历史。旧模拟交卷所产生的长尝试 ID 最高 240 字符仍可无损迁移。
+- 新 `migrations/0185_homeflow_mock_exam_submissions.sql`：按 `(homeflow_user_id,id)` 保存只属于实际交卷人的不可变试卷 payload/判分回执，旧 `mock_exam_submissions` 不动。 
+- `worker/homeflow-mock.ts` 新 `/api/homeflow-study/exams/mock/{status,questions,submit}`，在上述考试开关之上**还需** `HOMEFLOW_STUDY_MOCK_ENABLED=true`；默认双重关闭。复用 `mock_question_pool` 的 D1 索引随机有界组卷，严格要求 SG 48A+12B（60题）、FE A60、FE B 算法16+信息安全4（20题）；不满足数量/分布即 409 而非凑假题，预交卷无正确答案/解析。交卷时必须全部有唯一题号，由服务端按 `questions.answer_json` 判分并对分类复核，以一次 5 条 D1.batch 原子写入本人回执、每题答题、对应错题/复习 state、个人考试成绩和审计；超时重复交卷同编号直接取回执，不能重复计数，另一个家庭成员独立编号空间。
+- 新 PWA `StudyHomeFlowExams.vue` 和 `StudyHomeFlowMock.vue`：在 `StudyHomeFlowAccess.vue` 已认证身份区域 keyed `identity.user_id` 挂载，练习、错题、考试成绩分类，旧主人明确确认后导入；模拟考 SG/FE 按每页5题作答、答案保存本次页面内存、提交前确认，判分后展示原标准答案/解析，不读取旧用户的 `localStorage`/IndexedDB。网络提交失败保留本页面相同交卷 ID 用于重试。**尚无断网持久续考**，刷新会丢未交卷临时选择；明确向用户展示。
+- 真实 SQLite/模拟双账号回归 `scripts/homeflow-sso-isolated.test.mjs`：本人/另一人同题练习/错题互不泄漏、尝试/成绩幂等、错题复习连续三次自动掌握、owner 历史领取及损坏记录全页拒绝、不可变审计、SG/FE A/B 真实 48+12/60/16+4 组卷与题库分布、同 ID 夫妻各自交卷、模拟卷回答数/身份/Origin/非法题型校验、原 D1 多表交易和重复交卷。另 `scripts/homeflow-pwa-ui.test.mjs` 新增 PWA 独立路由/账号 keyed/无旧缓存门禁，`scripts/inline-chinese-dictionary.mjs` 仅将新模块 import 在旧数据 URL 模拟测试环境中替换为 503 stub，**真实安全接口无绕过**。
+- 这轮主要 commit：0184 `09bbcf86d42f5ebb78c72f92b7445ae82662145b`、Exams API `afcb9d69fe7975283f0c98a297d7d75341ed8334`、0185 `711dc8ab47b1286271904717b7b87ad401102678`、Mock API `85ef790a6884eec0249fb7a2b1aeaa9fa875e60f`、个人练习 UI `ba2d005987dc39a8f97864026a8cd1976960a8c9`、模拟 UI `cd1ce216027e73526c3588e6caf4609d5fbfe0d2`、多表回归 `251701bae9d4f37d1d35600991dee37cb703dc09` / `b9f079eb1fa463b4b5e41432ef92e661aa68ea65`、长 ID 修复与测试 `0fe297a2594b5176af1cd0bcc3ea8bb4adc960b6` / `840783f6a2b757b77a69de66c605d3f58d403ffc`、文档 `303ffdb8011845ebceab18731b1ca780b1ecb350`。完整模块说明见 [知学原 Draft 模块文档](https://github.com/PTamako/it-study-platform/blob/feature/homeflow-identity-isolated-20261113/docs/homeflow-identity-phase-b.md)。
+- **CI：本段写入时最新知学 CI 尚未核实最终成功；禁止虚报通过。** 以 [知学 PR #179 Checks](https://github.com/PTamako/it-study-platform/pull/179/checks) 的最新 job 结论为准；出现失败先修在原 Draft。此次功能未在双人真实 iPhone 上进行 Safari/PWA 验收。
+
+### 必须接续、不应提前放行的内容
+
+- **仍未完成**：旧模拟交卷原 receipt 的单独领取/重复交卷恢复；从完整 PWA 旧缓存及待提交队列转为 user_id 强隔离；个人每日语法/听力/单词等其它学习表迁移和权限、家庭跨应用审批及真实多设备验证；整个四 App 统一账号上线前的 A 加密备份+恢复验证。
+- 知学生产不得执行 `0180～0185` 或开启 `HOMEFLOW_STUDY_SSO_ENABLED`、`HOMEFLOW_STUDY_EXAMS_ENABLED`、`HOMEFLOW_STUDY_MOCK_ENABLED`、`HOMEFLOW_STUDY_LANGUAGE_ENABLED` 等新开关。已有旧个人版应保持可用，不可因为 Draft 通过 CI 就自动部署。
