@@ -547,3 +547,23 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 已**实际读取**最终 [知学原 Draft #179 Validate #43455258591](https://github.com/PTamako/it-study-platform/actions/runs/43455258591)：`completed/success`。其中 **Run automated regression tests / Type-check and build frontend / Validate complete D1 migration chain locally** 三步全部 `success`；通过的代码 HEAD **`4dc2333d04fd04c773f168ce7725ceb17366f6ee`**。此处本地完整迁移链验证**不等于生产 D1 迁移**。
 - 最终 PR 仍 `open` / `draft=true` / `merged=false`，没有部署，也没有新建 Preview。**A 阶段仍是用户本人待完成**；后续在用户已完成生产加密备份/哈希验证/隔离恢复之前，`0180～0185` 一律不得在生产执行，四个 App 任何新身份功能开关禁止开启/自动合并部署。
 - 下一工作焦点：按真实 HomeFlow user_id 分区剩余每日语法/听力/词卡与端侧缓存/排队请求；原 owner 旧模拟交卷 `mock_exam_submissions` 逐条 receipt 迁移（目前已能领取旧练习/复习/考试摘要，但**没有**迁移原始旧模拟回执），以及双人 iPhone Safari/PWA 模拟考和离线断线恢复全流程验收；HomeFlow 审批、家計簿个人资源、文书助手跨应用联动继续在各自原有 Draft 里完成。
+
+
+## 9.9 2026-11-14 原管理员模拟交卷完整回执无损迁移（知学 E 阶段）
+
+> 继续原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 的 `feature/homeflow-identity-isolated-20261113`；**A=用户本人待完成**。本阶段一切 SQL/Worker/UI/测试均只提交功能 Draft，**不导出/改写生产数据库、不启用新身份开关、不部署、不重建 Preview、不合并 PR**。HomeFlow `main` 仅追加本 Markdown，遵守已合并 #314 的 docs-only 无生产部署策略。
+
+### 真实实现与数据库边界
+
+- 新增 `migrations/0186_homeflow_mock_receipt_adoption.sql`：不可变 `homeflow_mock_legacy_adoptions` 审计，记录真实 HomeFlow actor user_id、旧提交 ID、原始 payload SHA-256、原始 result SHA-256、时间，FK 精确引用本人新的 `homeflow_mock_exam_submissions`；数据库禁止更新删除。**不修改**既有不可变 `homeflow_exam_events` CHECK 约束、**不修改**旧 `mock_exam_submissions`、旧 `study_attempts`、旧成绩。
+- 新 `worker/homeflow-mock-receipts.ts`：私有 `GET /api/homeflow-study/exams/mock/receipts?limit=10&after=...` 与 `GET /api/homeflow-study/exams/mock/receipt?id=...`，只按源会话实时核验后真实 `actor.user_id` 查询本人新回执（列表不返回整套答案，详情仅登录本人可见）。`POST /api/homeflow-study/exams/mock/legacy/adopt` **仅**经旧知学有效证明首次绑定的 HomeFlow owner、同源 JSON 请求、`confirm:true`。按原回执 ID 游标每批最多 **5 份**：严格验证旧试卷格式 SG60/FE A60/FE B20、完整日期、提交题目/答案唯一性、判分回执题目顺序/分数是否与原答案匹配、JSON 正确性；有任一损坏即整页 409、无写入、游标不前进。先检查本人的同 ID 目标，如不完全一致直接 409，不静默覆盖；存在完全一致时跳过。新增记录由一次 D1.batch 内的原始 `payload_json`/原始 `result_json` **逐字节复制** + 每行不可变审计组成，数据库唯一约束和 batch 防并发重入导致重复或半页成功。历史原件从不删除、也不再判分或重复写答题/复习/成绩。
+- `worker/index.ts` 注册独立路由，原模拟考试的受保护旧单用户 API 不变；三项新路由均仅在已经存在的 `HOMEFLOW_STUDY_SSO_ENABLED`、`HOMEFLOW_STUDY_EXAMS_ENABLED`、`HOMEFLOW_STUDY_MOCK_ENABLED` 全部开启且严格正式源会话检查成功后才提供。全部开关**默认关闭，生产禁用**。
+- `worker/homeflow-mock.ts` 调整旧导入回执在新账号 `POST /submit` 同内容重试时的**仅响应封套** `scope:'user'` 兼容；D1 存储的原始 `result_json` 完全不更改，重试不会重新判分或增加旧状态。
+- iPhone PWA 新 `src/StudyHomeFlowMockReceipts.vue` 在 `StudyHomeFlowMock.vue` 下以 HomeFlow 当前 `identity.user_id` keyed 挂载。默认折叠、不做无谓 D1 读取；点击后分页查看**自己的**交卷分数、按需展开正确答案与原解析；owner 需要确认才分批领取原历史，member 不显示导入按钮。新界面从不读/写旧 `localStorage`/IndexedDB，换账号时销毁旧组件/回执详情；真正后端按 actor 验证，不依赖隐藏按钮作为权限控制。
+- `scripts/homeflow-sso-isolated.test.mjs` 扩充真实 SQLite 双用户回归：6 份原试卷分 5+1 分页，源原文 JSON 字节不变，重复导入只跳过不重复审计，真正 source session/owner 验证，同一 ID 不同目标内容必须 409，不可变导入审计，成员无法看原管理员详情，损坏单条旧结果令全页拒绝，原本人同编号交卷回放不重判分。`scripts/homeflow-pwa-ui.test.mjs` 检查 PWA 新独立路由/账户 keyed/默认折叠/无旧缓存；旧 Worker 测试 loader `scripts/inline-chinese-dictionary.mjs` 只加 disabled 503 stub 不改正式授权。
+- 主要代码提交：`4f5e9a95556086e73ff2ef507d2a350a8edd570b` (0186)、`8c16925ab312fa12e43f95a19673588f4fa0fba4` (后端)、`3a964fd90023f2f667986693e69b9e3c2767a1b4` (路由)、`6ab7a8f466e8a7c65810581f45816874ed237d6c` (兼容回放)、`3d73e4522edb10a7615cee6ef749bc4b2a3eb8b1` (SQLite fixture)、`b462df77dae3e0c5fc477b2c69798bbc13ec5eb7` (旧测试 loader)、`db37d0a134ab5e44736313f063e463d835314128` (双账号审计回归)、`d0682ae4728dc18bb6bc9ce65e8512c1ae3f73d3` (PWA)、`5448380f5b983d205bdc9d199cca79f043514d17` (集成)、`428cac671e2f4cc2dc7ed1c52bb224905989a110` (PWA 安全断言)。
+- **本节首次记录时最新 [知学 Validate #43458408489](https://github.com/PTamako/it-study-platform/actions/runs/43458408489) 仍在执行**，不得虚报全部 CI 已通过；必须等真实结果核对再补最终记录。此阶段仅是代码与自动化测试，**并非真机/生产验收**。
+
+### 后继剩余
+
+个人每日语法/听力/词卡历史与端侧缓存、未提交数据的 user_id 隔离；完整断网续考的隐私安全实现；SG/FE 多设备双人真实 iPhone PWA 验收；HomeFlow 审批、家計簿共享账本+私人账户和文书助手跨 App 联动均仍有未完成。**A 生产备份恢复仍由用户完成，知学 0180～0186 都不可执行生产迁移**。
