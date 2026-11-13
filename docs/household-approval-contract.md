@@ -36,4 +36,16 @@
 
 仅 `APP_ENV='production'` + `APPROVALS_ENABLED='true'` + `APPROVAL_VERIFICATION_ENABLED='true'` + 32-byte hex Secret `APPROVAL_VERIFICATION_SECRET` 全部配置才可调用。当前全部保持 OFF。与家計簿 Draft #309 的 `/api/family-finance/proposals/{id}/approval-proof` 配合，只能核实本人草稿是否获批准，**不能凭此单次 GET/POST 结果当作财务已生效**。签名密钥不得写入仓库/日志/GitHub Issue。
 
-尚未实现：可信的家計簿→HomeFlow 申请创建、从审核到 Service Binding 执行器的端到端事务、`executing→applied`、幂等结果查询及重放对账、通知与 PWA UI。0053/0054 在生产都未迁移，要求先按阶段 A 完成备份与隔离恢复，不可启用服务、合并功能 PR 或新建 Preview。
+已新增受签名的可信家計簿→HomeFlow 申请创建（见下方协议），但尚未实现从审核到 Service Binding 执行器的端到端事务、`executing→applied`、幂等结果查询及重放对账、通知与 PWA UI。0053/0054 在生产都未迁移，要求先按阶段 A 完成备份与隔离恢复，不可启用服务、合并功能 PR 或新建 Preview。
+
+
+## 2026-11-13 申请提交后端（已通过 CI、仍 Draft，不入账）
+
+`worker/approval-submission.js` 新增 `POST /api/internal/approvals/submit`：与只读 `/verify` 共用独立的 HMAC-SHA256 后端签名 Secret（`APPROVAL_VERIFICATION_SECRET`），但要求额外 `APPROVAL_SUBMISSION_ENABLED='true'`，并仍要求 `APPROVALS_ENABLED='true'`、`APP_ENV='production'`。**当前全部没有在生产开启**，无新 Preview。
+
+- **入参**：只允许 `household_id`、`requester_user_id`、`resource_id`（家計簿 D1 32 hex pending ID）、`payload_sha256`。无浏览器 Cookie、Origin、Authorization、金额、账号信息或任意 SQL/URL；签名 `kakeibo\n{millisecond_timestamp}\n{raw_json}`，允许时钟误差 ±5 分钟，严格限制 JSON 大小。
+- 签名通过后固定设置 `source_app='kakebo'`、`target_app='kakebo'`、`operation='finance.entry.create'`、`resource_type='finance_entry'`、`idempotency_key='kakeibo:finance:'+resource_id`，**不采纳客户端指定的操作或幂等键**。调用已有 `approvalRoute` 并复查真实 D1 household_member role=member 与非禁用账号；复用原有 0054 的不可变工单/审计事务。
+- 初次提交返回 HomeFlow `approval_id,status:'pending'`；重复或网络重试对同一稳定 resource id 返回同一工单 ID。调用后再校验数据库原记录的真实 digest、actor、resource、household 和幂等键，不能依赖缺少 digest 的公共列表返回体。
+- **审批只创建申请，不代表同意或生效**：后续 owner 在现有 `/api/approvals/{id}/review` 才能人工批准；本模块没有家計簿 D1 写入、没有自动执行，也不修改 `executing/applied`。
+
+[HomeFlow Validate #43423671632](https://github.com/PTamako/homeflow/actions/runs/43423671632) success，覆盖首提、重复、不同 digest 的幂等冲突、跨家庭/无效成员、账号禁用、过期/伪造签名、Cookie/Origin 拒绝及零账本副作用。与 [家計簿 Validate #43423823312](https://github.com/PTamako/kakebo_jp/actions/runs/43423823312) 对接。**真正入账及通知/审批 UI 尚未完成，切勿将 submit/proof 与 applied 混同。**
