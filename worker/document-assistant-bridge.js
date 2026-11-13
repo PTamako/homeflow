@@ -36,7 +36,7 @@ export async function documentAssistantBridge(request,env){
   if(!await verify(secret,`${timestamp}\n${raw}`,request.headers.get('X-DA-Signature')))
     return json({ok:false,error:'invalid_signature'},401)
   let msg;try{msg=JSON.parse(raw)}catch{return json({ok:false,error:'invalid_json'},400)}
-  if(msg?.source!=='jp-document-assistant'||msg?.payload?.operation!=='task'||
+  if(msg?.source!=='jp-document-assistant'||!['task','members'].includes(msg?.payload?.operation)||
     typeof msg?.idempotency_key!=='string'||!/^jda:homeflow:[a-f0-9]{16,64}$/i.test(msg.idempotency_key)||
     request.headers.get('Idempotency-Key')!==msg.idempotency_key)
     return json({ok:false,error:'invalid_source'},400)
@@ -45,6 +45,19 @@ export async function documentAssistantBridge(request,env){
     return json({ok:false,error:'actor_not_authorized'},403)
   const member=await env.DB.prepare('SELECT household_id,user_id FROM household_members WHERE user_id=?1 LIMIT 1').bind(actor).first()
   if(!member)return json({ok:false,error:'member_not_found'},403)
+  // Only the mapped, signed household member can read the two-person picker.
+  // No phone, email, password or unrelated family profile is returned.
+  if(msg.payload.operation==='members'){
+    try{
+      const result=await env.DB.prepare(`SELECT hm.user_id id,COALESCE(NULLIF(u.login_name,''),'家庭成员') label
+        FROM household_members hm JOIN users u ON u.id=hm.user_id
+        WHERE hm.household_id=?1 ORDER BY u.login_name LIMIT 2`).bind(member.household_id).all()
+      const members=(result.results||[]).filter(x=>USER.test(String(x.id||'')))
+        .map(x=>({id:x.id,label:String(x.label||'家庭成员').slice(0,60),self:x.id===actor}))
+      if(!members.some(x=>x.self))return json({ok:false,error:'member_not_found'},403)
+      return json({ok:true,members})
+    }catch{return json({ok:false,error:'members_unavailable'},503)}
+  }
   const p=msg.payload
   if(typeof p.title!=='string'||!p.title.trim()||p.title.length>150||!safeDate(p.dueOn)||
     !['private','household'].includes(p.visibility)||p.remindEnabled===undefined||typeof p.remindEnabled!=='boolean')
