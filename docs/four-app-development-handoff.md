@@ -736,3 +736,36 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 同一轮只读确认 HomeFlow Draft #306 的新 owner 执行/安全重试 UI HEAD **`842834a3ed2b3bedaf6e6b5d1c28460c22abc982`**， [Validate #43471186457](https://github.com/PTamako/homeflow/actions/runs/43471186457) **`completed/success`**；此项系另一条开发的已有模块，本次不重复修改。家計簿 Draft #309 的旧双账号权限、同名账户/共享统计回归也已存在，不重复实现。
 - **可标记已完成的仅是本次 E/D 权限门槛代码与自动化测试**：非 owner 不能经旧文书桥接绕过审批去正式写其他 App；共享协作者不能读取别人私人联动状态。**不可标记真正审批申请/执行闭环、全部文书共享、四 App B～E 或 F 完成**。后续开发签名申请、HomeFlow 执行授权、目标凭证校验、幂等回执和双 iPhone PWA 时必须单独提交并经 CI 验证。
 - A 阶段由用户确认本地备份与恢复完成；§3/§10/§14 的准确口径已修正，旧历史段落只保留作审计，不可再以「A 待用户完成」作为当前状态。生产 D1/R2 隔离恢复/回滚演练仍未完成，用户尚未授予生产发布权限。本轮只通过 HomeFlow main 已保护的 `docs/**` 路径更新交接，无迁移、合并功能 PR、Cloudflare 部署、开关或 Preview 资源操作。
+
+
+## 15. 2026-11-14 B～E 继续开发：审批 UI、家計簿切号保护、知学模拟交卷保护
+
+> 继续使用原四应用设计书 v1.1、原有 Draft PR，不重复先前的身份服务、财务执行器、独立学习数据表。阶段 A：**用户已完成可恢复的加密四 D1/R2 备份、Mac 本地 SQLite 隔离恢复/完整性验证（§10），不再标记待用户完成**；Cloudflare 隔离恢复/正式回滚演练及本轮生产上线授权**仍未发生**。此节只记录 GitHub Draft 代码、自动测试、无生产写操作。
+
+### 15.1 HomeFlow #306 / D：仅对真正已实现的执行器显示“执行入账”；异步审批列表隔离
+
+- 在原 `feature/family-approval-state-machine-20261113` / [Draft #306](https://github.com/PTamako/homeflow/pull/306) 继续开发。发现原审批中心 `canExecute` 仅按 owner + execution_enabled + approved/failed_retryable 判定，导致 `document.sync.*` / 待办或未来其他操作已批准后错误出现“执行入账”。真正的 `worker/approval-execution.js` 只支持 `source_app=target_app=kakebo`、`operation=finance.entry.create`、`resource_type=finance_entry`。
+- 新 `isSupportedExecution(item)` 与后台权限严格对齐；文书/任务等无执行器的工单只显示 **“已批准 · 待目标处理”** / **“目标应用未发生更改”**，不能点执行，更不能把批准伪装为已生效。已支持的家計簿受控操作仍保留安全重试原审批 ID。代码 Commit `19e7d8e520d9f5dcd0f13c1472278cee8ab67ef4`；UI/后端契约回归 `087a6a53714090d348d71027e2d01932016fe2a1`。
+- 另外修复审批中心分页/状态筛选与账号切换同时发生时，旧网络请求可能把旧家庭审批内容写回或新筛选一直保持 loading 的问题。对 `discover/load` 增加 `requestGeneration`、账号/筛选/页码查询键、仅当代响应才能更新列表及 loading 状态；无需持续轮询或额外 D1 高频读。代码 Commit `03fbae4e808d6131d46e7000ab9089877e66ee1f`；测试 `f0b526e30c371189535da2051ae71a367af1cb42`。
+- **精确最新 [HomeFlow Validate #43475287613](https://github.com/PTamako/homeflow/actions/runs/43475287613)** 对应 `f0b526e...`，已核实 `completed/success`。此前 UI 权限测试 [#43474816384](https://github.com/PTamako/homeflow/actions/runs/43474816384) 亦 `completed/success`。原 #305/#306 保持 Draft；没有启用真实财务入账或增加可执行操作类型。
+
+### 15.2 家計簿 #309 / B～C：切号/退出时清除旧成员私有财务界面，阻止迟到保存响应污染新身份
+
+- 在原 `feature/homeflow-sso-isolated-foundation-20261113` / [Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) 继续，维持家庭账本和统计全家共享、个人设置各归其人、管理员可管理全体的既定权限。不改任何正式账本 entry/资产统计公式，不执行 D1 迁移。
+- `src/FamilyFinanceAccess.vue` 的原 foreground 在 `busy=true` 时完全跳过复验，可能让旧账号私人余额/账户及编辑输入在 PWA 返回前台时继续显示。现在**不论上一个网络操作是否 busy**，前台恢复和 onUnmount 均立刻 `resetIdentity()`，隐藏 `person/accounts/totals/annual`，销毁上一个账号的编辑中状态、拟新建账户名称/类型，再从签名的 HomeFlow source session 重新验证。退出时先隐藏旧状态、使旧请求响应失效，再请求实际后台退出；失败不会谎报退出成功。
+- 新建与修改私有金融账户前固定 `revision=epoch` 和真实已认证 `person.user_id`，远程完成后只有 epoch/user 同时未变化才能刷新/修改当前表单或显示当前错误；迟到响应不能清除新人的编辑内容。保持原有角色+owner 权限检查、乐观 `version`、后端鉴权。
+- 实际 Commit `e4395c7794646c2890bf12db202d5785ad85ecff`、`d9389c1442045d2e05e9aa9cb5f2d982cee69507`、`e415445b133281a6dfdf24dff10c817183413a8e`（UI 静态安全回归调整）。**[家計簿 Validate #43476076111](https://github.com/PTamako/kakebo_jp/actions/runs/43476076111)** 精确 HEAD `e415445...`，已确认 `completed/success`。前一中间 Commit 的旧测试因原 foreground 断言不适配而失败，已更新回归并成功复验；不得把中间失败当作当前最终状态。
+- 仍未完成个人信用卡/储值/SBI/固定费、余额全链路同名资源与账务审批执行；此改动仅修复账号切换安全。
+
+### 15.3 知学 #179 / B～E：SSO 迟到身份响应 + SG/FE 模拟交卷原身份栅栏
+
+- 在原 `feature/homeflow-identity-isolated-20261113` / [Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 继续。SSO UI `StudyHomeFlowAccess.vue` 的 `/status`、`/me` 若在退出/组件卸载后迟到，原先可能重新挂载上一位用户的私人学习组件。新增 `identityGeneration`：只接受当前 generation 的 status/me 响应，成功退出与 unmount 使旧读取失效，取消后绝不因为旧结果再次加载私人面板；仍只持久存 5 分钟的单次恢复 proof，不存 Token/个人学习缓存。代码 `ca97977c8012b479e2636469a14de6e7818c9c10`，测试 `52206086f0d42bb7fb5e05cb49de8374ce2e24a7`。
+- 找到新 `worker/homeflow-mock.ts` 的模拟交卷仅依赖提交时 Cookie 身份，未校验请求原始所属 user；在 iPhone PWA 换号、离线重试或异步请求换会话后，旧 SG/FE 完整答卷可能提交到另一人。现强制 POST 含 `expected_user_id`，Worker 与**服务端重新 introspect 的真实 actor.user_id** 不一致立即 403 `ACTOR_CHANGED`，拒绝任何成绩、错题和事件写入；它不是从客户端取 actor 身份。`src/StudyHomeFlowMock.vue` 随提交记录当前 `props.userId`，重试前检查、切号后不接受上一 component 的迟到回执。复合主键 `(homeflow_user_id,submission_id)` 及同账号幂等回执保持原样，原模拟考 receipt 内容与旧数据完全不改。
+- 代码 Commit `4006629e5fcedf1cd9861b46280991c782a7125c`、`912a3846cffa5edde02106d67b2454f4c11142b5`；真实 SQLite 双人测试 `1d12a36c249ed8b38594ead657c391685b2691e7` 核对使用另一账号旧 payload 返回 403、拒绝后数据库回执数仍为 0、原账号重试仅一份、不同用户可用相同 UUID 各自形成独立回执；PWA 安全回归 `f32692886e4d3cca7f69c565d48457315705df94`。知学新功能仍完全独立于旧共享 localStorage/IndexedDB，模拟考完整离线持久化尚未开发。
+- [知学 Validate #43475655647](https://github.com/PTamako/it-study-platform/actions/runs/43475655647) 对应精确代码 HEAD `f3269288...`；**记录时状态：in_progress/pending**，仅最终 `completed/success` 才可标记新改动自动化验收完成。旧中间 CI 因随后提交 Commit 而取消不等同代码失败。
+
+### 15.4 当前里程碑与后续安全开发边界
+
+- 这是**三个独立可回归的安全/交互模块**，并非四应用 B～E 已全部完成；文书助手原 [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 上一次提交的共享候选隐私隔离/成员审批阻断仍有效，本轮未修改它。
+- **尚未实现**：文书助手 member 真正安全签名提交审批并由目标执行；HomeFlow→文书/任务/知学执行器；家計簿全量信用卡/储值卡/投资/固定费同名账户映射与入账；知学旧整站共享本机缓存和 offline pending 队列双账号隔离，双 iPhone PWA OAuth/登出/断网/重试真机验收；完整 Cloudflare 隔离恢复/回滚与生产发布前新鲜备份。
+- 所有原 PR 仍 `Draft`，所有新增功能开关 `OFF`，迁移 SQL **未执行**，没有合并会自动部署的 PR、没有生产 Worker/Pages/D1/R2 写入或部署、没有创建 Preview。A 本地验证 PASS 不代表用户允许执行 F。
