@@ -954,7 +954,8 @@ test('undated and early-achieved plans complete safely and portable backup resto
  assert.equal(exported.status,200,JSON.stringify(exported.body))
  const marks=exported.body.records.planCompletionMarks
  assert.equal(marks.length,3,'every wish and one-time goal completion is portable')
- assert.ok(marks.every(x=>!('completed_by' in x)),'a backup never embeds another member completion identity')
+ assert.ok(marks.every(x=>typeof x.completed_by==='string'&&x.completed_by.length>0),
+   'portable backup retains the completion actor; restore validates household membership')
  const preview=await ask('/api/portable/restore','POST',{dataset:'planCompletionMarks',items:marks,preview:true},owner)
  assert.equal(preview.status,200,JSON.stringify(preview.body))
  sqlite.exec('DELETE FROM plan_completion_marks')
