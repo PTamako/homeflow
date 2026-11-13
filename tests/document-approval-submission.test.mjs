@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs'
 import {createHmac} from 'node:crypto'
 import {DatabaseSync} from 'node:sqlite'
 import {documentApprovalSubmissionRoute} from '../worker/document-approval-submission.js'
+import {documentApprovalStatusRoute} from '../worker/document-approval-status.js'
+import {approvalRoute} from '../worker/approvals.js'
 
 const secret='d'.repeat(64),app='https://homeflow.example.test'
 const candidate='a'.repeat(32),digest='b'.repeat(64)
@@ -153,3 +155,123 @@ test('a signed document approval cannot forge owner, missing member, other house
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,0)
  }finally{f.sql.close()}
 })
+
+async function signedDocumentStatus(f,approval_id,options={}){
+ const body={approval_id,household_id:'h1',requester_user_id:'member',
+  resource_id:candidate,payload_sha256:digest,target_app:'kakebo',
+  ...options.body};
+ const raw=options.raw??JSON.stringify(body);
+ const stamp=String(options.stamp??Date.now());
+ const signature=options.signature??createHmac('sha256',
+  Buffer.from(options.signWith||secret,'hex'))
+   .update((options.prefix||'jp-document-assistant:status')+'\\n'+stamp+'\\n'+raw)
+   .digest('hex');
+ const req=new Request(app+'/api/internal/approvals/document-status',{
+  method:options.method||'POST',
+  headers:{'Content-Type':'application/json',
+   'X-Approval-Client':options.client||'jp-document-assistant',
+   'X-Approval-Timestamp':stamp,'X-Approval-Signature':signature,
+   ...options.headers},
+  ...(options.method==='GET'?{}:{body:raw})
+ });
+ const response=await documentApprovalStatusRoute(req,f.env);
+ return {status:response.status,body:await response.json()};
+}
+async function ownerReview(f,approval_id,decision){
+ const path='/api/approvals/'+approval_id+'/review';
+ const response=await approvalRoute(new Request(app+path,{
+  method:'POST',headers:{Origin:app,'Content-Type':'application/json'},
+  body:JSON.stringify({decision})
+ }),f.env,path,{household_id:'h1',user_id:'owner'});
+ return {status:response.status,body:await response.json()};
+}
+test('document signed read backchannel reports real pending/approved/rejected, never target execution',async()=>{
+ for(const decision of ['approve','reject']){
+  const f=fixture();
+  try{
+   const created=await f.call(intent());
+   assert.equal(created.status,201);
+   const id=created.body.approval_id;
+   const pending=await signedDocumentStatus(f,id);
+   assert.equal(pending.status,200,JSON.stringify(pending.body));
+   assert.equal(pending.body.status,'pending');
+   assert.equal(pending.body.applied,false);
+   assert.equal(pending.body.target_changed,false);
+   assert.equal('remote_id' in pending.body,false);
+   assert.equal('idempotency_key' in pending.body,false);
+   assert.equal('payload_json' in pending.body,false);
+   assert.equal('approver_user_id' in pending.body,false);
+   const approved=await ownerReview(f,id,decision);
+   assert.equal(approved.status,200,JSON.stringify(approved.body));
+   const checked=await signedDocumentStatus(f,id);
+   assert.equal(checked.status,200,JSON.stringify(checked.body));
+   assert.equal(checked.body.status,decision==='approve'?'approved':'rejected');
+   assert.equal(checked.body.applied,false,'approval must never masquerade as target sync');
+   assert.equal(checked.body.target_changed,false);
+   assert.equal(checked.body.payload_sha256,digest);
+   assert.equal(checked.body.requester_user_id,'member');
+   assert.equal(checked.body.household_id,'h1');
+   assert.equal(checked.body.resource_id,candidate);
+   assert.equal(checked.body.target_app,'kakebo');
+   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,2,
+    'read-only status must add zero audit writes');
+  }finally{f.sql.close();}
+ }
+});
+test('document status HMAC uses a distinct purpose: submission signature cannot authorize read',async()=>{
+ const f=fixture();
+ try{
+  const created=await f.call(intent());
+  assert.equal(created.status,201);
+  const id=created.body.approval_id;
+  for(const options of [
+   {prefix:'jp-document-assistant'},
+   {signWith:'c'.repeat(64)},
+   {stamp:Date.now()-900000},
+   {signature:'0'.repeat(64)},
+   {client:'kakeibo'},
+   {headers:{Cookie:'fake=one'}},
+   {headers:{Origin:app}},
+   {headers:{Authorization:'Bearer forged'}}
+  ]){
+   const reply=await signedDocumentStatus(f,id,options);
+   assert.equal(reply.status,403,JSON.stringify(options));
+  }
+  const malformed=[
+   {approval_id:'f'.repeat(36)},
+   {household_id:'h2'},
+   {requester_user_id:'outside'},
+   {requester_user_id:'owner'},
+   {resource_id:'c'.repeat(32)},
+   {payload_sha256:'c'.repeat(64)},
+   {target_app:'homeflow'},
+   {extra_token:'secret'}
+  ];
+  for(const body of malformed){
+   const reply=await signedDocumentStatus(f,id,{body});
+   assert.ok([400,401,404].includes(reply.status),JSON.stringify({body,reply}));
+   assert.equal(reply.body.applied,false);
+  }
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,1);
+  f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='member'").run();
+  assert.equal((await signedDocumentStatus(f,id)).status,401);
+  f.env.DOCUMENT_APPROVAL_SUBMISSION_ENABLED='false';
+  assert.equal((await signedDocumentStatus(f,id)).status,503);
+ }finally{f.sql.close();}
+});
+test('unexpected executed document approval never becomes a valid source sync receipt',async()=>{
+ const f=fixture();
+ try{
+  const created=await f.call(intent());
+  assert.equal(created.status,201);
+  const id=created.body.approval_id;
+  assert.equal((await ownerReview(f,id,'approve')).status,200);
+  f.sql.prepare("UPDATE household_approval_requests SET status='executing' WHERE request_id=?").run(id);
+  f.sql.prepare("UPDATE household_approval_requests SET status='applied' WHERE request_id=?").run(id);
+  const reply=await signedDocumentStatus(f,id);
+  assert.equal(reply.status,503);
+  assert.equal(reply.body.code,'document_execution_not_supported');
+  assert.equal(reply.body.applied,false);
+  assert.equal(reply.body.target_changed,false);
+ }finally{f.sql.close();}
+});
