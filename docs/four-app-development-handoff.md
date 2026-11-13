@@ -453,3 +453,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `tests/worker.test.js` 在 `d7fdc4e4feb994d2f33c71d3dfdf4e34ad690fcc` 添加“R2.delete 中途撤销共享”的真实 D1/模拟 R2 测试，验证原始 owner 墓碑、真实共享成员 actor 审计、数据对象/附件引用一致性、撤销后私有读取继续 404。最新 [Pre-merge CI #43440624817](https://github.com/PTamako/jp-document-assistant/actions/runs/43440624817) **success**，文书助手说明补录 `be6cecf1554191390ba78e60cc7511990b6c3f8b`。
 - 家計簿 #309 文档增量 `5b781795a4a15a11a52dd5b10a33ec923f073979` 的 [Validate #43440319598](https://github.com/PTamako/kakebo_jp/actions/runs/43440319598) **success** / [Mobile WebKit #43440319715](https://github.com/PTamako/kakebo_jp/actions/runs/43440319715) **success**，先前未知类型回归验证也成功。家計簿年度统计仍只是共享统计的一部分。
 - **生产安全未变**：A=用户负责待完成，HomeFlow/main 这次仅增加交接 Markdown（依已合并 #314 的路径忽略不触发 Deploy）；所有功能 Draft 均未合并，四个正式 D1 和现有三个私有 R2 都没有被本轮代码/文档操作修改。
+
+
+## 9.6 2026-11-13 知学每日任务真正按 HomeFlow user_id 隔离（阶段 E 增量）
+
+> **先读取 GitHub 实际最新状态**：知学原 [Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 仍 open/draft，branch `feature/homeflow-identity-isolated-20261113`，本阶段代码/说明 HEAD **`89f34802896e23b12070e081ea9bdee88291c804`**（未来继续时以实时 PR HEAD 为准）。A **仍是待用户完成**；本轮**没有**备份生产数据、执行 0180/0181/0182 正式迁移、启用 SSO/每日任务新开关、修改生产 Worker/R2、合并任何功能 PR 或重建 Preview。#314 已经合并，此处不重复处理。
+
+### 本轮已在原知学 Draft 实际提交的新功能（非仅设计）
+
+- **新 0182 migration** `migrations/0182_homeflow_user_daily_tasks.sql`：把新个人任务放入 `homeflow_daily_task_progress`，主键 `(homeflow_user_id,study_date,task_id)`、CAS `version`、真实 `updated_by_user_id`、针对用户/日期复合索引、`homeflow_daily_task_events` 不可变审计、数据库层 actor=owner 约束。**旧 `daily_task_completions` 绝不修改**，旧用户归属只映射当前已凭旧知学有效登录证明绑定过的 HomeFlow owner；member 个人任务初始为空。
+- **专用后端** `worker/homeflow-daily-tasks.ts`、`worker/index.ts`：GET/POST `/api/homeflow-study/daily-tasks`、GET `/status`、POST `/legacy/adopt`；所有授权从独立 HttpOnly Cookie + HomeFlow 后端 source-session introspection 获取真实 actor，不接受客户端自报 user_id/role。普通用户的单日期 GET 索引分页默认为 20、最多 50；POST 要求同源 JSON/用户真实版本，CAS 防旧设备覆盖/重复请求不记新审计；服务端以真实操作人写 append-only 事件。状态 GET 不读 D1，所有新功能须显式 `HOMEFLOW_STUDY_DAILY_PROGRESS_ENABLED=true` 且旧 SSO 安全门槛通过，**默认 OFF**。新 Cookie 仍不开放旧 `/api/daily-tasks` 或旧用户学习 API。
+- **旧主人无损导入**：owner 明确确认并 POST `/legacy/adopt` 后才允许按 `study_date,task_id` 游标每批至多 20 条 `INSERT OR IGNORE`，不覆盖 owner 已经改过的 scoped 完成状态。成员无权领取历史；任何本批损坏日期、ID、completed 状态或时间戳，整批 409、无写入也不前进游标；原始旧表始终只读。
+- **iPhone PWA 独立新界面**：`src/StudyHomeFlowDailyTasks.vue` 挂载至 `StudyHomeFlowAccess.vue` 中**仅当 HomeFlow 当前身份验证成功且每日任务开关实际开启**，按 `:key="identity.user_id"` 登录/切号卸载，展示当天 SG/日语/英语四项基础任务、已完成数、勾选保存/冲突刷新；owner 可明确确认后分页导入旧任务；member 没有旧任务导入按钮。**不读取或写入旧的 `zhixue:tasks` 等个人 localStorage 缓存**，进度来自当前用户专属新 D1 API。旧主 App 完整学习页面和其他个人学习缓存尚未按 user_id 改造，不可因此把 member 放入旧单人区域。
+- **自动回归** `scripts/homeflow-sso-isolated.test.mjs`：真实 SQLite D1 测试 owner/member 同 ID/同日期相互独立、owner 旧记录不自动向 member 泄漏、无效来源/user_id 输入、分页导入 26 条、重入零新审计、损坏页必须整体拒绝、数据库 actor 触发器、停用/撤销源会话、乐观并发旧版本不会覆盖；`scripts/homeflow-pwa-ui.test.mjs`：静态检查身份门槛、组件按账号重建、Safari/PWA 切号不依赖 legacy 缓存和新旧接口边界。
+
+提交与 CI 检查点（完整可在上述 Draft PR 查看）：
+- 0182 schema `6fa428fe0bbad317f1ccd608e761df7c086c417c`；独立 Worker `5099ce60f4a4257a0b9f1427137d35388f561824`；原 index 路由 `eacfaade12d573fd9f6c337403b23ae6a423c7e7`；CAS 修复 `52bb92d19792cfcc3ac64eae3ad5402058c8d715`；SQLite/双人回归 `e950bc9d52b67f252c1bf97a9519404887e1604e`、`bef879e3d4ac1ef80358b80db23d7f2a421f9cc7`；轻量开关/status `127612613a4ea2dc05b1313bead51f12c2a63e6a`、`306230e3a4ec5e496eb838f43fceda33c603cd28`；PWA `81ae94ff7eaa217663d8fe43e083de9344ffd314`、`1183a3bd10e48d56056aec9df8ee23169722c391`；界面安全回归 `86e6f26b7a2942953bb2fe2512c96dffdff1fe4d`；原分支模块说明 `4ea6267685fb103f80d28d77a27a7dfd97e22720`；错误提示修复 `89f34802896e23b12070e081ea9bdee88291c804`。
+- [最新知学 Validate #43443670594](https://github.com/PTamako/it-study-platform/actions/runs/43443670594) **本文件初次记录时 in_progress**；不能声明成功，后续须复查最终结果并把错误/修复/完成状态追加到本节。
+
+### 实际剩余与禁止事项
+
+- **仅每日任务这一个 E 模块新增了 user_id 隔离；不是四 App 联调验收**。知学其他个人表（学习/考试题目作答、错题、模拟考试、全部语言卡进度、听力/语法/每日词、收藏/句子）和旧 localStorage/IndexedDB 登录切换仍需逐类隔离、owner 旧历史安全迁移和双人真机验收。当前原旧登录与 SSO 还可能在同一设备并存，不能向 member 开放未隔离旧页面。
+- A 由用户自行完成；HomeFlow 新身份生产迁移/开关、家計簿/文书/知学新 migration 与功能 PR 仍不得自动部署，绝不重建 Preview。继续沿用原有 Draft PR，每个新模块务必跟进 CI、详细记录历史无损及用户权限。
