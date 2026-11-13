@@ -103,7 +103,7 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.member_role!=='member'||row.member_disabled!=null||
   row.requester_user_id===session.user_id)
   return failure('current_membership_invalid',403)
- if(row.target_app!=='kakeibo'||row.source_app!=='kakeibo'||
+ if(row.target_app!=='kakebo'||row.source_app!=='kakebo'||
   row.operation!=='finance.entry.create'||row.resource_type!=='finance_entry'||
   !hex.test(row.payload_sha256))
   return failure('operation_not_executable',409)
