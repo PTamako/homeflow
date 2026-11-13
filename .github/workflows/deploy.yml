@@ -3,6 +3,14 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    # A docs-only commit must never redeploy production.
+    # GitHub paths-ignore skips this workflow when ALL changed files match.
+    # CI (ci.yml) still validates every push to main and every PR.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      # Workflow policy edits alone must not redeploy the production Worker.
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
