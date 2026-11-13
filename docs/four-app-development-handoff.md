@@ -255,6 +255,46 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 **下一 Chat 恢复优先顺序**：第一步重新读取本文件、Google Drive v1.1、四仓最新 main/功能 PR head 和 CI，已验证知学 [#43410533667](https://github.com/PTamako/it-study-platform/actions/runs/43410533667) 与文书 [#43410618095](https://github.com/PTamako/jp-document-assistant/actions/runs/43410618095) 均 success；下次仍先核对最新 HEAD/CI，不得把后续 in_progress 当通过。第二步在备份门槛仍没完成期间继续 C 的账户主键/统计及个人金融字段 owner_user_id 无损迁移设计，D 家計簿草稿与 HomeFlow Draft #306 安全服务间审批执行器，E 知学全部私有学习 SQL 与 PWA 缓存隔离、文书权限剩余；每项独立 commit、CI、实时更新交接，不能抢跑合并部署。阶段 A 与 F 必须等用户实际操作电脑备份/隔离恢复及 iPhone 实机验收。
 
+
+## 6.6 2026-11-13 第二轮 Stage C/D 持续开发：资产汇总、固定费/SBI 归属、受信审批提交与只读校验（**最新状态，优先于 6.5**）
+
+**约束与实查**：用户在有电脑后自行完成四生产 D1/R2 持久加密备份、哈希校验及隔离恢复；目前该阶段 A 仍未完成。本次只提交代码、测试、文档到现有 **Draft** 功能分支；未合并任何功能 PR、未执行任何生产迁移、未启用 OAuth/审批/家庭金融/写账开关、未创建 Preview。**下文“通过 CI”不是“已上线”。** 必须再次查看最新 GitHub 分支/PR 状态后继续，不准拿旧交接自动覆盖更新。
+
+### Stage C：家計簿读资产与旧个人金融归属（Draft #309，已完成本轮代码和测试）
+
+- 现有分支 `feature/homeflow-sso-isolated-foundation-20261113`，PR [#309](https://github.com/PTamako/kakebo_jp/pull/309)，本次最后 HEAD **`367965186782363a232c880f0c8b70209f0645e2`**。
+- `functions/api/family-finance/assets.js` + 路由：新增默认 OFF 的 `GET /api/family-finance/shared/asset-summary?month=YYYY-MM`。复用现有 `prepaid-assets.js` 的充值/积分/期初余额和 `investment-portfolio.js` 的 SBI 实际持仓估值（不把定投计划当资产），以及 `card-bill-snapshots.js` 的信用卡账单快照。夫妇两人经实时 HomeFlow 来源会话验证后读取同一家庭资产视图，没有“我的/对方/全家”切换。**银行/现金未记录的余额、无报价的持仓不能计成完整资产**；返回 `tracked_assets_complete` 及 `excluded_from_assets`，信用卡账单快照单列而不重复减款。没有任何 D1 写动作。
+- **新增且未执行** `migrations/0025_family_financial_resource_owners.sql`：旧 `recurring_plans`（固定费）、`investment_plans`、`investment_plan_history`、`investment_holdings`、`card_bills` 的稳定资源键 + **原管理员 HomeFlow user_id** 的不可变归属 sidecar，不改老表业务行、金额/交易日期、原 actor；成员新资源仍不继承历史。
+- `functions/api/family-finance/resource-owners.js` + `POST /api/family-finance/legacy/resource-owners`：只有经过 HomeFlow source-session 验活的管理员可显式 `confirm:true`，对五类现有资源各最多 50 条/批，返回续页 cursor；同一旧 key 幂等，唯一键防跨户冒领，`assigned_by_user_id` 是真实操作者，append-only actor event 原子写入。SQL 触发器禁止把旧资源改归丈夫或删除归属证明；`GET` 只暴露映射数量。未实现对旧配置的个人改写 API，避免破坏历史。
+- 验证覆盖双人资产同值、未估价不伪造总资产、无资金更动、旧资源逐类哈希/行等价、重复 50 条分页和权限不可篡改；[家計簿 Validate #43421249522](https://github.com/PTamako/kakebo_jp/actions/runs/43421249522) **success**。当前 Head 还包含 Stage D（见下）。
+
+### Stage D：真正提交“待审批” + 审批真实性证明（**已提交申请，仍未执行账本**）
+
+**HomeFlow Draft #306**：分支 `feature/family-approval-state-machine-20261113`，base 是 HomeFlow OAuth [Draft #305](https://github.com/PTamako/homeflow/pull/305)（不可跳过 0053）。当前 HEAD **`06564a82d86ee42b0cbc8951d9fa62d94cca205f`**；[HomeFlow Validate #43424209401](https://github.com/PTamako/homeflow/actions/runs/43424209401) **success**。
+- 新 `worker/approval-submission.js`：只受信 Kakeibo 服务器、仅 POST `/api/internal/approvals/submit`，要求生产 + `APPROVALS_ENABLED` + 新 `APPROVAL_SUBMISSION_ENABLED` + 独立 32-byte hex `APPROVAL_VERIFICATION_SECRET`，当前均 OFF。HMAC 输入 `kakeibo\n{millisecond_timestamp}\n{raw_json}`，±5 分钟，客户端不能携带 Cookie/Origin 或指定操作、SQL、金额、目标 URL。内部固定请求类型 `finance.entry.create`、target `kakebo`、`resource_id` 为家計簿 pending id、`idempotency_key='kakeibo:finance:'+resource_id`；继续使用 HomeFlow 0054 原审批核心的真实 member 身份/D1 不可变申请和审计，重复网络请求收敛到原审批 ID。再直接核对保存的 DB 原 sha/actor/household，不能仅信公共 Response。
+- 新 `worker/approval-verification.js`：`POST /api/internal/approvals/verify` 受 **独立 `APPROVAL_VERIFICATION_ENABLED` 默认 OFF** + 同一受控服务密钥保护，只读校验特定的 `request_id/resource_id/household_id/requester_user_id/payload_sha256/idempotency_key/expected_version` 是否严格等于 HomeFlow 原审批单，且状态真实 `approved`，当前 member 和审核 owner 都仍有效、未过期。拒绝 pending/rejected/cancelled、签名错误、跨户、失效身份。只返回 `verified:true,applied:false`，不改变审批或目标账。
+- `worker/index.js` 在浏览器 Cookie/same-origin 授权逻辑前将这两个**固定后端内部路径**路由至各自严格签名校验；其余用户 API 授权规则保持不变。全部依赖仍未迁移的 0053/0054，签名 Secret **未配置**。
+- CI 曾发现一项现有 1ms 到期测试与毫秒时钟竞争（偶现 `200` vs `409`），只在测试加 15ms 稳定等待，业务逻辑不改；最新 [Validate #43424209401](https://github.com/PTamako/homeflow/actions/runs/43424209401) success。
+
+**家計簿 Draft #309**：与 HomeFlow 严格相同的 HMAC 契约，调用已有 `HOMEFLOW_IDENTITY_SERVICE` Service Binding，不允许浏览器直接构造“已批准”。
+- **未执行** `0024_family_finance_pending_actions.sql` 向前兼容地从 `prepared/cancelled` 扩展 `prepared→submitted`，只允许写一次 `homeflow_approval_id` 和 `submitted_at`，保留旧草稿 AES-GCM 私有载荷、禁止重新指定原 owner 或更换 digest。原始旧 `entries` 没有更改。
+- `functions/api/family-finance/approval-submit.js` + `POST /api/family-finance/proposals/{id}/submit`，要求实时 HomeFlow member source-session、该成员本人的未归档 stable account、显式 `KAKEIBO_APPROVAL_SUBMISSION_ENABLED`（OFF）、`APP_ENV=production`、`KAKEIBO_APPROVAL_VERIFICATION_SECRET`（未配置）。只发送四个最小字段（household、member、private pending id、SHA256 digest），**不发送消费金额、商家、文件原文或 AES 密文**。收到 HomeFlow 原申请 ID 后以 D1 原子事务保存 `state=submitted` 和 `finance_entry_submitted` 真实 actor 审计。
+- 断网补偿：HomeFlow 可能已提交、但家計簿没收到回执，保留 prepared 和 `safe_to_retry`；下一次发送相同 `kakeibo:finance:{pending_id}` 幂等键并取得原 ID，再写本地回执；之后的本地重复提交不请求 HomeFlow。提交后不能调用本地 `cancel` 假称远端已取消，需 HomeFlow 真审批中心后续管理。
+- `functions/api/family-finance/approval-proof.js` + `POST /proposals/{id}/approval-proof` 只对数据库**已有 submitted 回执且传入 HomeFlow request ID 一致**的本人草稿通过另一个 opt-in 开关去 HomeFlow 验证真实 approved；返回明确 `approved_not_applied`、`applied:false,ledger_changed:false`，对错摘要、错误 receipt、源会话失效拒绝。
+- [家計簿 Validate #43424086084](https://github.com/PTamako/kakebo_jp/actions/runs/43424086084) **success**（本轮最终代码/文档 Head），此前 [#43423823312](https://github.com/PTamako/kakebo_jp/actions/runs/43423823312) **success** 专门覆盖 HomeFlow 提交后网络断连、同一 ID 恢复、只一条 actor 事件及前后家庭账本未改。移动 WebKit CI 与真机双人 E2E 不是同一个验证，必要时检查最新 GitHub Run 的结论。
+
+**现在确切能做的事**：源成员可以（**仅在备份后配置新功能开关并上线时**）保存私人加密草稿、通过后端在 HomeFlow 产生一张 `pending` 审批单、本人和管理员在 HomeFlow 核实其审核状态；owner 批准后家計簿服务端可以只读核实真正批准。
+
+**绝不能宣称已完成**：owner 批准后 **还不会**自动在家計簿正式 `entries` 入账，也未实现审核状态 `executing→applied`、签名目标执行器/服务间结果回报、卡账单/积分/SBI 的幂等财务变更和失败恢复、批准通知/拒绝/取消与 PWA 家庭审批中心 UI。旧卡/储值/SBI/固定费全量个人管理及资产完整统计页面也尚未迁移；知学 E 阶段私人进度/端侧缓存、文书附件跨所有者清理、F 双人真机联调仍待开发。
+
+### 本轮准确提交与恢复线索
+
+- 家計簿：`260c1e165ce3fa98c8aeb58f611b1666ab209769`（家庭资产 GET）、`2623345c9396a369675aa458610fb283bffa1c93`（0025 归属 schema）、`844e2b40f0745ff8513c6493e819e3c5659b8a21`（旧资源映射）、`1145d7a27110437e64603e8aa56461e1f612d053`（归属回归）、`9d12e52e5c53f6eef0ac060f645cf5c973368494`（只读审批证明）、`1ae9d5aa1f74e90941bb8a5ed418c10fcba19d37`（submitted 单向回执）、`9ea512e317e04a9980892a2365cbb6c0121044c3`（签名提交）、`19b6b21000f236eca8522c6266e01687dc49238c`（API 路由）、`7123fc33c12f54b658811d318d5540468255a9c5`（必须持有审批回执才能核验）、`0e734c62895466f533e12b8a988fc95a645cc64c`（丢回执补偿测试）、`367965186782363a232c880f0c8b70209f0645e2`（最终文档）。
+- HomeFlow：`b7e9ecbc0274ef82277e299ee544e1787a9942f2`（已批准证明模块）、`ce14c50f5ebe329a321d8034fb6160c10eab8de7`（验证路由）、`c02df9a054b3f8d24fc0c83f66f35915612db73c`（签名提交模块）、`1b05453f906d9d64004bcaf089f07d44585c5b95`（校对不可变 DB 原文 digest）、`0aa74316ae6f29706c25de6eb0d55f59ac3061fc`（提交路由）、`1735f872a3f959546930d66176f5f7ce2c889d59`（双回归）、`06564a82d86ee42b0cbc8951d9fa62d94cca205f`（时钟测试修复）、最终代码/文档 HEAD `06564a82d86ee42b0cbc8951d9fa62d94cca205f` 需下次以最新 PR 头复查（此处文档提交实际还可能在后）。
+- [家計簿 Stage C/D 说明](https://github.com/PTamako/kakebo_jp/blob/feature/homeflow-sso-isolated-foundation-20261113/docs/family-finance-stage-c-d.md)、[HomeFlow 受信审批契约](https://github.com/PTamako/homeflow/blob/feature/family-approval-state-machine-20261113/docs/household-approval-contract.md) 是实际功能口径，早期本交接 §6.1～§6.5 的“没有审批提交”仅为旧状态，本 §6.6 覆盖。
+
+**生产阻断项不变**：HomeFlow `0053/0054`、家計簿 `0022/0023/0024/0025`、知学 `0180`、文书助手 `0020/0021/0022` 本轮仍**未在正式 D1 执行**；代码均未生产合并部署。用户电脑完成四 D1/R2 加密可验证备份与隔离恢复前，禁止启用 `OAUTH_ENABLED`、`APPROVALS_ENABLED`、`APPROVAL_SUBMISSION_ENABLED`、`APPROVAL_VERIFICATION_ENABLED`、`KAKEIBO_HOMEFLOW_SSO_ENABLED`、`KAKEIBO_FAMILY_FINANCE_ENABLED`、`KAKEIBO_APPROVAL_SUBMISSION_ENABLED`、`KAKEIBO_APPROVAL_PROOF_ENABLED`、知学与文书 SSO。共享 HMAC Secret 只能存 Cloudflare Secret，不能提交 GitHub/Drive/聊天。后续先做**可信 target approved-action execute + 幂等恢复、结果回传**，才可称 Stage D 完整。绝不重建 Preview。
+
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
