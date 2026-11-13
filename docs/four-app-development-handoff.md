@@ -258,3 +258,34 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
+
+
+## 8. 2026-11-13 阶段 A 再核查：跨连接传输受限（未完成）
+
+> **状态：A 仍为进行中／阻断；本次没有完成任何生产数据备份、加密文件持久保存或隔离恢复，绝不放行迁移。** 本节是独立于 §1.4 较早调查快照的本轮增量核查，不覆盖前人记录。
+
+### 本轮实际执行（生产只读）
+
+- 已先读取本交接文件并复用既有 2026-11-13-A阶段 私人 Drive 目录，不重建目录、不重复创建已 complete 的 D1 导出任务。
+- Google Drive 文件夹元数据实查 `shared=false`、仅 `user:owner` 权限；文件夹直接子项 **仅有 1 个 `backup-preflight-status.json`（3149 bytes）**。它是 `NOT_A_RESTORABLE_BACKUP` 元数据，不是任何 D1 SQL/R2 副本。目录中没有发现实际生产加密备份文件。
+- Cloudflare 实查四个生产 D1 仍在：`homeflow`（文件大小 1,064,960 bytes）、`kakebo`（385,024 bytes）、`it-study-platform`（31,793,152 bytes）、`jp-document-assistant`（483,328 bytes）；三个 R2 Bucket 均存在。数据库文件大小是 API 元数据，**不代表已取得可恢复备份**。
+- D1 只读 `SELECT COUNT(*)`：HomeFlow `users=2, tasks=9, household_members=2`；家計簿 `entries=296, payment_sources=11, investment_plans=4`；知学 `language_cards=16170, questions=2099, saved_vocabulary_entries_v2=8`；文书助手 `documents=0, attachments=0, users=1`。本轮 D1 查询元数据均报告 `changed_db=false, rows_written=0`。相较较早 §1.3 的 `tasks=10/documents=2`，当前为 9/0；这只是两个不同时间点的只读快照，原因未查明，不得因此断言数据损坏。未来实际备份/恢复比对需采用同一时间点的快照。
+- R2 实时 LIST 再核：`homeflow-family-media` **3 对象 / 772872 bytes**；`kakeibo-receipts` **3 对象 / 440351 bytes**；`jp-document-assistant-private` **0 对象 / 0 bytes**；与之前清单的对象数/总大小一致。本轮仅 LIST，没有下载、上传、修改、删除任何 R2 对象。
+
+### 备份与恢复验收清单
+
+| 项目 | 实际本轮结果 | 阻碍与下一步 |
+|---|---|---|
+| HomeFlow / 家計簿 / 知学 / 文书助手 D1 | **未取得 SQL 文件，未加密，未上传，未恢复** | 既有 API export `complete` 不等于 SQL 已下载并持久保存；需受控跨系统文件传输环境处理原始字节 |
+| HomeFlow / 家計簿 R2 六个对象 | **只读列出，无可恢复副本** | 应逐对象获取完整字节，加密备份、SHA-256、隔离恢复与源对象一致性检查 |
+| 文书助手 R2 空桶 | **本轮确认 0 对象** | 保存有时间戳/来源的空桶快照及恢复后 0 对象证据即可；不能把空桶清点误记为其他两桶备份完成 |
+| Google Drive 私人目录 | **目录及访问控制通过；实际备份文件不存在** | 仅含 preflight 状态文件，未有 SQL/R2 数据包、manifest、校验后恢复报告 |
+| 隔离恢复 / 数据完整性 | **未执行 / 未验证** | 需从 Drive 下载密文、校验密文哈希、解密到隔离 SQLite/测试目录、执行 `integrity_check`、全表计数/业务摘要；R2 逐对象字节哈希和对象数一致 |
+
+### 本轮传输阻断的实际技术原因
+
+当前 Chat 可以使用 Cloudflare、Google Drive、GitHub 连接器，但**没有可调用的 ChatGPT Work 云端计算机/交互浏览器**。Cloudflare 连接器只能通过自身 `cloudflare.request` 调 Cloudflare API；D1 Export API 产生的是短时签名 SQL 下载地址，无法把这个 URL 直接当成 Google Drive `upload_file` 所需的 `file_uri`。Google Drive `upload_file` 仅接收已有的 connector 文件引用，不接受任意临时 URL/base64。当前执行容器实测解析 `api.cloudflare.com`、`google.com` 和 `github.com` 均失败（DNS Temporary failure in name resolution），无可靠途径直接下载 SQL / R2 二进制到工作文件系统。**未尝试以编造 file_uri 或上传元数据文件代替实际备份。**
+
+下次请在**实际具备文件系统、浏览器/外网访问、Cloudflare 只读导出权限、Google Drive 私有目录写入权限**的同一安全环境中执行，不要再重复无意义的 API export polling。建议在该环境内临时取得新的正式 D1 export 文件后立即下载；保管加密密钥于 Drive 与 GitHub 之外；加密实际 SQL 和 R2 完整对象；上传到既有私人目录并从该目录取回全量密文进行校验及隔离恢复；生成**不含秘密、明文记录/签名 URL**的摘要验收报告，再据实将 A 改为完成。严格不得创建 Preview、执行正式迁移、覆盖生产 DB 或删除原 R2 对象。
+
+**安全结论**：本轮 GitHub 只追加文档记录；未改动生产数据、Cloudflare 正式 Worker/Pages/数据库、任何功能开关；不含密码、Token、密钥、SQL 内容、R2 私有对象键或备份签名下载链接。
