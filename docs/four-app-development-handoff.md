@@ -509,3 +509,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - 新 **0183 仅为未执行 SQL 文件**；禁止在 A 恢复验证通过前执行 0180/0181/0182/0183 或启用任何新身份/课程开关/合并会自动部署的 PR。HomeFlow main 仅追加交接 Markdown，原 #314 部署 `paths-ignore` 保护继续有效。
 - E 仍未完成：考试题目作答/错题/模拟考/各类语法/听力/日常生词独立同步、完整旧 App localStorage/IndexedDB 账号分区与未完成同步队列隔离、HomeFlow 统一身份跨 App 完整权限、双人 iPhone Safari/PWA 真机验收。新 `StudyHomeFlowLanguage` 属于隔离模块，不代表全面双人开放。
+
+
+### 9.7.1 本轮最终 Validate 成功与上线禁令
+
+- 原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 分支代码与测试（含文档提交 `b53a7d95aeaf624ebcf3f785df9cb5c6db530d0e`）已经过实际 [GitHub Actions Validate #43449031354](https://github.com/PTamako/it-study-platform/actions/runs/43449031354) 最终核验：**completed / success**。此流程的 **Run automated regression tests / Type-check and build frontend / Validate complete D1 migration chain locally** 均成功。
+- 首轮 481 pass/1 fail 的旧 PWA 提示文案断言（#43447994442）已在 `6bac88b4ce8d77111062673e273e68df6e027fff` 修复，不修改任何身份权限、生产数据或业务逻辑。新增的语言卡双账号/审计/旧数据安全采用/去重/页面隔离测试在第一轮就已经全部通过。
+- 本次**只完成独立语言卡掌握与复习模块**：语言卡不解锁旧考试/错题/模拟考，也未实现完整端侧缓存分区或双人手机真机联调。**A 仍待用户本人完成**；知学 0180～0183 全部仅为未执行 SQL 文件，生产新开关 OFF，Draft 未合并/未部署，绝不能用“CI 绿”代替用户加密备份和隔离恢复验证。
+- 下轮推荐：知学考试练习/错题/模拟考试逐用户真实 D1 隔离、再对端侧缓存和未完成提交队列分区；仍每个模块修改原 Draft、测试通过并更新本交接文件。其他四应用中的 HomeFlow 审批、家計簿全部个人金融资源、文书跨 App 联动均未因此标记完成。
