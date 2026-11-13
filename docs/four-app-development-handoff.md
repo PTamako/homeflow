@@ -728,3 +728,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 已保存的实际 Commit：`b24daec30c8f424538348de1e43b5870fa5998d0`（跨 App member 后端拦截）、`4e67480327680a75abf88d948164fa9bc37f13e0`（共享源 owner 私人候选隔离）、`bf2a0945470c7df2fb413facde3e090095d9b4fe`（PWA）、`acd9b1f19c729e63b0a41c7374180c5390a1cc19`（真实双账号测试）、`a3e4801ed74abd747ece115b23a1852e8cf6e846`（明确按 finance 候选测试）。
 - 最新 PR CI [#43472214204](https://github.com/PTamako/jp-document-assistant/actions/runs/43472214204) 对应上述 `a3e4801...`，**本节首次写入时尚未最终核验**；必须按 GitHub 最终 status/conclusion 核验，失败读取真实日志修复。之前代码层 run 成功不能代替包含新测试的最新 CI 通过。
 - **剩余未完成**：成员文书候选经 HomeFlow 签名创建申请、批准后在实际目标独立账号权限下执行、状态 `pending→approved→executing→applied` 幂等闭环、失败重试与回执核对、源 member/target actor 归属防越权、跨应用真实双机 PWA；HomeFlow #305/#306、家計簿 #309、知学 #179 的 B～E 也没有整体完成。不得因新增门槛完成就标记审批引擎实现完毕。本轮所有功能 Draft、开关 OFF、没有生产 D1/R2 操作、部署、合并或 Preview。
+
+
+### 14.1 文书助手成员审批安全门槛 CI 最终成功（2026-11-14）
+
+- 已实际查询 [文书助手 Draft #97 CI #43472214204](https://github.com/PTamako/jp-document-assistant/actions/runs/43472214204)，精确代码 HEAD **`a3e4801ed74abd747ece115b23a1852e8cf6e846`**，工作流最终 **`completed/success`**，唯一 `test` job `completed/success`。包含新增真实 SQLite 两用户私有候选/同步权限、零远端调用和 PWA 代码的全仓预合并检查。原 PR 再核对 `open/draft=true/merged=false`；成功不等于生产部署或 iPhone 真机验收。
+- 同一轮只读确认 HomeFlow Draft #306 的新 owner 执行/安全重试 UI HEAD **`842834a3ed2b3bedaf6e6b5d1c28460c22abc982`**， [Validate #43471186457](https://github.com/PTamako/homeflow/actions/runs/43471186457) **`completed/success`**；此项系另一条开发的已有模块，本次不重复修改。家計簿 Draft #309 的旧双账号权限、同名账户/共享统计回归也已存在，不重复实现。
+- **可标记已完成的仅是本次 E/D 权限门槛代码与自动化测试**：非 owner 不能经旧文书桥接绕过审批去正式写其他 App；共享协作者不能读取别人私人联动状态。**不可标记真正审批申请/执行闭环、全部文书共享、四 App B～E 或 F 完成**。后续开发签名申请、HomeFlow 执行授权、目标凭证校验、幂等回执和双 iPhone PWA 时必须单独提交并经 CI 验证。
+- A 阶段由用户确认本地备份与恢复完成；§3/§10/§14 的准确口径已修正，旧历史段落只保留作审计，不可再以「A 待用户完成」作为当前状态。生产 D1/R2 隔离恢复/回滚演练仍未完成，用户尚未授予生产发布权限。本轮只通过 HomeFlow main 已保护的 `docs/**` 路径更新交接，无迁移、合并功能 PR、Cloudflare 部署、开关或 Preview 资源操作。
