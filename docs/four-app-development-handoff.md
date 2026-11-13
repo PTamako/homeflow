@@ -837,3 +837,27 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 **全部继续 Draft、不得自动合并/部署**。正式 D1 `0053–0055/0023` 等只以 SQL 文件形式存在，未执行；HomeFlow/文书专用新 Secret 未配置/启用，生产 Worker/Pages/D1/R2 和 Preview 均未操作。
 - 下一安全模块可以选择：① 文书 HomeFlow 审批关闭/取消后本人 UI 状态对齐 + 不可变快照终止策略；② 目标端各自可签名的审批执行适配器与不可复用回执；③ 家計簿完整金融账户稳定 ID/全资产统计；④ 知学旧离线队列双账号安全隔离。每一项都必须独立测试、保持 Draft、逐次更新本交接文件。
+
+## 18. 2026-11-14 B/E 继续开发：知学考试/语言写入 actor 栅栏与旧缓存访问隔离
+
+> 继续原四应用设计 v1.1、唯一交接文件和原有 Draft PR；不从头重做已通过的 SSO、HomeFlow 审批申请或家計簿资产账本代码。本轮集中修复 **知学 PR #179** 的账号切换防串号与旧单用户缓存访问控制。用户已经完成 **A 阶段四个生产 D1 与三个 R2 Bucket/六对象的加密备份、Mac SQLite 本地恢复、哈希及 Drive 包一致性 PASS**，无需再次备份。Cloudflare 隔离恢复/正式回滚和生产迁移/上线仍**未批准**。
+
+### 18.1 E：知学六类写入强制绑定请求原始 HomeFlow 用户
+
+- `PTamako/it-study-platform` 原 [Draft #179](https://github.com/PTamako/it-study-platform/pull/179)、branch `feature/homeflow-identity-isolated-20261113`。上一轮已完成的独立 daily task/grammar/listening/daily words、历史 adopt、SG/FE 模拟交卷原身份校验全部保留。
+- 审计确认 `worker/homeflow-exams.ts` 与 `worker/homeflow-language.ts` **六个 POST 原先只依提交时的有效 HttpOnly HomeFlow cookie 归属 actor**；在 iOS PWA 多窗口切号、慢网络/重试时，旧答题或旧来源 adopt 可能在新的 Cookie 下被错误记入新账号。现在 `attempts/history/legacy/adopt` 与 `mastery/review/legacy/adopt` 都必须带 `expected_user_id`，否则或与服务端即时 `verifiedStudyActor` 得出的 `actor.user_id` 不一致就**403 `ACTOR_CHANGED`，在任何 D1 写入/审计/导入之前拒绝**。actor 依旧严格从服务端 HomeFlow 会话取得，绝不信任客户端值作为真正 actor。仅增加请求归属栅栏；原 SQLite 主键、乐观版本、UUID 幂等和旧历史只复制不删除保持原样。
+- 对应新 PWA `src/StudyHomeFlowExams.vue`、`src/StudyHomeFlowLanguage.vue` 的每次答题、成绩、语言掌握、复习重试及 owner-only 导入均带当时的 `props.userId`；若组件当前用户已更换，禁止原请求重发，丢弃旧 generation/epoch 的延迟回执。还修复了语言卡 `setMastery` 失败后 `load()` 自增 epoch 导致 `busy=true` 永不释放的卡住问题。
+- 真实 SQLite 双人回归 `scripts/homeflow-sso-isolated.test.mjs` 补六条**原账号不符/缺少声明用户**的 403，并核对全部私有考试、语言状态与 audit 行数不变；现有真实成功写、重复 UUID 幂等、owner 单独 adopt 与所有旧数据完整性测试仍保留。PWA `scripts/homeflow-pwa-ui.test.mjs` 加原身份一致性与迟到回执丢弃的静态守卫。
+
+### 18.2 B/E：旧主人的 localStorage 原样保存，已登录 HomeFlow 时不再自动展示/认领
+
+- 原 `src/App.vue` 旧单密码知学缓存如 `zhixue:tasks:*`、`exam-records`、`mock/practice/scenario/daily-word-pending` 全是**无身份归属的旧存储**。绝不能把本机/昵称/现在 HomeFlow 用户误当原记录主人；也不能为了切号直接清空用户旧学习数据。
+- 本轮新增轻量 **`zhixue:legacy-cache-quarantine-v1` 非机密访问标记**。App 首次打开/返回前台时通过 `/api/homeflow-sso/me` 的真实服务器身份判定是否存在 HomeFlow 当前用户；一旦验证成功，**立即隐藏旧主人的全部单密码学习视图**、清空旧密码输入、递增旧 hydration generation、保留 localStorage 原字节；关闭或退出 HomeFlow 后，即使旧 cookie 尚有效，仍需要**明确用旧密码登录成功**才可打开旧历史学习空间，不能自动把旧记录展示给新成员。对网络检查不确定/200 无合法 actor 的情况保留 fail-closed access lock。旧密码登录完成后才清除此非机密标记；与新账号无关。
+- `src/StudyHomeFlowAccess.vue` 通过 `identity-changed` 向 App 报告真实验证后的 actor。在 iPhone PWA 从后台返回前台时先隐藏原个人面板，再重新发在线 SSO check；延迟的旧 `/status/me` 响应不能挂回上一人。没有把旧队列提交到 `/api/homeflow-study/*`，没有把旧缓存自动清理或认领为新成员学习数据。
+- **重要限制：本轮是旧缓存访问隔离，不是旧 `src/App.vue` 每个 localStorage key、旧离线待同步队列、旧 UI 组件和正在执行的旧异步请求的完整重分区**。旧 PWA 本机缓存只在显式旧密码空间使用；完成全部 key-by-key owner-proof/IDB 隔离、两台 iPhone 真机多用户/换号/断网验收之前不得宣称整个 E 完成。文档 `docs/homeflow-stage-e-legacy-cache-quarantine.md` 已在 Draft 分支创建。
+
+### 18.3 精确提交、CI、生产安全边界
+
+- 新知学主要 Commit（先后顺序）：`55a7c52cf64a229f1d7929805231c75d8aed412b`（exam 后端）、`53fe3c5f2fbd6e8d7660f7959684743960f14a72`（language 后端）、`83d1e043ae2dae41e9531684388ec2c6fbd07a01` / `691db9714d87b32cee9208287cbc98ce2545d4d8`（双 PWA）、`c24326cb291fd89c8bc7aa93988cc45cc01efd63` / `1c1cfb92a2b034e9dfae5a93186490e4e3efb262`（fixture + 六条 SQLite 拒绝测试）、`dc3fbf8cf499b182bd95ed44c3ff8e0ef8424681` / `c5527b3634fd807dbf8915e3877529eeafa841ea`（busy lock + PWA 回归）、`f1f550702fb8d913f2d6d5be1e4472ddd47395b2` / `31fb20d5ff506ec75b9455d46366f463d5cfcd5f` / `8afdae66bc77a6fb9b0da4929d1105e5780ee0d9`（HF 切号通知、legacy 访问隔离、测试）、`14d40fb63bbddc4546aea9d6a80b191fa3873a93`（文档）、`6d2a6a80dd19d17da1f45cf790dadd5bc6a8c2c7` / `8b13764b29553c2c329d5ae43bf2f67db395cc8d`（不确定身份 fail-closed + 测试）。
+- **注意 CI 状态：本节首次记录时，最新完整 [知学 Validate](https://github.com/PTamako/it-study-platform/actions?query=branch%3Afeature%2Fhomeflow-identity-isolated-20261113) 尚未对精确最终 HEAD `8b13764b...` 返回 `completed/success`；前面多次 CI 因新 Commit 取消，属于中间态，不能据此宣称通过。必须等最新 CI 真实结果后在本交接文件追加最终核验记录。** 此前基线 [知学 #43475655647](https://github.com/PTamako/it-study-platform/actions/runs/43475655647) completed/success，但该基线不涵盖本轮。
+- HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 继续维持 **open/Draft/未合并**，不执行生产迁移、不启用身份或审批新开关、不部署 Workers/Pages、不动四个生产 D1 或 R2 对象、不创建 Preview。原 A PASS 不代表允许执行 F。后续优先继续独立目标执行器/家計簿金融稳定 ID/旧 App 完整队列隔离和真机 E2E；每模块独立绿 CI 再交接。
