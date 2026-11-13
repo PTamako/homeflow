@@ -28,6 +28,10 @@ const expanded=ref(false),loading=ref(false),busyId=ref('')
 const error=ref(''),message=ref('')
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 let epoch=0
+// A changed filter or HomeFlow user invalidates the previous network response.
+// Do not hold the screen locked behind an obsolete, slow PWA fetch.
+let requestGeneration=0
+let inFlightQuery=''
 const statusNames:Record<State,string>={
  pending:'待审批',approved:'已批准 · 待执行',
  rejected:'已拒绝',cancelled:'已取消',executing:'执行中',
@@ -66,6 +70,9 @@ async function getJson(url:string,options?:RequestInit){
 }
 async function discover(){
  const ticket=++epoch
+ requestGeneration++
+ inFlightQuery=''
+ loading.value=false
  cancelConfirm()
  enabled.value=false;executionEnabled.value=false;expanded.value=false
  items.value=[];page.value=0;hasMore.value=false
@@ -81,21 +88,33 @@ async function discover(){
 }
 watch(()=>[props.active,props.userId,props.isOwner],()=>{void discover()},{immediate:true})
 async function load(reset=true){
- if(!available.value||loading.value||busyId.value)return
+ if(!available.value||busyId.value)return
  const ticket=epoch
  const account=props.userId,kind=filter.value
  const nextPage=reset?0:page.value
+ const queryKey=account+'|'+kind+'|'+nextPage
+ if(loading.value&&inFlightQuery===queryKey)return
+ const generation=++requestGeneration
+ inFlightQuery=queryKey
  loading.value=true;error.value='';message.value=''
  try{
   const url='/api/approvals?page='+nextPage+
    (kind?'&status='+encodeURIComponent(kind):'')
   const result=await getJson(url)
-  if(ticket!==epoch||!props.active||account!==props.userId||kind!==filter.value)return
+  if(ticket!==epoch||generation!==requestGeneration||!props.active||
+   account!==props.userId||kind!==filter.value)return
   items.value=Array.isArray(result.items)?result.items:[]
   page.value=nextPage
   hasMore.value=result.has_more===true
- }catch(e){if(ticket===epoch)error.value=(e as Error).message}
- finally{if(ticket===epoch)loading.value=false}
+ }catch(e){
+  if(ticket===epoch&&generation===requestGeneration)
+   error.value=(e as Error).message
+ }finally{
+  if(ticket===epoch&&generation===requestGeneration){
+   loading.value=false
+   inFlightQuery=''
+  }
+ }
 }
 async function toggle(){
  expanded.value=!expanded.value
