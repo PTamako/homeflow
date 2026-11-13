@@ -61,3 +61,13 @@
 - 复用原 `approvalRoute` 的真实 `household_members`/disabled 角色校验、唯一请求/append-only member 事件、完整 digest 幂等冲突判断；在创建后再逐列比对 D1 不可变原始记录。返回 `status=pending` 等真实状态、`applied:false`、`target_changed:false`，绝不宣称已批准/已执行或触发旧目标写入。
 - 配套文书助手 [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 的未执行 `0023_document_member_sync_intents.sql`：原文/目标 payload 只在文书助手本人 D1 快照中保留；签名提交 HomeFlow 的仅为 digest。网络丢回执以相同 candidate ID + digest 幂等重放；目标财务/任务/知学的安全执行器、回执和人工真机验收**未完成**，不得借此开通 production。
 - 本轮真实 SQLite/HMAC 回归：`tests/document-approval-submission.test.mjs`，三种目标创建 pending、重复只有一个 request+audit、不同 digest 或 target 409、错签名/过期/Cookie/Origin/owner/错户/禁用成员/多余敏感字段拒绝。所有内容只在原 Draft PR，生产 0053–0055 迁移、Secret、flags、Worker/Pages 均未经执行；A 用户本地加密备份 PASS 不代表生产发布授权。
+
+### Stage D 增量：文书审批实时只读签名状态
+
+配合文书助手 Draft #97 的「查询审批状态」单次用户操作，新加 `POST /api/internal/approvals/document-status`（`worker/document-approval-status.js`）。这是 **只读审批状态，不是审批通过后的执行凭证**。该接口也由 `worker/index.js` 在浏览器 Session 前路由，新增动作使用已有 `DOCUMENT_APPROVAL_SUBMISSION_ENABLED` 功能旗标和专用 32 raw byte Secret；未配置时 503 fail closed，不添加生产资源和自动轮询。
+
+- 签名和原提交接口 **隔离目的域**：`HMAC_SHA256(raw_32_byte_key, "jp-document-assistant:status\\n" + 13位毫秒戳 + "\\n" + 完整JSON)`。旧 `"jp-document-assistant\\n"` 申请提交签名**不能**用于查询。允许单次请求 ±5 分钟时间戳，拒绝 Cookie/Origin/Authorization、错客户端和过长/多余字段。
+- 严格请求六个键：`approval_id/household_id/requester_user_id/resource_id/payload_sha256/target_app`，HomeFlow 先查现存活跃 `household_members` 真实 `member`，再对每个不可变字段核对 `household_approval_requests` 本身（源 App、目标/operation、候选 ID、digest、资源类型、幂等键、household 和 actor）；任何 ID 或摘要不符均 404，不暴露他人的工单。
+- 返回必要数据：`status` 为 D1 当前真实值、`version/reviewed_at` 及绑定原请求的身份字段；永不返回批准人隐私、财务字段、原始文书、执行链接、远端入账 ID。禁止 `executing/applied/failed_retryable` 被这条尚无执行器的通道当作有效回执；明确 `applied:false,target_changed:false`，不写 D1 审计，不触发目标 App。
+- `tests/document-approval-submission.test.mjs` 使用真实 SQLite 状态迁移 + purpose-separated HMAC 验证 pending→批准/拒绝、禁用成员、错户、错摘要、错目标、Cookie/Origin/签名重放；原 0055 执行锁的数据库 trigger 仍拒绝把文书 approval 直接跳为 `executing/applied`。状态查询由用户在 PWA 按钮触发，不采用 Cron/定时轮询，避免不必要 Cloudflare D1 开销。
+- 上述代码仍在 Draft #306，`0053～0055` 未生产执行，正式权限/执行器/真机验收和 F 阶段未授权。更多文书源保护见 Draft #97 `docs/document-member-approval-stage-d.md`。
