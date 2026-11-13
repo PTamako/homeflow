@@ -1,0 +1,179 @@
+// Stage D: owner-initiated, leased HomeFlow execution of an ALREADY approved
+// household financial intent. Only the target Kakeibo Worker may write entries.
+// Remote success is the sole basis for 'applied'; timeout is retryable and
+// retries reuse the SAME immutable approval ID, never a new debit.
+import {json,nowMs,randomToken,sha256,sameOrigin} from './security.js'
+
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const hex=/^[a-f0-9]{64}$/i
+const LEASE_MS=120000
+const reply=(data,status=200)=>json(data,status)
+const failure=(code,status=409)=>reply({ok:false,code,applied:false},status)
+const eventId=()=>crypto.randomUUID()
+function enabled(env){
+ return env.APP_ENV==='production'&&env.APPROVALS_ENABLED==='true'&&
+  env.APPROVAL_EXECUTION_ENABLED==='true'&&
+  env.APPROVAL_VERIFICATION_ENABLED==='true'&&
+  typeof env.APPROVAL_VERIFICATION_SECRET==='string'&&
+  hex.test(env.APPROVAL_VERIFICATION_SECRET)&&
+  typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'&&
+  !!env.DB?.prepare
+}
+async function mac(secret,stamp,raw){
+ const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
+ const key=await crypto.subtle.importKey('raw',bytes,
+  {name:'HMAC',hash:'SHA-256'},false,['sign'])
+ const data=await crypto.subtle.sign('HMAC',key,
+  new TextEncoder().encode('homeflow\n'+stamp+'\n'+raw))
+ return Array.from(new Uint8Array(data),x=>x.toString(16).padStart(2,'0')).join('')
+}
+async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=null){
+ const stamp=nowMs()
+ try{
+  const changes=await db.batch([
+   db.prepare('UPDATE household_approval_requests SET status=?,updated_at=?,'+
+    'executed_at=CASE WHEN ?=\'applied\' THEN ? ELSE executed_at END,'+
+    'execution_nonce_hash=NULL,execution_lease_until=NULL,'+
+    'remote_id=CASE WHEN ?=\'applied\' THEN ? ELSE remote_id END,'+
+    'last_error_code=?,version=version+1 '+
+    "WHERE request_id=? AND household_id=? AND status='executing' "+
+    'AND execution_nonce_hash=?')
+    .bind(newStatus,stamp,newStatus,stamp,newStatus,remoteId,errorCode,
+     row.request_id,row.household_id,row.execution_nonce_hash),
+   db.prepare('INSERT INTO household_approval_events '+
+    '(event_id,request_id,actor_user_id,actor_type,action,created_at) '+
+    'SELECT ?,request_id,?, ?,?,? FROM household_approval_requests '+
+    'WHERE request_id=? AND changes()=1')
+    .bind(eventId(),session.user_id,'integration',newStatus,stamp,row.request_id)
+  ])
+  return changes.length===2&&changes.every(x=>x.meta?.changes===1)
+ }catch{return false}
+}
+async function expiredLease(db,row,session){
+ // A Worker can die after claiming and before sending the remote request.
+ // Release ONLY an expired lease; if the remote applied just before timeout,
+ // the target's immutable idempotency journal returns already_applied on retry.
+ const stamp=nowMs()
+ try{
+  const changes=await db.batch([
+   db.prepare("UPDATE household_approval_requests SET status='failed_retryable',"+
+    "last_error_code='execution_lease_expired',execution_nonce_hash=NULL,"+
+    "execution_lease_until=NULL,updated_at=?,version=version+1 "+
+    "WHERE request_id=? AND household_id=? AND status='executing' "+
+    'AND execution_nonce_hash=? AND execution_lease_until<=?')
+    .bind(stamp,row.request_id,row.household_id,row.execution_nonce_hash,stamp),
+   db.prepare('INSERT INTO household_approval_events '+
+    '(event_id,request_id,actor_user_id,actor_type,action,created_at) '+
+    "SELECT ?,request_id,?,'integration','failed_retryable',? "+
+    'FROM household_approval_requests WHERE request_id=? AND changes()=1')
+    .bind(eventId(),session.user_id,stamp,row.request_id)
+  ])
+  return changes.every(x=>x.meta?.changes===1)
+ }catch{return false}
+}
+async function ownerApproval(db,id,session){
+ return db.prepare('SELECT r.*,owner.role AS owner_role,owner_user.disabled_at AS owner_disabled,'+
+  'member.role AS member_role,member_user.disabled_at AS member_disabled '+
+  'FROM household_approval_requests r '+
+  'JOIN household_members owner ON owner.household_id=r.household_id '+
+  'AND owner.user_id=r.approver_user_id '+
+  'JOIN users owner_user ON owner_user.id=r.approver_user_id '+
+  'JOIN household_members member ON member.household_id=r.household_id '+
+  'AND member.user_id=r.requester_user_id '+
+  'JOIN users member_user ON member_user.id=r.requester_user_id '+
+  'WHERE r.request_id=? AND r.household_id=? AND r.approver_user_id=? LIMIT 1')
+  .bind(id,session.household_id,session.user_id).first()
+}
+export async function approvalExecutionRoute(request,env,path,session){
+ if(!enabled(env))return failure('execution_disabled',503)
+ if(request.method!=='POST'||!sameOrigin(request))return failure('method_or_origin',403)
+ const m=/^\/api\/approvals\/([0-9a-f-]{36})\/execute$/.exec(path)
+ if(!m||!uuid.test(m[1]))return failure('not_found',404)
+ if(!session?.household_id||!session?.user_id||session.role!=='owner')
+  return failure('owner_required',403)
+ let body
+ try{const raw=await request.text();body=raw.length<20?JSON.parse(raw):null}
+ catch{return failure('invalid_body',400)}
+ if(!body||typeof body!=='object'||Array.isArray(body)||
+  Object.keys(body).length!==0)return failure('invalid_body',400)
+ const db=env.DB
+ let row=await ownerApproval(db,m[1],session)
+ if(!row)return failure('not_found',404)
+ if(row.owner_role!=='owner'||row.owner_disabled!=null||
+  row.member_role!=='member'||row.member_disabled!=null||
+  row.requester_user_id===session.user_id)
+  return failure('current_membership_invalid',403)
+ if(row.target_app!=='kakeibo'||row.source_app!=='kakeibo'||
+  row.operation!=='finance.entry.create'||row.resource_type!=='finance_entry'||
+  !hex.test(row.payload_sha256))
+  return failure('operation_not_executable',409)
+ if(row.status==='applied')
+  return reply({ok:true,status:'already_applied',approval_id:row.request_id,
+   remote_id:row.remote_id,applied:true,replayed:true})
+ if(row.status==='executing'){
+  if(Number(row.execution_lease_until)>nowMs())
+   return failure('execution_in_progress',409)
+  if(!await expiredLease(db,row,session))return failure('execution_claim_conflict',409)
+  row=await ownerApproval(db,m[1],session)
+  if(!row)return failure('not_found',404)
+ }
+ if(!['approved','failed_retryable'].includes(row.status)||
+  Number(row.expires_at)<=nowMs())return failure('approval_not_executable',409)
+ const nonce=randomToken(),nonceHash=await sha256(nonce)
+ const stamp=nowMs(),lease=stamp+LEASE_MS
+ try{
+  const changes=await db.batch([
+   db.prepare("UPDATE household_approval_requests SET status='executing',"+
+    "execution_nonce_hash=?,execution_lease_until=?,updated_at=?,"+
+    "last_error_code=NULL,execution_attempts=execution_attempts+1,version=version+1 "+
+    "WHERE request_id=? AND household_id=? AND approver_user_id=? "+
+    "AND status IN ('approved','failed_retryable') AND expires_at>?")
+    .bind(nonceHash,lease,stamp,row.request_id,row.household_id,session.user_id,stamp),
+   db.prepare('INSERT INTO household_approval_events '+
+    '(event_id,request_id,actor_user_id,actor_type,action,created_at) '+
+    "SELECT ?,request_id,?,'integration','executing',? "+
+    'FROM household_approval_requests WHERE request_id=? AND changes()=1')
+    .bind(eventId(),session.user_id,stamp,row.request_id)
+  ])
+  if(changes.some(x=>x.meta?.changes!==1))return failure('execution_claim_conflict',409)
+ }catch{return failure('execution_claim_conflict',409)}
+ row={...row,execution_nonce_hash:nonceHash,execution_lease_until:lease}
+ const payload={request_id:row.request_id,resource_id:row.resource_id,
+  household_id:row.household_id,requester_user_id:row.requester_user_id,
+  payload_sha256:row.payload_sha256,execution_nonce:nonce}
+ const raw=JSON.stringify(payload),timestamp=String(nowMs())
+ const outgoing=new Request('https://kakeibo.internal/api/internal/approved-actions/execute',{
+  method:'POST',redirect:'manual',headers:{'content-type':'application/json',
+   'accept':'application/json','x-approval-client':'homeflow',
+   'x-approval-timestamp':timestamp,
+   'x-approval-signature':await mac(env.APPROVAL_VERIFICATION_SECRET,timestamp,raw)},
+  body:raw
+ })
+ let result=null
+ try{
+  const response=await env.KAKEIBO_EXECUTION_SERVICE.fetch(outgoing)
+  if(response.status===409){
+   await statusChange(db,row,session,'conflict','target_conflict')
+   return failure('target_conflict',409)
+  }
+  if(response.status===200&&response.ok&&!response.headers.has('location')){
+   const text=await response.text()
+   if(text.length<=1800)result=JSON.parse(text)
+  }
+ }catch{/* A lost response does NOT prove the target failed to post. */}
+ if(result?.ok===true&&result.applied===true&&
+  result.approval_id===row.request_id&&result.proposal_id===row.resource_id&&
+  result.household_id===row.household_id&&
+  result.requester_user_id===row.requester_user_id&&
+  result.payload_sha256===row.payload_sha256&&
+  Number.isSafeInteger(result.entry_id)&&result.entry_id>0){
+  const stored=await statusChange(db,row,session,'applied',null,String(result.entry_id))
+  if(stored)return reply({ok:true,status:'applied',approval_id:row.request_id,
+   remote_id:String(result.entry_id),applied:true,
+   replayed:result.already_applied===true})
+  return failure('applied_remote_receipt_pending_reconciliation',503)
+ }
+ const released=await statusChange(db,row,session,'failed_retryable','target_result_unknown')
+ return failure(released?'target_result_unknown_safe_to_retry':
+  'receipt_reconciliation_required',503)
+}
