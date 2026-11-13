@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {approvalRoute} from '../worker/approvals.js'
 import {approvalVerificationRoute} from '../worker/approval-verification.js'
 import {approvalSubmissionRoute} from '../worker/approval-submission.js'
+import {approvalExecutionRoute} from '../worker/approval-execution.js'
 import {createHmac} from 'node:crypto'
 
 const sessions={
@@ -35,6 +36,7 @@ function fixture(){
     ('second','stranger','owner');
  `)
  sql.exec(readFileSync(new URL('../migrations/0054_household_approval_core.sql',import.meta.url),'utf8'))
+ sql.exec(readFileSync(new URL('../migrations/0055_household_approval_execution_lease.sql',import.meta.url),'utf8'))
  const db={
   prepare(statement){
    return {bind(...params){return {
@@ -423,5 +425,137 @@ test('backend approval submission never starts without separate flag, secret and
    'https://homeflow.example.test/api/internal/approvals/submit',
    {method:'POST'}),f.env)).status,503)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,0)
+ }finally{f.sql.close()}
+})
+
+
+test('owner approved CASH action obtains nonce lease and only actual Kakeibo receipt marks applied',async()=>{
+ const f=fixture()
+ try{
+  const secret='c'.repeat(64)
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_EXECUTION_ENABLED='true'
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  f.env.APPROVAL_VERIFICATION_SECRET=secret
+  const created=await f.call(sessions.member,'/api/approvals','POST',
+   entry('cash-posting-approval-0001',{resource_id:'a'.repeat(32)}))
+  assert.equal(created.status,201)
+  const id=created.body.request.request_id
+  assert.equal((await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',
+   {decision:'approve'})).status,200)
+  let targetCalls=0
+  f.env.KAKEIBO_EXECUTION_SERVICE={async fetch(request){
+   targetCalls++
+   assert.equal(new URL(request.url).pathname,'/api/internal/approved-actions/execute')
+   assert.equal(request.headers.get('cookie'),null)
+   assert.equal(request.headers.get('origin'),null)
+   assert.equal(request.redirect,'manual')
+   const raw=await request.text()
+   const ts=request.headers.get('x-approval-timestamp')
+   const mac=createHmac('sha256',Buffer.from(secret,'hex'))
+    .update('homeflow\n'+ts+'\n'+raw).digest('hex')
+   assert.equal(request.headers.get('x-approval-signature'),mac)
+   const intent=JSON.parse(raw)
+   assert.equal(intent.request_id,id)
+   assert.equal(intent.resource_id,'a'.repeat(32))
+   assert.match(intent.execution_nonce,/^[a-f0-9]{64}$/)
+   const state=f.sql.prepare('SELECT status,execution_nonce_hash,execution_lease_until FROM household_approval_requests WHERE request_id=?').get(id)
+   assert.equal(state.status,'executing')
+   assert.ok(state.execution_lease_until>Date.now())
+   const proof={request_id:id,resource_id:intent.resource_id,
+    household_id:'primary',requester_user_id:'member',
+    payload_sha256:'a'.repeat(64),
+    idempotency_key:'cash-posting-approval-0001',
+    expected_version:null,purpose:'execute',execution_nonce:intent.execution_nonce}
+   async function verify(fields){
+    const b=JSON.stringify(fields),t=String(Date.now())
+    const sig=createHmac('sha256',Buffer.from(secret,'hex'))
+     .update('kakeibo\n'+t+'\n'+b).digest('hex')
+    return approvalVerificationRoute(new Request(
+     'https://homeflow.example.test/api/internal/approvals/verify',{
+      method:'POST',headers:{'content-type':'application/json',
+       'x-approval-client':'kakeibo','x-approval-timestamp':t,
+       'x-approval-signature':sig},body:b
+     }),f.env)
+   }
+   const verified=await verify(proof)
+   assert.equal(verified.status,200,await verified.clone().text())
+   const info=await verified.json()
+   assert.equal(info.execution_authorized,true)
+   assert.equal(info.approver_user_id,'owner')
+   assert.equal((await verify({...proof,execution_nonce:'f'.repeat(64)})).status,409)
+   assert.equal((await verify({...proof,purpose:undefined,execution_nonce:undefined})).status,400)
+   return Response.json({ok:true,applied:true,approval_id:id,
+    proposal_id:'a'.repeat(32),household_id:'primary',
+    requester_user_id:'member',payload_sha256:'a'.repeat(64),
+    entry_id:123,already_applied:false})
+  }}
+  const execute=async(principal=sessions.owner)=>{
+   const res=await approvalExecutionRoute(
+    new Request('https://homeflow.example.test/api/approvals/'+id+'/execute',{
+     method:'POST',headers:{origin:'https://homeflow.example.test',
+      'content-type':'application/json'},body:'{}'
+    }),f.env,'/api/approvals/'+id+'/execute',principal)
+   return {status:res.status,body:await res.json()}
+  }
+  assert.equal((await execute(sessions.member)).status,403)
+  const confirmed=await execute()
+  assert.equal(confirmed.status,200,JSON.stringify(confirmed.body))
+  assert.equal(confirmed.body.status,'applied')
+  assert.equal(confirmed.body.remote_id,'123')
+  assert.equal(targetCalls,1)
+  const row=f.sql.prepare('SELECT * FROM household_approval_requests WHERE request_id=?').get(id)
+  assert.equal(row.status,'applied')
+  assert.equal(row.remote_id,'123')
+  assert.equal(row.execution_nonce_hash,null)
+  assert.equal(row.execution_lease_until,null)
+  assert.equal(row.execution_attempts,1)
+  assert.equal((await execute()).body.status,'already_applied')
+  assert.equal(targetCalls,1,'duplicate owner approval must not send target twice')
+  const audit=f.sql.prepare('SELECT action FROM household_approval_events WHERE request_id=? ORDER BY created_at,event_id').all(id)
+  assert.equal(audit.length,4)
+  assert.ok(['submitted','approved','executing','applied'].every(kind=>audit.some(x=>x.action===kind)))
+ }finally{f.sql.close()}
+})
+test('lost target response is retryable, reuses same approval ID and settles once',async()=>{
+ const f=fixture()
+ try{
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET='c'.repeat(64)
+  f.env.APPROVAL_EXECUTION_ENABLED='true'
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  const requested=await f.call(sessions.member,'/api/approvals','POST',
+   entry('lost-receipt-approval-0001',{resource_id:'b'.repeat(32)}))
+  const id=requested.body.request.request_id
+  await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',{decision:'approve'})
+  let remoteRecord=null,attempts=0
+  f.env.KAKEIBO_EXECUTION_SERVICE={async fetch(request){
+   attempts++
+   const body=JSON.parse(await request.text())
+   if(!remoteRecord)remoteRecord=body
+   else assert.equal(remoteRecord.request_id,body.request_id)
+   if(attempts===1)throw Error('worker delivered and target committed; response lost')
+   return Response.json({ok:true,applied:true,approval_id:id,
+    proposal_id:'b'.repeat(32),household_id:'primary',
+    requester_user_id:'member',payload_sha256:'a'.repeat(64),
+    entry_id:995,already_applied:true})
+  }}
+  const execute=()=>approvalExecutionRoute(new Request(
+    'https://homeflow.example.test/api/approvals/'+id+'/execute',{
+     method:'POST',headers:{origin:'https://homeflow.example.test',
+      'content-type':'application/json'},body:'{}'
+    }),f.env,'/api/approvals/'+id+'/execute',sessions.owner)
+  assert.equal((await execute()).status,503)
+  assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests WHERE request_id=?').get(id).status,
+   'failed_retryable')
+  const retry=await execute()
+  assert.equal(retry.status,200,await retry.clone().text())
+  assert.equal((await retry.json()).status,'applied')
+  assert.equal(attempts,2)
+  const row=f.sql.prepare('SELECT status,execution_attempts,remote_id FROM household_approval_requests WHERE request_id=?').get(id)
+  assert.equal(row.status,'applied')
+  assert.equal(row.remote_id,'995')
+  assert.equal(row.execution_attempts,2)
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events WHERE request_id=? AND action='applied'").get(id).n,1)
  }finally{f.sql.close()}
 })
