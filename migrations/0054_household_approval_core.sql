@@ -83,3 +83,26 @@ WHEN NOT (
   OR (OLD.status='failed_retryable' AND NEW.status IN('executing','failed_final','conflict'))
 )
 BEGIN SELECT RAISE(ABORT,'INVALID_APPROVAL_TRANSITION'); END;
+
+-- A forged approval is not valid merely because somebody changed the status.
+-- Even internal future executors must preserve a real household owner actor.
+CREATE TRIGGER IF NOT EXISTS trg_household_approval_owner_review
+BEFORE UPDATE OF status ON household_approval_requests
+WHEN NEW.status IN('approved','rejected') AND (
+  NEW.approver_user_id IS NULL
+  OR NEW.approver_user_id=OLD.requester_user_id
+  OR NOT EXISTS (
+    SELECT 1 FROM household_members m JOIN users u ON u.id=m.user_id
+    WHERE m.household_id=NEW.household_id
+      AND m.user_id=NEW.approver_user_id AND m.role='owner'
+      AND u.disabled_at IS NULL
+  )
+)
+BEGIN SELECT RAISE(ABORT,'APPROVAL_OWNER_REQUIRED'); END;
+CREATE TRIGGER IF NOT EXISTS trg_household_approval_review_actor_frozen
+BEFORE UPDATE OF approver_user_id,reviewed_at ON household_approval_requests
+WHEN OLD.status!='pending' AND (
+  NEW.approver_user_id IS NOT OLD.approver_user_id
+  OR NEW.reviewed_at IS NOT OLD.reviewed_at
+)
+BEGIN SELECT RAISE(ABORT,'APPROVAL_REVIEW_ACTOR_IMMUTABLE'); END;
