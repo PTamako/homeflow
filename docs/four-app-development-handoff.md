@@ -475,3 +475,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - **仅每日任务这一个 E 模块新增了 user_id 隔离；不是四 App 联调验收**。知学其他个人表（学习/考试题目作答、错题、模拟考试、全部语言卡进度、听力/语法/每日词、收藏/句子）和旧 localStorage/IndexedDB 登录切换仍需逐类隔离、owner 旧历史安全迁移和双人真机验收。当前原旧登录与 SSO 还可能在同一设备并存，不能向 member 开放未隔离旧页面。
 - A 由用户自行完成；HomeFlow 新身份生产迁移/开关、家計簿/文书/知学新 migration 与功能 PR 仍不得自动部署，绝不重建 Preview。继续沿用原有 Draft PR，每个新模块务必跟进 CI、详细记录历史无损及用户权限。
+
+
+### 9.6.1 此轮真实 CI 失败修复（非业务逻辑故障）
+
+- [原知学 #179 Validate #43443670594](https://github.com/PTamako/it-study-platform/actions/runs/43443670594) **实际结果 failure**，不能写为成功。通过 GitHub Actions job 日志准确确认 399 测试中 **383 pass / 16 fail**；失败均是旧的 Worker `data:text/javascript;base64` / 临时 `.mts` 测试装载器未替换新增 `import {homeflowDailyTasks} from './homeflow-daily-tasks'`，导致 `ERR_UNSUPPORTED_RESOLVE_REQUEST` / `ERR_MODULE_NOT_FOUND`。新增的真实双账号 SQLite tests **3/3 通过**、PWA 隔离静态测试通过，无证据表明真实业务读写失败。
+- `scripts/inline-chinese-dictionary.mjs` 是上述 16 个旧 Worker 测试共用的安全测试装载辅助。已在功能分支提交 **`5bd62dd8bfb54e24ad92aba5d0e6c037677c66c2`**，只为旧测试在 data URL / 临时模块中把新 HomeFlow daily import 显式替换成 **503 默认关闭** 的模拟函数，完全不修改真实 Worker 后端 API、不影响旧认证逻辑、不赋予旧测试 SSO 身份。新的每日任务真正安全逻辑继续由专门的真实 SQLite 双账号回归覆盖。
+- 新 [Validate #43444534566](https://github.com/PTamako/it-study-platform/actions/runs/43444534566) **本节写入时 in_progress**，必须实际检查最终结论；通过前不可将 #179 本轮标记为 CI 成功。以上仅为 Draft 代码，A=用户负责待完成、不执行正式迁移、不合并或部署。
