@@ -48,7 +48,7 @@ test('owner can safely retry a failed target execution only with the original ap
  assert.match(view,/v-else-if="canExecute\(item\)"/)
  assert.match(view,/@click="act\(item,'execute'\)"/)
  assert.match(view,/item\.status==='failed_retryable'\?'安全重试':'执行入账'/)
- assert.match(view,/原审批 ID 与家計簿的幂等记录核对结果/)
+ assert.match(view,/同一审批 ID 与家計簿的幂等记录核对结果/)
  assert.match(view,/上次执行结果未确认；请仅通过原审批安全重试/)
  assert.match(view,/const path=kind==='execute'\?'\/api\/approvals\/'\+id\+'\/execute'/)
  assert.match(view,/if\(item\.status!==chosenStatus/)
