@@ -482,3 +482,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - [原知学 #179 Validate #43443670594](https://github.com/PTamako/it-study-platform/actions/runs/43443670594) **实际结果 failure**，不能写为成功。通过 GitHub Actions job 日志准确确认 399 测试中 **383 pass / 16 fail**；失败均是旧的 Worker `data:text/javascript;base64` / 临时 `.mts` 测试装载器未替换新增 `import {homeflowDailyTasks} from './homeflow-daily-tasks'`，导致 `ERR_UNSUPPORTED_RESOLVE_REQUEST` / `ERR_MODULE_NOT_FOUND`。新增的真实双账号 SQLite tests **3/3 通过**、PWA 隔离静态测试通过，无证据表明真实业务读写失败。
 - `scripts/inline-chinese-dictionary.mjs` 是上述 16 个旧 Worker 测试共用的安全测试装载辅助。已在功能分支提交 **`5bd62dd8bfb54e24ad92aba5d0e6c037677c66c2`**，只为旧测试在 data URL / 临时模块中把新 HomeFlow daily import 显式替换成 **503 默认关闭** 的模拟函数，完全不修改真实 Worker 后端 API、不影响旧认证逻辑、不赋予旧测试 SSO 身份。新的每日任务真正安全逻辑继续由专门的真实 SQLite 双账号回归覆盖。
 - 新 [Validate #43444534566](https://github.com/PTamako/it-study-platform/actions/runs/43444534566) **本节写入时 in_progress**，必须实际检查最终结论；通过前不可将 #179 本轮标记为 CI 成功。以上仅为 Draft 代码，A=用户负责待完成、不执行正式迁移、不合并或部署。
+
+
+### 9.6.2 最新完整 CI 恢复成功（2026-11-13）
+
+- 旧测试装载器修复提交 **`5bd62dd8bfb54e24ad92aba5d0e6c037677c66c2`** 后，已实际查询 [知学 #179 Validate #43444534566](https://github.com/PTamako/it-study-platform/actions/runs/43444534566)，**completed/success**。job 内 **Run automated regression tests、Type-check and build frontend、Validate complete D1 migration chain locally** 全部 `success`。此结论覆盖 §9.6.1 的旧失败状态，不可把之前 16 条 mock 失败继续当成最新状态。
+- 最新原 Draft #179 **仍未合并**；通过 CI 后仅在同一功能分支追加模块说明 [`4e0aa78cd3238ccd1055e268f86e5205f162a2ba`](https://github.com/PTamako/it-study-platform/commit/4e0aa78cd3238ccd1055e268f86e5205f162a2ba)，不改变已验收的运行时代码。前次 UI 错误提示修复与主功能均包含在通过的 Workflow HEAD 中。
+- **A 不变：待用户本人完成正式四 D1/三 R2 的加密备份、校验、隔离恢复**。知学 `0180/0181/0182` 只是 SQL 文件、未在生产 D1 执行；`HOMEFLOW_STUDY_SSO_ENABLED` 与 `HOMEFLOW_STUDY_DAILY_PROGRESS_ENABLED` 在正式生产仍不得启用；不得合并功能 Draft 或创建 Preview。后续优先做语言卡与考试/错题完整 user_id 隔离、端侧缓存分区、双人真机验收。
