@@ -26,3 +26,14 @@
 ## 自动化验证
 
 `tests/household-approvals.test.mjs` 覆盖：默认禁用、成员提交、同一幂等键重放与变更冲突、本人取消、owner/跨家庭权限、仅批准不生效、拒绝最终不可重试、过期不能审核、SQL 不可变事件和非法状态跳转、过滤/5 条分页 GET 不写审计、禁止原文或任意 URL/SQL payload、禁用账号拒绝操作。整仓 CI `npm run check`、本地完整迁移/SQLite 与 Worker dry-run **必须全部成功**方能调整 Draft 状态。PR #306 当前以 #305 为 base，后续切换到 main 之前先解决迁移顺序冲突，禁止跳过备份。
+
+
+## 2026-11-13 增量：只读签名批准证明（Draft，绝非真实入账执行）
+
+`worker/approval-verification.js` 新增后端 `POST /api/internal/approvals/verify`，由 `worker/index.js` 在浏览器 Cookie/同源登录校验前单独路由；只有持有专用 HMAC-SHA256 Secret 的受信业务后端可通过。请求不得携带 Cookie/Origin/Authorization；校验 `X-Approval-Client=kakeibo`、13 位毫秒时间戳（±5 分钟）、`X-Approval-Signature` 对 `kakeibo\n{timestamp}\n{raw_json}` 的签名，Body 限 2KB，读取单条 indexed approval，不向 D1 写阅读审计。
+
+只验证 `status=approved` 的 `finance.entry.create`，并要求 `source_app=target_app=kakeibo`、`resource_type=finance_entry`、`resource_id/household_id/requester_user_id/payload_sha256/idempotency_key/expected_version` 与数据库原始不可变申请**完全匹配**；recheck requester 是活跃 member，审核者是未禁用且仍具 owner 角色，reviewer≠requester，`reviewed_at` 非空且未超过 expiry。拒绝 pending/rejected/cancelled/failed、错户、错 hash、假审核、过期、双方禁用、账号角色变化。返回 `verified:true`、`applied:false`，既不改变审批状态也不写业务 App D1。
+
+仅 `APP_ENV='production'` + `APPROVALS_ENABLED='true'` + `APPROVAL_VERIFICATION_ENABLED='true'` + 32-byte hex Secret `APPROVAL_VERIFICATION_SECRET` 全部配置才可调用。当前全部保持 OFF。与家計簿 Draft #309 的 `/api/family-finance/proposals/{id}/approval-proof` 配合，只能核实本人草稿是否获批准，**不能凭此单次 GET/POST 结果当作财务已生效**。签名密钥不得写入仓库/日志/GitHub Issue。
+
+尚未实现：可信的家計簿→HomeFlow 申请创建、从审核到 Service Binding 执行器的端到端事务、`executing→applied`、幂等结果查询及重放对账、通知与 PWA UI。0053/0054 在生产都未迁移，要求先按阶段 A 完成备份与隔离恢复，不可启用服务、合并功能 PR 或新建 Preview。
