@@ -445,3 +445,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - HomeFlow 仍是唯一身份/家庭档案昵称和审批源；两人财务**同一家庭账本**，个人信用卡等配置按所有者分离；文书私人附件/Google OAuth 不因 owner 或共享而被越权。各 App 写动作仍必须持久记录真实 actor ID。
 - 因用户 A 仍未完成，HomeFlow 0053/0054/0055、家計簿 0022～0026、知学 0180/0181、文书助手 0020～0022 **禁止在生产执行**；所有新功能开关保持 OFF，所有功能 Draft 继续未合并。
 - 接下来应优先：1）查询本节最新 CI 最终结论；2）家計簿已有后台年度 API 与主统计 UI 的完整新身份整合，而非仅孤立卡片；3）文书整份共享永久删除的独立 R2 孤儿清理与私有 OAuth 授权边界；4）知学更大范围 user_id 独立学习表/缓存；5）HomeFlow 审批类型扩展、签名执行、状态回传、失败重试及推送。每个独立模块保留现有 Draft，并持续在本文件记录准确 CI、未上线与失败项。
+
+
+### 9.5.1 本轮补强：共享 R2 删除途中的共享撤销并发
+
+- 原文书助手 Draft #97 继续，**没有新 PR、没有合并/生产迁移/部署**。`worker/lifecycle.js` 在 `a124498da64b822a2ac238148e256634845ddd45` 修复物理 R2.delete 后因为原主人中途取消共享，导致附件元数据仍引用已经删除的 R2 字节的竞争风险。授权必须在进入 `deletion_pending` 和声明精确 R2 对象时有效；声明且删除开始后，后续元数据清理必须完成已授权动作，不能因另一设备撤销共享而遗留破损引用。后续新请求仍立即失权。
+- `tests/worker.test.js` 在 `d7fdc4e4feb994d2f33c71d3dfdf4e34ad690fcc` 添加“R2.delete 中途撤销共享”的真实 D1/模拟 R2 测试，验证原始 owner 墓碑、真实共享成员 actor 审计、数据对象/附件引用一致性、撤销后私有读取继续 404。最新 [Pre-merge CI #43440624817](https://github.com/PTamako/jp-document-assistant/actions/runs/43440624817) **success**，文书助手说明补录 `be6cecf1554191390ba78e60cc7511990b6c3f8b`。
+- 家計簿 #309 文档增量 `5b781795a4a15a11a52dd5b10a33ec923f073979` 的 [Validate #43440319598](https://github.com/PTamako/kakebo_jp/actions/runs/43440319598) **success** / [Mobile WebKit #43440319715](https://github.com/PTamako/kakebo_jp/actions/runs/43440319715) **success**，先前未知类型回归验证也成功。家計簿年度统计仍只是共享统计的一部分。
+- **生产安全未变**：A=用户负责待完成，HomeFlow/main 这次仅增加交接 Markdown（依已合并 #314 的路径忽略不触发 Deploy）；所有功能 Draft 均未合并，四个正式 D1 和现有三个私有 R2 都没有被本轮代码/文档操作修改。
