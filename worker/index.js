@@ -1,5 +1,6 @@
 import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
+import {identityRoute} from './identity.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
 import {lifeRoute} from './life.js'
@@ -55,6 +56,8 @@ async function routeRequest(request,env,ctx,state){
               .catch(()=>console.warn('homeflow_completion_feedback_failed')))
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
+        if(path==='/api/identity/me'||path==='/api/identity/household-members')
+          return identityRoute(request,env.DB,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
