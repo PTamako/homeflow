@@ -60,6 +60,22 @@ function publicShape(row){
  }
 }
 const reject=(reason,status=403)=>json({error:reason},status)
+function sameSubmission(existing,session,body){
+ return !!existing&&existing.household_id===session.household_id&&
+   existing.requester_user_id===session.user_id&&
+   existing.source_app===body.source_app&&
+   existing.target_app===body.target_app&&
+   existing.operation===body.operation&&
+   existing.resource_type===body.resource_type&&
+   (existing.resource_id||null)===(body.resource_id||null)&&
+   existing.payload_sha256===body.payload_sha256&&
+   Number(existing.payload_schema_version)===1&&
+   (existing.expected_version??null)===(body.expected_version??null)
+}
+const replayResponse=(row,session,body)=>sameSubmission(row,session,body)
+ ?json({request:publicShape(row),replayed:true})
+ :reject('idempotency_key_conflict',409)
+
 async function currentRole(db,session){
  if(!session?.user_id||!session?.household_id)return null
  const row=await db.prepare(`SELECT m.role FROM household_members m
@@ -83,20 +99,7 @@ async function submit(request,db,session,role){
  const requestId=crypto.randomUUID()
  const existing=await db.prepare(`SELECT * FROM household_approval_requests
   WHERE idempotency_key=?1 LIMIT 1`).bind(body.idempotency_key).first()
- if(existing){
-   const identical=existing.household_id===session.household_id&&
-     existing.requester_user_id===session.user_id&&
-     existing.source_app===body.source_app&&
-     existing.target_app===body.target_app&&
-     existing.operation===body.operation&&
-     existing.resource_type===body.resource_type&&
-     (existing.resource_id||null)===(body.resource_id||null)&&
-     existing.payload_sha256===body.payload_sha256&&
-     Number(existing.payload_schema_version)===1&&
-     (existing.expected_version??null)===(body.expected_version??null)
-   return identical?json({request:publicShape(existing),replayed:true}):
-     reject('idempotency_key_conflict',409)
- }
+ if(existing)return replayResponse(existing,session,body)
  const expires=stamp+DAYS*86400000
  let result
  try{
@@ -119,7 +122,14 @@ async function submit(request,db,session,role){
  ])
  }catch{return reject('approval_submission_failed',409)}
  if(Number(result?.[0]?.meta?.changes)!==1||
-    Number(result?.[1]?.meta?.changes)!==1)return reject('approval_conflict',409)
+    Number(result?.[1]?.meta?.changes)!==1){
+   // Two devices may both miss the first SELECT, but only one may insert.
+   // The losing attempt is a proper idempotent replay only if EVERYTHING
+   // matches the committed request; never leak another member's request.
+   const raced=await db.prepare(`SELECT * FROM household_approval_requests
+       WHERE idempotency_key=?1 LIMIT 1`).bind(body.idempotency_key).first()
+   return raced?replayResponse(raced,session,body):reject('approval_conflict',409)
+ }
  const row=await db.prepare('SELECT * FROM household_approval_requests WHERE request_id=?1')
    .bind(requestId).first()
  return json({request:publicShape(row),replayed:false},201)
