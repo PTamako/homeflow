@@ -378,3 +378,41 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 **生产只读核对**：Cloudflare 正式 Worker 列表仍有 `homeflow`（最近修改 2026-11-13 12:25 UTC）、`it-study-platform`（06:58 UTC）、`jp-document-assistant`（05:43 UTC），家計簿还在既有 Pages 项目；没有执行本轮生产写入。GitHub 本轮功能分支均未合并，用户备份门槛仍在。真实生产迁移版本及功能开关未在本轮重新查询 D1/Secret，不把上述列表元数据当作迁移验收。
 
 **接续应做**：先查知学 #43432554821 最终 CI；若失败只修最新真实错误。然后优先完成 E 知学其余个人题目/错题/每日进度的安全复合键和 server-side user_id SQL（旧 owner 数据原样保留）、C 个人金融管理和完整全家统计、D 审批目标真实执行范围/通知与失败恢复、E 文书同步受控申请。所有模块先上既有 Draft 分支，逐提交测试和写本文件，确保未备份前绝无生产 SQL/部署。
+
+
+## 9.4 2026-11-13 第三轮：跨 PWA 身份入口与安全隔离 UI
+
+> **唯一权威交接记录：阶段 A=待用户完成**。用户本人负责未来四 D1／三 R2 的完整加密备份、校验与隔离恢复；此轮不尝试 A，不执行生产 D1 迁移、不启用任何身份/财务/审批新开关、不合并功能 Draft、不修改生产 Workers/Pages、绝不重建 Preview。功能完成、自动 CI 成功、PR 合并、正式迁移、部署和真实双人验收**分别记录**，不互相替代。本节最新进度覆盖 §9.3 旧的“研究/待 CI”描述。
+
+### B/E：知学独立 PWA SSO 入口、旧生词无损迁移保护
+
+仍在 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) 的原分支 `feature/homeflow-identity-isolated-20261113`，当前最新提交 **`eac76edd3bf9b2ce88f033eb4b3f5cea787c1d20`**（需下次恢复时核对 HEAD），[Validate #43434918211](https://github.com/PTamako/it-study-platform/actions/runs/43434918211) **success**；此前 CI #43432554821 也已 success，语法错误修复 `6a5c8bf954e17b2e99788370ddb739f43e4e218d`。
+
+1. `d42b31e0b560eac715058985aa5fcbc05a6c582b`：`worker/homeflow-vocabulary.ts` owner 旧生词 adoption 查询现在检查同一页每条旧 `entry_json` 的 `json_valid`，任何坏行先返回 `409 LEGACY_CONTENT_REVIEW_REQUIRED`，**整批无写入、游标不前进**；不能因 INSERT 时 `json_valid` 过滤而悄悄跳过历史数据。保留旧表完整，禁止静默清洗生产历史。
+2. `62ceb03f96163356b2a6220c57180481a745e92d`：在 `scripts/homeflow-sso-isolated.test.mjs` 加损坏旧词案例：一批同时含正确/坏 JSON -> 409、0 新记录、0 审计、原表字节等价；本地 fixture 明确修复后同一游标再次导入两条。**这只是自动测试，本轮没有真实 D1 迁移**。
+3. `5e0c28af3d05cf52075c9e6c9b9588e441c39d5c`：新 `src/StudyHomeFlowAccess.vue`，只在 SSO 服务 status 开关打开时展示；发起 HomeFlow Authorization Code + PKCE，iPhone Safari callback 仍仅 park code，安装 PWA 用**五分钟一次性 state/resume proof**再次调原 PWA 的 `/api/homeflow-sso/complete`，会话由本 App HttpOnly cookie 管理；端侧不存 HomeFlow access token、旧密码或私密 OAuth code。展示绑定的真实 HomeFlow 昵称和角色、独立退出入口，但 `study_access:false`，**不能把 SSO identity 当成旧 `__Host-study_session`，member 不能读 owner 旧学习 API**。旧 owner 首次绑定需有效旧学习登录；member 旧知识空间仍禁止直接进入。
+4. `6cf12ad595f825372f91e1a907bcf268aabfd113`：在现有旧登录页及旧 owner 登录后的首页分别放上述**默认关闭**入口，原有学习路由/题库/缓存不受影响。 `eac76edd3bf9b2ce88f033eb4b3f5cea787c1d20` 新 `scripts/homeflow-pwa-ui.test.mjs` 检验开启门槛、禁止旧 API 提权、一次性短凭证、Safari→PWA、清理/登出。
+5. 尚未完成：知学全量考试历史、错题、学习进度、每日复习、词句卡片的每用户 SQL/身份隔离、所有旧学习 localStorage/IndexedDB 账号分区、服务端/客户端真正使用新个人 API、双人实机授权/切换与数据对账。本 UI **仅完成安全授权路径，不等于双人知学上线**。
+
+### C/B：家計簿独立家庭账户 UI 与首次安装恢复入口
+
+继续原 [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309)，分支 `feature/homeflow-sso-isolated-foundation-20261113`，此轮 HEAD **`a38119ec8be9fd3c3c2ed7adcdc6b66477ca876d`**；首批 [Validate #43435989719](https://github.com/PTamako/kakebo_jp/actions/runs/43435989719) **success** 与 [Mobile WebKit #43435989729](https://github.com/PTamako/kakebo_jp/actions/runs/43435989729) **success**。最终修复入口后的 [Validate #43436551448](https://github.com/PTamako/kakebo_jp/actions/runs/43436551448) **success**；[WebKit #43436551487](https://github.com/PTamako/kakebo_jp/actions/runs/43436551487) 本段提交时仍在运行，**不得提前标记成功**，下次据实际结果补录。
+
+1. `c706142af012421ddac73e476ba89316fb052c98` 新 `src/FamilyFinanceAccess.vue`：**独立于旧访问码/旧单人账本**的 HomeFlow SSO 入口，Safari park callback → 安装 PWA 5 分钟一次性 resume proof → 本 App HttpOnly 身份 cookie，端侧不存 bearer token；调用后端 `/api/homeflow-sso/status` + `/api/family-finance/status`，未通过显式开关时不展示家庭财务。通过 source-session 服务端真实身份验证后，显示个人 HomeFlow 昵称、成员身份、双方一致的家庭月收入/支出摘要；`GET /accounts` 家庭账户列表，`POST /accounts` 新建**本人独立**账户，`PATCH /accounts/{id}` 以版本 CAS 改名/归档，只有 owner 或本人账户显示编辑入口，后端仍以用户 ID/家庭 ID 复核并写审计。历史 `origin=legacy` 账户**只读**，未完成旧账键映射前不绕过限制；本界面无直接新增、修改或删除正式 `entries` 功能。
+2. `12eac82cc0a7fc79064b09953acc77d449aac985`：将独立入口挂载于家計簿退出旧访问码页和原管理页，原有旧页、统计和卡设置不改动。 `e1155e6c850ee94ffc4f03cb148885602089f6f6` 新 `tests/family-finance-ui.test.mjs` 防止身份入口误开启旧 `/api/entries`、验证 feature OFF、用户归属/版本、新家庭统计与端侧一次性证明。
+3. `929ec41a6889ec23aba16c9aa683986939640538`：检查真实旧 App 首次加载：若未持有有效 legacy session 而 HomeFlow SSO 开关已启用，先通过旧 `/api/payment-sources` GET 的 401 判断登录状态，显示新的独立家庭授权入口，不让新成员卡在旧访问码的 `MobileLoginSheet`；当 SSO OFF 时保留原旧登录行为，不再额外查询正式 D1。 `a38119ec8be9fd3c3c2ed7adcdc6b66477ca876d` 新增测试，覆盖新成员首次安装及开关 OFF 后回退。
+4. **明确不等于 C 完工**：这里只实现新个人金融账户基础 UI 和家庭月汇总；完整全家统计页、全部旧信用卡/储值余额/SBI/固定费归属映射、所有者/管理员分别管理的完整产品 UI、历史 entry 稳定 account_id 切换、审批后所有目标真实执行器都仍未完成。新家庭 member 只可通过受限新接口，并未获得旧单人家計簿的全部功能。
+
+### D：HomeFlow 审批 PWA 返回前台同步状态
+
+继续原 [HomeFlow Draft #306](https://github.com/PTamako/homeflow/pull/306)，此轮 HEAD `6c31cd6b1bc9d0fa2a1f1f92b8736ce04c04c817`，[Validate #43434113508](https://github.com/PTamako/homeflow/actions/runs/43434113508) **success**。
+
+- `1cbda68f10e31e162aa7188406b9a2e949dde2c8`：`src/components/ApprovalCenter.vue` 在 iPhone PWA 由后台回到前台时（`visibilitychange/pageshow`），只对**当前活跃、展开、未请求**审批列表刷新一次，离开组件时拆事件监听器，**不增加定时高频 D1 轮询**。身份切换仍由旧 epoch 机制避免跨号写屏。
+- `6c31cd6b1bc9d0fa2a1f1f92b8736ce04c04c817`：`tests/approval-center-ui.test.mjs` 增加无需轮询的前台刷新回归；CI 已通过。
+- 尚未完成：可靠跨 App Push/推送深链及拒绝/过期通知、普通成员完整撤回后与家計簿草稿的多端状态同步、所有金融种类目标执行幂等/冲突/失败重试、双人真机端到端验收。
+
+### 生产/接力安全检查点
+
+- 所有上述代码**仅在已有 Draft**，无功能 PR 合并/部署；**本轮在 HomeFlow main 只写本交接 Markdown**，#314 的 docs-only `paths-ignore` 保证 push 不自动触发 Deploy HomeFlow。勿再次处理 #314。
+- 设计书 A–F 仍按 A=用户负责待完成、B/C/D/E=分模块 Draft 持续开发、F=未开始实机联调。HomeFlow 0053/0054/0055、家計簿 0022–0026、知学 0180/0181、文书助手 0020–0022 **均未获本轮生产迁移授权**；本轮没有真实生产 D1 migration/Secret/开关的完整检查，因此需下次再单独只读核对，不能凭代码完成虚报已上线。
+- 下一优先：知学按 user_id 隔离所有个人学习表与端侧缓存；家計簿完整家庭统计/个人余额与账单设置映射；HomeFlow 审批 Push/幂等结果重试；文书共享附件全流程与受审批同步；为各模块增加未登录、跨户、同户配偶越权和断网重试测试。完成新模块就将真实 CI/Commit/PR/部署状态追加本文件。
