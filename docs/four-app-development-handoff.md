@@ -538,3 +538,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - **仍未完成**：旧模拟交卷原 receipt 的单独领取/重复交卷恢复；从完整 PWA 旧缓存及待提交队列转为 user_id 强隔离；个人每日语法/听力/单词等其它学习表迁移和权限、家庭跨应用审批及真实多设备验证；整个四 App 统一账号上线前的 A 加密备份+恢复验证。
 - 知学生产不得执行 `0180～0185` 或开启 `HOMEFLOW_STUDY_SSO_ENABLED`、`HOMEFLOW_STUDY_EXAMS_ENABLED`、`HOMEFLOW_STUDY_MOCK_ENABLED`、`HOMEFLOW_STUDY_LANGUAGE_ENABLED` 等新开关。已有旧个人版应保持可用，不可因为 Draft 通过 CI 就自动部署。
+
+
+### 9.8.1 实际最终 CI 恢复成功（2026-11-13）
+
+- 第一轮完整 [知学 Validate #43453976022](https://github.com/PTamako/it-study-platform/actions/runs/43453976022) **failure**：491 项自动测试 **490 pass / 1 fail**。失败仅是为真实 SG/FE 模拟考新增 140 道测试题后，旧双账号练习测试仍错误地预期默认分页只返回 2 条；实际后端按上限正常返回 15 条。其余新个人考试/错题/成绩、SG/FE A/B 模拟组卷、60/20 题原子交卷、同 ID 幂等和旧数据安全领取测试当时全部通过。
+- `scripts/homeflow-sso-isolated.test.mjs` 提交 [`4df0f09e85facf319fa1cd5bb83c1c4a5cd7587f`](https://github.com/PTamako/it-study-platform/commit/4df0f09e85facf319fa1cd5bb83c1c4a5cd7587f) 改为验证默认分页上限 15 条与原始 SG 示例仍存在，不削弱其他模拟考试/跨账号权限断言。严格 Vue TypeScript props 用量修复 `009b14f57fa168bd06217ee58d2edb4276462e3b`、`0ca546090315c0a5bfc715267677de0987643552`、保留 owner 历史导入运行时角色校验 `4dc2333d04fd04c773f168ce7725ceb17366f6ee`。**未更改任何生产环境或原已有考试数据**。
+- 已**实际读取**最终 [知学原 Draft #179 Validate #43455258591](https://github.com/PTamako/it-study-platform/actions/runs/43455258591)：`completed/success`。其中 **Run automated regression tests / Type-check and build frontend / Validate complete D1 migration chain locally** 三步全部 `success`；通过的代码 HEAD **`4dc2333d04fd04c773f168ce7725ceb17366f6ee`**。此处本地完整迁移链验证**不等于生产 D1 迁移**。
+- 最终 PR 仍 `open` / `draft=true` / `merged=false`，没有部署，也没有新建 Preview。**A 阶段仍是用户本人待完成**；后续在用户已完成生产加密备份/哈希验证/隔离恢复之前，`0180～0185` 一律不得在生产执行，四个 App 任何新身份功能开关禁止开启/自动合并部署。
+- 下一工作焦点：按真实 HomeFlow user_id 分区剩余每日语法/听力/词卡与端侧缓存/排队请求；原 owner 旧模拟交卷 `mock_exam_submissions` 逐条 receipt 迁移（目前已能领取旧练习/复习/考试摘要，但**没有**迁移原始旧模拟回执），以及双人 iPhone Safari/PWA 模拟考和离线断线恢复全流程验收；HomeFlow 审批、家計簿个人资源、文书助手跨应用联动继续在各自原有 Draft 里完成。
