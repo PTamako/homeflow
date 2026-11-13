@@ -48,6 +48,8 @@ async function completePlan(request,db,session,env){
   const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
     WHERE household_id=?1 AND plan_type=?2 AND plan_id=?3 AND period_key=?4`)
     .bind(session.household_id,kind,id,periodKey).first()
+  // Retried completion is a no-op, never a request to undo the record.
+  if(body.completed&&found)return json({ok:true,kind,id,periodKey,completed:true,unchanged:true})
   if(body.completed&&!found){
     // Money is never marked as saved just because the user clicked a button.
     // Verify against the real Kakebo read-only ledger on each completion.

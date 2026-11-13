@@ -420,7 +420,8 @@ export async function runPushSchedule(env,now=Date.now()){
           db,member.household_id,member.user_id,day))
       }catch{console.warn('homeflow_scheduled_keys_lookup_failed')}
     }
-    for(const event of scheduledData.items.slice(0,100)){
+    // Do not silently drop scheduled notices after the first 100 entries.
+    for(const event of scheduledData.items){
       const key=reminderDeliveryKey(event)
       const logicalKey=member.user_id+':'+key
       const notificationId=await scheduledNotificationId(member.user_id,day,logicalKey)
@@ -455,9 +456,14 @@ export async function runPushSchedule(env,now=Date.now()){
     // The default is disabled so the requested 06:00 JST push is delivered.
     const muted=quietAtHour(data.quietHours,hour)
     // Expiring points are time-critical; quiet hours still silence ordinary reminders.
+    // Attempt at most 20 NEW deliveries per device per hourly run. Previously
+    // attempted events are skipped by the atomic claim below, so the backlog
+    // advances at the next eligible hour instead of losing items beyond #20.
     const events=(data.items||[]).filter(event=>!muted||
-      event.id==='annual-points-expiry').slice(0,20)
+      event.id==='annual-points-expiry')
+    let attemptsForDevice=0
     for(const event of events){
+      if(attemptsForDevice>=20)break
       const key=reminderDeliveryKey(event)
       const logicalKey=sub.user_id+':'+key
       if(!notificationIds.has(logicalKey))continue
@@ -474,6 +480,7 @@ export async function runPushSchedule(env,now=Date.now()){
           AND notification_deliveries.updated_at <= datetime('now','-15 minutes')`)
         .bind(sub.endpoint_hash,key,day).run()
       if(!claim.meta?.changes)continue
+      attemptsForDevice++
       checked++
       let status=0,result='failed',extraAttempts=0
       for(let attempt=0;attempt<2;attempt++){
