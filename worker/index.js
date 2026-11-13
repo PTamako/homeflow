@@ -4,6 +4,7 @@ import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
+import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
 import {approvalExecutionRoute} from './approval-execution.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
@@ -53,6 +54,8 @@ async function routeRequest(request,env,ctx,state){
         return approvalVerificationRoute(request,env)
       if(path==='/api/internal/approvals/submit')
         return approvalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/document-submit')
+        return documentApprovalSubmissionRoute(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover','/api/oauth/token','/api/oauth/userinfo']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
