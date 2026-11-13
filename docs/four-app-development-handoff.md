@@ -92,16 +92,20 @@
 - 人工 + 自动测试：全新手机分别安装 3 个 PWA；HomeFlow 已登录/未登录；首次登录、登出、禁用、换账号/换设备、账号恢复；切换 user 后 IndexedDB/localStorage/PWA 缓存不串号；个人数据保留；三 App 不要求独立注册。受 iOS 设备限制的实机验收 **不得仅凭单测声称通过**。
 - 这节在 **阶段 B 建立协议/首次登录**、**阶段 E 保护隔离**、**阶段 F 跨 PWA 人工验收** 都要逐条引用。
 
-## 3. 按 A → F 的实时进度
+## 3. 按 A → F 的实时进度（最新用户决定；优先于旧调查快照）
 
-| 阶段 | 状态 | 已完成 | 进行中 / 未完成 | 生产迁移 | 生产部署/验收 |
-|---|---|---|---|---|---|
-| **A 调查、只读基线、备份** | **进行中，备份文件传输阻断正式迁移** | 冻结 v1.1 需求与 §3.1；四库正式表计数/现有迁移、Cloudflare 资源/生产版本、各库 Time Travel bookmark；四 D1 Export API 生成临时 SQL；六个 R2 对象逐项 SHA-256/大小通过；已建私人 Google Drive 文件夹并上传检查清单、确认 owner-only | **未能将实际 SQL/R2 字节加密上传 Google Drive 或恢复验收**；待受控文件传输通道；待全表/金额摘要；已定位家計簿 GitHub deploy 缺 Secrets | **A–F 新迁移零** | **无本项目新功能部署** |
-| **B SSO/昵称/首次登录** | **开发中：HomeFlow PKCE + 文书助手后端回调均通过 CI，仍非 iOS 可用 SSO** | HomeFlow Draft #305 身份/昵称读 API、短期 code+PKCE、审核确认 UI/写审计和注销联动；文书助手 Draft #97 新增独立服务绑定 code exchange / userinfo + 15 分钟本地 HttpOnly Session / 双证 owner / 空白 member 测试，[CI #43393452443](https://github.com/PTamako/jp-document-assistant/actions/runs/43393452443) success | 待 HomeFlow 与三 App 真正集成；文书 Safari/PWA Cookie 隔离和跨 App 账号停用注销传播仍未解决；家計簿/知学 OAuth 客户端/会话及 iPhone 双人实机测试未开始；非 OIDC ID-token/JWKS | **HomeFlow 0053 / 文书 0020/0021 均未执行** | **未上线；两 Draft PR 均未合并、所有 OAuth feature flags 默认关闭** |
-| **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
-| **D HomeFlow 审批** | **开发中：审批申请/管理员审核/取消/永久事件日志 + 并发幂等/防伪审核均 CI 通过，Draft PR #306 未上线** | 在 HomeFlow Draft #305 分支之上另建 [Draft #306](https://github.com/PTamako/homeflow/pull/306)；0054 未执行增量迁移，append-only 事件/SQL 状态合法性与 reviewer 同家庭 owner 强验证；默认关闭的 5 条分页、member 申请/取消、owner 批准/拒绝；同一幂等键并发提交仅产生一单一条事件；[CI #43395978998](https://github.com/PTamako/homeflow/actions/runs/43395978998) **success** | **仅审批意图，批准≠已生效！** 目标 App pending payload/expected_version 实际执行、安全 Service Binding、timeout 按 idempotency 复查、Push/通知与 UI、全链路双人验收尚未实现 | **0054 未执行（依赖 0053 未执行）** | **PR #306 Draft，feature flag OFF，未合并、未部署** |
-| **E 文书/知学隔离与跨 App 同步** | **开发中：文书助手无损身份映射 + HomeFlow 后端 PKCE 回调，Draft PR #97 未上线** | 文书本地 owner 和 HomeFlow owner UUID 不同的实际情况已确认；0020 不可变链接、0021 加密 PKCE 待确认事务均以新增迁移形式编写；服务端 HomeFlow code→token→userinfo 校验且角色/家庭/audience 防串号，旧 owner 要本人两套有效会话双重验证、member 仅在 owner 已绑定后建空账号，不继承私人文书/Google 授权；CI [43393452443](https://github.com/PTamako/jp-document-assistant/actions/runs/43393452443) success | **iOS Safari/PWA Cookie 分离仍阻断真正首次登录**：当前 callback 只接受启动时同浏览器 SameSite=Lax state cookie；仍需安全跨容器一次性续接、App UI、账号禁用/退出实时传递、共享文书编辑、候选同步审批；知学个人表及缓存隔离仍未开始 | **0020/0021 未执行** | **PR #97 未合并，未部署；HomeFlow OAuth 同样未上线** |
-| **F 全链路验收与旧鉴权清退** | **未开始** | 加入 §3.1 测试条款 | 两位用户、多站点/iPhone PWA 回归、旧 token 清退门槛、历史/R2/成本比对和回滚演练 | 无 | 无 |
+**A 固定为「待用户完成」**：用户有电脑时自行进行生产加密备份和隔离恢复验证。开发助手不再执行、尝试或询问 A。用户主动通知完成前，四应用不得执行生产 SQL、开新身份/审批开关、合并会触发生产部署的 PR。允许继续 B～E Draft 代码、测试、UI 和 SQL 文件。
+
+| 阶段 | 最新真实状态 | 已完成（Draft / CI） | 未完成与下一步 | 生产状态 |
+|---|---|---|---|---|
+| **A：生产备份与恢复** | **待用户完成（用户自行安排，开发助手不再处理）** | 此前仅有生产只读清单、导出预检与私人 Drive 目录；未取得完整、已验证恢复的备份 | **无需询问或重试**；未来用户主动告知成功后才进入生产步骤 | **生产迁移/部署前置门槛未通过** |
+| **B：统一账号与昵称** | **Draft 开发中，未上线** | HomeFlow #305、家計簿 #309、知学 #179、文书 #97：分离身份/PKCE、源会话验证、旧 owner 安全确认、member 不继承私人资料；此前相应 CI 已通过 | PWA/双人首次绑定、昵称显示、账号切换与本地缓存清理、撤销后端到端检查 | HomeFlow 0053、家計簿 0022、知学 0180、文书 0020～0022 未迁移；所有开关 OFF |
+| **C：家庭账本与个人金融账户** | **部分 Draft 功能已通过测试** | 家計簿 #309：稳定账户 ID、成员各自设置、历史金融资源不可变归属、夫妻共同账本与月度统计的只读 API、已知储值和证券资产汇总、受限现金入账映射 | 双方同名信用卡/储值卡/SBI/固定费完整私有设置、余额、资产统计全 UI 与历史无损核对 | 0022～0026 未执行、未部署 |
+| **D：家庭审批与执行** | **受限现金单笔审批→一次入账 Draft 子链已通过自动 CI；整体未完成** | HomeFlow #306：审批/审计、签名提交及核验、短租约、remote receipt 后 applied；家計簿 #309：加密草稿、幂等提交、丢包恢复、仅现金账户稳定 ID 的原子 entry + 执行日记 + actor 审计。HomeFlow Validate #43428049072 success、家計簿 Validate #43427933666 success（此检查点） | 审批中心 UI/通知、跨服务真实联调、信用卡/储值/SBI/固定费/文书审批执行器、全部失败恢复和双人验收。**批准不等于已入账** | HomeFlow 0054/0055、家計簿 0024/0026 未执行；所有功能 PR Draft、开关 OFF |
+| **E：文书共享/知学隔离与跨 App 联动** | **部分 Draft 完成，未上线** | 文书 #97：身份映射、共享文书和附件部分协作、真实 actor 审计/R2 原 owner 保护；知学 #179：独立身份 API，旧个人学习 API 默认不授新会话 | 知学个人进度/生词/考试及离线缓存按 user_id 隔离；文书所有共享路径与跨 App 同步审批/执行、两应用 PWA UI | 知学 0180、文书 0020～0022 未迁移，开关 OFF |
+| **F：生产迁移与双人验收/清退旧鉴权** | **未开始，等待用户 A 完成和 B～E 功能稳定** | GitHub CI / 本地 SQLite、部分 WebKit 冒烟并非两台真实 iPhone 验收 | A 完成后再统一安排正式 SQL、线上部署核验、双人真实 PWA、业务/R2 数据/费用对账及回退；不得提前删除密码/Token | 未部署统一身份，不放行 |
+
+**本节为唯一现行状态口径**：旧 §6、§8 里的导出/备份下一步是历史审计记录，不再构成工作指令。HomeFlow `.github/workflows/deploy.yml` 已在同一 PR 加入 `push.paths-ignore`：`docs/**`、`**/*.md`、`.github/workflows/deploy.yml`。纯文档及此部署策略文件的提交可以合并到 `main` 而不触发 Cloudflare 部署；`.github/workflows/ci.yml` 仍验证 PR 和 `main`。**仅在 CI 成功、PR 变更清单全部匹配忽略规则后合并**；任何非忽略文件混入必须重新审查。
 
 ## 4. 功能提交/PR/CI/部署流水账（每个功能完成立即追加）
 
@@ -329,3 +333,26 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 下次请在**实际具备文件系统、浏览器/外网访问、Cloudflare 只读导出权限、Google Drive 私有目录写入权限**的同一安全环境中执行，不要再重复无意义的 API export polling。建议在该环境内临时取得新的正式 D1 export 文件后立即下载；保管加密密钥于 Drive 与 GitHub 之外；加密实际 SQL 和 R2 完整对象；上传到既有私人目录并从该目录取回全量密文进行校验及隔离恢复；生成**不含秘密、明文记录/签名 URL**的摘要验收报告，再据实将 A 改为完成。严格不得创建 Preview、执行正式迁移、覆盖生产 DB 或删除原 R2 对象。
 
 **安全结论**：本轮 GitHub 只追加文档记录；未改动生产数据、Cloudflare 正式 Worker/Pages/数据库、任何功能开关；不含密码、Token、密钥、SQL 内容、R2 私有对象键或备份签名下载链接。
+
+## 9. 2026-11-13 用户最新开发授权：A 由用户负责，B～E 继续（优先于历史文字）
+
+- A 的唯一状态为 **待用户完成**；用户自行安排生产 D1/R2 的持久加密备份与隔离恢复。当前和后继 Chat 不得再次尝试 A，也无需重复询问用户；仅在用户主动报告成功后解除生产门槛。
+- B～E 继续独立功能的 Draft 代码、数据库迁移 SQL 文件、前后端 UI、回归测试与 CI。每完成一个模块都更新此文件、Commit SHA、PR、准确的 CI 状态、剩余任务、部署状态；不得重复开发。
+- 不能生产执行新 SQL、不能启用统一身份/审批开关、不能合并会自动生产部署的 PR；绝对不修改/覆盖正式业务数据，不重建 Preview。
+- 本检查点基线（读自实际 GitHub）：HomeFlow Draft #305 b8b877388639b1a2b3ac19dbca58ea8072b8a037；HomeFlow Draft #306 3e08197422efbe96419004cfe1fe6f26ce99f515（CI 43428049072 success）；家計簿 Draft #309 baab1adbad163f0ad6fa377827f0f60de0d1c443（Validate 43427933666 success）；知学 Draft #179 9e8297741b8da8961b949094d8d255c7d992b82b；文书 Draft #97 e0bb5f7bfdbb7e9dbae747192be87ff97656076a。下次按最新 HEAD/CI 重新核查。
+- 本轮已存在但未执行的 HomeFlow 0055 和家計簿 0026 是受限现金目标执行器所需迁移；不可据文件存在推断生产已执行。信用卡、储值卡、SBI、固定费与文书写入执行尚未覆盖。
+- HomeFlow 部署工作流在本 PR 新增纯文档路径排除。**经 CI 和变更清单验证后允许合并只改 `docs/**`、Markdown 与部署工作流本身的 PR**；其他可能触发生产 Worker 部署的 PR 仍不得合并。用户 A 未完成前不开放生产迁移或身份开关。
+
+### 9.1 Stage D HomeFlow 审批中心 UI（2026-11-13，独立功能完成自动 CI，未上线）
+
+- 功能 Draft [HomeFlow #306](https://github.com/PTamako/homeflow/pull/306)，分支 feature/family-approval-state-machine-20261113，最新本轮模块 Commit **ca7a991692a98f51ffcb89860188cf735914f2aa**；[Validate HomeFlow #43429054673](https://github.com/PTamako/homeflow/actions/runs/43429054673) **success**（包含服务端回归与 Vue/TypeScript build）。本次文档由 #314 新增非部署变更的路径防护；仅在校验后合并，且不触发 Cloudflare deploy。
+- 新组件 src/components/ApprovalCenter.vue，已挂载到 src/components/ManagePage.vue：管理员/成员按真实已登录 user ID 查看相同家庭内各自有权限的审批记录；状态筛选、每页 5 条、上一页/下一页、手动刷新；管理员申请批准/拒绝需二次确认；批准后的现金单独执行需再次二次确认，明确显示「已批准 · 未入账」与「已生效」不同状态。列表不展示文书原文/消费金额或密钥。
+- worker/approvals.js 新增已登录 GET /api/approvals/status 轻量 flag 探测（无 D1 数据读取），默认 APPROVALS_ENABLED OFF 时 Vue 不显示审批模块，不反复轮询；切换用户/离开管理时清空上一个用户列表并撤销异步旧请求写屏；新增 tests/household-approvals.test.mjs 证明默认 OFF、无申请表/审计写入、独立执行开关状态均正确。
+- **未完成**：Push/通知深链接、拒绝/取消/过期的自动状态刷新、跨 App 真实 Cloudflare Service Binding 执行联调、所有金融目标的执行器、完整审批状态流转 UX 与真机双人审查；此次只是 Draft 界面和已存在的受限现金执行器，不是生产系统上线。
+- **生产维持原状**：HomeFlow 0053/0054/0055、家計簿 0022～0026 仍未执行，所有身份/审批/执行开关 OFF，功能 PR #306 不合并，A=待用户完成且不再由开发助手处理。
+
+## 9.2 HomeFlow GitHub Actions 安全部署规则（2026-11-13）
+
+- `Deploy HomeFlow` 的 `push` 仍只限 `main`，但加入 `paths-ignore`：`docs/**`、`**/*.md` 和 `.github/workflows/deploy.yml`。**只有本次推送涉及的全部文件都在这些忽略路径中，GitHub 才跳过 Deploy 工作流**；其他代码变更仍会触发正常工作流，不可误以为 A 已放行。
+- `Validate HomeFlow` 的 `.github/workflows/ci.yml` 保留 `pull_request` 与 `push main`，纯文档改动仍跑验证；手动 `workflow_dispatch` 不受文档路径过滤影响（不是自动上线授权）。
+- 此调整用于安全合并 #314 的 A 用户负责状态文档，不能视为 B～E 上线授权；所有功能 Draft 继续保留。合并前核对 GitHub 变更文件清单、CI；合并后检查 `main` 此提交没有运行 `Deploy HomeFlow`。
