@@ -1,6 +1,7 @@
 import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
+import {approvalRoute} from './approvals.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -58,6 +59,8 @@ async function routeRequest(request,env,ctx,state){
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
+          return approvalRoute(request,env,path,session)
         if(path==='/api/identity/me'||path==='/api/identity/household-members')
           return identityRoute(request,env.DB,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
