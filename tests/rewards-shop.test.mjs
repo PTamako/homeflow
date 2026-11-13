@@ -11,7 +11,7 @@ import {annualPointLedgerSql,pointsHistoryRoute,jstYearWindow} from '../worker/p
 const source=readFileSync(new URL('../scripts/check_migrations.py',import.meta.url),'utf8')
 const manifests=source.slice(source.indexOf('MIGRATIONS=['),source.indexOf(']\nfiles='))
 const names=[...manifests.matchAll(/"(\d{4}_[^"]+\.sql)"/g)].map(m=>m[1])
-assert.equal(names.length,55)
+assert.equal(names.length,56)
 function fixture(){
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON')
