@@ -181,6 +181,12 @@ async function mutate(request,db,id,session,role,action){
  return json({request:publicShape(changed)})
 }
 export async function approvalRoute(request,env,path,session){
+ // Authenticated client feature discovery needs no approval migration or
+ // extra D1 rows. Outer /api session guard applies before this handler.
+ if(path==='/api/approvals/status'&&request.method==='GET')
+  return json({enabled:env.APPROVALS_ENABLED==='true',
+   execution_enabled:env.APPROVALS_ENABLED==='true'&&
+    env.APPROVAL_EXECUTION_ENABLED==='true'})
  // No migration applied and no actual target execution in production.
  if(env.APPROVALS_ENABLED!=='true')return reject('approvals_disabled',503)
  const db=env.DB
