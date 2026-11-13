@@ -149,6 +149,37 @@
 5. B1/B2 HomeFlow Draft #305、文书助手 B/E Draft #97 与 HomeFlow 审批申请/审核 Draft #306 均已有 CI 成功的独立后端模块，无须重复开发。#306 以 #305 的分支为 base，包含 0053→0054 两个**未执行**迁移；应先审计并设计 HomeFlow/家計簿目标执行器的签名 Service Binding、expected_version 和幂等查询，所有财务明细在审批通过并且目标写入确认前绝不能显示已生效。**优先审计并实现 iPhone PWA 与 Safari 不共享 Cookie 时的一次性、受原 PWA 校验的授权回传**，并完成 HomeFlow 禁用/注销时其他应用 session 失效的安全机制；不得提前启用。备份 A gate 完成前不执行正式新迁移、不合并会触发正式部署的功能 PR。
 6. 各功能完成即更新 **本文件** 的阶段状态、commit、PR、CI、生产迁移/部署、只读验证和真实遗留工作；不要把测试计划当作测试已通过。
 
+
+## 6.1 2026-11-13 续开发检查点（本节为最新实查，优先于旧快照）
+
+### 阶段 A：四库、main 与部署最新实查
+| 仓库 | main HEAD | 当前相关 open PR |
+|---|---|---|
+| HomeFlow | 06b055f311b77c2e5239266d15aed4664e09d75a（旧基线之后仅增加本交接文件） | Draft [#305](https://github.com/PTamako/homeflow/pull/305) 身份，Draft [#306](https://github.com/PTamako/homeflow/pull/306) 审批；#306 基于 #305 |
+| 家計簿 | 3bac4610078729556a7068c761e3e7c1729ab27d | 无 open PR |
+| 知学 | ae8c0dea3468006d0fbbfaaf953afbf3f4f645da | Draft [#178](https://github.com/PTamako/it-study-platform/pull/178) 题库，不得覆盖 |
+| 文书助手 | b19603e2060cc7ef5a709a42133a2745480509e2 | Draft [#97](https://github.com/PTamako/jp-document-assistant/pull/97) 统一账号 |
+
+正式 Cloudflare D1 只读确认的迁移头仍为：HomeFlow 0052_achievement_thresholds.sql、家計簿 schema-0019-verified（按 rowid）、知学 0176_fe_exemption_sample_duplicate.sql、文书助手 0019_document_translation_cache.sql。阶段 A–F 的 HomeFlow 0053/0054、文书 0020/0021 **均未执行**。四个独立 D1、三个 R2 Bucket 仍存在，未创建任何 Preview。本次并未写入生产数据，完整 SQL/R2 加密持久副本与隔离恢复测试**依旧未达标**，禁止在完成备份前执行写迁移或合并启用身份/审批 PR。
+
+Worker 活跃 deployment/version（均 100%）复核：HomeFlow 3e4e1196-eb69-491a-9d9e-3200fb9ebcd1 / bda6b1f3-c3d3-45b3-b85e-c550476c61d4（2026-11-13 08:49 UTC）；知学 cbdd6b4b-e421-4852-a903-0a52fc8d1e4d（06:58）；文书 bf16d3a8-fb15-44d4-88a0-cbad1a1189ea（05:43）；家計簿桥接 d2413db6-df06-4dcf-bba2-2b00a38ab2ef、nav 58fca012-f9ea-4d52-95ba-0f99753dfa5c。Pages kakeibo production_branch=main，latest deployment a9075ac5-865c-47a4-b981-7ff97f6aced2。**上述既有生产版本都不含新统一账号功能。**
+
+### 阶段 B：此次实际新增（Draft，仅代码与测试，不上线）
+复用文书助手 feature/homeflow-identity-link-safety-20261113 / [Draft PR #97](https://github.com/PTamako/jp-document-assistant/pull/97)，没有再创建重复功能 PR：
+- 63c20a578b4998046f3e9d58b37c4a52de140d28：尚未执行的 0021 schema 增加独立 PWA 续接凭证 SHA-256 摘要与加密回调列。
+- a5a49789409e6391bb75b013cc28c22b16377f6f：Safari callback **仅 AES-GCM 加密暂存 code，不签发会话**；原 PWA 持有从未出现在授权 URL 中的 256-bit 一次性 resume_secret，在 POST /api/homeflow-sso/complete 兑换会话；维持 HomeFlow 角色/家庭/audience 校验和旧 owner 双身份凭据。
+- cb60c8d73cc0a72289bf21c29eeee4036e1fe27d、75427586f01ffc9cb584b313d5d09976128e5bc6、516e834ce8d6907dc9f395470ac80711b87c11d3：注册 /complete 与只在服务器全部配置满足时为真值的 /status。
+- 43f19a2f7cf93470198bfeb10ddd6a3a044b1cca、7c6fbff9a3c0a84f496a2ecd3ed352108f98b38f：内存 SQLite/Worker 测试新增外部 Safari 与独立 PWA 无 Cookie 共享、伪造 proof、Origin、防重放、旧 owner 会话失效及个人空间/旧数据保护。
+- 60f6329a724820a873212fb9a5e1107d550f75a6：Vue App 增加服务器启用后才显示的“使用 HomeFlow 登录／完成登录”入口；原 PWA 的临时 proof 仅保存当前 sessionStorage 5 分钟；成功切换账号清理私人端侧状态。
+- e824ab5572b667893e5ce0f0c4249271476f7314：安全门槛文档更新；本轮文书功能最新 head 即此 SHA。
+
+**CI**：[文书 Pre-merge #43397762675](https://github.com/PTamako/jp-document-assistant/actions/runs/43397762675) test job 已核实 success（源代码 syntax、Node/Python/SQLite 回归、Vue build、PWA 资源）。**不是 iPhone Safari/PWA 双人真实验收**；功能默认关闭，文书 PR #97 仍为 Draft、未合并/未部署。其余三个仓库本次没有功能代码提交，不重做已有实现。
+
+### 下一步：A→F 与必须避免的步骤
+A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export API complete 的临时对象）、逐项 SHA-256 和隔离恢复；可用可信传输环境，不在 GitHub/聊天保存 signed URL 或密钥。B：HomeFlow 与三 App 的注册回调 allowlist、完整 PWA 流程、账号冻结/注销跨应用 session 失效、iPhone 两人验收。C：家計簿支付来源 name PK 的稳定 ID 迁移、金融配置个人隔离、家庭账本共享、member 写入 pending 拦截。D：HomeFlow approved → 目标服务安全幂等执行 / 重试 / 生效审计 / Push；目前批准**绝不等于记账生效**。E：文书共享写权限、知学多个人表 user_id/复合唯一键与端侧缓存隔离。F：两人真机和所有历史保护验收后清退旧鉴权。
+
+**继续开发必须先核对 live 状态**：不重复执行 A 阶段临时 SQL export、不重复应用任何迁移、不重建 Preview，不把 CI success 当作线上功能。文书 PWA 功能虽已写代码，仍缺正式备份、跨 App 注销撤销、HomeFlow 真正启用及原设备验收。所有已存在的数据与历史归属规则保持不变。
+
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
