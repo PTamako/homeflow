@@ -37,8 +37,9 @@ async function routeRequest(request,env,ctx,state){
       return json({ok:true,app:'homeflow',environment:env.APP_ENV,database:'ready'})
     }
     if(path==='/api' || path.startsWith('/api/')){
-      // Always check the physical database identity before accessing any private records.
-      if(!await verifiedDatabase(env))return json({error:'environment_or_database_not_ready'},503)
+      // Every API request fails closed on physical database mismatch or missing
+      // migration baseline; full structural checks run on /api/health and Cron.
+      if(!await verifiedDatabase(env,{quick:true}))return json({error:'environment_or_database_not_ready'},503)
       if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover']
