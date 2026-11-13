@@ -54,7 +54,7 @@ async function approve(){
   // allowlisted destination only after the user explicitly grants access.
   window.location.assign(data.redirect_uri)
  }catch(e){
-  error=e instanceof Error?e.message:'授权失败，请重新尝试。'
+  error.value=e instanceof Error?e.message:'授权失败，请重新尝试。'
   busy.value=false
  }
 }
