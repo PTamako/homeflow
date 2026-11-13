@@ -266,11 +266,17 @@ test('unexpected executed document approval never becomes a valid source sync re
   assert.equal(created.status,201);
   const id=created.body.approval_id;
   assert.equal((await ownerReview(f,id,'approve')).status,200);
-  f.sql.prepare("UPDATE household_approval_requests SET status='executing' WHERE request_id=?").run(id);
-  f.sql.prepare("UPDATE household_approval_requests SET status='applied' WHERE request_id=?").run(id);
+  // The migration itself blocks skipping the only real execution lease.
+  // Do not disable this trigger just to manufacture an illegal "applied" row.
+  assert.throws(()=>f.sql.prepare(
+   "UPDATE household_approval_requests SET status='executing' WHERE request_id=?"
+  ).run(id),/EXECUTION_LEASE_REQUIRED/);
+  assert.equal(f.sql.prepare(
+   'SELECT status FROM household_approval_requests WHERE request_id=?'
+  ).get(id).status,'approved');
   const reply=await signedDocumentStatus(f,id);
-  assert.equal(reply.status,503);
-  assert.equal(reply.body.code,'document_execution_not_supported');
+  assert.equal(reply.status,200);
+  assert.equal(reply.body.status,'approved');
   assert.equal(reply.body.applied,false);
   assert.equal(reply.body.target_changed,false);
  }finally{f.sql.close();}
