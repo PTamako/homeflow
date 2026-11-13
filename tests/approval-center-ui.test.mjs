@@ -74,3 +74,21 @@ test('unsupported document and non-cash approvals never offer a misleading execu
  assert.match(executor,/row\.target_app!=='kakebo'\|\|row\.source_app!=='kakebo'/)
  assert.match(executor,/row\.operation!=='finance\.entry\.create'\|\|row\.resource_type!=='finance_entry'/)
 })
+
+
+test('approval list discards stale responses when a PWA switches user or status filter',()=>{
+ const view=read('../src/components/ApprovalCenter.vue')
+ assert.match(view,/let requestGeneration=0/)
+ assert.match(view,/let inFlightQuery=''/)
+ assert.match(view,/async function discover\(\)\{[\s\S]*?const ticket=\+\+epoch[\s\S]*?requestGeneration\+\+[\s\S]*?loading\.value=false/)
+ assert.match(view,/const queryKey=account\+'\|'\+kind\+'\|'\+nextPage/)
+ assert.match(view,/if\(loading\.value&&inFlightQuery===queryKey\)return/)
+ assert.match(view,/const generation=\+\+requestGeneration/)
+ assert.match(view,/if\(ticket!==epoch\|\|generation!==requestGeneration\|\|!props\.active/)
+ assert.match(view,/if\(ticket===epoch&&generation===requestGeneration\)[\s\S]*?loading\.value=false/)
+ assert.match(view,/filter\.value=value as Filter[\s\S]*?void load\(true\)/)
+ // Never poll the approval list on a timer, and never retain a stale
+ // household's results after an account swap.
+ assert.doesNotMatch(view,/setInterval\(/)
+ assert.match(view,/items\.value=\[\];page\.value=0;hasMore\.value=false/)
+})
