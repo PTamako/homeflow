@@ -72,7 +72,7 @@ export async function existingScheduledDedupeKeys(db,householdId,recipientId,loc
   const {results=[]}=await db.prepare(`SELECT dedupe_key FROM notification_inbox
     WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
       AND dedupe_key LIKE 'scheduled:%'
-    ORDER BY created_at DESC,id DESC LIMIT 200`)
+    ORDER BY created_at DESC,id DESC LIMIT 1000`)
     .bind(householdId,recipientId,localDay).all()
   return new Set(results.map(row=>row.dedupe_key).filter(Boolean))
 }

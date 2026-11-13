@@ -256,11 +256,19 @@ export async function tripsRoute(request,db,path,session){
         ...(plan?.trip?.tasks||[]).map(x=>x.externalId),
         ...(plan?.trip?.packingLists||[]).flatMap(p=>p.items||[]).map(x=>x.externalId)])
       if(!ids.has(body.itemId))return json({error:'not_found'},404)
-      await db.prepare(`INSERT INTO trip_progress(trip_id,item_id,completed_at,completed_by)
+      // A duplicate tap or network retry must preserve the FIRST completion
+      // timestamp and must not wake up other family devices unnecessarily.
+      const prior=await db.prepare('SELECT completed_at FROM trip_progress WHERE trip_id=?1 AND item_id=?2')
+        .bind(id,body.itemId).first()
+      if((prior && Boolean(prior.completed_at)===body.completed)||
+         (!prior&&!body.completed))return json({ok:true,unchanged:true})
+      const saved=await db.prepare(`INSERT INTO trip_progress(trip_id,item_id,completed_at,completed_by)
         VALUES(?1,?2,?3,?4)
-        ON CONFLICT(trip_id,item_id) DO UPDATE SET completed_at=excluded.completed_at,completed_by=excluded.completed_by`)
+        ON CONFLICT(trip_id,item_id) DO UPDATE SET
+          completed_at=excluded.completed_at,completed_by=excluded.completed_by
+        WHERE (trip_progress.completed_at IS NULL) <> (excluded.completed_at IS NULL)`)
         .bind(id,body.itemId,body.completed?iso():null,body.completed?u:null).run()
-      return json({ok:true})
+      return json({ok:true,...(!saved.meta?.changes?{unchanged:true}:{})})
     }
     if(request.method==='GET'){
       const plan=visiblePlan(trip.plan_json?JSON.parse(trip.plan_json):null,trip.created_by===u)

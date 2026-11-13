@@ -107,6 +107,11 @@ export async function verifiedDatabase(env) {
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0049_lottery_balanced_coupons.sql') AS coupon_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0050_notification_delivery_state.sql') AS delivery_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0051_private_media_cleanup.sql') AS media_migration_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name='0052_achievement_thresholds.sql') AS achievement_migration_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='monthly_achievement_eligible'
+        AND instr(sql,'''master'',35,''tasks'',30')>0
+        AND instr(sql,'''pet'',45,''pet'',15')>0
+        AND instr(sql,'''streak'',60,''streak'',14')>0) AS achievement_rules_ready,
       (SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name='deleted_at') AS media_deleted_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='notification_inbox'
         AND instr(sql,'''quiet''')>0 AND instr(sql,'''app_only''')>0) AS delivery_state_ready,
@@ -168,6 +173,8 @@ export async function verifiedDatabase(env) {
       Number(identity.coupon_migration_ready)===1 &&
       Number(identity.delivery_migration_ready)===1 &&
       Number(identity.media_migration_ready)===1 &&
+      Number(identity.achievement_migration_ready)===1 &&
+      Number(identity.achievement_rules_ready)===1 &&
       Number(identity.media_deleted_ready)===1 &&
       Number(identity.delivery_state_ready)===1 &&
       Number(identity.coupon_tables_ready)===2 &&

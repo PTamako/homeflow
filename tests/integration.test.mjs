@@ -8,7 +8,7 @@ import {registerPassword,derivePasswordProof,validLocalPassword} from '../src/au
 function makeDb() {
  const sqlite=new DatabaseSync(':memory:')
  sqlite.exec('PRAGMA foreign_keys=ON;')
- for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql','0029_household_revisions.sql','0030_member_revisions.sql','0031_completion_event_read_state.sql','0032_settlement_origin.sql','0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql','0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql','0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql','0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql','0051_private_media_cleanup.sql']) {
+ for (const filename of ['0001_core.sql','0002_stage1_family_tasks.sql','0003_life_projects.sql','0004_push_notifications.sql','0005_interval_policies.sql','0006_pet_health.sql','0007_offline_tasks.sql','0008_shopping_ledger.sql','0009_routine_pet_care.sql','0010_task_pet_care.sql','0012_savings_goal_cadence.sql','0009_finance_target_settings.sql','0011_unified_plan_hub.sql','0013_plan_completion_marks.sql','0014_shopping_multi_expense.sql','0015_reminder_snoozes.sql','0016_reminder_preferences.sql','0017_shopping_partial_quantity.sql','0018_shopping_created_index.sql','0019_reminder_item_quiet_retry.sql','0020_goal_period_settlements.sql','0021_account_recovery.sql','0022_recycle_plans.sql','0023_today_dismissals.sql','0024_shopping_assignee.sql','0025_daily_notification_inbox.sql','0026_shopping_any_receipt_complete.sql','0027_wish_reminder_settings.sql','0028_explicit_today_actions.sql','0029_household_revisions.sql','0030_member_revisions.sql','0031_completion_event_read_state.sql','0032_settlement_origin.sql','0033_completion_points.sql','0034_rewards_shop.sql','0035_household_rewards_only.sql','0036_plan_scoring.sql','0037_goal_rewards.sql','0038_routine_occurrence_assignments.sql','0039_monthly_achievements.sql','0040_monthly_achievement_credits.sql','0041_household_lottery.sql','0041_dual_assignees.sql','0042_shopping_dual_assignee.sql','0043_trip_participant_rewards.sql','0044_trip_reward_snapshot.sql','0045_trip_rewards_no_cap.sql','0046_reward_wish_savings_credit.sql','0047_anniversary_archive.sql','0048_oneoff_five_points.sql','0049_lottery_balanced_coupons.sql','0050_notification_delivery_state.sql','0051_private_media_cleanup.sql','0052_achievement_thresholds.sql']) {
    sqlite.exec(readFileSync(new URL('../migrations/'+filename, import.meta.url),'utf8'))
  }
  sqlite.exec("INSERT INTO environment_identity(key,database_name) VALUES('current','homeflow-preview')")
@@ -35,7 +35,7 @@ function makeDb() {
  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0046_reward_wish_savings_credit.sql')")
  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0047_anniversary_archive.sql')")
  sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0048_oneoff_five_points.sql')")
- sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql'),('0051_private_media_cleanup.sql')")
+ sqlite.exec("INSERT INTO d1_migrations(name) VALUES('0049_lottery_balanced_coupons.sql'),('0050_notification_delivery_state.sql'),('0051_private_media_cleanup.sql'),('0052_achievement_thresholds.sql')")
  const db={
    prepare(sql) {
      const stmt=sqlite.prepare(sql)
@@ -819,6 +819,12 @@ test('dated shopping, wishes and savings goals require explicit postpone',async(
 
  const wishDone=await ask('/api/plans/complete','POST',{kind:'wish',id:wish.body.id,completed:true},owner)
  assert.equal(wishDone.status,200,JSON.stringify(wishDone.body))
+ const retryWish=await ask('/api/plans/complete','POST',
+   {kind:'wish',id:wish.body.id,completed:true},owner)
+ assert.equal(retryWish.status,200)
+ assert.equal(retryWish.body.unchanged,true,'repeated wish completion must not undo')
+ assert.equal(sqlite.prepare('SELECT status FROM wishes WHERE id=?').get(wish.body.id).status,'completed')
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks WHERE plan_type='wish' AND plan_id=?").get(wish.body.id).n,1)
  amount.net=0
  const notFunded=await ask('/api/plans/complete','POST',{
    kind:'goal',id:saving.body.id,periodKey:lastMonthKey,completed:true},owner)
@@ -832,6 +838,11 @@ test('dated shopping, wishes and savings goals require explicit postpone',async(
  const onceDone=await ask('/api/plans/complete','POST',{
    kind:'goal',id:once.body.id,completed:true},owner)
  assert.equal(onceDone.status,200,JSON.stringify(onceDone.body))
+ const retryGoal=await ask('/api/plans/complete','POST',
+   {kind:'goal',id:once.body.id,completed:true},owner)
+ assert.equal(retryGoal.status,200)
+ assert.equal(retryGoal.body.unchanged,true,'repeated goal completion must not undo')
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM plan_completion_marks WHERE plan_type='goal' AND plan_id=?").get(once.body.id).n,1)
  const invalidBuy=await ask('/api/shopping/'+shopping.body.id+'/toggle','POST',{completed:true},owner)
  assert.equal(invalidBuy.status,409)
  assert.equal(invalidBuy.body.error,'link_ledger_to_complete')
