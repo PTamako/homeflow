@@ -2,6 +2,7 @@ import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
+import {approvalVerificationRoute} from './approval-verification.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -44,6 +45,10 @@ async function routeRequest(request,env,ctx,state){
       // migration baseline; full structural checks run on /api/health and Cron.
       if(!await verifiedDatabase(env,{quick:true}))return json({error:'environment_or_database_not_ready'},503)
       if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
+      // Backchannel-only signed read verification: no browser session or
+      // same-origin cookie is accepted; never grants target write rights.
+      if(path==='/api/internal/approvals/verify')
+        return approvalVerificationRoute(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover','/api/oauth/token','/api/oauth/userinfo']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
