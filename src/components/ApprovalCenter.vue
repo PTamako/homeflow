@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref,watch} from 'vue'
+import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import ConfirmActionSheet from './ConfirmActionSheet.vue'
 import {useConfirmAction} from '../use-confirm-action'
@@ -101,6 +101,19 @@ async function toggle(){
  expanded.value=!expanded.value
  if(expanded.value)await load(true)
 }
+// Refresh once on foreground return, not via frequent D1 polling.
+function refreshOnReturn(){
+ if(document.visibilityState==='visible'&&available.value&&expanded.value&&
+   !loading.value&&!busyId.value)void load(true)
+}
+onMounted(()=>{
+ document.addEventListener('visibilitychange',refreshOnReturn)
+ window.addEventListener('pageshow',refreshOnReturn)
+})
+onUnmounted(()=>{
+ document.removeEventListener('visibilitychange',refreshOnReturn)
+ window.removeEventListener('pageshow',refreshOnReturn)
+})
 function selectFilter(e:Event){
  const value=(e.target as HTMLSelectElement).value
  if(!allowedFilters.includes(value as Filter))return
