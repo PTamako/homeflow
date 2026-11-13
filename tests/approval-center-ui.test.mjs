@@ -56,3 +56,21 @@ test('owner can safely retry a failed target execution only with the original ap
  // No automatic retries, new approval IDs, or direct financial write route.
  assert.doesNotMatch(view,/setInterval\(|\/api\/family-finance\/entries/)
 })
+
+
+test('unsupported document and non-cash approvals never offer a misleading execute button',()=>{
+ const view=read('../src/components/ApprovalCenter.vue')
+ const executor=read('../worker/approval-execution.js')
+ assert.match(view,/function isSupportedExecution\(item:Approval\)/)
+ assert.match(view,/item\.source_app==='kakebo'&&item\.target_app==='kakebo'/)
+ assert.match(view,/item\.operation==='finance\.entry\.create'&&item\.resource_type==='finance_entry'/)
+ assert.match(view,/props\.isOwner&&executionEnabled\.value&&isSupportedExecution\(item\)/)
+ assert.match(view,/v-else-if="canExecute\(item\)"/)
+ assert.match(view,/function statusLabel\(item:Approval\)/)
+ assert.match(view,/已批准 · 待目标处理/)
+ assert.match(view,/目标应用未发生更改/)
+ // Backend support is exactly the same narrow subset. Do not widen UI
+ // eligibility independently of a matching signed target executor.
+ assert.match(executor,/row\.target_app!=='kakebo'\|\|row\.source_app!=='kakebo'/)
+ assert.match(executor,/row\.operation!=='finance\.entry\.create'\|\|row\.resource_type!=='finance_entry'/)
+})
