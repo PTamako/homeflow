@@ -23,3 +23,14 @@ test('approval requester is labeled by HomeFlow family profile, never by guessed
  assert.match(manage, /:profiles="profiles"/)
  assert.match(app, /:members="members" :profiles="profiles"/)
 })
+
+test('approval screen updates once when iPhone PWA returns to foreground, without a polling timer', () => {
+ const view = read('../src/components/ApprovalCenter.vue')
+ assert.match(view, /document\.addEventListener\('visibilitychange',refreshOnReturn\)/)
+ assert.match(view, /window\.addEventListener\('pageshow',refreshOnReturn\)/)
+ assert.match(view, /document\.removeEventListener\('visibilitychange',refreshOnReturn\)/)
+ assert.match(view, /window\.removeEventListener\('pageshow',refreshOnReturn\)/)
+ assert.match(view, /available\.value&&expanded\.value/)
+ assert.match(view, /!loading\.value&&!busyId\.value\)void load\(true\)/)
+ assert.doesNotMatch(view, /setInterval\(/)
+})
