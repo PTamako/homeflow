@@ -126,17 +126,26 @@ function changePage(delta:number){
  page.value=Math.max(0,page.value+delta)
  void load(false)
 }
+// A lost target response must be reconciled using the original approval ID.
+// Only the target application's idempotent executor may actually post money.
+function canExecute(item:Approval){
+ return props.isOwner&&executionEnabled.value&&
+  (item.status==='approved'||item.status==='failed_retryable')
+}
 async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  const allowed=kind==='cancel'
   ?!props.isOwner&&item.requester_user_id===props.userId&&item.status==='pending'
   :props.isOwner&&(kind==='execute'
-   ?executionEnabled.value&&item.status==='approved':item.status==='pending')
+   ?canExecute(item):item.status==='pending')
  if(busyId.value||loading.value||!available.value||!allowed)return
  const id=item.request_id,account=props.userId
  const chosenStatus=item.status
  const options=kind==='execute'
-  ?{title:'执行已批准账务',confirmLabel:'确认执行',
-    message:'系统会再次核实批准记录，并由家計簿实际入账。同一审批只能入账一次。'}
+  ?item.status==='failed_retryable'
+   ?{title:'核对后重试原审批',confirmLabel:'确认安全重试',
+     message:'上次执行结果尚未确认。系统将使用同一审批 ID 与家計簿的幂等记录核对结果；不会创建新的审批或重复入账。'}
+   :{title:'执行已批准账务',confirmLabel:'确认执行',
+     message:'系统会再次核实批准记录，并由家計簿实际入账。同一审批只能入账一次。'}
   :kind==='approve'
    ?{title:'批准家庭申请',confirmLabel:'确认批准',
      message:'批准后还需要单独执行，账本此时不会立即改变。'}
@@ -220,6 +229,9 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      <p v-if="item.status==='approved'" class="approval-note">
       已批准，账本尚未生效
      </p>
+     <p v-else-if="item.status==='failed_retryable'" class="approval-note">
+      上次执行结果未确认；请仅通过原审批安全重试，不要再次创建账单。
+     </p>
      <div v-if="!isOwner&&item.requester_user_id===userId&&item.status==='pending'"
        class="approval-actions">
       <button class="outline" type="button" :disabled="!!busyId||loading"
@@ -231,10 +243,10 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       <button class="primary" type="button" :disabled="!!busyId||loading"
        @click="act(item,'approve')">批准</button>
      </div>
-     <div v-else-if="isOwner&&item.status==='approved'&&executionEnabled"
+     <div v-else-if="canExecute(item)"
        class="approval-actions">
       <button class="primary" type="button" :disabled="!!busyId||loading"
-       @click="act(item,'execute')">执行入账</button>
+       @click="act(item,'execute')">{{ item.status==='failed_retryable'?'安全重试':'执行入账' }}</button>
      </div>
     </li>
    </ul>
