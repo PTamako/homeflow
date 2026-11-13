@@ -105,7 +105,7 @@
 | **E：文书共享/知学隔离与跨 App 联动** | **部分 Draft 完成，未上线** | 文书 #97：身份映射、共享文书和附件部分协作、真实 actor 审计/R2 原 owner 保护；知学 #179：独立身份 API，旧个人学习 API 默认不授新会话 | 知学个人进度/生词/考试及离线缓存按 user_id 隔离；文书所有共享路径与跨 App 同步审批/执行、两应用 PWA UI | 知学 0180、文书 0020～0022 未迁移，开关 OFF |
 | **F：生产迁移与双人验收/清退旧鉴权** | **未开始，等待用户 A 完成和 B～E 功能稳定** | GitHub CI / 本地 SQLite、部分 WebKit 冒烟并非两台真实 iPhone 验收 | A 完成后再统一安排正式 SQL、线上部署核验、双人真实 PWA、业务/R2 数据/费用对账及回退；不得提前删除密码/Token | 未部署统一身份，不放行 |
 
-**本节为唯一现行状态口径**：旧 §6、§8 里的导出/备份下一步是历史审计记录，不再构成工作指令。尤其 HomeFlow .github/workflows/deploy.yml 对 main 的任何 push 都自动触发生产 deploy；因此本阶段交接文件也只能以独立 Docs-only 分支/PR 提交，不得合并。
+**本节为唯一现行状态口径**：旧 §6、§8 里的导出/备份下一步是历史审计记录，不再构成工作指令。HomeFlow `.github/workflows/deploy.yml` 已在同一 PR 加入 `push.paths-ignore`：`docs/**`、`**/*.md`、`.github/workflows/deploy.yml`。纯文档及此部署策略文件的提交可以合并到 `main` 而不触发 Cloudflare 部署；`.github/workflows/ci.yml` 仍验证 PR 和 `main`。**仅在 CI 成功、PR 变更清单全部匹配忽略规则后合并**；任何非忽略文件混入必须重新审查。
 
 ## 4. 功能提交/PR/CI/部署流水账（每个功能完成立即追加）
 
@@ -341,12 +341,18 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 不能生产执行新 SQL、不能启用统一身份/审批开关、不能合并会自动生产部署的 PR；绝对不修改/覆盖正式业务数据，不重建 Preview。
 - 本检查点基线（读自实际 GitHub）：HomeFlow Draft #305 b8b877388639b1a2b3ac19dbca58ea8072b8a037；HomeFlow Draft #306 3e08197422efbe96419004cfe1fe6f26ce99f515（CI 43428049072 success）；家計簿 Draft #309 baab1adbad163f0ad6fa377827f0f60de0d1c443（Validate 43427933666 success）；知学 Draft #179 9e8297741b8da8961b949094d8d255c7d992b82b；文书 Draft #97 e0bb5f7bfdbb7e9dbae747192be87ff97656076a。下次按最新 HEAD/CI 重新核查。
 - 本轮已存在但未执行的 HomeFlow 0055 和家計簿 0026 是受限现金目标执行器所需迁移；不可据文件存在推断生产已执行。信用卡、储值卡、SBI、固定费与文书写入执行尚未覆盖。
-- 交接文档也只走 Docs-only PR，因为 HomeFlow main push 会触发 deploy；用户 A 未完成之前**不可合并触发自动生产部署**。
+- HomeFlow 部署工作流在本 PR 新增纯文档路径排除。**经 CI 和变更清单验证后允许合并只改 `docs/**`、Markdown 与部署工作流本身的 PR**；其他可能触发生产 Worker 部署的 PR 仍不得合并。用户 A 未完成前不开放生产迁移或身份开关。
 
 ### 9.1 Stage D HomeFlow 审批中心 UI（2026-11-13，独立功能完成自动 CI，未上线）
 
-- 功能 Draft [HomeFlow #306](https://github.com/PTamako/homeflow/pull/306)，分支 feature/family-approval-state-machine-20261113，最新本轮模块 Commit **ca7a991692a98f51ffcb89860188cf735914f2aa**；[Validate HomeFlow #43429054673](https://github.com/PTamako/homeflow/actions/runs/43429054673) **success**（包含服务端回归与 Vue/TypeScript build）。本次更新文档不合并，不会触发 Cloudflare deploy。
+- 功能 Draft [HomeFlow #306](https://github.com/PTamako/homeflow/pull/306)，分支 feature/family-approval-state-machine-20261113，最新本轮模块 Commit **ca7a991692a98f51ffcb89860188cf735914f2aa**；[Validate HomeFlow #43429054673](https://github.com/PTamako/homeflow/actions/runs/43429054673) **success**（包含服务端回归与 Vue/TypeScript build）。本次文档由 #314 新增非部署变更的路径防护；仅在校验后合并，且不触发 Cloudflare deploy。
 - 新组件 src/components/ApprovalCenter.vue，已挂载到 src/components/ManagePage.vue：管理员/成员按真实已登录 user ID 查看相同家庭内各自有权限的审批记录；状态筛选、每页 5 条、上一页/下一页、手动刷新；管理员申请批准/拒绝需二次确认；批准后的现金单独执行需再次二次确认，明确显示「已批准 · 未入账」与「已生效」不同状态。列表不展示文书原文/消费金额或密钥。
 - worker/approvals.js 新增已登录 GET /api/approvals/status 轻量 flag 探测（无 D1 数据读取），默认 APPROVALS_ENABLED OFF 时 Vue 不显示审批模块，不反复轮询；切换用户/离开管理时清空上一个用户列表并撤销异步旧请求写屏；新增 tests/household-approvals.test.mjs 证明默认 OFF、无申请表/审计写入、独立执行开关状态均正确。
 - **未完成**：Push/通知深链接、拒绝/取消/过期的自动状态刷新、跨 App 真实 Cloudflare Service Binding 执行联调、所有金融目标的执行器、完整审批状态流转 UX 与真机双人审查；此次只是 Draft 界面和已存在的受限现金执行器，不是生产系统上线。
 - **生产维持原状**：HomeFlow 0053/0054/0055、家計簿 0022～0026 仍未执行，所有身份/审批/执行开关 OFF，功能 PR #306 不合并，A=待用户完成且不再由开发助手处理。
+
+## 9.2 HomeFlow GitHub Actions 安全部署规则（2026-11-13）
+
+- `Deploy HomeFlow` 的 `push` 仍只限 `main`，但加入 `paths-ignore`：`docs/**`、`**/*.md` 和 `.github/workflows/deploy.yml`。**只有本次推送涉及的全部文件都在这些忽略路径中，GitHub 才跳过 Deploy 工作流**；其他代码变更仍会触发正常工作流，不可误以为 A 已放行。
+- `Validate HomeFlow` 的 `.github/workflows/ci.yml` 保留 `pull_request` 与 `push main`，纯文档改动仍跑验证；手动 `workflow_dispatch` 不受文档路径过滤影响（不是自动上线授权）。
+- 此调整用于安全合并 #314 的 A 用户负责状态文档，不能视为 B～E 上线授权；所有功能 Draft 继续保留。合并前核对 GitHub 变更文件清单、CI；合并后检查 `main` 此提交没有运行 `Deploy HomeFlow`。
