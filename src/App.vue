@@ -427,7 +427,10 @@ async function refresh(){
     user.value=null;pendingTasks.value=[]
   }
   if(user.value){
-    try{
+    if(oauthLanding){
+      // OAuth is a consent-only destination; never load private Today/family data.
+      profiles.value=[];members.value=[];pendingTasks.value=[]
+    }else try{
       // Today data is loaded once by reloadToday after authentication.
       // Avoid duplicate D1 task and routine reads during the initial session check.
       const a=await api('/family')
@@ -448,7 +451,7 @@ async function retryAuth(){
   authReady.value=false
   try{
     await refresh()
-    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
+    if(!oauthLanding&&user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
 }
 async function submitAuth(){
@@ -478,10 +481,10 @@ async function submitAuth(){
     }
     password.value='';bootstrapSecret.value='';invite.value=''
     await refresh()
-    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
+    if(!oauthLanding&&user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
     // On a fresh login, establish the revision baseline immediately. Otherwise
     // an edit between login and the first 25s poll could be missed.
-    if(user.value)void checkRemoteChanges()
+    if(!oauthLanding&&user.value)void checkRemoteChanges()
   }catch(e){error.value=(e as Error).message}finally{loading.value=false}
 }
 async function logout(){
@@ -753,8 +756,10 @@ watch(tab,value=>{
 onMounted(async()=>{
   try{
     await refresh()
-    if(user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
+    if(!oauthLanding&&user.value&&!consumeTaskLink()&&tab.value==='today')await reloadToday()
   }finally{authReady.value=true}
+  // Authorization should not start HomeFlow task sync, Push or 25-second D1 polls.
+  if(oauthLanding)return
   hadServiceWorkerController=!!navigator.serviceWorker?.controller
   navigator.serviceWorker?.addEventListener('controllerchange',onServiceWorkerChanged)
   checkServiceWorkerUpdate()
