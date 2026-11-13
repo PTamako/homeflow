@@ -15,6 +15,7 @@ import ConfirmActionSheet from './components/ConfirmActionSheet.vue'
 import {useConfirmAction} from './use-confirm-action'
 import MobileSelectHost from './components/MobileSelectHost.vue'
 import AppIcon from './components/AppIcon.vue'
+import OAuthConsent from './components/OAuthConsent.vue'
 import StatusBadge from './components/StatusBadge.vue'
 import SwipeActions from './components/SwipeActions.vue'
 import PageToast from './components/PageToast.vue'
@@ -44,6 +45,9 @@ function memberName(id:string|null|undefined){
 // Distinguish session loading from signed-out state.
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 const authReady=ref(false)
+// An external PWA may arrive here with an OAuth intent before HomeFlow login.
+// Leave the ordinary HomeFlow sign-in form available when no session exists.
+const oauthLanding=window.location.pathname==='/authorize'
 const authFailure=ref('')
 const updateReady=ref(false)
 let hadServiceWorkerController=false
@@ -777,6 +781,7 @@ onBeforeUnmount(()=>{
 
 <template>
   <div class="shell">
+    <OAuthConsent v-if="oauthLanding&&authReady&&user&&!authFailure" />
     <header class="topbar"><div class="brand"><span class="brand-icon"><AppIcon name="house" :size="22" /></span>HomeFlow</div>
       <GlobalSearch v-if="authReady&&user" @select="openSearchResult"/>
       <span v-else class="phase">OUR LITTLE HOME</span></header>
