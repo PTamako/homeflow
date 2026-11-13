@@ -97,10 +97,10 @@
 | 阶段 | 状态 | 已完成 | 进行中 / 未完成 | 生产迁移 | 生产部署/验收 |
 |---|---|---|---|---|---|
 | **A 调查、只读基线、备份** | **进行中，备份文件传输阻断正式迁移** | 冻结 v1.1 需求与 §3.1；四库正式表计数/现有迁移、Cloudflare 资源/生产版本、各库 Time Travel bookmark；四 D1 Export API 生成临时 SQL；六个 R2 对象逐项 SHA-256/大小通过；已建私人 Google Drive 文件夹并上传检查清单、确认 owner-only | **未能将实际 SQL/R2 字节加密上传 Google Drive 或恢复验收**；待受控文件传输通道；待全表/金额摘要；已定位家計簿 GitHub deploy 缺 Secrets | **A–F 新迁移零** | **无本项目新功能部署** |
-| **B SSO/昵称/首次登录** | **开发中：HomeFlow PKCE + 授权确认 UI 已通过 CI，Draft PR #305 未上线** | B1 既有会话身份/昵称读取；B2 一次性授权码、PKCE S256、3 分钟令牌、不可重放、审计、HomeFlow 退出时令牌/授权码级联撤销；`/authorize` 显式同意页面，未登录仍用原 HomeFlow 登录，授权页跳过家庭数据和定期轮询；CI [43389573939](https://github.com/PTamako/homeflow/actions/runs/43389573939) success | **仍非完整 SSO**：三 App 的服务端 callback/session、账号映射接入、固定 redirect URI 的配置、生产启动/回退开关、实机 PWA/安全验收待完成；当前非 OIDC ID-token/JWKS | **0053 未执行** | **新身份功能未上线，Draft PR #305 未合并** |
+| **B SSO/昵称/首次登录** | **开发中：HomeFlow PKCE + 文书助手后端回调均通过 CI，仍非 iOS 可用 SSO** | HomeFlow Draft #305 身份/昵称读 API、短期 code+PKCE、审核确认 UI/写审计和注销联动；文书助手 Draft #97 新增独立服务绑定 code exchange / userinfo + 15 分钟本地 HttpOnly Session / 双证 owner / 空白 member 测试，[CI #43393452443](https://github.com/PTamako/jp-document-assistant/actions/runs/43393452443) success | 待 HomeFlow 与三 App 真正集成；文书 Safari/PWA Cookie 隔离和跨 App 账号停用注销传播仍未解决；家計簿/知学 OAuth 客户端/会话及 iPhone 双人实机测试未开始；非 OIDC ID-token/JWKS | **HomeFlow 0053 / 文书 0020/0021 均未执行** | **未上线；两 Draft PR 均未合并、所有 OAuth feature flags 默认关闭** |
 | **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
 | **D HomeFlow 审批** | **未开始** | 确认现有 session/角色与路由基线 | 工单状态机/事件表/索引、幂等执行器、内部签名接口、通知/UI、异步重试审计 | 无 | 无 |
-| **E 文书/知学隔离与跨 App 同步** | **开发中：文书身份链接 Draft PR #97，未上线** | 已确认文书本地 owner user/household ID 与 HomeFlow owner 两种 ID 均不相同（预期的本地身份差异，不是数据归属异常）；已提交一对一不可变映射表的**未执行** SQL 与遗留文书/OAuth 隔离测试，CI 成功 | 真正 HomeFlow 验证链接创建、member 首次账户建立、shared 可写、OAuth 隔离、候选同步审批；知学个人表 SQL/缓存 user_id 化全部待做 | **无** | **无；Draft #97 未合并** |
+| **E 文书/知学隔离与跨 App 同步** | **开发中：文书助手无损身份映射 + HomeFlow 后端 PKCE 回调，Draft PR #97 未上线** | 文书本地 owner 和 HomeFlow owner UUID 不同的实际情况已确认；0020 不可变链接、0021 加密 PKCE 待确认事务均以新增迁移形式编写；服务端 HomeFlow code→token→userinfo 校验且角色/家庭/audience 防串号，旧 owner 要本人两套有效会话双重验证、member 仅在 owner 已绑定后建空账号，不继承私人文书/Google 授权；CI [43393452443](https://github.com/PTamako/jp-document-assistant/actions/runs/43393452443) success | **iOS Safari/PWA Cookie 分离仍阻断真正首次登录**：当前 callback 只接受启动时同浏览器 SameSite=Lax state cookie；仍需安全跨容器一次性续接、App UI、账号禁用/退出实时传递、共享文书编辑、候选同步审批；知学个人表及缓存隔离仍未开始 | **0020/0021 未执行** | **PR #97 未合并，未部署；HomeFlow OAuth 同样未上线** |
 | **F 全链路验收与旧鉴权清退** | **未开始** | 加入 §3.1 测试条款 | 两位用户、多站点/iPhone PWA 回归、旧 token 清退门槛、历史/R2/成本比对和回滚演练 | 无 | 无 |
 
 ## 4. 功能提交/PR/CI/部署流水账（每个功能完成立即追加）
@@ -115,6 +115,8 @@
 | 2026-11-13 | 文书助手 B/E — 一对一 HomeFlow↔本地 user ID 的无损链接表 + 老数据保留测试 | `feature/homeflow-identity-link-safety-20261113` | `b6e1d7d9d890154cc193230886356966b01db22f`（迁移文件）/ `b77bf4207094d6fd1cc706a85043a746f629d29b`（测试） | [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) **未合并** | [Pre-merge CI run 43386709400](https://github.com/PTamako/jp-document-assistant/actions/runs/43386709400) **success** | **0020_homeflow_identity_links.sql 未在生产执行** | **未部署**（A 备份及服务端身份链接验收未完成） | 测试成功；生产/实机登录未测 |
 | 2026-11-13 | HomeFlow B2 安全审计 + /authorize 用户确认页面 + 会话撤销 + D1 低读数优化 | `feature/homeflow-identity-read-contract-20261113` | 审计 `4a71f630d717277709d5854ed0bdfbd1aeb25aa0` / `debeea8791e7ff8f8102ed06aa2978d647298f58` / `383e478ca70d5d98ec45720652072e3e9221ec37`；同意 UI `81c19cc8145c2f95178dbe41352583810b224f55` / `dc277f93aca3932e92e57bb1562b7035cdc5fbd1` / `f97ed4c1440b4dd8f4a245b21afdbcf1bafb752e` / `6cad004c20c873f8fa3ea3e80ce23461583f8d52` / `6a7142cf4d8719d1acc2d1ac499956a83cabc8a4`；低读数 `ce54ad7ddb7d87f7a251800ac2cf0b859cd7eada` / `64a2b12736ef9e81bc4fc1111d1345feee84a31b`；会话绑定 `4c5dc922c5172dd615554941887527d8f0fec9b9` / `fb08a457096d3d6c48c2c839b676a438939d397a` / `358708098b5f745aa628c5af4482fe06f004a372` | [Draft #305](https://github.com/PTamako/homeflow/pull/305) | 中途 Vue ref 赋值/测试断言失败已修复；最新 [Validate run 43389573939](https://github.com/PTamako/homeflow/actions/runs/43389573939) **success** | **0053 未执行** | **未部署，OAuth 默认 disabled** | 自动化单测/类型检查通过；未进行真实应用回调和 iPhone 实机验证 |
 
+| 2026-11-13 | 文书助手 B/E — 完整隔离的后端 HomeFlow PKCE 回调（Draft，禁止生产）+ 双重 owner 验证 + member 空白个人库 | `feature/homeflow-identity-link-safety-20261113` | `fc667d3b524f748e776c7b1c279ecbb7ac4ed009`（0021 待确认事务）；`af7b9b4c0670bd058bf9286722ba672e3935be7a`（SSO Service Binding/加密 verifier）；`aa3e8bf7ed3424e364da80b945aa62cb766c9aa3`（实际 HomeFlow household=`primary` 兼容）；`4d1b7b582e2b91fbc35c55fed629317e85a043c5`（路由）；`30dcd1213abd1b27e36a4d75e1fcebcd872e76bb`（双身份/旧数据隔离测试）；`acfc518f9af313445bc5123fcbd576a26d07327c`（上线前安全门槛说明）；`d556a360fb050ec76db57e7cefc4031408567781`（真实 Worker route、PKCE 加密测试） | [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) | [Pre-merge CI #43393452443](https://github.com/PTamako/jp-document-assistant/actions/runs/43393452443) **success**（含旧现有测试与新增内存 SQLite 测试） | **0020/0021 均未执行** | **未合并、未部署、SSO 默认关闭** | 自动测试成功；真实 HF OAuth 服务配置/回调、iPhone PWA Cookie/跨浏览器续接、双人实机验收均未通过 |
+
 **填写准则**：任何生产迁移仅能填「未执行 / 已执行（附 migration、数据库、执行时间、验证 SQL 与 count/hash）/ 失败回滚 / 阻断」。不要只写「迁移好了」。所有部署须附 GitHub Actions run 和 Cloudflare deploy/version ID、100% traffic 证据；中断时能判断是否安全重试。
 
 ## 5. 已知问题与失败项
@@ -123,9 +125,10 @@
 2. **生产 D1/R2 持久备份未全部完成**；虽然 HomeFlow D1 导出 API 曾 complete，但未证实文件安全落盘和恢复。生产迁移继续阻断。
 3. **家計簿 `payment_sources.name` 唯一主键无法支持两人同名账户**；制定有旧名称兼容的稳定 ID 转换策略前不得在生产逐项重构。
 4. **知学仍有单人认证和个人数据无 user_id 的表**；禁止只开放桥接 ID 后让 member 进入 owner 旧数据。
-5. **已在两个生产 D1 内部只读比较**：文书助手本地 owner user ID、household ID 与 HomeFlow 的 owner 对应 ID **并不相等**，但均只有一位 owner，这与旧系统独立身份模型一致，**不是异常数据，也不需要用户重申归属**。Draft #97 为此设计映射表，尚无任何行被生产插入；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
-6. **目前所有新阶段均未完工**；首次 PWA 实机验收尚无执行记录。
-7. HomeFlow **Draft PR #305** 已扩展为身份 API、授权码 PKCE、用户同意 UI、会话级撤销、最小审计和免轮询优化，**最新 CI 已通过但尚未合并/上线**；它仍不包含三个业务 App 的回调和会话、真实 client URI allowlist 或完整 OIDC。生产备份门槛完成前不得启用/合并。
+5. **文书助手 HomeFlow 后端回调已经编写并通过测试，但非完整 PWA 登录**：新的 `0020/0021` 迁移未执行，SSO feature flag 仍 OFF。HomeFlow ID/role/audience 来自 Service Binding 的受信 userinfo，owner 必须绑定原本仍有效的文书账号才能关联；member 禁止冒领 owner。iPhone 独立 PWA→Safari Cookie 共享未解决，当前 SameSite=Lax 回调缺 Cookie 会拒绝；**不得为改善体验绕过 state 浏览器绑定**。需要另设计有 PWA 原始端确认的一次性 handoff，且要完成 HomeFlow 账号禁用/退出向业务 Session 的授权撤销传播。文书侧 [安全门槛清单](https://github.com/PTamako/jp-document-assistant/blob/feature/homeflow-identity-link-safety-20261113/docs/homeflow-sso-backend-gates.md)。
+6. **已在两个生产 D1 内部只读比较**：文书助手本地 owner user ID、household ID 与 HomeFlow 的 owner 对应 ID **并不相等**，但均只有一位 owner，这与旧系统独立身份模型一致，**不是异常数据，也不需要用户重申归属**。Draft #97 为此设计映射表，尚无任何行被生产插入；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
+7. **目前所有新阶段均未完工**；首次 PWA 实机验收尚无执行记录。
+8. HomeFlow **Draft PR #305** 已扩展为身份 API、授权码 PKCE、用户同意 UI、会话级撤销、最小审计和免轮询优化，**最新 CI 已通过但尚未合并/上线**；它仍不包含三个业务 App 的回调和会话、真实 client URI allowlist 或完整 OIDC。生产备份门槛完成前不得启用/合并。
 
 ## 5.1 必须提前通知用户的操作（用户已要求）
 
@@ -140,7 +143,7 @@
 2. 确认本次交接文档 PR/commit 已保存；如尚未合并，优先合并文档 PR，并在后续功能提交中持续更新此文件，**不创建第二套交接日志**。
 3. **只读**完成 D1 全表/关系索引清单、金额/余额/归属摘要；对四生产 D1 做完整可验证备份并测试恢复；R2 对象数量/安全恢复方案，避免拉取敏感文件正文。
 4. 排查 kakebo bridge 失败 workflow（读 job/step/log，不盲目重新部署）。
-5. 完成 A 之后才创建阶段 B SSO/首次 PWA 登录单独功能 PR；以独立 feature flags、授权码短时效、受控身份映射和 fail-closed 为前提，不一次性替换全站登录。
+5. B1/B2 HomeFlow Draft #305 与文书助手 B/E Draft #97 已经有测试通过的独立后端模块，无须重复开发。**优先审计并实现 iPhone PWA 与 Safari 不共享 Cookie 时的一次性、受原 PWA 校验的授权回传**，并完成 HomeFlow 禁用/注销时其他应用 session 失效的安全机制；不得提前启用。备份 A gate 完成前不执行正式新迁移、不合并会触发正式部署的功能 PR。
 6. 各功能完成即更新 **本文件** 的阶段状态、commit、PR、CI、生产迁移/部署、只读验证和真实遗留工作；不要把测试计划当作测试已通过。
 
 ## 7. 安全声明
