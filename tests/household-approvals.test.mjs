@@ -488,7 +488,7 @@ test('owner approved CASH action obtains nonce lease and only actual Kakeibo rec
    return Response.json({ok:true,applied:true,approval_id:id,
     proposal_id:'a'.repeat(32),household_id:'primary',
     requester_user_id:'member',payload_sha256:'a'.repeat(64),
-    entry_id:123,already_applied:false})
+    entry_id:123,already_applied:false,applied_at:Date.now()})
   }}
   const execute=async(principal=sessions.owner)=>{
    const res=await approvalExecutionRoute(
@@ -538,7 +538,7 @@ test('lost target response is retryable, reuses same approval ID and settles onc
    return Response.json({ok:true,applied:true,approval_id:id,
     proposal_id:'b'.repeat(32),household_id:'primary',
     requester_user_id:'member',payload_sha256:'a'.repeat(64),
-    entry_id:995,already_applied:true})
+    entry_id:995,already_applied:true,applied_at:Date.now()})
   }}
   const execute=()=>approvalExecutionRoute(new Request(
     'https://homeflow.example.test/api/approvals/'+id+'/execute',{
