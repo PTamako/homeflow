@@ -626,3 +626,27 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 4. 阶段 B～E 原有功能 Draft、待执行迁移和默认 OFF 新开关保持不变。**A 的本地验收成功不是合并、迁移或部署授权**；不得重建 Preview，不得直接覆盖生产库或删除历史备份。
 
 **阶段 A 最新归档结论：四 D1 + 三 R2 的可恢复加密备份与 Mac 本地隔离恢复验证 PASS；生产 D1/R2 回滚、历史文书差异调查及 B～F 上线门槛仍待完成。**
+
+
+## 11. 2026-11-14 知学 E 阶段接续：每日语法个人隔离（开发中，CI 待最终验收）
+
+> 读取本文件之后先交叉核对：启动时 HomeFlow main=`fe1c87ff6b2f983b00c2b0d46c89db789c3d14d6`，写入前因其他会话刚追加第 10 节，已变为 `7380e8d527d7384560527065f0de1280616791d7`。**本节保留第 10 节的用户 Mac 加密备份/本地恢复 PASS 和剩余安全限制，不覆盖、不重新运行备份。**按用户本次开发消息要求，本轮仍不视 A 获得正式生产迁移/合并/部署放行；A 相关上线门槛须用户另行明确解除。所有四 App 功能 PR 仍保持 Draft、未合并；不创建 Preview、不执行正式 D1、不改生产 R2、不打开 SSO/审批开关。纯 Markdown 通过 HomeFlow main 已合并 #314 的 `docs/**` `paths-ignore` 安全提交，绝不修改工作流配置。
+ 
+### 开发分支、真实代码提交、CI 范围
+
+- 继续原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179)：`PTamako/it-study-platform`，分支 `feature/homeflow-identity-isolated-20261113`。开始前 PR HEAD `428cac671e2f4cc2dc7ed1c52bb224905989a110`、[Validate 43458408489](https://github.com/PTamako/it-study-platform/actions/runs/43458408489) `completed/success`，已实现的 0180～0186 旧回执/考试/语言/任务模块均保留，未重复实现。
+- 旧个人语法真实表 `daily_grammar_answers` 来自 `0133_daily_grammar_answers.sql`，不带 `user_id`，旧 `/api/grammar-progress` 与旧 `DailyGrammarLesson.vue`/IndexedDB 键也不带身份。本轮 **不修改旧表/旧 API/旧 PWA 缓存**，避免干扰现有正式单人使用者。
+- 新未执行 `migrations/0187_homeflow_grammar_answers.sql`：`homeflow_grammar_answers` 复合主键 `(homeflow_user_id,study_date,language,question_id)`，`updated_by_user_id` 强制为当前真实 owner、答案 first-write-wins；`homeflow_grammar_events` 持久追踪真正 actor、写入/旧历史领取数量，审计不可更新删除。唯一主键自带日期复合索引，避免冗余 D1 索引；跨 actor、同键不同答案（含并发 `INSERT OR IGNORE`）、更新删除均在 SQLite 触发器层拒绝。
+- `worker/homeflow-grammar.ts` + `worker/index.ts` 新增 `GET/POST /api/homeflow-study/grammar`、`GET /api/homeflow-study/grammar/status`、`POST /api/homeflow-study/grammar/legacy/adopt`：仅在正式 SSO 合同+额外 `HOMEFLOW_STUDY_GRAMMAR_ENABLED=true` 同时满足时使用，默认关闭。每次调用严格使用 HomeFlow HttpOnly 个人 Cookie + 服务端 source-session introspection 的 actor ID，**不相信浏览器请求的任何用户 ID**；新增 `expected_user_id` 只是强制旧设备/离线队列在账号切换后失败关闭的校验。写入同源 JSON 校验、题号、日历日期与答案范围校验，冲突拒绝，不覆盖旧答案。
+- 原管理员本人旧语法：只允许旧知学会话证明绑定过的 HomeFlow owner 显式 `confirm:true`，按 `(study_date,language,question_id)` 每页最多 20 条无损导入；损坏整批 409 不写入，原表原文不变、重复领取不重复审计、同键不同答案拒绝，成员不能领取或读取管理员历史。生产未执行导入。
+- 新 `src/StudyHomeFlowGrammar.vue` 经 `StudyHomeFlowAccess.vue` 成功验证真实身份、按 `:key="'grammar:'+identity.user_id"` 挂载：日/英语语法每日三题、本人进度、管理员历史分批确认；**新区域只在线读写本人 API，无旧 localStorage/IndexedDB/脱机队列**，断网失败后由当前用户手动重试。旧首页/旧语法本地缓存尚未改造成按账号空间，不能将成员开放旧 App 所有个人学习页面。
+- `scripts/homeflow-sso-isolated.test.mjs` 增真实 SQLite 0187 schema 与两个模拟真实 HomeFlow source-session 账号：夫妻同题不同答案、成员空空间、旧管理员导入、重复导入、损坏旧历史全批失败、20+6 条分页、账号伪报/切换拒绝、Origin/日期、失效源会话、trigger actor/审计不可变、并发冲突；`scripts/homeflow-pwa-ui.test.mjs` 校验账号 keyed 与旧缓存禁止；旧 data-URL Worker 兼容测试 loader 只加 503 stub。**这些是已提交的测试代码，写交接时 GitHub 最新完整 CI 仍需等最终结论，不能虚报为通过。**
+- 实际本轮功能/测试 Commit：`33f91daa2e3ac3f8b077b658198a45998aa33b9b` (0187)、`4c5d85c47c8aba0b384e0c27f9df9a65c1341877` (API)、`e0e396c380dd8e07130a4077874d7fea95f7d610` (路由)、`02236c1963bac6d31639b592594f9494837c98da` (SQLite 测试)、`b6a04340763de559ae5df2c7183c7ad4f30da52f` (个人语法 UI)、`1eea0dd9363e3a1f151b80beedc134417603dbe3` (挂载)、`f2980878a2561cad3dfdb4b9d42d8aaafe8cc55f` (UI 测试)、`7525bfb894d0a7b80dfb3a7cf65746997e18a2ff` (冲突触发器)、`9a367a7f4e82ca187b9a529a7c8fb6e25c4fea05` (并发回归)、`3b239bf42c356cef95e2cb1b1c68a33f7f58b532` (类型)、`9c09f180b2232356d4ece82b07f3cac1a65cff18` (索引)、`7ba7312895df2ce351301dc0141e375478e93427` (UI 验证)、`0e266dbada3714ead87750fa2c02a1e0b4f05ada` (旧 Worker 测试)、`dce17f2c0e1f497c43fe49802c0fbadacd94f81e` (知学模块说明)。
+- 最新提交 SHA `dce17f2c0e1f497c43fe49802c0fbadacd94f81e` 对应 [知学 Validate #43463935020](https://github.com/PTamako/it-study-platform/actions/runs/43463935020)，**记录时 `in_progress`，`conclusion=null`**。前面多轮 CI 在并发新提交后被正常 cancel，取消不等于 success。后续先查询此 Run 最终结论，读取实际失败步骤修正；只有 `completed/success` 才可记录自动化测试验收通过。iPhone 两人同机/两设备真机 **待真机验证**。
+ 
+### 下一位开发者不能遗漏的未完成事项
+
+1. **先等并验证最新语法 CI 最终结论**，出现 failure 阅读真实 job 日志并修复，绝不将 `in_progress` 写为成功；需要时单独补本文最终结果。
+2. 原 `0150_daily_listening_answers`、`0152_daily_word_reviews`、对应旧 Worker 单人读写和客户端缓存/离线重试仍无 `homeflow_user_id`；继续用相同最小私有 API + 审计 + 显式 owner 历史领取 + 实际 SQLite 两人测试，不要让新成员借旧登录接口读管理员个人记录。
+3. 全站主 `src/App.vue` 仍使用 `zhixue:daily-pending-v1`、`zhixue:mock-pending-v1`、`zhixue:practice-pending-v1`、`zhixue:scenario-pending-v1`、`zhixue:daily-word-pending-v1` 等不带用户的持久重试队列，`src/offline-grammar-store.ts` 用共享 IndexedDB `zhixue-offline-learning`，旧听力语法本机键共享。**完整 iPhone Safari/PWA 切换账号离线队列隔离未完成**；不可将旧队列归给新用户、不可给成员解锁旧单人端点。
+4. HomeFlow #305/#306、家計簿 #309、文书助手 #97 的 B～E 仍未整体完成（审批结果真实跨 App 执行、个人金融资源设置全量迁移、文书权限/跨 App 联动等）。功能 PR 一律 Draft；生产回滚/历史差异和用户明确上线授权未完成，严禁生产变更。#314 已合并，不重做。
