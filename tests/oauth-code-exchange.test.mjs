@@ -107,6 +107,10 @@ test('code can be redeemed once, userinfo returns server-side owner and nickname
      role:'owner',nickname:'小白',audience:client})
    assert.equal((await exchange(code)).status,400)
    assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM oauth_access_tokens').get().n,1)
+   assert.deepEqual(sqlite.prepare('SELECT event FROM oauth_security_events ORDER BY created_at,event').all().map(x=>x.event),
+     ['code_issued','token_exchanged'])
+   const eventCols=sqlite.prepare("PRAGMA table_info('oauth_security_events')").all().map(x=>x.name)
+   assert.deepEqual(eventCols,['event_id','user_id','client_id','event','created_at'])
  }finally{sqlite.close()}
 })
 
@@ -142,6 +146,10 @@ test('disabled and revoked households lose authorization to identity even with a
      {authorization:'Bearer '+token.body.access_token})
    assert.equal(r.status,401)
    assert.equal((await authorize(member)).status,403)
+   // Removing household membership must not be blocked by in-flight OAuth FKs.
+   sqlite.prepare("DELETE FROM household_members WHERE user_id='member'").run()
+   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM oauth_access_tokens WHERE user_id='member'").get().n,0)
+   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM oauth_authorization_codes WHERE user_id='member'").get().n,0)
  }finally{sqlite.close()}
 })
 
