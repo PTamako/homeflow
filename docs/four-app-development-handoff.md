@@ -861,3 +861,22 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 新知学主要 Commit（先后顺序）：`55a7c52cf64a229f1d7929805231c75d8aed412b`（exam 后端）、`53fe3c5f2fbd6e8d7660f7959684743960f14a72`（language 后端）、`83d1e043ae2dae41e9531684388ec2c6fbd07a01` / `691db9714d87b32cee9208287cbc98ce2545d4d8`（双 PWA）、`c24326cb291fd89c8bc7aa93988cc45cc01efd63` / `1c1cfb92a2b034e9dfae5a93186490e4e3efb262`（fixture + 六条 SQLite 拒绝测试）、`dc3fbf8cf499b182bd95ed44c3ff8e0ef8424681` / `c5527b3634fd807dbf8915e3877529eeafa841ea`（busy lock + PWA 回归）、`f1f550702fb8d913f2d6d5be1e4472ddd47395b2` / `31fb20d5ff506ec75b9455d46366f463d5cfcd5f` / `8afdae66bc77a6fb9b0da4929d1105e5780ee0d9`（HF 切号通知、legacy 访问隔离、测试）、`14d40fb63bbddc4546aea9d6a80b191fa3873a93`（文档）、`6d2a6a80dd19d17da1f45cf790dadd5bc6a8c2c7` / `8b13764b29553c2c329d5ae43bf2f67db395cc8d`（不确定身份 fail-closed + 测试）。
 - **注意 CI 状态：本节首次记录时，最新完整 [知学 Validate](https://github.com/PTamako/it-study-platform/actions?query=branch%3Afeature%2Fhomeflow-identity-isolated-20261113) 尚未对精确最终 HEAD `8b13764b...` 返回 `completed/success`；前面多次 CI 因新 Commit 取消，属于中间态，不能据此宣称通过。必须等最新 CI 真实结果后在本交接文件追加最终核验记录。** 此前基线 [知学 #43475655647](https://github.com/PTamako/it-study-platform/actions/runs/43475655647) completed/success，但该基线不涵盖本轮。
 - HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 继续维持 **open/Draft/未合并**，不执行生产迁移、不启用身份或审批新开关、不部署 Workers/Pages、不动四个生产 D1 或 R2 对象、不创建 Preview。原 A PASS 不代表允许执行 F。后续优先继续独立目标执行器/家計簿金融稳定 ID/旧 App 完整队列隔离和真机 E2E；每模块独立绿 CI 再交接。
+
+
+## 19. 2026-11-14 B～E 增量：家計簿账户创建与修改原 actor 栅栏
+
+> 继续现有家計簿 Draft #309，与 §18 知学账号切换防串号模块并行。两个模块分别修改独立仓库的现有原 PR，没有改生产数据/部署；没有跨仓 cherry-pick 或合并。**A 阶段用户加密备份 + Mac SQLite 本地恢复/哈希、Google Drive 验证全部 PASS，非待用户完成；Cloudflare 隔离恢复演练及 F 上线授权仍未进行。**
+
+### 19.1 家計簿 #309 / C：金融账户设置切号后不能把旧操作写给新 HomeFlow actor
+
+- 原分支 `feature/homeflow-sso-isolated-foundation-20261113` / [Draft #309](https://github.com/PTamako/kakebo_jp/pull/309)；`functions/api/family-finance/[[path]].js` 的 `POST /accounts` / `PATCH /accounts/:id` 现在都检查 **`data.expected_user_id===user.user_id`**，真实 `user` 仍是每请求重新 introspect 的 HomeFlow 身份。这是**原始操作防串号栅栏**，不是用客户端字符串覆盖服务器已验证 actor。错误/缺少原 actor 在 D1 设置/审计写入前 403 `ACTOR_CHANGED`，任何 owner/member 的原授权范围保持原样。
+- `src/FamilyFinanceAccess.vue` 的新建、修改账户 payload 增加最初已验证的 `person.user_id`；原 `epoch` 拒绝旧请求回执、`version` CAS、owner 管两人、member 仅本人、legacy 账户不能通过新 API 修改的安全门槛没有被删除。
+- `tests/homeflow-sso-isolated.test.mjs` 双人 Cookie+实际 SQLite：旧成员 POST 在另一 Cookie 身份下被拒、没有原 user id 时拒绝、account create/update 失败前后表和审计行数不变；合法成员可增改账户，家庭 `entries` 所有旧明细字节保持不变。旧 test helper 仅对账户新建/编辑以其真实发放 Cookie 的 actor 自动填入最初 user ID，显式错误 ID 仍覆盖并测试拒绝。`tests/family-finance-ui.test.mjs` 追加前端/后端双向字段断言。
+- 代码 Commit `1ee723f340c8f9d6e6835f95169f85b538978cd2`、`394a153db39eaebdd126419ebd22268dfc672048`、`6acddcc98878da8734370c7c2c04d44815239b63`、`e18323576a3b8f67fcdc9599563f215e31daab9e`、`6b66a66536ac238d620968f37324f59e7cbaf0cb`；后续追加文档-only `576af15e305e19fd95e22f65815a177ab3a79c98`（仅 Draft 内）。最新**精确代码 HEAD 的 [家計簿 Validate #43491760323](https://github.com/PTamako/kakebo_jp/actions/runs/43491760323) 已 `completed/success`**。Mobile WebKit Smoke 为独立流程，在最终检查前不要冒充已通过。
+- **仍未实现完整 C**：旧信用卡/储值/SBI/定投/固定费/账单的稳定个人 ID 的全量无损迁移、全部旧写路由的权限与账户映射替换、家庭完整统计及真实双人 iPhone/恢复验证。此模块只针对新的个人账户设置创建/编辑安全，未更改正式家計簿记账交易、余额公式或生产 D1 数据。
+
+### 19.2 与 §18 知学 Stage B/E 的关系
+
+- 知学 `worker/homeflow-exams.ts` 和 `worker/homeflow-language.ts` 的六个 POST 原用户栅栏与家計簿账户设置相同设计：客户端声明原操作 actor，服务器永远以重新验证的 HomeFlow Cookie 决定真正 actor；错误在写入前拒绝。知学的 `zhixue:legacy-cache-quarantine-v1` 只防旧本机资料被新成员**自动显示/认领**，不删除旧资料；旧 App.vue 全量缓存/IDB/离线 pending 用户命名空间仍待实现。
+- 本节提交时知学新代码完整 CI [Validate #43491407028](https://github.com/PTamako/it-study-platform/actions/runs/43491407028) 尚未最终完成；先前 [#43490495841](https://github.com/PTamako/it-study-platform/actions/runs/43490495841) 失败**仅因新 PWA 测试正则字面量斜线未转义 `SyntaxError`**，已经在代码 Commit `0e985b297aa8cbed6f6cecf864a212f3e2370107` 修正，后续只能在最新 run `completed/success` 后声称本轮成功。§18 文档-only [HomeFlow Validate #43490663447](https://github.com/PTamako/homeflow/actions/runs/43490663447) **已 `completed/success`**。
+- **所有** HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 仍为 Draft，全部新身份/审批功能 flags OFF，全部开发 SQL 文件未在正式 D1 运行，未合并会生产部署的 PR，未在生产 Cloudflare Workers/Pages/D1/R2 做写操作，未创建任何 Preview。真实 iPhone PWA、Cloudflare 独立恢复/回滚、生产 F 上线审批分别待做。
