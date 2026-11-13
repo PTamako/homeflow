@@ -342,3 +342,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 本检查点基线（读自实际 GitHub）：HomeFlow Draft #305 b8b877388639b1a2b3ac19dbca58ea8072b8a037；HomeFlow Draft #306 3e08197422efbe96419004cfe1fe6f26ce99f515（CI 43428049072 success）；家計簿 Draft #309 baab1adbad163f0ad6fa377827f0f60de0d1c443（Validate 43427933666 success）；知学 Draft #179 9e8297741b8da8961b949094d8d255c7d992b82b；文书 Draft #97 e0bb5f7bfdbb7e9dbae747192be87ff97656076a。下次按最新 HEAD/CI 重新核查。
 - 本轮已存在但未执行的 HomeFlow 0055 和家計簿 0026 是受限现金目标执行器所需迁移；不可据文件存在推断生产已执行。信用卡、储值卡、SBI、固定费与文书写入执行尚未覆盖。
 - 交接文档也只走 Docs-only PR，因为 HomeFlow main push 会触发 deploy；用户 A 未完成之前**不可合并触发自动生产部署**。
+
+### 9.1 Stage D HomeFlow 审批中心 UI（2026-11-13，独立功能完成自动 CI，未上线）
+
+- 功能 Draft [HomeFlow #306](https://github.com/PTamako/homeflow/pull/306)，分支 feature/family-approval-state-machine-20261113，最新本轮模块 Commit **ca7a991692a98f51ffcb89860188cf735914f2aa**；[Validate HomeFlow #43429054673](https://github.com/PTamako/homeflow/actions/runs/43429054673) **success**（包含服务端回归与 Vue/TypeScript build）。本次更新文档不合并，不会触发 Cloudflare deploy。
+- 新组件 src/components/ApprovalCenter.vue，已挂载到 src/components/ManagePage.vue：管理员/成员按真实已登录 user ID 查看相同家庭内各自有权限的审批记录；状态筛选、每页 5 条、上一页/下一页、手动刷新；管理员申请批准/拒绝需二次确认；批准后的现金单独执行需再次二次确认，明确显示「已批准 · 未入账」与「已生效」不同状态。列表不展示文书原文/消费金额或密钥。
+- worker/approvals.js 新增已登录 GET /api/approvals/status 轻量 flag 探测（无 D1 数据读取），默认 APPROVALS_ENABLED OFF 时 Vue 不显示审批模块，不反复轮询；切换用户/离开管理时清空上一个用户列表并撤销异步旧请求写屏；新增 tests/household-approvals.test.mjs 证明默认 OFF、无申请表/审计写入、独立执行开关状态均正确。
+- **未完成**：Push/通知深链接、拒绝/取消/过期的自动状态刷新、跨 App 真实 Cloudflare Service Binding 执行联调、所有金融目标的执行器、完整审批状态流转 UX 与真机双人审查；此次只是 Draft 界面和已存在的受限现金执行器，不是生产系统上线。
+- **生产维持原状**：HomeFlow 0053/0054/0055、家計簿 0022～0026 仍未执行，所有身份/审批/执行开关 OFF，功能 PR #306 不合并，A=待用户完成且不再由开发助手处理。
