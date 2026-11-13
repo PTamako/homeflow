@@ -3,7 +3,7 @@
 // never marks an approval executed. Browser clients cannot access this route.
 // This only answers whether HomeFlow *still* attests a particular immutable
 // approval digest and living owner/member relationship.
-import {json,constantEqualHex,nowMs} from './security.js'
+import {json,constantEqualHex,nowMs,sha256} from './security.js'
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const hash=/^[a-f0-9]{64}$/
 const key=/^[a-z0-9._:-]{12,128}$/i
@@ -29,13 +29,17 @@ async function signature(secret,client,stamp,raw){
 function valid(body){
  if(!body||typeof body!=='object'||Array.isArray(body))return false
  if(Object.keys(body).some(k=>!['request_id','resource_id','household_id',
-  'requester_user_id','payload_sha256','idempotency_key','expected_version'].includes(k)))
+  'requester_user_id','payload_sha256','idempotency_key','expected_version',
+  'purpose','execution_nonce'].includes(k)))
   return false
  if(!uuid.test(body.request_id)||!resource.test(body.resource_id)||
   !hash.test(body.payload_sha256)||!key.test(body.idempotency_key)||
   typeof body.household_id!=='string'||body.household_id.length>128||
   !body.household_id||typeof body.requester_user_id!=='string'||
   !body.requester_user_id||body.requester_user_id.length>128)return false
+ if(body.purpose!==undefined&&body.purpose!=='execute')return false
+ if(body.purpose==='execute'&&!hash.test(body.execution_nonce))return false
+ if(body.purpose!=='execute'&&body.execution_nonce!==undefined)return false
  if(body.expected_version!==null&&body.expected_version!==undefined&&
   (!Number.isSafeInteger(body.expected_version)||body.expected_version<0))return false
  return true
@@ -70,7 +74,8 @@ export async function approvalVerificationRoute(request,env){
   "SELECT r.request_id,r.status,r.source_app,r.target_app,r.operation,"+
   "r.resource_type,r.resource_id,r.household_id,r.requester_user_id,"+
   "r.approver_user_id,r.payload_sha256,r.idempotency_key,r.expected_version,"+
-  "r.reviewed_at,r.expires_at,requester.role AS requester_role,"+
+  "r.reviewed_at,r.expires_at,r.execution_nonce_hash,r.execution_lease_until,"+
+  "requester.role AS requester_role,"+
   "requester_user.disabled_at AS requester_disabled,"+
   "approver.role AS approver_role,approver_user.disabled_at AS approver_disabled "+
   "FROM household_approval_requests r "+
@@ -82,7 +87,9 @@ export async function approvalVerificationRoute(request,env){
   "LEFT JOIN users approver_user ON approver_user.id=r.approver_user_id "+
   "WHERE r.request_id=?1 LIMIT 1"
  ).bind(body.request_id).first()
- if(!row||row.status!=='approved'||row.source_app!=='kakebo'||
+ const forExecution=body.purpose==='execute'
+ if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
+  row.source_app!=='kakebo'||
   row.target_app!=='kakebo'||row.operation!=='finance.entry.create'||
   row.resource_type!=='finance_entry'||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
@@ -93,13 +100,19 @@ export async function approvalVerificationRoute(request,env){
   row.requester_role!=='member'||row.requester_disabled!=null||
   row.approver_role!=='owner'||row.approver_disabled!=null||
   row.approver_user_id===row.requester_user_id||
-  !row.reviewed_at||Number(row.expires_at)<=nowMs())
+  !row.reviewed_at||Number(row.expires_at)<=nowMs()||
+  (forExecution&&(
+   !row.execution_nonce_hash||Number(row.execution_lease_until)<=nowMs()||
+   !constantEqualHex(await sha256(body.execution_nonce),row.execution_nonce_hash)
+  )))
   return reject('approval_not_executable',409)
  // No decision-derived state transitions and no per-read audit inserts.
  return json({ok:true,verified:true,request_id:row.request_id,
   resource_id:row.resource_id,payload_sha256:row.payload_sha256,
   idempotency_key:row.idempotency_key,household_id:row.household_id,
   requester_user_id:row.requester_user_id,expected_version:row.expected_version,
+  approver_user_id:row.approver_user_id,
   approved_at:row.reviewed_at,expires_at:row.expires_at,
+  execution_authorized:forExecution,execution_status:row.status,
   applied:false,ledger_changed:false})
 }
