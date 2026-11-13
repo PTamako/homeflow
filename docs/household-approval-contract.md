@@ -49,3 +49,15 @@
 - **审批只创建申请，不代表同意或生效**：后续 owner 在现有 `/api/approvals/{id}/review` 才能人工批准；本模块没有家計簿 D1 写入、没有自动执行，也不修改 `executing/applied`。
 
 [HomeFlow Validate #43423671632](https://github.com/PTamako/homeflow/actions/runs/43423671632) success，覆盖首提、重复、不同 digest 的幂等冲突、跨家庭/无效成员、账号禁用、过期/伪造签名、Cookie/Origin 拒绝及零账本副作用。与 [家計簿 Validate #43423823312](https://github.com/PTamako/kakebo_jp/actions/runs/43423823312) 对接。**真正入账及通知/审批 UI 尚未完成，切勿将 submit/proof 与 applied 混同。**
+
+
+## Stage D 增量：文书助手来源专用可信审批提交（Draft；不含执行器）
+
+`worker/document-approval-submission.js` 在原家計簿签名提交之外新增独立 `POST /api/internal/approvals/document-submit`，由 `worker/index.js` 在浏览器 session/同源路由之前隔离处理。仅同时满足 `APP_ENV=production`、`APPROVALS_ENABLED=true`、额外 `DOCUMENT_APPROVAL_SUBMISSION_ENABLED=true`、**专用** 64 hex 格式 32-byte `DOCUMENT_APPROVAL_SUBMISSION_SECRET` 且真实 D1 可用时启用，当前 Draft 全部保持 OFF。
+
+- 唯一后台客户端 `X-Approval-Client: jp-document-assistant`；毫秒时间戳 ±5 分钟，HMAC-SHA256 对 `jp-document-assistant\n{timestamp}\n{raw_json}`，以 Secret 解码后的 **32 个原始 bytes** 为密钥。不接受浏览器 Cookie、Origin、Authorization、任意其他签名客户端或旧家計簿密钥。
+- 严格只接受五个字段：`household_id`、`requester_user_id`、`resource_id`（32 hex candidate ID）、`payload_sha256`（64 hex）、`target_app`；禁止原文、金额、身份证/金融信息、任意 URL/SQL 或任意自定义操作类型。
+- 目标白名单：`kakebo → document.sync.finance`、`homeflow → document.sync.homeflow`、`it-study-platform → document.sync.study`。后端固定 `source_app=jp-document-assistant`、`resource_type=document_sync_candidate`、`payload_schema_version=1` 和 `idempotency_key=jpda:sync:<candidate_id>`；不让客户端自选请求身份、操作/重试键。
+- 复用原 `approvalRoute` 的真实 `household_members`/disabled 角色校验、唯一请求/append-only member 事件、完整 digest 幂等冲突判断；在创建后再逐列比对 D1 不可变原始记录。返回 `status=pending` 等真实状态、`applied:false`、`target_changed:false`，绝不宣称已批准/已执行或触发旧目标写入。
+- 配套文书助手 [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 的未执行 `0023_document_member_sync_intents.sql`：原文/目标 payload 只在文书助手本人 D1 快照中保留；签名提交 HomeFlow 的仅为 digest。网络丢回执以相同 candidate ID + digest 幂等重放；目标财务/任务/知学的安全执行器、回执和人工真机验收**未完成**，不得借此开通 production。
+- 本轮真实 SQLite/HMAC 回归：`tests/document-approval-submission.test.mjs`，三种目标创建 pending、重复只有一个 request+audit、不同 digest 或 target 409、错签名/过期/Cookie/Origin/owner/错户/禁用成员/多余敏感字段拒绝。所有内容只在原 Draft PR，生产 0053–0055 迁移、Secret、flags、Worker/Pages 均未经执行；A 用户本地加密备份 PASS 不代表生产发布授权。
