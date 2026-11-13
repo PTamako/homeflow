@@ -16,6 +16,7 @@ type Approval={
 const props=defineProps<{
  active:boolean;userId:string;isOwner:boolean
  members?:Array<{id:string;loginName:string}>
+ profiles?:Array<{memberUserId:string|null;displayName:string}>
 }>()
 const allowedFilters=['','pending','approved','applied','rejected',
  'failed_retryable','conflict','cancelled'] as const
@@ -47,7 +48,8 @@ const actionNames:Record<string,string>={
 const available=computed(()=>props.active&&enabled.value)
 function person(id:string|null){
  if(!id)return '家庭成员'
- return props.members?.find(m=>m.id===id)?.loginName||(id===props.userId?'我':'家庭成员')
+ return props.profiles?.find(p=>p.memberUserId===id)?.displayName||
+  props.members?.find(m=>m.id===id)?.loginName||(id===props.userId?'我':'家庭成员')
 }
 function time(ms:number|null){
  if(!ms||!Number.isFinite(ms))return ''
@@ -64,6 +66,7 @@ async function getJson(url:string,options?:RequestInit){
 }
 async function discover(){
  const ticket=++epoch
+ cancelConfirm()
  enabled.value=false;executionEnabled.value=false;expanded.value=false
  items.value=[];page.value=0;hasMore.value=false
  error.value='';message.value='';busyId.value=''
@@ -110,8 +113,12 @@ function changePage(delta:number){
  page.value=Math.max(0,page.value+delta)
  void load(false)
 }
-async function act(item:Approval,kind:'approve'|'reject'|'execute'){
- if(busyId.value||loading.value||!available.value||!props.isOwner)return
+async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
+ const allowed=kind==='cancel'
+  ?!props.isOwner&&item.requester_user_id===props.userId&&item.status==='pending'
+  :props.isOwner&&(kind==='execute'
+   ?executionEnabled.value&&item.status==='approved':item.status==='pending')
+ if(busyId.value||loading.value||!available.value||!allowed)return
  const id=item.request_id,account=props.userId
  const chosenStatus=item.status
  const options=kind==='execute'
@@ -120,23 +127,30 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'){
   :kind==='approve'
    ?{title:'批准家庭申请',confirmLabel:'确认批准',
      message:'批准后还需要单独执行，账本此时不会立即改变。'}
-   :{title:'拒绝家庭申请',confirmLabel:'确认拒绝',
-     message:'拒绝后不会修改家庭正式账本。',danger:true}
+   :kind==='cancel'
+    ?{title:'撤回家庭申请',confirmLabel:'确认撤回',
+      message:'只有待审批申请可以撤回，撤回后管理员不能再批准。'}
+    :{title:'拒绝家庭申请',confirmLabel:'确认拒绝',
+      message:'拒绝后不会修改家庭正式账本。',danger:true}
  if(!await confirmAction(options))return
  if(account!==props.userId||!props.active)return
  // Never execute an item whose status moved while confirmation was open.
- if(item.status!==chosenStatus)return
+ if(item.status!==chosenStatus||
+   (kind==='cancel'&&(props.isOwner||item.requester_user_id!==props.userId))||
+   (kind!=='cancel'&&!props.isOwner))return
  busyId.value=id;error.value='';message.value=''
  try{
   const path=kind==='execute'?'/api/approvals/'+id+'/execute':
+   kind==='cancel'?'/api/approvals/'+id+'/cancel':
    '/api/approvals/'+id+'/review'
-  const payload=kind==='execute'?{}:{decision:kind}
+  const payload=kind==='execute'||kind==='cancel'?{}:{decision:kind}
   const result=await getJson(path,{method:'POST',
    headers:{'content-type':'application/json'},
    body:JSON.stringify(payload)})
   if(account!==props.userId||!props.active)return
   message.value=kind==='approve'?'已批准，尚未入账':
    kind==='reject'?'已拒绝，不会入账':
+   kind==='cancel'?'已撤回，无法再批准':
    result.applied===true?'已执行并入账':'执行结果待核对'
  }catch(e){if(account===props.userId)error.value=(e as Error).message}
  finally{
@@ -193,7 +207,12 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'){
      <p v-if="item.status==='approved'" class="approval-note">
       已批准，账本尚未生效
      </p>
-     <div v-if="isOwner&&item.status==='pending'" class="approval-actions">
+     <div v-if="!isOwner&&item.requester_user_id===userId&&item.status==='pending'"
+       class="approval-actions">
+      <button class="outline" type="button" :disabled="!!busyId||loading"
+       @click="act(item,'cancel')">撤回申请</button>
+     </div>
+     <div v-else-if="isOwner&&item.status==='pending'" class="approval-actions">
       <button class="outline" type="button" :disabled="!!busyId||loading"
        @click="act(item,'reject')">拒绝</button>
       <button class="primary" type="button" :disabled="!!busyId||loading"
