@@ -180,6 +180,24 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 **继续开发必须先核对 live 状态**：不重复执行 A 阶段临时 SQL export、不重复应用任何迁移、不重建 Preview，不把 CI success 当作线上功能。文书 PWA 功能虽已写代码，仍缺正式备份、跨 App 注销撤销、HomeFlow 真正启用及原设备验收。所有已存在的数据与历史归属规则保持不变。
 
+
+## 6.2 2026-11-13 家計簿 B 阶段身份底座增量（用户明确备份稍后自行完成）
+
+**用户新指令**：备份与恢复由用户之后在电脑上自行处理；此时继续开发尚不依赖生产迁移的代码与测试。**这不是对正式写迁移/上线的豁免**：A 阶段的持久加密备份及隔离恢复仍为正式发布硬门槛，本次没有重新执行任何生产 SQL/R2 写入。
+
+**新功能实际保存**：[家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309)，分支 `feature/homeflow-sso-isolated-foundation-20261113`，相对 main `3bac4610078729556a7068c761e3e7c1729ab27d` 开发，**PR Draft 未合并、未部署**。提交（从早到晚）：
+- `6974548f0bd3f8bb5d976ad0eb62fdee229cefcc`：新增 `migrations/0022_homeflow_identity_foundation.sql`，HomeFlow 用户唯一绑定、owner/member 身份、5 分钟一次性 Safari 回调状态、单独应用会话及带真实 actor 的身份审计。**未在正式 D1 执行，也不能自动重跑旧迁移**。该迁移不改旧家账、个人金融设置、已有设备会话。
+- `75319eb77a8b7447c379c7311a11afc6da019c75`：新 `functions/api/homeflow-sso/[[path]].js`，默认开关关闭、缺绑定或 Preview 环境直接 503；后端 HomeFlow Authorization Code + PKCE、固定 audience、原 PWA 一次性 proof，Safari 仅加密暂存 code，首次 owner 与原家計簿有效设备会话双重证明，member 在同家庭 owner 绑定后才建立独立空身份。
+- `8a27a0baf9c3bfd1eec24e055ff9b3cfe114c9d9`：Node 内存 SQLite + 真路由测试，验证浏览器分离、重放/盗用、错误 Origin、账号置换、先 owner 后 member、旧财务数据不变及 **member 的 SSO Cookie 访问原 /api/entries 为 401**。
+- `2fade8f00202e02fd451e7f1e17131c3c153585c`：功能安全说明 `docs/homeflow-sso-phase-b.md`。
+- `87d46cc27044e642888b76cd55c7ac12774bbe6c`：第一轮 CI 明确发现 SQLite 严格解析不接受 SQL 状态文本双引号，已更正为单引号。**失败已经修复，不要恢复旧写法**。
+
+**实际 CI 验证**：家計簿 [Validate #43400307504](https://github.com/PTamako/kakebo_jp/actions/runs/43400307504) **success**；日志显示 `845 passed / 0 failed`，含新增 6 组完整 HomeFlow SSO 测试；Vite 构建与生产依赖审计通过。此前 [Validate #43400186459](https://github.com/PTamako/kakebo_jp/actions/runs/43400186459) 为发现双引号问题而失败，不能称首轮即通过。独立 [Mobile WebKit Smoke #43400307439](https://github.com/PTamako/kakebo_jp/actions/runs/43400307439) 在最近一次查询时仍在运行，需重新取 run/job 结论，不能假定实机 iPhone 测试通过。
+
+**重要授权隔离**：新 `__Host-kakeibo_hf` Cookie **不被旧 `functions/api/[[path]].js` 识别**，所有新 SSO 状态响应明确 `ledger_access:false`。`KAKEIBO_HOMEFLOW_SSO_ENABLED` **绝不能启用**，否则仍无完善的财务 API 权限路由；这阶段不是“成员能登录并看到共享账本”。尚无正式 client allowlist/服务绑定，未加真正跨 App 停用/注销会话撤销。家計簿的旧单人访问码与线上功能未改变。
+
+**后续顺序**：A 由用户电脑完成四 D1/三 R2 加密可恢复备份后记录 SHA/隔离恢复报告（绝不贴秘密）；B 先补齐 HomeFlow 与三个业务应用实际 server-side 会话实时撤销/授权、知学统一登录、PWA 前端登录/切换，完成预发布联调；C 基于稳定账户 ID 修正 `payment_sources.name` 主键和同名账户问题，按 owner_user_id 隔离个人金融，保持账本和统计家庭共享；D 仅在 HomeFlow 审核后以幂等事务真正记账，不可将“已批准”当“已生效”；E 文书与知学按真实 user_id 隔离；F iPhone 双人真实验收后逐步清退旧登录。**不要重新创建 Preview 或直接合并 Draft #309、#305、#306、#97**。
+
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
