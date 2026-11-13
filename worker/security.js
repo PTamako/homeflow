@@ -89,13 +89,26 @@ export async function sessionFor(request, db) {
 // are cached. A different binding or environment always forces a new identity read.
 const dbIdentityCache=new WeakMap()
 const DB_IDENTITY_TTL_MS=15000
-// Require the latest deployed business schema without rejecting compatible future migrations.
-export async function verifiedDatabase(env) {
+// Full schema audit remains mandatory for /api/health and scheduled jobs.
+// Ordinary authenticated API traffic uses a two-row indexed identity + migration
+// preflight instead of scanning sqlite_master and table PRAGMAs on every isolate
+// cold start. The health/deploy path still fails closed on missing triggers/views.
+export async function verifiedDatabase(env,{quick=false}={}) {
   const expected=env.APP_ENV==='production'?'homeflow':env.APP_ENV==='preview'?'homeflow-preview':null
   if (!expected || !env.DB?.prepare) return false
   const now=Date.now(),cached=dbIdentityCache.get(env.DB)
-  if(cached?.name===expected && cached.expiresAt>now)return true
+  if(cached?.name===expected && cached.expiresAt>now && (quick||cached.deep))return true
   try {
+    if(quick){
+      const identity=await env.DB.prepare(`SELECT database_name,
+        EXISTS(SELECT 1 FROM d1_migrations
+          WHERE name='0052_achievement_thresholds.sql') AS baseline_ready
+        FROM environment_identity WHERE key='current' LIMIT 1`).first()
+      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1
+      if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS,deep:false})
+      else dbIdentityCache.delete(env.DB)
+      return valid
+    }
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations
        WHERE name='0046_reward_wish_savings_credit.sql') AS required_migration_ready,
@@ -204,7 +217,7 @@ export async function verifiedDatabase(env) {
       Number(identity.points_triggers_ready)===10 &&
       Number(identity.rewards_tables_ready)===5 &&
       Number(identity.rewards_triggers_ready)===4
-    if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS})
+    if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS,deep:true})
     else dbIdentityCache.delete(env.DB)
     return valid
   }catch{dbIdentityCache.delete(env.DB);return false}
