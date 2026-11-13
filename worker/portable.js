@@ -10,6 +10,15 @@ const str=(x,max)=>typeof x==='string'&&x.length<=max?x:null
 const amount=x=>Number.isSafeInteger(x)&&x>=0&&x<=100000000000
 const signed=x=>Number.isSafeInteger(x)&&Math.abs(x)<=100000000000
 const optionalDate=x=>x===undefined||x===null||x===''||date(x)
+// A portable backup must not rewrite a family member's completion to the
+// account running the restore. Unknown members are rejected by the restore
+// route rather than silently assigning somebody else's credit to the owner.
+const restoredActor=(r,u)=>{
+  if(!r.completed_at)return null
+  if(r.completed_by==null||r.completed_by==='')return u // legacy ZIP
+  return typeof r.completed_by==='string'&&r.completed_by.length<=100?r.completed_by:null
+}
+const completionDatasets=new Set(['tasks','shopping','routineMarks','tripProgress','planCompletionMarks'])
 const optionalDeletion=x=>x==null||x===''||(typeof x==='string'&&
  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(x))
 const profilesSQL="SELECT id,type,display_name,birthday,relation,adopted_on,weight_grams,notes FROM family_profiles "+
@@ -49,7 +58,7 @@ const queries=[
     "WHERE s.household_id=?1 AND g.created_by=?2 ORDER BY s.period_key LIMIT 501"],
   // New completion records must be exported with their parent plan. The
   // household AND creator checks prevent other members' private marks leaking.
-  ['planCompletionMarks',`SELECT m.plan_type,m.plan_id,m.period_key,m.completed_at,m.prior_status
+  ['planCompletionMarks',`SELECT m.plan_type,m.plan_id,m.period_key,m.completed_at,m.completed_by,m.prior_status
     FROM plan_completion_marks m WHERE m.household_id=?1 AND
     ((m.plan_type='wish' AND EXISTS(SELECT 1 FROM wishes w WHERE w.id=m.plan_id
        AND w.household_id=m.household_id AND w.created_by=?2))
@@ -156,6 +165,8 @@ function normalized(key,r,h,u) {
       if(!str(r.title,150)||str(r.notes||'',1000)===null||!optionalDate(r.due_on))return null
       const bonus=r.bonus_points??0,first=id(r.assignee_user_id)?r.assignee_user_id:null
       const second=id(r.second_assignee_user_id)?r.second_assignee_user_id:null
+      const doneBy=restoredActor(r,u)
+      if((r.completed_at&&!doneBy)||(v==='private'&&doneBy&&doneBy!==u))return null
       if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000||
          (second&&(!first||second===first||v!=='household'||bonus!==0))||
          (bonus>0&&(!first||first===u||v!=='household')))return null
@@ -165,7 +176,7 @@ function normalized(key,r,h,u) {
          "(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11,?12,?13,"+
          "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15,?16,"+
          "(SELECT user_id FROM household_members WHERE user_id=?17 AND household_id=?2))",
-        [r.id,h,u,v,r.title,r.notes||'',r.due_on||null,r.completed_at||null,r.completed_at?u:null,
+        [r.id,h,u,v,r.title,r.notes||'',r.due_on||null,r.completed_at||null,doneBy,
          id(r.subject_profile_id)?r.subject_profile_id:null,id(r.client_request_id)?r.client_request_id:null,
          ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
          r.remind_enabled===0?0:1,first,r.deleted_at||null,bonus,second]]
@@ -193,12 +204,14 @@ function normalized(key,r,h,u) {
          (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
       const first=id(r.assigned_to)?r.assigned_to:null
       const second=id(r.second_assignee_user_id)?r.second_assignee_user_id:null
+      const doneBy=restoredActor(r,u)
+      if((r.completed_at&&!doneBy)||(v==='private'&&doneBy&&doneBy!==u))return null
       if(second&&(!first||second===first||v!=='household'))return null
       return ["INSERT OR IGNORE INTO shopping_items(id,household_id,created_by,visibility,title,quantity,completed_at,completed_by,due_on,ledger_entry_id,deleted_at,assigned_to,second_assignee_user_id) "+
           "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,"+
           "(SELECT user_id FROM household_members WHERE user_id=?12 AND household_id=?2),"+
           "(SELECT user_id FROM household_members WHERE user_id=?13 AND household_id=?2))",
-          [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,r.completed_at?u:null,
+          [r.id,h,u,v,r.title,r.quantity,r.completed_at||null,doneBy,
            r.due_on||null,r.ledger_entry_id||null,r.deleted_at||null,
            first&&(v==='household'||first===u)?first:null,second]]
     case 'memories':
@@ -239,16 +252,24 @@ function normalized(key,r,h,u) {
         [h,r.routine_id,r.occurrence_on,r.assignee_user_id,r.second_assignee_user_id||null,
           r.bonus_points,created,u]]
     }
-    case 'routineMarks':
+    case 'routineMarks': {
       if(!id(r.routine_id)||!date(r.occurrence_on))return null
+      const doneBy=restoredActor(r,u)
+      if(r.completed_at&&!doneBy)return null
       return ["INSERT OR IGNORE INTO routine_marks(routine_id,occurrence_on,completed_at,completed_by,skipped_at) "+
-         "SELECT r.id,?2,?3,?4,?5 FROM routines r WHERE r.id=?1 AND r.household_id=?6 AND r.created_by=?7",
-         [r.routine_id,r.occurrence_on,r.completed_at||null,r.completed_at?u:null,r.skipped_at||null,h,u]]
-    case 'tripProgress':
+         "SELECT r.id,?2,?3,?4,?5 FROM routines r WHERE r.id=?1 AND r.household_id=?6 AND r.created_by=?7 "+
+         "AND (r.visibility='household' OR ?4=?7)",
+         [r.routine_id,r.occurrence_on,r.completed_at||null,doneBy,r.skipped_at||null,h,u]]
+    }
+    case 'tripProgress': {
       if(!id(r.trip_id)||!str(r.item_id,100)||!r.item_id)return null
+      const doneBy=restoredActor(r,u)
+      if(r.completed_at&&!doneBy)return null
       return ["INSERT OR IGNORE INTO trip_progress(trip_id,item_id,completed_at,completed_by) "+
-        "SELECT t.id,?2,?3,?4 FROM trips t WHERE t.id=?1 AND t.household_id=?5 AND t.created_by=?6",
-        [r.trip_id,r.item_id,r.completed_at||null,r.completed_at?u:null,h,u]]
+        "SELECT t.id,?2,?3,?4 FROM trips t WHERE t.id=?1 AND t.household_id=?5 AND t.created_by=?6 "+
+        "AND (t.visibility='household' OR ?4=?6)",
+        [r.trip_id,r.item_id,r.completed_at||null,doneBy,h,u]]
+    }
     case 'financeLinks':
       if(!['trip','goal'].includes(r.target_type)||!id(r.target_id)||!id(r.id)||
          !/^[1-9]\d{0,11}$/.test(String(r.external_entry_id)))return null
@@ -369,8 +390,10 @@ function normalized(key,r,h,u) {
            (r.period_key!=='once'||!['wished','planning','active'].includes(r.prior_status)))||
          (r.plan_type==='goal'&&r.prior_status!=null))return null
       const table=r.plan_type==='wish'?'wishes':'goals'
-      // Do not trust a backup's original completed_by identity. Only recreate
-      // a mark for a plan actually owned by the importing user.
+      // The plan must be owned by the importing user; any completion actor
+      // different from the owner must belong to the same household.
+      const doneBy=restoredActor(r,u)
+      if(!doneBy)return null
       const key=r.period_key
       if(r.plan_type==='goal'&&key!=='once'&&
          !/^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(key))return null
@@ -382,9 +405,10 @@ function normalized(key,r,h,u) {
       return [`INSERT OR IGNORE INTO plan_completion_marks
         (household_id,plan_type,plan_id,period_key,completed_at,completed_by,prior_status)
         SELECT ?1,?2,?3,?4,?5,?6,?7 WHERE EXISTS(
-          SELECT 1 FROM ${table} WHERE id=?3 AND household_id=?1 AND created_by=?6
+          SELECT 1 FROM ${table} WHERE id=?3 AND household_id=?1 AND created_by=?8
+            AND (visibility='household' OR ?6=?8)
           ${modeCheck})`,
-        [h,r.plan_type,r.plan_id,key,r.completed_at,u,r.prior_status??null]]
+        [h,r.plan_type,r.plan_id,key,r.completed_at,doneBy,r.prior_status??null,u]]
     }
     default:return null
   }
@@ -477,6 +501,19 @@ export async function portableRoute(request,db,path,session){
       return json({error:'invalid_restore_batch'},400)
     const instructions=items.map(r=>normalized(kind,r,household,user))
     if(instructions.some(x=>!x))return json({error:'invalid_restore_record'},400)
+    // Before any writes, verify every foreign completion actor against current
+    // household membership. A portable ZIP cannot create users or impersonate
+    // a partner who belongs to a different household.
+    const otherActors=[...new Set(completionDatasets.has(kind)
+      ?items.map(r=>restoredActor(r,user)).filter(actor=>actor&&actor!==user):[])]
+    if(otherActors.length){
+      const placeholders=otherActors.map((_,i)=>'?'+(i+2)).join(',')
+      const {results=[]}=await db.prepare(`SELECT user_id FROM household_members
+        WHERE household_id=?1 AND user_id IN (${placeholders})`)
+        .bind(household,...otherActors).all()
+      if(new Set(results.map(row=>row.user_id)).size!==otherActors.length)
+        return json({error:'restore_completion_actor_unavailable'},409)
+    }
     if(body.preview===true)return json({ok:true,dataset:kind,valid:items.length,readOnly:true})
     if(body.confirm!==true)return json({error:'confirmation_required'},409)
     try{
