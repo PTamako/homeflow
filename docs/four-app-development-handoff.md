@@ -85,7 +85,7 @@
 
 | 日期 JST | 仓库/功能 | 分支 | Commit SHA | PR | CI | 正式迁移 | Cloudflare 部署版本/100% | 生产验收 |
 |---|---|---|---|---|---|---|---|---|
-| 2026-11-13 | HomeFlow — 首建跨四项目交接文档；仅记录真实调查状态 | `docs/four-app-handoff-20261113` | 见 PR commit（提交后补录） | 创建后回填 | 待运行 | 不适用 | 不适用（文档改动） | 不适用 |
+| 2026-11-13 | HomeFlow — 首建跨四项目交接文档；仅记录真实调查状态 | `docs/four-app-handoff-20261113` | `1db3b510332bf3a2a37670584bc9a6bd7aa29aca`（首建提交） | [#304](https://github.com/PTamako/homeflow/pull/304) | 待核对 | 不适用 | 不适用（文档改动） | 不适用 |
 
 **填写准则**：任何生产迁移仅能填「未执行 / 已执行（附 migration、数据库、执行时间、验证 SQL 与 count/hash）/ 失败回滚 / 阻断」。不要只写「迁移好了」。所有部署须附 GitHub Actions run 和 Cloudflare deploy/version ID、100% traffic 证据；中断时能判断是否安全重试。
 
