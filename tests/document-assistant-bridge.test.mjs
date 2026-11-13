@@ -54,3 +54,22 @@ test('assignment to a different member requires explicitly funded bonus',async()
   assert.equal(ownBonus.status,422)
   assert.equal((await ownBonus.json()).error,'bonus_only_for_other_assignee')
 })
+
+test('signed household assignee picker is read-only and scoped to current household',async()=>{
+  let writes=0;
+  const db={prepare(sql){return {bind(...args){return {
+    async first(){assert.match(sql,/household_members/);assert.equal(args[0],actor);
+      return {household_id:'h1',user_id:actor}},
+    async all(){assert.match(sql,/WHERE hm.household_id=\?1/);assert.equal(args[0],'h1');
+      return {results:[{id:actor,label:'自己'}, {id:'other_user_12345',label:'家人'}]}},
+    async run(){writes++;throw Error('read-only lookup attempted mutation')}
+  }}}}};
+  const payload={source:'jp-document-assistant',actor_user_id:actor,idempotency_key:id,payload:{operation:'members'}};
+  const response=await documentAssistantBridge(await signed(payload),env({DB:db}));
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{ok:true,members:[
+    {id:actor,label:'自己',self:true},{id:'other_user_12345',label:'家人',self:false}]});
+  assert.equal(writes,0);
+  assert.equal((await documentAssistantBridge(await signed({...payload,actor_user_id:'unapproved_actor'}),
+    env({DB:db}))).status,403);
+});
