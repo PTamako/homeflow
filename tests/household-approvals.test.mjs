@@ -146,6 +146,39 @@ test('reject is final, cannot approve rejected request and never touches target 
   assert.equal((await f.call(sessions.member,'/api/approvals/'+id+'/cancel','POST',{})).status,409)
  }finally{f.sql.close()}
 })
+test('two simultaneous exact submissions converge on one request and one audit event',async()=>{
+ const f=fixture()
+ try{
+  const both=await Promise.all([
+   f.call(sessions.member,'/api/approvals','POST',entry('simultaneous-key-001')),
+   f.call(sessions.member,'/api/approvals','POST',entry('simultaneous-key-001'))
+  ])
+  assert.deepEqual(both.map(x=>x.status).sort(),[200,201])
+  assert.equal(both[0].body.request.request_id,both[1].body.request.request_id)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,1)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,1)
+ }finally{f.sql.close()}
+})
+test('SQL approval requires a real same-household owner and cannot change reviewer after decision',async()=>{
+ const f=fixture()
+ try{
+  const created=await f.call(sessions.member,'/api/approvals','POST',entry())
+  const id=created.body.request.request_id
+  assert.throws(()=>f.sql.prepare(
+    "UPDATE household_approval_requests SET status='approved' WHERE request_id=?").run(id),/APPROVAL_OWNER_REQUIRED/)
+  assert.throws(()=>f.sql.prepare(
+    "UPDATE household_approval_requests SET status='approved',approver_user_id='member' WHERE request_id=?").run(id),/APPROVAL_OWNER_REQUIRED/)
+  assert.throws(()=>f.sql.prepare(
+    "UPDATE household_approval_requests SET status='approved',approver_user_id='stranger' WHERE request_id=?").run(id),/APPROVAL_OWNER_REQUIRED/)
+  const approved=await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',{decision:'approve'})
+  assert.equal(approved.status,200)
+  assert.throws(()=>f.sql.prepare(
+    "UPDATE household_approval_requests SET approver_user_id='member' WHERE request_id=?").run(id),/APPROVAL_REVIEW_ACTOR_IMMUTABLE/)
+  assert.throws(()=>f.sql.prepare(
+    "UPDATE household_approval_requests SET status='applied' WHERE request_id=?").run(id),/INVALID_APPROVAL_TRANSITION/)
+ }finally{f.sql.close()}
+})
+
 test('idempotent submission returns same request; reused key with altered payload is refused',async()=>{
  const f=fixture()
  try{
