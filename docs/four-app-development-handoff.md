@@ -671,3 +671,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 真实 Commit：`0b0e4fabc888bd9e8c237f294bf7040f1e28ac43` (0188)、`aa4beb9a71283ca3a4ca57ebf6e272d8db3f2052` (新 Worker)、`ccb167078a30a3ec1d24afce5d78414805c70686` (路由)、`d0220285eca3904603739ce924bb472a6d950003` (SQLite 双人测试)、`5b879049459afae0013b72fc29666d592504094a` (PWA)、`b27befd711ceb80ae32d0b0b98f612a9f8f530d1` (统一身份入口)、`2b8f6905fbd9780478378007b3296e63a1a6df82` (旧 Worker 测试 loader)、`f0f4e2557bef62bcab18cbf83a6b3a29522c62aa` (PWA 检查)、`cf238213fe3fd69427a15f500d68bd88d036b065` (知学模块技术文档)。
 - **本节首次记载时**最新 [知学 Validate #43466100589](https://github.com/PTamako/it-study-platform/actions/runs/43466100589) 的 HEAD 是 `cf238213fe3fd69427a15f500d68bd88d036b065`，状态 `in_progress`，绝不能先写成功。必须实查回归、Vue build、本地迁移链及 Worker dry-run 的最终结论，失败要阅读日志并修复，然后补录真实 SHA/最终 CI。
 - 仍未完成：`0152_daily_word_reviews` 的个人数据和词汇选择/复习、主 App 原共享 localStorage/IndexedDB/待重试请求全站隔离、真实 iPhone Safari/PWA 双人切号/双设备/断网恢复 **待真机验证**、HomeFlow #305/#306、家計簿 #309、文书助手 #97 跨应用 B～E 审批/权限。第 10 节已记录的用户备份验证不能视为本轮获得生产迁移/合并授权；功能全部 Draft、生产禁令不变。
+
+
+### 12.1 知学每日听力模块完整 CI 最终成功（2026-11-14）
+
+- 已实际核对 [知学 #179 Validate #43466100589](https://github.com/PTamako/it-study-platform/actions/runs/43466100589)，代码 HEAD 精确为 **`cf238213fe3fd69427a15f500d68bd88d036b065`**，Run 最终 **`completed/success`**。具体步骤 `Run automated regression tests`、`Type-check and build frontend`、`Validate complete D1 migration chain locally`、`Validate Worker bundle without deploying` **全部 `completed/success`**，包含新增 0188、双账号 SQLite 和 PWA 无缓存隔离测试。该 CI 严格只在 GitHub Actions 隔离环境运行本地迁移与 Worker dry-run，**没有部署生产**。
+- 同步再查原 `PTamako/it-study-platform` PR **#179** 仍 `open / draft=true / merged=null`、HEAD 与上述 CI 一致；生产 `0180～0188` 未执行，`HOMEFLOW_STUDY_SSO_ENABLED`、`HOMEFLOW_STUDY_GRAMMAR_ENABLED`、`HOMEFLOW_STUDY_LISTENING_ENABLED` 的新功能仍未获生产上线批准。
+- **当前可确认为代码与自动化测试完成的独立 E 阶段模块**：个人生词本、任务、语言卡、SG/FE 考试与原 receipt 领取（0180～0186），个人语法（0187）和个人听力（0188）；**整个知学/四应用仍未完成**。旧 `0152_daily_word_reviews`、共享 localStorage/IndexedDB/待重试队列仍未按真实 HomeFlow 用户隔离，真实 iPhone 同机双账号、双设备断网及冲突测试明确 **待真机验证**。HomeFlow 审批、家計簿金融账户、文书助手共享与联动的所有原 PR 仍按 Draft 管理。
+- 用户本人 Mac 的 A 阶段备份验收已另记第 10 节，但本回合严格遵循用户“未另行明确生产放行”的约束，不利用通过的 CI 或本地备份记录执行生产 D1/R2、合并、部署、新建 Preview 或开启开关。下一独立模块优先 `0152_daily_word_reviews` 用户隔离 + 真实原账历史领取，之后是端侧所有缓存/离线队列和完整跨应用 B～E。
