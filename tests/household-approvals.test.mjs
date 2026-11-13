@@ -402,7 +402,7 @@ test('trusted Kakeibo member submission creates only one HomeFlow pending approv
   assert.equal((await submit(body,{stamp:Date.now()-3600000})).status,403)
   assert.equal((await submit(body,{headers:{origin:'https://homeflow.example.test'}})).status,403)
   assert.equal((await submit(body,{headers:{cookie:'__Host-hf_session=anything'}})).status,403)
-  assert.equal((await submit({...body,requester_user_id:'stranger'})).status,403)
+  assert.equal((await submit({...body,requester_user_id:'stranger'})).status,401)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,1)
   f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='member'").run()
   assert.equal((await submit({...body,resource_id:'e'.repeat(32)})).status,401)
