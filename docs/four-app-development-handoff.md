@@ -227,6 +227,8 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 知学 [Validate pull request #43404224889](https://github.com/PTamako/it-study-platform/actions/runs/43404224889) **截至本次记录仍 in_progress**：第 30 步已完成，正在运行离线语言句库迁移生成的耗时步骤；后续必须查最终 CI 结论，如失败修复本分支，不要把运行中视为通过。未读取/改写私人学习行或题库资料；实际只读检查生产 D1 schema，确认 `saved_vocabulary_entries_v2(language,term)`、`daily_task_completions(task_id,study_date)`、`language_card_progress(card_id)`、`language_card_reviews(card_id)`、`question_review_state(question_id)`、`daily_word_reviews(word_key)` 等当前主键**均无 user_id**，另 `study_attempts/scenario_attempts/exam_history/mock_exam_submissions` 也无 owner 字段。**阶段 E 必须重建相容的个人复合键、保留公用题库、旧历史安全归属 owner、member 新空间空白，并批量改造所有个人 SQL 与 PWA 本地缓存**，仅建立身份链接不允许第二位成员看到学习内容。
 
+**知学阶段 B CI 后续修复**：首次 [Validate #43404224889](https://github.com/PTamako/it-study-platform/actions/runs/43404224889) 已结束 **failure（463 pass / 1 fail）**：失败仅在新 `homeflow-identity-foundation.test.mjs` 中将实际列 `assertion_scope` 错写成 `proof_scope`；迁移 SQL 并无对应错误。已以 commit `c6494d4dff397b88b7704074517dd0ca6c6d90ab` 修正断言；第二次 [Validate #43404725255](https://github.com/PTamako/it-study-platform/actions/runs/43404725255) 在本次记录时 **in_progress**，正在重新生成离线句库。**切勿把 in_progress 写为 success；下次恢复必须核对最终 run/jobs 并处理失败**。Draft [#179](https://github.com/PTamako/it-study-platform/pull/179) 未合并，0180 未执行，其他用户个人学习权限仍未开放。
+
 当前真实状态：A 备份未完成；B HomeFlow OAuth+会话验活 Draft #305、家計簿身份 Draft #309、文书身份/验活 Draft #97；知学只有这份 Draft #179 schema/test，**没有可用 SSO 登录**。C 家計簿个人账户/审批前置未完成；D HomeFlow 审批 Draft #306 只是批准意图、不写真实账本；E 跨 App 私人隔离未完成；F 双人 iPhone PWA 验收未开始。本轮仍无生产迁移/部署及 Preview 重建。继续时先复查 HomeFlow main 本文件与四仓库最新 PR、CI、Cloudflare 正式状态，避免重复开发或执行旧迁移。
 
 ## 7. 安全声明
