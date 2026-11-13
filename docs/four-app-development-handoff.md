@@ -809,3 +809,31 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 1. **尚未打通**：owner 审核同意后的文书专用执行器、与三个目标 App 的受信账户/角色签名验证与权限约束、可持续对账及补偿、HomeFlow 审批状态对文书实时反馈/通知、来源文书永久删除与取消后的完整清理、两台 iPhone PWA/同机双账户实际操作/断网真机验收。旧 HomeFlow 文档审批类型批准后**只能标记 approved，不能宣称 applied**。
 2. 家計簿 #309 的信用卡/储值卡/定投/SBI/固定费及余额全量迁移和历史完整一致性、知学 #179 的旧 `src/App.vue` 共享本地缓存/离线重试队列按用户隔离，以及整体 B～E 冷启动/改昵称/撤销/切号仍待开发。文书助手的成员财务账户选择目前只能填审批草稿，不等于目标账户已经验签并允许扣记。
 3. 本轮原 HomeFlow #306、文书助手 #97 **都保持 open/Draft/未合并**，新 0023/0053～0055 SQL 文件未应用生产；三个应用专属 Secret/flags 没有实际配置/开启，没有合并/部署生产、新建 Preview 或操作原 D1/R2。阶段 F 独立批准/Cloudflare 恢复演练仍未开始，A 本地备份 PASS 不自动解锁 F。
+
+
+## 17. 2026-11-14 B～E 增量：文书审批可信状态回读（不执行目标应用）
+
+> 本轮继续使用原 §16 两个 Draft 功能 PR，不重复实现已通过的签名提交/私有冻结快照；**A 用户 4 个 D1 + 6 个 R2 的加密备份及本地 SQLite 恢复校验已 PASS**，不是“待用户完成”。但是 Cloudflare 隔离恢复/回滚与生产迁移授权仍未提供，仍没有任何生产写、部署、新开关或 Preview 创建。
+
+### 17.1 HomeFlow #306 / D：新增文书来源 read-only 状态后端
+
+- 原 [HomeFlow Draft #306](https://github.com/PTamako/homeflow/pull/306)，branch `feature/family-approval-state-machine-20261113`；新 `worker/document-approval-status.js`，经 `worker/index.js` 在浏览器 Session 之前路由为 **`POST /api/internal/approvals/document-status`**。
+- 与提交申请的 HMAC purpose 强隔离：专用 32-byte raw key（环境 `DOCUMENT_APPROVAL_SUBMISSION_SECRET` 的 64 位十六进制形式）签 `jp-document-assistant:status\n{timestamp}\n{raw_json}`；原 `jp-document-assistant\n...` 提交签名不能用于查询。拒绝 Cookie/Origin/Bearer、非法客户端、过期毫秒时间戳、签名不符、多余字段。
+- 严格只允许 6 个键：`approval_id/household_id/requester_user_id/resource_id/payload_sha256/target_app`；后端检查 HomeFlow D1 中现存活跃 `member`，并以真实 immutable approval row 逐项绑定 household/actor/source/target/operation/candidate ID/digest/version/幂等键，避免别人的审批 ID、跨户、改摘要或目标被查询；只读，无 D1 audit 热写，无目标 Worker 写/执行、无密码/PII 输出。
+- 真实 `pending/approved/rejected/cancelled/expired/failed_final/conflict` 状态返回前明确 `applied:false,target_changed:false`。已批准 **不是已同步**。遇到本阶段不受支持的 `executing/applied/failed_retryable` 状态，返回 503，不冒充已完成；原 `0055` 数据库 execution lease trigger 本身禁止无真实 claim 直接转 `executing`。
+- `tests/document-approval-submission.test.mjs` 追加独立 HMAC 状态测试、真实两成员 SQLite pending→owner approve/reject、跨户、禁用用户、签名错/复用提交签名、字段摘要篡改、只读无新写及 D1 lease 禁令。相关代码 Commit `f9583afc14e53a3399fa13eca021f57083124a8a`、`39a413b96809623d91124346b32b1cb458949223`、`df0e86ac8acdf8a233fd64e14bbd86c2f292e481`、`665f7bdb42c2655ec0116c704d3b0a862a98e0f7`、`eba048344a25b5b18bedb07ea40f549c0090311d`（修复测试对 lease trigger 的误假设），协议文档 `bbcb7da52d1c7fdc83ce788fff9b34fb16b80169`。**精确当前 HEAD [HomeFlow Validate #43484026954](https://github.com/PTamako/homeflow/actions/runs/43484026954) `completed/success`**。
+- 注意：状态路径沿用原 `APP_ENV=production` + `APPROVALS_ENABLED=true` + `DOCUMENT_APPROVAL_SUBMISSION_ENABLED=true` + Secret；这些旗标仍未在生产开启。未添加触发器、定时器或新的 Cloudflare 资源。
+
+### 17.2 文书助手 #97 / D/E：成员本人按需读取真实审批状态并防伪回执
+
+- 原 [文书助手 Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97)，branch `feature/homeflow-identity-link-safety-20261113`；更新 `worker/document-member-approval.js` 的本人 `GET /api/candidates/:id/approval`：严格用原 HomeFlow SSO 每次在线 introspection，验证本人 `local_user_id/homeflow_user_id/household_id`、文书/候选 `owner_id`、当前 target/kind 以及本地 `approval_id`。尚未提交的不调用 HomeFlow；`prepared` 只返回“上次提交未确认”。
+- 当且仅当原申请 `submitted` 时通过已有 `HOMEFLOW_BRIDGE_SERVICE` Service Binding 签名 POST 六个字段的只读请求，不发送文书原文、金额、词句或目标凭据。对 HomeFlow 响应重新校验全部身份、hash、target、ID、`status` 白名单、`version>=1` 且 `applied/target_changed` 必须仍为 false；离线、伪造状态、非 200 或目标改写返回 **503 `APPROVAL_STATUS_UNAVAILABLE/UNCONFIRMED`**，不会使用本地缓存伪装为成功，也不写 `integration_links`。
+- PWA `web/src/App.vue` 增“**查询 HomeFlow 审批状态**”用户明确点击的一次性读取，无轮询/Cron。区分 Pending/Approved/Rejected/Cancelled/Expired/Conflict，approved 用“**管理员已批准，但目前尚无此操作的安全执行器，目标应用没有同步**”；晚到响应必须仍是同一 `accountEpoch`、candidate 和 document 才可更新，不跨账号展示。未获可信状态时明确“尚未确认”。
+- `tests/homeflow-sso.test.js` 在原 owner/member 双人 SQLite 和 mock signed Service Binding 基础上增加目的域隔离 HMAC、pending→approved→rejected、篡改摘要/上游断网 503、无 `integration_links` 写入与不计额外 D1 audit；`tests/document-member-approval-ui.test.js` 新增显式手动状态检查、账号 epoch 保护、审批不等于执行等静态守卫。关键 Commit `8658982ed2e2d212781d089ae2ed5ef221823091`、`870d2ffa22d91e8bcde835a29efa98e4d365bb20`、`8a7a9bc25bd03c0c978c9435c5c8f1c5a4bf2a52`、`1a92565772f70221680282a00d9147ee1928f972`、`2a47ea7627b2349fbe79e0ad82530ce9c4ba0075`、文档 `8f589a8b4ac0632513f15799d814be579da7aa47`。
+- **文书助手最新经验证全部代码 [Pre-merge CI #43483869065](https://github.com/PTamako/jp-document-assistant/actions/runs/43483869065) `completed/success`**，精确代码 HEAD `2a47ea7627b2349fbe79e0ad82530ce9c4ba0075`；后续 doc-only Commit `8f589a8...` 的 [最新 CI #43484105439](https://github.com/PTamako/jp-document-assistant/actions/runs/43484105439) 于本段交接写入时 **尚待最终状态复核**，不得夸称它已通过。早期中间失败测试（旧 mock 不支持 status、静态断言仍查旧提示文字）已更新后完整代码 CI 成功。
+- 整体仍是 Draft 单独模块，**不是 HomeFlow 批准→财务/任务/知学真正执行**；真实目标账户和用户映射、受签名目标执行器、幂等应用确认、失败/撤销补偿、真机断网/切号/Google OAuth 验收以及 Stage C 资产全链路账户 ID、知学 legacy 本机缓存隔离仍未完成。阶段 F 与生产授权始终分离。
+
+### 17.3 部署保护与下一步
+
+- HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 **全部继续 Draft、不得自动合并/部署**。正式 D1 `0053–0055/0023` 等只以 SQL 文件形式存在，未执行；HomeFlow/文书专用新 Secret 未配置/启用，生产 Worker/Pages/D1/R2 和 Preview 均未操作。
+- 下一安全模块可以选择：① 文书 HomeFlow 审批关闭/取消后本人 UI 状态对齐 + 不可变快照终止策略；② 目标端各自可签名的审批执行适配器与不可复用回执；③ 家計簿完整金融账户稳定 ID/全资产统计；④ 知学旧离线队列双账号安全隔离。每一项都必须独立测试、保持 Draft、逐次更新本交接文件。
