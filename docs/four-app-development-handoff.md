@@ -567,3 +567,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 ### 后继剩余
 
 个人每日语法/听力/词卡历史与端侧缓存、未提交数据的 user_id 隔离；完整断网续考的隐私安全实现；SG/FE 多设备双人真实 iPhone PWA 验收；HomeFlow 审批、家計簿共享账本+私人账户和文书助手跨 App 联动均仍有未完成。**A 生产备份恢复仍由用户完成，知学 0180～0186 都不可执行生产迁移**。
+
+
+### 9.9.1 实际最终 CI 成功与生产禁令
+
+- 已实际查询 [知学 #179 最新 Validate #43458408489](https://github.com/PTamako/it-study-platform/actions/runs/43458408489)，最终 **completed / success**；job 内四项检查 **Run automated regression tests**、**Type-check and build frontend**、**Validate complete D1 migration chain locally**、**Validate Worker bundle without deploying** 均 `success`。这是包含本次 0186、旧回执导入 Worker、PWA、双账号 SQLite 测试的代码 HEAD `428cac671e2f4cc2dc7ed1c52bb224905989a110`。此验证只在 CI 隔离环境进行，**绝非生产迁移或上线**。
+- 同步核对原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) **open / draft=true / merged=false**，保持在 `feature/homeflow-identity-isolated-20261113`；HomeFlow/main 的本交接更新仅有 Validate，依 #314 的部署路径忽略，不得触发生产。
+- A=用户本人待完成，绝不在未获明确验收前执行生产 `0180～0186`、打开 SSO/考试开关、合并功能 PR 或创建 Preview。旧模拟考试交卷回执迁移经自动化验证，但仍**未完成双人真实 iPhone/PWA 的验收**；未来用户完成 A 后需单独批准生产放行。
+- 下一开发不必重做已经通过的旧回执迁移；优先推进个人 `grammar/listening/daily-word` 历史与权限及端侧缓存/离线队列隔离，再做四应用端到端权限/审批和真机验证。
