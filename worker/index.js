@@ -3,6 +3,7 @@ import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {approvalVerificationRoute} from './approval-verification.js'
+import {approvalSubmissionRoute} from './approval-submission.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -49,6 +50,8 @@ async function routeRequest(request,env,ctx,state){
       // same-origin cookie is accepted; never grants target write rights.
       if(path==='/api/internal/approvals/verify')
         return approvalVerificationRoute(request,env)
+      if(path==='/api/internal/approvals/submit')
+        return approvalSubmissionRoute(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover','/api/oauth/token','/api/oauth/userinfo']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
