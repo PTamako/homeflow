@@ -60,7 +60,7 @@ function fixture(){
   if(method==='POST'&&!('origin' in init.headers))
    init.headers.origin='https://homeflow.example.test'
   const request=new Request('https://homeflow.example.test'+path,init)
-  const response=await approvalRoute(request,env,path,principal)
+  const response=await approvalRoute(request,env,new URL(request.url).pathname,principal)
   return {status:response.status,body:await response.json()}
  }
  return {sql,db,env,call}
