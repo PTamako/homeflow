@@ -650,3 +650,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 2. 原 `0150_daily_listening_answers`、`0152_daily_word_reviews`、对应旧 Worker 单人读写和客户端缓存/离线重试仍无 `homeflow_user_id`；继续用相同最小私有 API + 审计 + 显式 owner 历史领取 + 实际 SQLite 两人测试，不要让新成员借旧登录接口读管理员个人记录。
 3. 全站主 `src/App.vue` 仍使用 `zhixue:daily-pending-v1`、`zhixue:mock-pending-v1`、`zhixue:practice-pending-v1`、`zhixue:scenario-pending-v1`、`zhixue:daily-word-pending-v1` 等不带用户的持久重试队列，`src/offline-grammar-store.ts` 用共享 IndexedDB `zhixue-offline-learning`，旧听力语法本机键共享。**完整 iPhone Safari/PWA 切换账号离线队列隔离未完成**；不可将旧队列归给新用户、不可给成员解锁旧单人端点。
 4. HomeFlow #305/#306、家計簿 #309、文书助手 #97 的 B～E 仍未整体完成（审批结果真实跨 App 执行、个人金融资源设置全量迁移、文书权限/跨 App 联动等）。功能 PR 一律 Draft；生产回滚/历史差异和用户明确上线授权未完成，严禁生产变更。#314 已合并，不重做。
+
+
+### 11.1 知学语法模块完整 CI 最终核验（补录，2026-11-14）
+
+- 已重新实查 [知学 Validate #43463935020](https://github.com/PTamako/it-study-platform/actions/runs/43463935020)，基于原 Draft #179 的准确 HEAD **`dce17f2c0e1f497c43fe49802c0fbadacd94f81e`**，最终 **`completed / success`**。四个具名关键步骤均为 **`completed / success`**：`Run automated regression tests`、`Type-check and build frontend`、`Validate complete D1 migration chain locally`、`Validate Worker bundle without deploying`。期间其他中间 SHA 的取消系同 PR 新提交的 CI 并发取消，并非最终测试失败。
+- 因为新 PWA 语法界面不使用旧离线缓存，**仅新个人语法模块**自动回归与本地迁移链验收通过；这不是整个知学 E 阶段完工。旧语法/听力/单词及主 App 端侧共享缓存/未提交重试队列依然需要按 `homeflow_user_id` 真正隔离。真实 iPhone Safari/PWA 双用户/两设备验收仍标记 **待真机验证**。
+- 本轮没有执行任何 **生产** D1 `0180～0187` SQL、没有开启新 SSO/语法功能开关、没有合并 #179、没有部署 Cloudflare Worker/Pages，也没有重建 Preview。用户完成 A 备份验证的第 10 节并不代替后续的生产迁移、回滚和上线明确放行。HomeFlow 主分支本交接通过 docs-only 路径更新，不触发生产 Deploy。下一模块：`0150_daily_listening_answers` 的双人隔离和对应新独立 PWA 与历史无损领取，再处理 `0152_daily_word_reviews` 与端侧队列。
