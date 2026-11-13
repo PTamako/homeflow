@@ -72,12 +72,19 @@ export async function oauthRoute(request,env,path,session){
       LIMIT 1`).bind(session.user_id,session.household_id).first()
     if(!membership)return json({error:'not_authorized'},403)
     const raw=randomToken(),t=nowMs()
-    await db.prepare(`INSERT INTO oauth_authorization_codes
-       (code_hash,client_id,redirect_uri,user_id,household_id,
-        code_challenge,nonce,expires_at,created_at)
-       VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`)
-      .bind(await sha256(raw),client_id,redirect_uri,session.user_id,
-        session.household_id,data.code_challenge,data.nonce,t+CODE_TTL_MS,t).run()
+    // Pair the code and minimal audit event in one D1 transaction.
+    await db.batch([
+      db.prepare(`INSERT INTO oauth_authorization_codes
+        (code_hash,client_id,redirect_uri,user_id,household_id,
+         code_challenge,nonce,expires_at,created_at)
+        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`)
+        .bind(await sha256(raw),client_id,redirect_uri,session.user_id,
+          session.household_id,data.code_challenge,data.nonce,t+CODE_TTL_MS,t),
+      db.prepare(`INSERT INTO oauth_security_events
+         (event_id,user_id,client_id,event,created_at)
+         VALUES(?1,?2,?3,'code_issued',?4)`)
+        .bind(crypto.randomUUID(),session.user_id,client_id,t),
+    ])
     const redirect=new URL(redirect_uri)
     redirect.searchParams.set('code',raw)
     redirect.searchParams.set('state',data.state)
@@ -117,7 +124,13 @@ export async function oauthRoute(request,env,path,session){
         SELECT ?1,client_id,user_id,household_id,?2,?3
         FROM oauth_authorization_codes
         WHERE code_hash=?4 AND consumption_marker=?5`)
-        .bind(await sha256(token),t+ACCESS_TTL_MS,t,hash,consumedMarker)
+        .bind(await sha256(token),t+ACCESS_TTL_MS,t,hash,consumedMarker),
+      db.prepare(`INSERT INTO oauth_security_events
+        (event_id,user_id,client_id,event,created_at)
+        SELECT ?1,user_id,client_id,'token_exchanged',?2
+        FROM oauth_authorization_codes
+        WHERE code_hash=?3 AND consumption_marker=?4`)
+        .bind(crypto.randomUUID(),t,hash,consumedMarker)
     ])
     if(Number(dbResults?.[0]?.meta?.changes)!==1 ||
        Number(dbResults?.[1]?.meta?.changes)!==1)
