@@ -1,4 +1,5 @@
 import {json,randomToken,sha256,readBody,nowMs,cookieFrom} from './security.js'
+import {oauthSessionCheck} from './oauth-session-check.js'
 
 // B2: Authorization Code + PKCE transport foundation. It is not yet an
 // end-to-end login UI or an OpenID Connect ID-token implementation.
@@ -154,6 +155,7 @@ export async function oauthRoute(request,env,path,session){
       // Backend-only liveness capability; never expose to the browser.
       session_assertion:assertion,session_assertion_expires_in:SESSION_ASSERTION_TTL_MS/1000}))
   }
+  if(path==='/api/oauth/session-introspect')return oauthSessionCheck(request,env)
   if(path==='/api/oauth/userinfo'){
     if(request.method!=='GET')return json({error:'method_not_allowed'},405)
     const header=request.headers.get('authorization')||''
