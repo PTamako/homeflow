@@ -215,6 +215,20 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 **还未完成 / 无法宣称全系统完成**：知学尚未接入 HomeFlow 统一登录或用户级权限隔离；家計簿虽有独立身份会话但没有开放共享账本/资产读、更没有个人金融归属的稳定账户 ID 与审批前置；HomeFlow Draft #306 已有审批请求、决定与审计但不执行真实账务；文书助手共享写权限和跨 App 审批候选仍待开发；三 App 真 iPhone PWA 双人登录、注销、切号缓存隔离仍未验收；Cloudflare 正式资源没有启用本轮功能。下一步按 A→F，**A 备份由用户操作之前只继续离线开发**，B 知学身份及三个 App 受控真实登录，C 个人金融，D 事务审批，E 私人隔离，F 真机验收。严格不得重建 Preview、重复执行迁移或自行清理旧凭证/历史。
 
+
+## 6.4 2026-11-13 知学 Stage B 增量：身份数据库草案（Draft，不具备登录能力）
+
+用户将自行在有电脑时完成四个生产 D1 和 R2 的加密持久备份及隔离恢复；在完成之前，**继续代码/测试但禁止生产迁移和功能 PR 合并部署**。
+
+针对知学 `PTamako/it-study-platform` 当前 main `ae8c0dea3468006d0fbbfaaf953afbf3f4f645da`，新建 [Draft PR #179](https://github.com/PTamako/it-study-platform/pull/179)，分支 `feature/homeflow-identity-isolated-20261113`。**仅数据库 schema 和测试**：
+- `9e45d80a68715063243d79b3a7af18bec4407c4e`、`0824a85a799dc1e191433602c9d327f6c988e793`：**尚未执行** `migrations/0180_homeflow_identity_isolation.sql`，独立 HomeFlow owner/member/user_id、家庭归属/昵称状态，唯一 owner 与不可变归属，独立的 pending/state、加密会话、actor 审计表；0180 不依赖 0177，特意避开知学其他 Chat 未合并题库 [Draft #178](https://github.com/PTamako/it-study-platform/pull/178) 的 `0177_fe_exemption_20200614_systems.sql`。未来迁移时先检查 0177-0179 实际执行情况，绝不凭序号猜测。
+- `a555cc1d9453759b678596cf3d145f57041ef5e3`：新 `scripts/homeflow-identity-foundation.test.mjs`，以真实 SQLite 验证旧生词本内容不变、身份不可重绑/双 owner 冲突、审计 actor 必须有真实 FK、迁移幂等。
+- `2e72d1e8485f478360e11c152f8e8d1067a1bfb5`：新 `docs/homeflow-identity-phase-b.md` 明确尚无 SSO 端点/UI、不能给 member 开放旧个人学习接口、生产备份阻断门槛。
+
+知学 [Validate pull request #43404224889](https://github.com/PTamako/it-study-platform/actions/runs/43404224889) **截至本次记录仍 in_progress**：第 30 步已完成，正在运行离线语言句库迁移生成的耗时步骤；后续必须查最终 CI 结论，如失败修复本分支，不要把运行中视为通过。未读取/改写私人学习行或题库资料；实际只读检查生产 D1 schema，确认 `saved_vocabulary_entries_v2(language,term)`、`daily_task_completions(task_id,study_date)`、`language_card_progress(card_id)`、`language_card_reviews(card_id)`、`question_review_state(question_id)`、`daily_word_reviews(word_key)` 等当前主键**均无 user_id**，另 `study_attempts/scenario_attempts/exam_history/mock_exam_submissions` 也无 owner 字段。**阶段 E 必须重建相容的个人复合键、保留公用题库、旧历史安全归属 owner、member 新空间空白，并批量改造所有个人 SQL 与 PWA 本地缓存**，仅建立身份链接不允许第二位成员看到学习内容。
+
+当前真实状态：A 备份未完成；B HomeFlow OAuth+会话验活 Draft #305、家計簿身份 Draft #309、文书身份/验活 Draft #97；知学只有这份 Draft #179 schema/test，**没有可用 SSO 登录**。C 家計簿个人账户/审批前置未完成；D HomeFlow 审批 Draft #306 只是批准意图、不写真实账本；E 跨 App 私人隔离未完成；F 双人 iPhone PWA 验收未开始。本轮仍无生产迁移/部署及 Preview 重建。继续时先复查 HomeFlow main 本文件与四仓库最新 PR、CI、Cloudflare 正式状态，避免重复开发或执行旧迁移。
+
 ## 7. 安全声明
 
 本文件不包含密码、原始 Token、API Key、OAuth Secret、完整个人文书、银行账户号码、HomeFlow 会话或数据库导出签名 URL。重要的“用户已明确的历史归属”在项目层面已足够，不需要在公开仓库写入个人身份资料。首次统一身份验证必须**由真实 HomeFlow 已认证会话确认 owner_user_id**，不可从昵称猜测或生成一个伪 owner ID。
