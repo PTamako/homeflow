@@ -75,7 +75,7 @@
 | 阶段 | 状态 | 已完成 | 进行中 / 未完成 | 生产迁移 | 生产部署/验收 |
 |---|---|---|---|---|---|
 | **A 调查、只读基线、备份** | **进行中** | 读取最新 v1.1 + §3.1；四 repo main SHA/目录/部分迁移和测试；检查 GitHub CI、Cloudflare D1/Workers/R2/Pages；生产关键表计数；发现同名账户冲突风险 | 获取持久化四库可恢复备份、R2 物件清单/恢复方案、全表结构与历史金额摘要、检查 kakeibo bridge CI 失败原因 | **无** | **没有本项目的新部署** |
-| **B SSO/昵称/首次登录** | **未开始功能开发** | 确认 HomeFlow 有 owner/member 和昵称源；代码入口初查 | 授权端点、PKCE/JWKS、稳定账号关联、App 安全会话、首次独立 PWA 路径、撤销/缓存及测试 | 无 | 无 |
+| **B SSO/昵称/首次登录** | **开发中：只读身份契约 Draft PR #305，未上线** | 确认 HomeFlow owner/member、家庭昵称源；在独立功能分支实现现有 session 鉴权的 `/api/identity/me` 与 `/api/identity/household-members` 和测试；PR CI 成功 | **真正 OAuth/PKCE SSO 尚未开发**；业务 App 账号链接/会话、PWA 首次登录、撤销/跨账号缓存和实机验收待完成 | **无** | **无；PR #305 未合并** |
 | **C 家計簿个人账户 + 家庭共享 + 审批前置** | **未开始** | 只读确认旧 schema/计数、支付来源 name PK 风险 | 支付账户稳定 ID、owner_user_id、家庭读权限、正式账务 pending 拦截、同名账户回归 | 无 | 无 |
 | **D HomeFlow 审批** | **未开始** | 确认现有 session/角色与路由基线 | 工单状态机/事件表/索引、幂等执行器、内部签名接口、通知/UI、异步重试审计 | 无 | 无 |
 | **E 文书/知学隔离与跨 App 同步** | **未开始** | 确认文书本地旧身份与知学单人登录模式；只读旧记录数 | identity_links、shared 可写、OAuth 隔离、候选同步审批；学习所有个人表 SQL/前端缓存 user_id 化 | 无 | 无 |
@@ -85,9 +85,11 @@
 
 | 日期 JST | 仓库/功能 | 分支 | Commit SHA | PR | CI | 正式迁移 | Cloudflare 部署版本/100% | 生产验收 |
 |---|---|---|---|---|---|---|---|---|
-| 2026-11-13 | HomeFlow — 首建跨四项目交接文档；仅记录真实调查状态 | `docs/four-app-handoff-20261113` | `1db3b510332bf3a2a37670584bc9a6bd7aa29aca`（首建提交） | [#304](https://github.com/PTamako/homeflow/pull/304) | 待核对 | 不适用 | 不适用（文档改动） | 不适用 |
+| 2026-11-13 | HomeFlow — 首建跨四项目交接文档；仅记录真实调查状态 | `docs/four-app-handoff-20261113` | `1db3b510332bf3a2a37670584bc9a6bd7aa29aca`（首建）/ `8a15d29d44c3f58ebedf89b952ce2fed9206c17b`（补录）/ `3e984de3867410d93372112658205bbb4b89113a`（squash main） | [#304](https://github.com/PTamako/homeflow/pull/304) **已合并** | [Validate run 43384895765](https://github.com/PTamako/homeflow/actions/runs/43384895765) 成功；main Validate/Deploy 43384895765 后的新 run 已成功 | 不适用 | 文档合并触发既有 main 自动部署成功，**未上线新身份功能** | 文件 main 已重新读取确认 |
 
 **填写准则**：任何生产迁移仅能填「未执行 / 已执行（附 migration、数据库、执行时间、验证 SQL 与 count/hash）/ 失败回滚 / 阻断」。不要只写「迁移好了」。所有部署须附 GitHub Actions run 和 Cloudflare deploy/version ID、100% traffic 证据；中断时能判断是否安全重试。
+
+| 2026-11-13 | HomeFlow B1 — read-only `/api/identity/me` 与家庭成员昵称契约 + 五组隔离回归测试 | `feature/homeflow-identity-read-contract-20261113` | `a48752299b0d3253573b274038b10891cefc0560`（模块）/ `0128aa4a637e97fb4eb40ad8709cd72a0d6ab005`（测试）/ `52ee0731c4738f314d66d9a79536b18fe5337efd`（路由） | [Draft #305](https://github.com/PTamako/homeflow/pull/305) **未合并** | [Validate run 43385362454](https://github.com/PTamako/homeflow/actions/runs/43385362454) **success** | 不适用 | **未部署**（A 备份门槛未满足） | 仅测试成功，生产/双人 PWA 验收未执行 |
 
 ## 5. 已知问题与失败项
 
@@ -97,6 +99,7 @@
 4. **知学仍有单人认证和个人数据无 user_id 的表**；禁止只开放桥接 ID 后让 member 进入 owner 旧数据。
 5. **文书助手现有单人本地 owner 与 HomeFlow owner 的链接尚未验证**；绝不可直接复用/复制 OAuth Grant 或改变历史文书/R2 所有权。
 6. **目前所有新阶段均未完工**；首次 PWA 实机验收尚无执行记录。
+7. HomeFlow **Draft PR #305** 的只读身份契约已经通过 GitHub Validate，但**尚未合并/上线**，不可把它视为 OAuth 统一登录。生产备份门槛完成前不合并；恢复时先看是否有新 commit 或 CI 状态。
 
 ## 6. 恢复时优先的下一批可执行事项
 
