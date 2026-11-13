@@ -484,7 +484,7 @@ test('owner approved CASH action obtains nonce lease and only actual Kakeibo rec
    assert.equal(info.execution_authorized,true)
    assert.equal(info.approver_user_id,'owner')
    assert.equal((await verify({...proof,execution_nonce:'f'.repeat(64)})).status,409)
-   assert.equal((await verify({...proof,purpose:undefined,execution_nonce:undefined})).status,400)
+   assert.equal((await verify({...proof,purpose:undefined,execution_nonce:undefined})).status,409)
    return Response.json({ok:true,applied:true,approval_id:id,
     proposal_id:'a'.repeat(32),household_id:'primary',
     requester_user_id:'member',payload_sha256:'a'.repeat(64),
