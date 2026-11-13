@@ -769,3 +769,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 这是**三个独立可回归的安全/交互模块**，并非四应用 B～E 已全部完成；文书助手原 [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 上一次提交的共享候选隐私隔离/成员审批阻断仍有效，本轮未修改它。
 - **尚未实现**：文书助手 member 真正安全签名提交审批并由目标执行；HomeFlow→文书/任务/知学执行器；家計簿全量信用卡/储值卡/投资/固定费同名账户映射与入账；知学旧整站共享本机缓存和 offline pending 队列双账号隔离，双 iPhone PWA OAuth/登出/断网/重试真机验收；完整 Cloudflare 隔离恢复/回滚与生产发布前新鲜备份。
 - 所有原 PR 仍 `Draft`，所有新增功能开关 `OFF`，迁移 SQL **未执行**，没有合并会自动部署的 PR、没有生产 Worker/Pages/D1/R2 写入或部署、没有创建 Preview。A 本地验证 PASS 不代表用户允许执行 F。
+
+
+### 15.5 最终 CI 核验与 Draft 保留（2026-11-14）
+
+- **本轮新开发知学 #179 的最终 CI 已实际确认成功**：[Validate #43475655647](https://github.com/PTamako/it-study-platform/actions/runs/43475655647)，精确 HEAD `f32692886e4d3cca7f69c565d48457315705df94`，GitHub run `completed/success`。上一节 §15.3 记录的 `in_progress` 只是提交交接时的中间状态，现以本段最终核验为准；两人模拟交卷 actor 防串号、PWA SSO 延迟结果失效、全仓测试均经此 CI 验收。真实 iPhone PWA/生产环境仍未验收。
+- **HomeFlow #306 最终 CI**：[Validate #43475287613](https://github.com/PTamako/homeflow/actions/runs/43475287613)，精确 HEAD `f0b526e30c371189535da2051ae71a367af1cb42`，`completed/success`；**家計簿 #309 最终 CI**：[Validate #43476076111](https://github.com/PTamako/kakebo_jp/actions/runs/43476076111)，精确 HEAD `e415445b133281a6dfdf24dff10c817183413a8e`，`completed/success`。文书助手 #97 未在本轮修改，继承此前已验证的 [#43472214204](https://github.com/PTamako/jp-document-assistant/actions/runs/43472214204) `completed/success`。
+- 本文 §15 首次文档-only 提交为 HomeFlow main `d4c0cc1a16c2d335f587330f61da9fe6ed283982`；[该提交 Validate #43476442379](https://github.com/PTamako/homeflow/actions/runs/43476442379) **`completed/success`**，没有借文档变更合并/部署功能 PR。
+- 已再核对三个当前开发 PR：HomeFlow [#306](https://github.com/PTamako/homeflow/pull/306)、家計簿 [#309](https://github.com/PTamako/kakebo_jp/pull/309)、知学 [#179](https://github.com/PTamako/it-study-platform/pull/179)；以及未改动的文书助手 [#97](https://github.com/PTamako/jp-document-assistant/pull/97)：**均为 `open/draft=true/merged=false`**。HomeFlow #305 属既有身份基础依赖，本轮不合并。文书助手真实 member HomeFlow 提交审批+目标独立执行器、家計簿全部资产类别/固定费同名 ID/历史金额校验、知学旧主界面的本地缓存/队列全隔离与真实 iPhone 多人验收仍未完成；不能标记整个 B～E 完成。
+- 阶段 A 用户在 Mac 的加密备份+本地 SQLite 恢复验收已通过，**并非 A 待用户完成**；Cloudflare 独立恢复演练/生产回滚及正式上线尚未经单独授权。本次没有运行生产 SQL 或动生产 D1/R2、没有打开 SSO/审批新开关、没有合并可部署功能 PR、没有创建 Preview、没有执行 Cloudflare 部署。交接文档此轮再补记同样属于 `docs/**` 范围，等待本次最新 docs CI 独立验证。
