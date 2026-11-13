@@ -1,4 +1,4 @@
-import {json,randomToken,sha256,readBody,nowMs} from './security.js'
+import {json,randomToken,sha256,readBody,nowMs,cookieFrom} from './security.js'
 
 // B2: Authorization Code + PKCE transport foundation. It is not yet an
 // end-to-end login UI or an OpenID Connect ID-token implementation.
@@ -66,20 +66,24 @@ export async function oauthRoute(request,env,path,session){
       return json({error:'invalid_authorization_request'},400)
     // A signed-in user may have been disabled or removed since the session
     // was minted; recheck on every approval, not on every normal GET.
+    const homeflowCookie=cookieFrom(request)
+    if(!homeflowCookie)return json({error:'not_authenticated'},401)
+    const sessionHash=await sha256(homeflowCookie)
     const membership=await db.prepare(`SELECT m.role FROM household_members m
       JOIN users u ON u.id=m.user_id
+      JOIN sessions h ON h.user_id=m.user_id AND h.token_hash=?3 AND h.expires_at>?4
       WHERE m.user_id=?1 AND m.household_id=?2 AND u.disabled_at IS NULL
-      LIMIT 1`).bind(session.user_id,session.household_id).first()
+      LIMIT 1`).bind(session.user_id,session.household_id,sessionHash,nowMs()).first()
     if(!membership)return json({error:'not_authorized'},403)
     const raw=randomToken(),t=nowMs()
     // Pair the code and minimal audit event in one D1 transaction.
     await db.batch([
       db.prepare(`INSERT INTO oauth_authorization_codes
         (code_hash,client_id,redirect_uri,user_id,household_id,
-         code_challenge,nonce,expires_at,created_at)
-        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`)
+         session_hash,code_challenge,nonce,expires_at,created_at)
+        VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`)
         .bind(await sha256(raw),client_id,redirect_uri,session.user_id,
-          session.household_id,data.code_challenge,data.nonce,t+CODE_TTL_MS,t),
+          session.household_id,sessionHash,data.code_challenge,data.nonce,t+CODE_TTL_MS,t),
       db.prepare(`INSERT INTO oauth_security_events
          (event_id,user_id,client_id,event,created_at)
          VALUES(?1,?2,?3,'code_issued',?4)`)
@@ -103,9 +107,11 @@ export async function oauthRoute(request,env,path,session){
        !/^[A-Za-z0-9._~-]{43,128}$/.test(data.code_verifier))
       return json({error:'invalid_grant'},400)
     const hash=await sha256(data.code),t=nowMs()
-    const existing=await db.prepare(`SELECT client_id,redirect_uri,code_challenge,
-      expires_at,consumed_at FROM oauth_authorization_codes
-      WHERE code_hash=?1 LIMIT 1`).bind(hash).first()
+    const existing=await db.prepare(`SELECT c.client_id,c.redirect_uri,c.code_challenge,
+      c.expires_at,c.consumed_at FROM oauth_authorization_codes c
+      JOIN sessions h ON h.token_hash=c.session_hash AND h.user_id=c.user_id
+        AND h.expires_at>?2
+      WHERE c.code_hash=?1 LIMIT 1`).bind(hash,t).first()
     if(!existing || existing.client_id!==data.client_id ||
        existing.redirect_uri!==data.redirect_uri ||
        Number(existing.expires_at)<=t || existing.consumed_at!=null ||
@@ -120,8 +126,8 @@ export async function oauthRoute(request,env,path,session){
         AND consumed_at IS NULL AND expires_at>?4`)
         .bind(t,consumedMarker,hash,t),
       db.prepare(`INSERT INTO oauth_access_tokens
-        (token_hash,client_id,user_id,household_id,expires_at,created_at)
-        SELECT ?1,client_id,user_id,household_id,?2,?3
+        (token_hash,client_id,user_id,household_id,session_hash,expires_at,created_at)
+        SELECT ?1,client_id,user_id,household_id,session_hash,?2,?3
         FROM oauth_authorization_codes
         WHERE code_hash=?4 AND consumption_marker=?5`)
         .bind(await sha256(token),t+ACCESS_TTL_MS,t,hash,consumedMarker),
@@ -155,6 +161,8 @@ export async function oauthRoute(request,env,path,session){
       JOIN users u ON u.id=a.user_id AND u.disabled_at IS NULL
       JOIN household_members m ON m.user_id=a.user_id
         AND m.household_id=a.household_id
+      JOIN sessions h ON h.token_hash=a.session_hash AND h.user_id=a.user_id
+        AND h.expires_at>?2
       WHERE a.token_hash=?1 AND a.expires_at>?2 AND a.revoked_at IS NULL
       LIMIT 1`).bind(await sha256(match[1]),nowMs()).first()
     if(!row)return json({error:'invalid_token'},401)
