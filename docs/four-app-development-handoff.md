@@ -1496,3 +1496,33 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 2. P0-4 下一整模块：按会计语义分别打通储值卡充值/消费/余额、积分充值/兑换/抵扣、SBI 積立/追加買付/ポイント投資和真实生效日、资产转移的双账户借贷、共享账目修改/删除/恢复/批量导入、周期授权/固定费/定投 Cron 幂等，先真实 SQLite，再 HomeFlow+目标仓跨仓真实处理器 CI；不得复用现金或信用卡消费 journal 冒充其他财务类型。
 3. 其他 B–E 未完成：设计书 R1–R9、T01–T14 的首次 PWA 安装/重授权/切号、全账户历史归属及 CRUD 边界、审批 Push/长期租约终态、文书已有三条跨应用联动剩余旧任务匹配/更新及恢复、知学旧考试/错题/进度/收藏/离线队列/端侧缓存隔离、跨 D1 最终撤权与持久 reservation 回收、真实浏览器级 PWA 回归等。绝不能按本节完成来高估整个项目进度。
 4. 未来继续每完整业务模块时，记录精确仓库 HEAD、PR Draft、CI run、真实测试失败与修复、迁移/contract version、风险与未完成项；必要时将 **仅文档** append-only 同步 main，但部署生产 workflow 必须再次校验路径排除。严禁误合并 #306 功能代码或操作生产/Preview。
+
+
+## 74. 2026-11-14 P0-4 第二组非现金：储值卡充值、消费、真实余额账务及两仓完整隔离 CI（Draft，生产 F 未授权）
+
+### 经本节实际核验的最新代码、PR、测试
+
+- 家計簿 #309 当前业务 HEAD b1b3e7faf008fac6b031fc2d89e3e7d2accaab04；Draft/Open。GitHub Actions Validate 43593254353 **completed/success**、Mobile WebKit Smoke 43593254257 **completed/success**。两者仅是 GitHub CI，WebKit Smoke 不代表生产两台 iPhone PWA 实机验收。
+- HomeFlow #306 当前业务 HEAD 42eaa030aa99c0ddff5ccd17c1467a0506834cae；Draft/Open，仍以 #305 的统一身份功能分支为 base，绝不能错误合并 main。完整 Validate HomeFlow 43593461804 **completed/success**，包括 tests/family-prepaid-real-cross-app.test.mjs 导入家計簿真实源/目标处理器、两套独立 SQLite、模拟 Service Binding 的身份/审批/租约/回执测试；.github/workflows/ci.yml 精确 pin 以上家計簿 SHA，不再引用 §73 的旧结算 SHA。
+- 正式冻结契约补充 §O v1.0.9 已先由 HomeFlow #306 Draft 提交，再单独 append-only 安全同步 HomeFlow main，docs-only commit c2a9a44e5973c0e87ae642a8cb1890f036b8bd27。同步前再次核查 main 部署工作流已排除 docs/** 与 **/*.md；没有合并任何功能代码、没有改生产。
+
+### 已实现：两种财务语义分开，不复用现金执行器
+
+- 家計簿新未在生产执行 migration 0033_member_prepaid_actions.sql：family_prepaid_action_intents AES-GCM 持久冻结申请、family_prepaid_actions_applied 不可变目标事务、family_prepaid_balance_journal 对每次 saldo/delta 日元原子约束、family_prepaid_action_audit 记录请求人/真实 owner approver/actor；CHECK/trigger 禁止负余额、账户 owner 或 CAS 错配、同银行流水参考号重复充值、无对应 entries 或缺审计的目标提交，条目/回执/余额/审计已写后禁止更改或删除。migration 和所有新 flags 均未在生产使用。
+- 新源 handler functions/api/family-finance/prepaid-actions.js：有权限的 member 对本人新建 stable prepaid account 操作。topup 必须同时指定本人稳定 bank 账户及版本，用户人工核对发生过的银行实际日期、金额和交易参考号；原号只变为按 bank account_id 隔离的 SHA-256 哈希，明文不存 HomeFlow；spend 需实际消费日、商家、分类、金额、备注，当前余额不足不得提交。所有类型需 stable ID、expected_version 和 idempotency key，冻结加密快照并用独立后端 HMAC 送 HomeFlow。只有 prepare 不变更任何账本或余额；取消尚未提交的源申请不执行财务写入。
+- 新目标 handler functions/api/internal/prepaid-actions/[[path]].js：独立 HMAC 签名域 homeflow:prepaid-execute/receipt、独立 HomeFlow 执行 proof kakeibo-prepaid:execution-proof；复核正在执行的租约、请求人、审批人、源摘要、AES 快照、银行与储值账户当前身份/版本，真正用一批 D1 SQLite writer 事务插入：topup 只有银行→储值卡 entries.type=transfer + 正数 balance journal；spend 只有一笔家庭 entries.type=expense + 负数 balance journal；两种均原子写应用 journal 与不可变 owner 审计。同申请/审批 ID 回执重放不重复加减钱；网路回执丢失沿用原 HomeFlow 审批 ID 只读已有 journal。
+- HomeFlow #306 新 worker/prepaid-approval-submission.js，index 后端提交入口、approval operation 白名单 finance.prepaid.topup / finance.prepaid.spend、0054 migration 的操作 CHECK、approval-verification 独立客户端 kakeibo-prepaid/密钥与 proof、approval-execution 独立 binding KAKEIBO_PREPAID_EXECUTION_SERVICE、执行 HMAC 与 receipt 校验。全部新 flags 默认 OFF。只能由另一位 owner 审批并授权执行，member 不可通过手动声明审批绕过家庭正式账本。
+- 新 Vue src/FamilyFinancePrepaidActions.vue 嵌入 FamilyFinanceAccess：本人储值卡、本人银行账户、实际日期和正整数金额；充值需要显式勾选银行流水真实确认，消费需要商家/分类；查看已批准余额、申请与待审批状态，切号/隐藏时清理内存状态。新 household read-only memberPrepaidBalances 投影根据两人的 member_created stable account_id 与余额 journal 统计，两成员读取同一家庭视图，但仍真实显示 owner ID；src/FamilyFinanceAssetOwnership.vue 将新余额与原 legacy_payment_source 的储值卡分开列出。绝不能把已有历史 Suica/PASMO/nanaco 余额按同名账户自动认领或重复导入。
+
+### 已通过的真实测试范围与失败修复
+
+- 家計簿 tests/family-prepaid-action-execution.test.mjs：使用真实内存 SQLite 重放 0033 migration、真实源 AES-GCM/提交签名、独立目标执行 proof、完整事务 topup=transfer/spend=expense、部分余额与透支防止、重复银行 reference 不得双充值、相同 request ID 重放、撤权/卡版本/银行版本漂移、审计失败整批 rollback、未来日期与未确认流水拒绝、双成员家庭共享稳定账号余额视图；对应 Validate/WebKit 均成功。
+- HomeFlow tests/family-prepaid-real-cross-app.test.mjs：真实 HomeFlow 申请/审查/执行与家計簿源/目标，在隔离两套 SQLite 与模拟 Service Binding 中验证 owner 审批后余额与 expense/transfer 一致、目标已提交但 HomeFlow 收不到回执时 failed_retryable 同 ID 查询、重复执行不二次改变、未审批/成员停用/owner 停用/账号旧版本 fail closed。首次 CI 43592976917 失败：新测试遗漏 HomeFlow 全局 APPROVAL_VERIFICATION_SECRET，被全局必要保护正确拒绝 execution_disabled；修复测试隔离密钥后 CI 43593194581 **PASS**，再 pin 精确最终家計簿 b1b3 SHA 后 CI 43593461804 **PASS**。没有关闭安全保护或删除安全断言。
+
+### 未完成项和下一开发优先
+
+1. **不等于旧储值数据迁移完成**：旧 Suica/PASMO/nanaco 等历史余额仍在原模型，暂无分账户安全回填或消费/充值匹配；本模块仅实现用户新建的 member_created prepaid 账户，未改变生产数据。跨平台的旧资产迁移须另配核对与无重复映射 journal；储值卡退款、反向冲正、提现仍未实现，绝不可直接改不可变 applied/journal。
+2. **立即继续 P0-4**：积分账户（充值/积累/兑换/抵扣/关联储值或信用卡）、SBI 積立/追加買付/ポイント投資/基金份额和有效日、家庭资产转移和双方账户余额、共享账目编辑/删除/恢复/批量导入、固定费/定投 Cron 周期授权、财务高风险审批终态，逐一用独立语义、迁移、跨仓 SQLite/CI 证明，不得把本模块同现金或信用卡混用。
+3. **B–E 安全与 UI**：跨独立 D1 执行窗口撤权竞态、版本变化与过期 source reservation 回收、不同操作的失败终态、真正浏览器级 PWA OAuth/PKCE 回跳和切号网络晚到响应、push 通知、旧文书待办匹配与 Study 所有旧学习数据隔离、迁移历史外键/触发器/金额一致性和最终 F 阶段两台 iPhone 真正 Service Binding 测试仍为未完成。真实生产 Workflows、Workers、D1、R2、Secrets 都不能触碰。
+4. 下一位执行时必须从 HomeFlow #306 最新 HEAD §73～§74 而不是单凭 main 的旧记录、逐仓最新 PR/CI 复核后继续；每个完整业务模块先针对性测试再完整 CI，保持所有五个功能 PR Draft，不操作生产或 Preview，并在新模块完成时 append-only 同步 main 的**仅文档**交接，绝不合功能代码。
+
