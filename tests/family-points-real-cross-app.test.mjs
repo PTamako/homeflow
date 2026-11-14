@@ -342,16 +342,16 @@ test('two isolated D1s: owner-approved points transfer/exchange conserves JPY an
   assert.equal((await f.review(transfer)).status,200);
   const sent=await f.execute(transfer);
   assert.equal(sent.status,200,JSON.stringify(sent));
-  assert.equal(sent.data.transfer_target_units,120);
-  assert.equal(sent.data.transfer_target_balance_after_units,120);
+  assert.equal(get(f.k.sql,'SELECT target_units n FROM family_points_transfer_credits WHERE homeflow_request_id=?',transfer).n,120);
+  assert.equal(get(f.k.sql,'SELECT target_balance_after_units n FROM family_points_transfer_credits WHERE homeflow_request_id=?',transfer).n,120);
   const exchange=await f.request(f.intent('exchange_out',
    {units:100,yen_value:200,rate_numerator:2,rate_denominator:1,
     target_units:50,target_rate_numerator:4,target_rate_denominator:1}));
   assert.equal((await f.review(exchange)).status,200);
   const swapped=await f.execute(exchange);
   assert.equal(swapped.status,200,JSON.stringify(swapped));
-  assert.equal(swapped.data.transfer_target_units,50);
-  assert.equal(swapped.data.transfer_target_balance_after_units,170);
+  assert.equal(get(f.k.sql,'SELECT target_units n FROM family_points_transfer_credits WHERE homeflow_request_id=?',exchange).n,50);
+  assert.equal(get(f.k.sql,'SELECT target_balance_after_units n FROM family_points_transfer_credits WHERE homeflow_request_id=?',exchange).n,170);
   assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal WHERE points_account_id=?',points).n,230);
   assert.equal(get(f.k.sql,'SELECT SUM(target_units) n FROM family_points_transfer_credits WHERE target_account_id=?',receive).n,170);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_credits').n,2);
