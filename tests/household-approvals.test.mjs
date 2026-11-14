@@ -561,6 +561,74 @@ test('lost target response is retryable, reuses same approval ID and settles onc
 })
 
 
+
+test('target 409 is not a terminal conflict: unchanged approval can reconcile a late applied receipt',async()=>{
+ const f=fixture()
+ try{
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_SECRET='c'.repeat(64)
+  f.env.APPROVAL_EXECUTION_ENABLED='true'
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  const created=await f.call(sessions.member,'/api/approvals','POST',
+   entry('target-409-reconciliation-0001',{resource_id:'c'.repeat(32)}))
+  assert.equal(created.status,201)
+  const id=created.body.request.request_id
+  assert.equal((await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',
+   {decision:'approve'})).status,200)
+  const sent=[],targetRecord={entry_id:736,applied_at:Date.now()}
+  f.env.KAKEIBO_EXECUTION_SERVICE={async fetch(request){
+   assert.equal(request.headers.get('cookie'),null)
+   assert.equal(request.headers.get('origin'),null)
+   const body=JSON.parse(await request.text())
+   sent.push(body)
+   if(sent.length===1){
+    // Kakeibo can report this while HomeFlow's proof or target journal is
+    // temporarily inaccessible; a 409 is not an authenticated no-post proof.
+    return Response.json({ok:false,code:'APPROVAL_NOT_EXECUTING',applied:false},
+     {status:409})
+   }
+   return Response.json({ok:true,applied:true,approval_id:id,
+    proposal_id:'c'.repeat(32),household_id:'primary',
+    requester_user_id:'member',payload_sha256:'a'.repeat(64),
+    entry_id:targetRecord.entry_id,already_applied:true,
+    applied_at:targetRecord.applied_at})
+  }}
+  const execute=()=>approvalExecutionRoute(new Request(
+   'https://homeflow.example.test/api/approvals/'+id+'/execute',{
+    method:'POST',headers:{origin:'https://homeflow.example.test',
+     'content-type':'application/json'},body:'{}'
+   }),f.env,'/api/approvals/'+id+'/execute',sessions.owner)
+  const first=await execute()
+  assert.equal(first.status,503,await first.clone().text())
+  assert.equal((await first.json()).code,'target_conflict_unconfirmed_safe_to_retry')
+  const pending=f.sql.prepare('SELECT status,last_error_code,execution_nonce_hash,execution_lease_until,remote_id FROM household_approval_requests WHERE request_id=?').get(id)
+  assert.equal(pending.status,'failed_retryable')
+  assert.equal(pending.last_error_code,'target_conflict_unconfirmed')
+  assert.equal(pending.execution_nonce_hash,null)
+  assert.equal(pending.execution_lease_until,null)
+  assert.equal(pending.remote_id,null)
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events WHERE request_id=? AND action='conflict'").get(id).n,0)
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events WHERE request_id=? AND action='applied'").get(id).n,0)
+  const second=await execute()
+  assert.equal(second.status,200,await second.clone().text())
+  const receipt=await second.json()
+  assert.equal(receipt.applied,true)
+  assert.equal(receipt.replayed,true)
+  assert.equal(receipt.remote_id,'736')
+  assert.equal(sent.length,2)
+  assert.equal(sent[0].request_id,id)
+  assert.equal(sent[1].request_id,id,'target always reconciles the exact immutable approval')
+  assert.notEqual(sent[0].execution_nonce,sent[1].execution_nonce,
+   'every lease must issue a fresh nonce, but not a new approval')
+  const applied=f.sql.prepare('SELECT status,execution_attempts,remote_id FROM household_approval_requests WHERE request_id=?').get(id)
+  assert.equal(applied.status,'applied')
+  assert.equal(applied.execution_attempts,2)
+  assert.equal(applied.remote_id,'736')
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events WHERE request_id=? AND action='applied'").get(id).n,1)
+ }finally{f.sql.close()}
+})
+
+
 test('approval center feature probe is read-only and never exposes disabled queue',async()=>{
  const f=fixture()
  try{
