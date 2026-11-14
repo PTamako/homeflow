@@ -1129,3 +1129,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 旧真实 SQLite 测试中的「HomeFlow 已审批回执验证」「远程回复丢失后同一申请重试」属于**受支持的现金审批路径**，对应测试账户从 credit_card 改为 cash，业务测试本身完整保留；新 `tests/homeflow-sso-isolated.test.mjs` 真实 D1 遍历 credit_card/prepaid/securities 三种本人新账户：允许创建加密草稿，但全部不能 submit，确保无 HomeFlow submit 请求、无新增原 entries、无 `finance_entry_submitted` 审计，草稿仍原样 prepared。代码/测试 Commit `9d94c146d76c9489e1d75c50037e6d585f6417b4`。静态 UI/安全接口防退化回归 Commit `e0de70f6698a8a1e1aba5c488ace4349ff448599`。
 - 最终精确 HEAD `e0de70f6698a8a1e1aba5c488ace4349ff448599` 的 [Validate #43544276058](https://github.com/PTamako/kakebo_jp/actions/runs/43544276058) 经重新核查 **completed/success**；[Mobile WebKit Smoke #43544276142](https://github.com/PTamako/kakebo_jp/actions/runs/43544276142) 此刻 `in_progress`，必须等它最终完成并记录，不可提前宣称全绿。先前中间 Commit 的取消/红灯不能代替最终 HEAD 结果。
 - 这属于 **Stage D 安全范围约束**，不代表非现金受信执行器已实现；需要以后逐一设计信用卡出账/结算日、预付卡余额、SBI 投信分账和严格幂等会计语义。当前 HomeFlow #306 仍只有 cash executor；双人真实 iPhone PWA、文书助手审批后的可信联动、历史 stable ID 全量迁移仍未完成。所有项目功能 PR 仍 Draft，**未改 Cloudflare 生产 D1/Worker/Pages/R2/Secrets/flags，未合并/部署或重建 Preview**。A 用户 Mac 全量加密备份/恢复 PASS 不代表 F 上线批准。
+
+
+## 44. 2026-11-14 §43 家計簿现金执行边界：精确最终 CI 双绿（仍 Draft、正式环境未改）
+
+- 已对原 [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) 最终 **代码** HEAD `e0de70f6698a8a1e1aba5c488ace4349ff448599` 直接核验 Actions：[Validate #43544276058](https://github.com/PTamako/kakebo_jp/actions/runs/43544276058) **completed/success**、[Mobile WebKit Smoke #43544276142](https://github.com/PTamako/kakebo_jp/actions/runs/43544276142) **completed/success**。此最终 SHA 包含 cash-only 后端审核提交拦截、非现金可留加密草稿的移动端提示和真正 SQLite 回归；无需引用中间 Commit 被取消的 CI。
+- 对 Stage D 真实能力边界的明确结论：**只有本人新建、未归档的现金账户草稿支持提交 HomeFlow 审批并在管理员执行后由家計簿签名后端写入账本**。信用卡、储值卡、证券、积分等非现金草稿不会被自动删除，但**暂不能提交并执行**，必须待独立、经会计语义验收的对应执行器才能开放。此 green CI 不代表非现金已开发完，也不代表真实两个 iPhone PWA 授权已验收。
+- 本轮 HomeFlow #306 目标 409 安全重试和 UI 回执持久提示的完整 Validate #43543435519 也为 completed/success；家計簿上一模块 §42 的 Validate #43543748110 / Mobile WebKit #43543748109 双绿。本轮所有功能仍为原 open/Draft PR，正式环境 Cloudflare 未改，仍禁止生产 D1 迁移、启用 flags、合并部署、删除旧资源或重建 Preview。A 用户在 Mac 做过的加密备份与恢复 PASS 仍不是 F 生产发布授权。
