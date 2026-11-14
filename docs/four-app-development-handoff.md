@@ -1391,3 +1391,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 测试实际使用 HomeFlow 全量历史迁移 + 新 0056 的内存 SQLite，检查任务/审批 journal/真实 owner 审计的同 D1 事务、重复 ID 回执不重复写、租约 nonce、当前成员停用/账户归属、过期/篡改的拒绝、私人任务分配他人的拒绝、额外积分余额不足的拒绝、任务写完但 journal 之前失败的整事务回滚、迁移 SQL 幂等重播及新开关默认 OFF。
 - **P0-2 尚未完成：** 文书后端签名 source-check / 持久 source reservation、HomeFlow 后端真实任务 Service Binding 执行路由、回执回源/网络故障恢复、文书与 HomeFlow 双端 UI 状态更新、跨仓库真实处理器测试，特别是执行过程中的撤权竞态。当前只是可复用的原子 D1 任务目标内核；不得在交接或 UI 宣称文书待办已经同步。P0-3、P0-4 和 B–E 其余全部未完成项沿用 §66。
 - 所有改动仅在 Draft 功能 PR（未合并），交接文件仅作为 main 的 docs-only Commit 更新；没有创建 Preview、生产迁移、部署、Cloudflare 资源改动、密钥或敏感文书内容外泄。
+
+## 68. 2026-11-14 P0-1 双应用真实状态 API 端到端回归（隔离 CI PASS）
+
+- HomeFlow #306 Draft commit [`7ca4339f`](https://github.com/PTamako/homeflow/commit/7ca4339f12bde87c779abbaf8215ba41eb792fa7) 扩展三仓库真实处理器测试，**直接调用**文书助手 `documentMemberApprovalStatus` 和 HomeFlow `documentApprovalStatusRoute`、`approvalRoute`，共用 HomeFlow 真正签名状态 API 的请求/回执，替代仅查询 SQLite 表格的 UI 状态假设。
+- 在同一隔离集成进程校验真实状态为 `pending:applied=false` → `approved:applied=false` → 真实目标 SQLite entry/journal/source reservation/HomeFlow applied 后，文书助手 `applied=true,target_changed=true,entry_id=1`，HomeFlow 管理员/成员 GET 审批记录同时 `applied=true`、真实 remote_id 与历史 `applied` 事件一致。该来源/目标 UI 的后端状态契约已被实际测试；**不等于两台 iPhone PWA 的实际浏览器 E2E 测试**。
+- Commit 对应 [Validate HomeFlow CI #43576488449](https://github.com/PTamako/homeflow/actions/runs/43576488449) `completed/success`；原 #305、家計簿 #309、知学 #179、文书助手 #97 未改变。继续保持 HomeFlow #306 `Draft`；本节唯一交接仍只更新 main 文档，不部署、不执行生产迁移。
+- P0-1 剩余更高并发跨数据库撤权竞态以及 F 阶段真实 Service Binding/双 iPhone 实机验收仍不可假报通过。P0-2 尚缺源端可信签名与 Service Binding；已有 HomeFlow 独立任务 kernel 详见 §67。
