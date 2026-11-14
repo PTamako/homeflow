@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS household_approval_requests (
     ('finance.entry.create','finance.credit_card.purchase','finance.credit_card.settlement','finance.prepaid.topup','finance.prepaid.spend',
      'finance.points.earn_campaign','finance.points.earn_purchase',
      'finance.points.redeem_discount','finance.points.redeem_purchase',
-     'finance.points.expire','finance.points.transfer_prepaid','finance.entry.update','finance.entry.delete',
+     'finance.points.expire','finance.points.transfer_prepaid','finance.points.offset_card','finance.entry.update','finance.entry.delete',
      'finance.entry.restore','finance.account.public_rule.change',
      'document.sync.finance','document.sync.homeflow','document.sync.study',
      'homeflow.shared_task.create')),
