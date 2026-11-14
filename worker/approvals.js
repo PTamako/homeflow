@@ -186,7 +186,14 @@ export async function approvalRoute(request,env,path,session){
  if(path==='/api/approvals/status'&&request.method==='GET')
   return json({enabled:env.APPROVALS_ENABLED==='true',
    execution_enabled:env.APPROVALS_ENABLED==='true'&&
-    env.APPROVAL_EXECUTION_ENABLED==='true'})
+    env.APPROVAL_EXECUTION_ENABLED==='true',
+   document_execution_enabled:env.APPROVALS_ENABLED==='true'&&
+    env.APPROVAL_EXECUTION_ENABLED==='true'&&
+    env.APPROVAL_VERIFICATION_ENABLED==='true'&&
+    env.DOCUMENT_EXECUTION_ENABLED==='true'&&
+    /^[a-f0-9]{64}$/i.test(env.DOCUMENT_EXECUTION_SECRET||'')&&
+    /^[a-f0-9]{64}$/i.test(env.DOCUMENT_APPROVAL_VERIFICATION_SECRET||'')&&
+    typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function'})
  // No migration applied and no actual target execution in production.
  if(env.APPROVALS_ENABLED!=='true')return reject('approvals_disabled',503)
  const db=env.DB

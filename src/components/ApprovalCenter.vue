@@ -21,7 +21,7 @@ const props=defineProps<{
 const allowedFilters=['','pending','approved','applied','rejected',
  'failed_retryable','conflict','cancelled'] as const
 type Filter=typeof allowedFilters[number]
-const enabled=ref(false),executionEnabled=ref(false)
+const enabled=ref(false),executionEnabled=ref(false),documentExecutionEnabled=ref(false)
 const filter=ref<Filter>('pending')
 const items=ref<Approval[]>([]),page=ref(0),hasMore=ref(false)
 const expanded=ref(false),loading=ref(false),busyId=ref('')
@@ -74,7 +74,7 @@ async function discover(){
  inFlightQuery=''
  loading.value=false
  cancelConfirm()
- enabled.value=false;executionEnabled.value=false;expanded.value=false
+ enabled.value=false;executionEnabled.value=false;documentExecutionEnabled.value=false;expanded.value=false
  items.value=[];page.value=0;hasMore.value=false
  error.value='';message.value='';busyId.value=''
  if(!props.active||!props.userId)return
@@ -83,6 +83,7 @@ async function discover(){
   if(ticket!==epoch||!props.active)return
   enabled.value=result.enabled===true
   executionEnabled.value=result.execution_enabled===true
+   documentExecutionEnabled.value=result.document_execution_enabled===true
   filter.value=props.isOwner?'pending':''
  }catch{/* Feature is deliberately hidden while migrations/flags are OFF. */}
 }
@@ -146,13 +147,16 @@ function changePage(delta:number){
  page.value=Math.max(0,page.value+delta)
  void load(false)
 }
-// Executing is not a generic effect of HomeFlow approval: the only deployed
-// Draft adapter is Kakeibo's idempotent CASH entry.create executor. Future
-// document / task / study approvals must not show a fake "execute" action.
+// A review is not an execution: only wired, journal-backed operations get a button.
+// Non-cash finance and document homeflow/study remain non-executable.
 function isSupportedExecution(item:Approval){
- return item.source_app==='kakebo'&&item.target_app==='kakebo'&&
-  item.operation==='finance.entry.create'&&item.resource_type==='finance_entry'
-}
+  const cash=item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+   item.operation==='finance.entry.create'&&item.resource_type==='finance_entry'
+  const documentFinance=item.source_app==='jp-document-assistant'&&
+   item.target_app==='kakebo'&&item.operation==='document.sync.finance'&&
+   item.resource_type==='document_sync_candidate'&&documentExecutionEnabled.value
+  return cash||documentFinance
+ }
 function canExecute(item:Approval){
  return props.isOwner&&executionEnabled.value&&isSupportedExecution(item)&&
   (item.status==='approved'||item.status==='failed_retryable')

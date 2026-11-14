@@ -69,6 +69,10 @@ test('unsupported document and non-cash approvals never offer a misleading execu
  assert.match(view,/function statusLabel\(item:Approval\)/)
  assert.match(view,/已批准 · 待目标处理/)
  assert.match(view,/目标应用未发生更改/)
+ // UI may show only the cash route or the separately flagged journal-backed document finance route.
+ assert.match(view,/documentExecutionEnabled\.value/)
+ assert.match(view,/item\.operation==='document\.sync\.finance'/)
+ assert.match(view,/item\.resource_type==='document_sync_candidate'/)
  // Backend support is exactly the same narrow subset. Do not widen UI
  // eligibility independently of a matching signed target executor.
  assert.match(executor,/const cash=row\.target_app==='kakebo'&&row\.source_app==='kakebo'/)
