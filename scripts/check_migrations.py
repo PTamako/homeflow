@@ -60,7 +60,8 @@ MIGRATIONS=[
     "0052_achievement_thresholds.sql",
     "0053_oauth_code_exchange.sql",
     "0054_household_approval_core.sql",
-    "0055_household_approval_execution_lease.sql"
+    "0055_household_approval_execution_lease.sql",
+    "0056_document_task_apply.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
@@ -103,6 +104,7 @@ secondary_indexes={
   "idx_reward_group_reward","idx_reward_group_contributions_order","idx_point_adjustments_user","idx_shopping_points_user","idx_goal_rewards_member","idx_routine_assignment_due","idx_routine_assignment_user","idx_monthly_achievements_member","idx_tasks_second_assignee","idx_routine_second_assignee","idx_shopping_second_assignee","idx_lottery_member_month","idx_lottery_household_history","idx_lottery_coupons_user","idx_lottery_coupons_goal","idx_lottery_draw_ticket_once","idx_reward_shop_coupon_once","idx_reward_coupon_discounts_household","idx_trip_reward_events_member","idx_trip_reward_events_trip_active","idx_today_actions_target","idx_today_actions_history","idx_today_actions_original"
 }
 existing_indexes={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+secondary_indexes.add("idx_document_task_applied_household")
 assert secondary_indexes.issubset(existing_indexes),f"Missing indexes: {secondary_indexes-existing_indexes}"
 triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shopping",
           "cleanup_plan_wish_marks","cleanup_plan_goal_marks","restore_legacy_shopping_link",
@@ -121,6 +123,7 @@ triggers={"cleanup_finance_trip","cleanup_finance_goal","cleanup_finance_shoppin
           "monthly_achievement_task_visibility","monthly_achievement_week_won",
           "monthly_achievement_week_revoked","trip_reward_award_on_completion","trip_reward_reverse_on_reopen","lottery_coupon_granted","lottery_ticket_guard","lottery_ticket_claim","reward_shop_coupon_guard","reward_shop_coupon_claim"}
 existing_triggers={x[0] for x in db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+triggers.update({"trg_document_task_journal_immutable_update","trg_document_task_journal_immutable_delete","trg_document_task_journal_valid","trg_document_task_record_applied"})
 assert triggers.issubset(existing_triggers),f"Missing triggers: {triggers-existing_triggers}"
 added_columns={
   "users":{"password_rounds"},

@@ -4,7 +4,7 @@ import {listFilters,monthWindow} from './list-pagination.js'
 import {jstToday} from './routine-periods.js'
 import {actionWindow,actionDue} from './today-actions.js'
 import {readTodayRows} from './today-source-read.js'
-function validated(body,session) {
+export function validated(body,session) {
   const title=shortText(body?.title,150),notes=shortText(body?.notes??'',1000)
   const visibility=body?.visibility
   const dueOn=body?.dueOn??null
@@ -30,7 +30,7 @@ function validated(body,session) {
   if(subject && (typeof subject!=='string'||subject.length>60))return null
   return {title,notes,visibility,dueOn:dueOn||null,assignee,second,subject,care,reminder,bonus}
 }
-async function validateRefs(db,session,data) {
+export async function validateRefs(db,session,data) {
   if(data.second){
     const second=await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
       .bind(session.household_id,data.second).first()
