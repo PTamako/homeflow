@@ -938,3 +938,5 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 连接读取 `main` branch protection 返回 GitHub 403 `Resource not accessible by integration`；规则集列表为空，但这不能证明 branch protection 不存在。当前无法核实或配置完整验收为必需状态检查，仍需有仓库管理权限的连接核验。不得只凭快速任务绿灯合并。
 - 本地隔离合并 #305 的最新 `b8b877388639b1a2b3ac19dbca58ea8072b8a037` 到 #306 原 HEAD，Git 无文本冲突；本地合并结果树 `f4b9c23ecd290dafb8d544f7be88acb933a8e5b9`，`npm run check` 807 测试通过、Vue 构建通过（本地 Node 24）；额外 OAuth、审批和文书审批 36 项通过。使用带预期 HEAD 的更新提交双亲 merge commit `79efaddd4fe741f5f09cb5b68bc24bd2a707334d` 到原 #306 Draft 分支；这不是合并 PR 或生产部署。必须核验该精确 HEAD 的 GitHub Node 22 CI 最终结果。
 - `main` 本次交接仅修改 docs；已核对 HomeFlow deploy.yml 使用 docs-only paths-ignore。未对生产 D1/R2、Workers 或 Pages 做任何操作。仍需完成 §20.3 核心功能与真实跨应用测试。
+
+- **GitHub CI 最终结果更新**：HomeFlow #306 整合 HEAD `79efaddd4fe741f5f09cb5b68bc24bd2a707334d` 的 [Validate #43533342466](https://github.com/PTamako/homeflow/actions/runs/43533342466) 已 completed/success，覆盖 GitHub Node 22 的测试、构建、迁移检查与 Worker dry-run；PR 仍为 Draft，未上线。
