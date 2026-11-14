@@ -59,6 +59,7 @@ function financeSchema(s){
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0035_points_prepaid_atomic.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0036_points_card_offset.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0037_points_transfer_exchange.sql',import.meta.url),'utf8'));
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0038_points_earn_expiry_reversals.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
@@ -126,6 +127,7 @@ async function fixture(){
    target_purchase_request_id:cardPurchase}:{}),
   ...(['transfer_out','exchange_out'].includes(operation)?{target_account_id:receive,
    target_version:1,target_units:100,target_rate_numerator:1,target_rate_denominator:1}:{}),
+  ...(operation==='reversal'?{original_request_id:'11111111-1111-4111-8111-111111111111'}:{}),
   ...overrides
  });
  const request=async body=>{
@@ -384,6 +386,53 @@ test('two isolated D1s: lost response after target transfer COMMIT is retried wi
   const done=await f.execute(transfer);
   assert.equal(done.status,200,JSON.stringify(done));
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_credits').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+ }finally{f.close()}
+});
+
+test('two isolated D1s: approved immutable reversal of erroneous earn and mistaken expiry uses original approval and no cash',async()=>{
+ const f=await fixture();try{
+  const initial=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const funding=await f.request(f.intent('earn_campaign',{units:160,yen_value:160}));
+  assert.equal((await f.review(funding)).status,200);
+  assert.equal((await f.execute(funding)).status,200);
+  const expired=await f.request(f.intent('expire',{units:70,yen_value:70}));
+  assert.equal((await f.review(expired)).status,200);
+  assert.equal((await f.execute(expired)).status,200);
+  const refund=await f.request(f.intent('reversal',{units:70,yen_value:70,original_request_id:expired}));
+  assert.equal((await f.review(refund)).status,200);
+  const done=await f.execute(refund);
+  assert.equal(done.status,200,JSON.stringify(done));
+  assert.equal(get(f.k.sql,'SELECT delta_units n FROM family_points_journal WHERE reversed_request_id=?',expired).n,70);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal WHERE points_account_id=?',points).n,160);
+  const cancel=await f.request(f.intent('reversal',{units:160,yen_value:160,original_request_id:funding}));
+  assert.equal((await f.review(cancel)).status,200);
+  assert.equal((await f.execute(cancel)).status,200);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal WHERE points_account_id=?',points).n,0);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,4);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,initial);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income'").n,0);
+  assert.equal((await f.execute(cancel)).data.replayed,true);
+ }finally{f.close()}
+});
+test('two isolated D1s: reversal result lost after target COMMIT recovers exactly once by original ID',async()=>{
+ const f=await fixture();try{
+  const original=await f.request(f.intent('earn_campaign',{units:130,yen_value:130}));
+  assert.equal((await f.review(original)).status,200);
+  assert.equal((await f.execute(original)).status,200);
+  const reverse=await f.request(f.intent('reversal',{units:130,yen_value:130,original_request_id:original}));
+  assert.equal((await f.review(reverse)).status,200);
+  const originalTransport=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const r=await originalTransport.fetch(req);
+   if(r.status===200)throw Error('reversal already committed');
+   return r;
+  }};
+  assert.notEqual((await f.execute(reverse)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_journal WHERE reversed_request_id=?',original).n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=originalTransport;
+  assert.equal((await f.execute(reverse)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_journal WHERE reversed_request_id=?',original).n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
  }finally{f.close()}
 });
