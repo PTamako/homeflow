@@ -1445,3 +1445,21 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **下一优先 P0-4**：从完整非现金业务模块实际执行开始（信用卡消费及应付、储值充值/消费、积分、SBI 積立/追加/ポイント投资、资产转移、历史关联、共享账簿增改删恢复/批量/周期授权），明确资产/应付/现金流的不同会计语义。不得借现金执行器假装非现金目标已实现。
 - **B–E 仍未完成**：跨 PWA 首次 OAuth/PKCE/禁用、双人完整金融账户 CRUD 与历史正确迁移、审批周期和高风险动作、私人文书共享权限及全部知学离线/缓存隔离均需按设计书 R1–R9 与 T01–T14 逐项检验。家計簿 #309 未因本次 Study 完成而变更。
 - A 阶段四 D1+三 R2 真实加密备份与 Mac 恢复 PASS；绝不重新要求用户执行 A。五个功能 PR 均保持 Draft，**不合并、不创建 Preview、不执行生产迁移/回填、不改生产 Secrets、不部署/启用 flag**。F 阶段生产及两台 iPhone 验收必须单独经用户明确批准。
+
+
+## 72. 2026-11-14 P0-4 第一组完整非现金业务：信用卡消费+独立应付账款，两仓真实处理器 SQLite / 完整 CI PASS
+
+### 72.1 交付事实与对应 PR
+
+此节从 §71 的 P0-3 三仓 PASS 继续，而非回到 §70 重新开发。**本节只宣告首组 `finance.credit_card.purchase` 隔离闭环，不代表 P0-4 全部完成**。冻结契约已经追加 §M v1.0.7（见 HomeFlow Draft #306 `docs/four-app-cross-app-contract-v1.md`）。
+
+- **家計簿 Draft #309** `feature/homeflow-sso-isolated-foundation-20261113`：增加未执行 migration `0031_family_card_purchase_execution.sql`：加密意图、版本 CAS、不可变共享家庭消费及独立信用卡截账月应付、实际 requester/approver 审计；独立 `functions/api/family-finance/card-purchases.js` 成员申请准备/提交/查询/取消；独立 `functions/api/internal/card-purchases/[[path]].js` 真正信用卡执行（AES-GCM 解密、HomeFlow 同 nonce/lease 签名证明、entries + 目标 journal + audit 单事务、回执同 ID 恢复），绝不调用现金账户执行器；`functions/api/family-finance/assets.js` 稳定 `account_id` 的家庭应付账期汇总，与资产分离，不虚构银行现金扣款；成员 `src/FamilyFinanceCardPurchases.vue` 及家族账户页面挂载，`src/FamilyFinanceAssetOwnership.vue` 双人共享显示；`tests/family-card-purchase-execution.test.mjs` 实测独立 SQLite 幂等、HMAC、真实事务与审计回滚、身份/版本失效、迁移重复执行。当前最新功能 Commit **`244535227826f6caa2258179ba30aa32162c7ad1`**，完整 CI **`43586044462` success**、**`43586044499` success**。此前 CI 中测试用 `revoked` 而真实 Kakeibo enum 仅有 `disabled`，已修复，未删除安全断言。
+- **HomeFlow Draft #306** `feature/family-approval-state-machine-20261113`：新 `worker/card-approval-submission.js` 严格后端卡片独立 HMAC 提交，`worker/index.js` 注册，`worker/approvals.js` 新 `finance.credit_card.purchase`；`worker/approval-verification.js` 独立卡端 `kakeibo-card` proof key + 精确 `operation/resource_type/version`；`worker/approval-execution.js` HomeFlow owner 租约调度真实 Kakeibo 卡目标及不可变回执后置 applied，不把批准误报入账。**首次双仓 CI 发现未执行审批表的操作 CHECK 白名单遗漏了新 operation，修复**：因为 `migrations/0054_household_approval_core.sql` 从未进入 main 或生产，只在 Draft #306 上对未执行的迁移扩展操作白名单（不触碰现有生产 D1），保留原始身份触发器/审计。工作流精确 pin 家計簿 `24453522` 为对应处理器。新 `tests/family-credit-card-real-cross-app.test.mjs` 真实 HomeFlow+Kakeibo 处理器、两套独立内存 SQLite、只模拟 Cloudflare Service Binding 传输，验证 member 提案→owner 批准→真实非现金目标事务→HomeFlow applied、目标已提交但 HomeFlow 收不到回执仍同 ID 恢复、撤权与 CAS fail-closed。最后功能/迁移 Commit **`16e3e3d44bf920bf7fff0962c003b87415880fe6`**；完整 HF CI **`43586512718` success**（tests + build + migrations + Wrangler dry-run）。契约 §M 提交 **`fb077e129384d6a89988f415e44fd1344c07941f`**。
+- **文书助手 Draft #97** `ade2dba88f95a183a6bf31f73309a9792a6daa5e`、**知学 Draft #179** `496b06a021cdd1c822f49774b31a26f31bca9895`，本节没有修改；§71 三仓业务及完整 CI 仍保存。**HomeFlow #305** 保持原 Draft/base 关系；**HomeFlow #306** 仍基于 #305，不是 main。
+
+### 72.2 已验收财务边界与仍未完成内容
+
+- 信用卡购买**一笔家庭消费**进入 entries，源端本人独立 `stable account_id`，不使用旧卡显示名冒充稳定账户，目标另记一笔 `family_card_purchase_applied` 应付负债与批准人不可变审计，不应立即减现金、银行、储值卡余额或 SBI 份额；截账月根据卡片 closing_day 计算，卡片还款日/实际扣款不凭空推断。
+- **未完成且不能对外宣称已实现**：卡片账单还款与银行现金扣款、积分抵扣卡账或兑换、储值卡充值/消费及现金流关系、SBI 積立/追加买付/积分投资、资产转移与历史关联、家庭共享修改/删除/恢复、批量与高风险审批、周期定投/固定费授权。每类需独立账务语义、真实事务、CAS、审计、回执和跨仓测试。下一步应按一类完整模块推进，而不是创建大量不可用的接口。
+- 待完成安全验收：HomeFlow/Kakeibo 当前版本 CAS、跨独立 D1 执行途中撤权的真实竞态一致性（虽然双方执行前都会验身份、但不能将单次 mock 验证宣称并发证明）、实际 PWA 浏览器 UI/E2E/双 iPhone、生产 Cloudflare Service Binding 与本地/远程迁移应用，及 R1–R9、T01–T14 其余 B–E 项。
+- A 阶段历史加密备份与 Mac 真实恢复全部 PASS，不重做。**绝对限制延续**：五 PR 都保持 Draft，不合并、不碰正式 Workers/Pages/D1/R2/Secrets，不重建 Preview，不启用正式 flag，不动任何真实用户历史；F 阶段必须由用户额外明确授权。此轮 GitHub API 只能查看远程提交/分支，不可能读取上一位开发者工作区未提交的代码，不能虚称已清理他们的本地更改。
