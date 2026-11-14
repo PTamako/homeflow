@@ -204,3 +204,41 @@ HomeFlow 工单不可变字段：source_app=kakebo；target_app=kakebo；operati
 当前隔离 CI 覆盖独立 HomeFlow 与家計簿 SQLite，真实签名处理器、审批租约、CAS、失败回滚、重复执行及丢回执恢复；仅证明隔离代码路径，不是 Cloudflare 生产 Service Binding、真实银行接口或双 iPhone 实机验收。
 
 退款/冲正/已入账撤销必须另建立反向账务 journal；遗留账本匹配、跨 D1 最终撤权竞态、银行账户实时余额、全部 PWA 浏览器回归与 F 阶段生产迁移仍未完成。不得把 §N 表述成全 P0-4 或 B–E 已交付。
+
+
+## O. v1.0.9：P0-4 本人新建储值卡银行充值、消费和余额流水（未合并 Draft）
+
+2026-11-14。此协议独立于 §M 信用卡购买、§N 信用卡还款与 §I 现金执行。只面向 household member 新建并由本人持有的 stable account_id (32hex) / account_kind=prepaid；现有历史 Suica/PASMO/nanaco 等 legacy_payment_source 未转成新卡的账户余额，必须保留原数据及归属映射，不得按相同显示名称自动搬迁或重复计资产。所有新功能标志默认 OFF，未执行生产数据库迁移及未配置生产密钥。
+
+### 两种不可混淆的财务操作
+
+- finance.prepaid.topup：必须选择本人未归档、版本仍匹配的 bank 与 prepaid 两个独立稳定账户，提供确认确已发生的银行交易日期、日元正整数金额、银行流水参考号及 statement_confirmed:true。真实扣款日期不得晚于当前 JST，银行参考号只按 bank account_id 域 SHA-256 哈希保存，不复制明文到 HomeFlow。实际执行只记录 bank→prepaid 的 entries.type=transfer，不产生新的 expense。银行并非自动连接；日期和参考号仍为用户人工确认的事实。
+- finance.prepaid.spend：必须选择本人 stable prepaid 账户，提供真实消费日期、金额、商家、分类与备注。执行只记一次 entries.type=expense，同时 prepaid 余额减相同金额；不得再把储值卡余额下降额计第二笔费用。任何余额不足、超过金额限制、CAS 不一致或撤权均拒绝入账。两个操作均不能复用信用卡应付 journal。
+- source 准备但未批准时不改余额、不改共享正式账本。两种操作均使用家計簿 family_prepaid_action_intents AES-GCM 快照（AAD=kakeibo-prepaid:{request_id}）、独立不可变幂等键、HomeFlow 审批和执行租约。HomeFlow 工单：source_app=target_app=kakebo；operation=finance.prepaid.topup 或 finance.prepaid.spend；resource_type=prepaid_action；resource_id={32hex source intent ID}；idempotency_key=kakeibo:prepaid:{resource_id}；payload_sha256 为快照原始字节摘要；expected_version 为 prepaid.version。审批人/真实执行 actor 必须是另一个有效家庭 owner，不能依靠浏览器自报审批。
+
+### 冻结独立 HMAC 和后端 wire
+
+内部请求必须 POST、无 Origin/Cookie/Authorization，x-approval-timestamp 为当前 13 位毫秒 ±5 分钟。HMAC-SHA256 的输入为独立 domain + LF + timestamp + LF + 原始 JSON 字节，32-byte Hex Secret；不得复用信用卡购买/还款或现金密钥。HomeFlow 只收审批身份元数据与 SHA-256 摘要，不应接收银行参考号、商家、金额、账户展示名称或储值卡余额。
+
+| 方向 | 路由 | X-Approval-Client / domain | 对应独立 secrets |
+| --- | --- | --- | --- |
+| 家計簿 → HomeFlow submit | /api/internal/approvals/prepaid-submit | kakeibo-prepaid / kakeibo-prepaid:submit | KAKEIBO_PREPAID_SUBMISSION_SECRET ↔ PREPAID_SUBMISSION_SECRET |
+| 家計簿 → HomeFlow proof | /api/internal/approvals/verify | kakeibo-prepaid / kakeibo-prepaid:execution-proof | KAKEIBO_PREPAID_PROOF_SECRET ↔ PREPAID_APPROVAL_PROOF_SECRET |
+| HomeFlow → 家計簿 execute | /api/internal/prepaid-actions/execute | homeflow / homeflow:prepaid-execute | PREPAID_EXECUTION_SECRET ↔ KAKEIBO_PREPAID_EXECUTION_SECRET |
+| HomeFlow → 家計簿 receipt | /api/internal/prepaid-actions/receipt | homeflow / homeflow:prepaid-receipt | 同上执行密钥，不同 HMAC 域 |
+
+submit 固定 JSON 字段 household_id,requester_user_id,resource_id,payload_sha256,expected_version,action（topup 或 spend）。execute 固定五个审批核心字段 request_id,resource_id,household_id,requester_user_id,payload_sha256 + execution_nonce，receipt 只有五核心，只读原不可变目标 receipt。proof 固定五核心 + idempotency_key,expected_version,purpose:execute,execution_nonce，要求未过期、status=executing、nonce hash、仍活跃 member+owner 和 payload 匹配。目标独立复核银行/储值账户当前真实版本及 owner/member 状态。HomeFlow 须具有 KAKEIBO_PREPAID_EXECUTION_SERVICE Service Binding。开关分别为 HomeFlow PREPAID_APPROVAL_SUBMISSION_ENABLED 与 PREPAID_APPROVAL_EXECUTION_ENABLED、家計簿 KAKEIBO_PREPAID_ACTIONS_ENABLED，依赖既有完整 SSO/家庭账本/审批全局开关；代码中 APP_ENV=production 条件不代表生产部署获授权。
+
+### D1 原子事务、余额归属、回执
+
+家計簿未执行 migration 0033_member_prepaid_actions.sql 添加 family_prepaid_action_intents、family_prepaid_actions_applied、family_prepaid_balance_journal、family_prepaid_action_audit；目标单 D1 batch 插入一次 entries（topup: transfer、spend: expense）、对应 applied、余额差额 journal 与最后真实 requester/approver/actor 审计，所有已提交数据禁止修改/删除。balance_after 必须与该稳定 prepaid account_id 在同一 SQLite writer 中的已有 SUM(delta_jpy) + 本次 delta 一致，且余额严格不得小于 0；错误或注入审计失败整批回滚。同银行 stable ID + 已使用的 bank_reference_hash 禁止再充值，避免重复扣款。不同审批 request ID 不得使用同一已提交来源银行交易证据。
+
+target 不可变回执含 approval_id,proposal_id,household_id,requester_user_id,payload_sha256,approver_user_id,actor_user_id,prepaid_account_id,prepaid_version,bank_account_id,bank_version,action,amount_jpy,date,delta_jpy,balance_after_jpy,entry_id,applied_at,already_applied。HomeFlow 严核审批身份、版本、账户 ID、action、金额、delta 符号和余额字段后，只有真实目标 journal 已落地才进入 applied。同原 request_id 重试先读原目标 receipt；目标已提交但网络丢回执沿用原审批进行查证，不创建二次收入、消费或充值。过期仅允许只读回执，不得重新执行写入。
+
+家庭共享资产视图新 member_prepaid 对象按 member_created stable account_id 聚合两位成员的 journal saldo，与原 legacy_payment_source 列表分开显示；只有分别真实记录后的余额可统计，不得猜测历史余额/银行现金余额或称之为全部净资产。真实生产数据库的历史预付账本如要映射，还须单独、经确认的无重复导入流程。
+
+### 测试事实、明确边界
+
+家計簿 tests/family-prepaid-action-execution.test.mjs 使用真实内存 SQLite 重放 0033 migration、双账号版本、两种支出/转账、余额与审计、重复请求、余额不足、同一银行流水重用、成员撤权、证明撤销、审计事务回滚，以及两人可读但原 owner 不变化的家庭余额投影。HomeFlow tests/family-prepaid-real-cross-app.test.mjs 与精确 pin 的家計簿真实源/目标处理器在两套独立 SQLite、模拟 Service Binding 中验证管理者审批、转账与消费相互隔离、原 ID 丢回执恢复及身份/CAS 失效 fail closed。必须以最新 exact SHA/CI 为准；模拟 Service Binding 不等于 Cloudflare 生产验收。
+
+仍未做历史预付账户余额映射、独立 D1 撤权的真正跨库原子一致性、退款/充值撤销/提现/特殊折扣、真实银行数据同步、两台 iPhone PWA 实机及正式生产部署迁移。后续积分充值、积分兑换、SBI、资产转移应各建会计语义不同的 journal，不得直接复制此储值卡执行器。
