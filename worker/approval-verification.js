@@ -55,7 +55,7 @@ export async function approvalVerificationRoute(request,env){
  const client=request.headers.get('x-approval-client')
  const stamp=request.headers.get('x-approval-timestamp')
  const mac=request.headers.get('x-approval-signature')
- if(!['kakeibo','jp-document-assistant','it-study-platform'].includes(client)||
+ if(!['kakeibo','kakeibo-card','jp-document-assistant','it-study-platform'].includes(client)||
   typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
   Math.abs(nowMs()-Number(stamp))>300000||
   typeof mac!=='string'||!hash.test(mac))
@@ -67,7 +67,11 @@ export async function approvalVerificationRoute(request,env){
   body=JSON.parse(raw)
  }catch{return reject('invalid_body',400)}
  const documentClient=client==='jp-document-assistant';
+ const cardClient=client==='kakeibo-card';
  const studyClient=client==='it-study-platform';
+ if(cardClient&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
+  !hash.test(env.CARD_APPROVAL_PROOF_SECRET||'')))
+  return reject('card_verification_disabled',503);
  if(documentClient&&!hash.test(env.DOCUMENT_APPROVAL_VERIFICATION_SECRET||''))
   return reject('document_verification_disabled',503);
  // Study uses a dedicated backend-only proof credential and HMAC domain.
@@ -75,11 +79,13 @@ export async function approvalVerificationRoute(request,env){
  if(studyClient&&(env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true'||
    !hash.test(env.STUDY_APPROVAL_VERIFICATION_SECRET||'')))
   return reject('study_verification_disabled',503);
- const computed=await signature(studyClient?env.STUDY_APPROVAL_VERIFICATION_SECRET:
+ const computed=await signature(cardClient?env.CARD_APPROVAL_PROOF_SECRET:
+  studyClient?env.STUDY_APPROVAL_VERIFICATION_SECRET:
   documentClient?env.DOCUMENT_APPROVAL_VERIFICATION_SECRET:
    env.APPROVAL_VERIFICATION_SECRET,
   documentClient?'jpda:execution-proof':
-   studyClient?'it-study-platform:execution-proof':client,stamp,raw)
+   studyClient?'it-study-platform:execution-proof':
+   cardClient?'kakeibo-card:execution-proof':client,stamp,raw)
  if(!constantEqualHex(computed,mac))return reject('unauthorized',403)
  if(!valid(body))return reject('invalid_request',400)
  // Exact equality with HomeFlow's immutable approval record is mandatory:
@@ -104,6 +110,11 @@ export async function approvalVerificationRoute(request,env){
  const forExecution=body.purpose==='execute'
  const cash=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
   row?.operation==='finance.entry.create'&&row?.resource_type==='finance_entry';
+ const card=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+  row?.operation==='finance.credit_card.purchase'&&
+  row?.resource_type==='credit_card_purchase'&&
+  row?.idempotency_key==='kakeibo:card:'+body.resource_id&&
+  Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
  const doc=row?.source_app==='jp-document-assistant'&&
   row?.target_app==='kakebo'&&row?.operation==='document.sync.finance'&&
   row?.resource_type==='document_sync_candidate'&&
@@ -121,7 +132,8 @@ export async function approvalVerificationRoute(request,env){
   (docStudy&&env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true')))
   return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (studyClient?!docStudy:documentClient?!(doc||docTask||docStudy):!(cash||doc))||
+  (cardClient?!card:studyClient?!docStudy:
+   documentClient?!(doc||docTask||docStudy):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
   row.payload_sha256!==body.payload_sha256||
