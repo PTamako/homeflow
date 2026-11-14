@@ -62,6 +62,7 @@ function financeSchema(s){
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0038_points_earn_expiry_reversals.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0040_points_sbi_lots.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0041_points_transfer_atomic_refund.sql',import.meta.url),'utf8'));
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0042_points_prepaid_refund.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
@@ -565,5 +566,74 @@ test('two isolated D1s: spent target points cannot refund; lost reversal respons
   assert.equal(done.status,200,JSON.stringify(done));
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_refunds').n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,5);
+ }finally{f.close()}
+});
+
+test('two isolated D1s: approved points-prepaid refund atomically restores source and removes original prepaid credit',async()=>{
+ const f=await fixture();try{
+  const before=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const earned=await f.request(f.intent('earn_campaign',{units:400,yen_value:400}));
+  assert.equal((await f.review(earned)).status,200);
+  assert.equal((await f.execute(earned)).status,200);
+  const topup=await f.request(f.intent('transfer_prepaid',{units:120,yen_value:120}));
+  assert.equal((await f.review(topup)).status,200);
+  assert.equal((await f.execute(topup)).status,200);
+  const compensation=await f.request(f.intent('reversal',{units:120,yen_value:120,
+   original_request_id:topup}));
+  assert.equal((await f.review(compensation)).status,200);
+  const done=await f.execute(compensation);
+  assert.equal(done.status,200,JSON.stringify(done));
+  const audit=get(f.k.sql,'SELECT * FROM family_points_prepaid_refunds WHERE homeflow_request_id=?',compensation);
+  assert.ok(audit);assert.equal(audit.original_request_id,topup);
+  assert.equal(audit.points_account_id,points);assert.equal(audit.prepaid_account_id,prepaid);
+  assert.equal(audit.debited_prepaid_jpy,120);assert.equal(audit.balance_after_jpy,0);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal WHERE points_account_id=?',points).n,400);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_credits').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_refunds').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,3);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,before);
+  assert.equal(get(f.h.sql,"SELECT COUNT(*) n FROM household_approval_requests WHERE status='applied'").n,3);
+  assert.equal((await f.execute(compensation)).data.replayed,true);
+ }finally{f.close()}
+});
+test('two isolated D1s: prepaid refund rejected when pre-existing credit is no longer spendable; lost reply recovers by original ID',async()=>{
+ const f=await fixture();try{
+  const earned=await f.request(f.intent('earn_campaign',{units:400,yen_value:400}));
+  assert.equal((await f.review(earned)).status,200);
+  assert.equal((await f.execute(earned)).status,200);
+  const topup=await f.request(f.intent('transfer_prepaid',{units:140,yen_value:140}));
+  assert.equal((await f.review(topup)).status,200);
+  assert.equal((await f.execute(topup)).status,200);
+  // Consumed prepaid JPY is NOT available for unconditional point restoration.
+  const fakeBankDebit=f.k.sql.prepare("INSERT INTO family_prepaid_action_intents(request_id,household_id,requester_user_id,prepaid_account_id,prepaid_version,action,payload_sha256,payload_cipher,payload_iv,idempotency_hash,status,homeflow_approval_id,created_at,expires_at,submitted_at) VALUES(?,?,?,?,?,'spend',?,?,?,?,'submitted',?,?,?,?)");
+  const now=Date.now(),spendId='8'.repeat(32),spendApproval='77777777-7777-4777-8777-777777777773';
+  fakeBankDebit.run(spendId,hh,member,prepaid,1,'1'.repeat(64),'cipher','iv','2'.repeat(64),spendApproval,now-1000,now+86400000,now);
+  const entry=stmt(f.k.sql,"INSERT INTO entries(date,amount,type,client_request_id,payment_source,family_account_id) VALUES('2026-11-14',50,'expense',?,?,?)",
+   'hfprepaid:'+spendApproval,'prepaid:'+prepaid,prepaid).lastInsertRowid;
+  stmt(f.k.sql,'INSERT INTO family_prepaid_actions_applied(homeflow_request_id,proposal_id,household_id,requester_user_id,approver_user_id,actor_user_id,prepaid_account_id,prepaid_version,action,bank_account_id,bank_version,bank_reference_hash,payload_sha256,entry_id,amount_jpy,date,balance_after_jpy,applied_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+   spendApproval,spendId,hh,member,owner,owner,prepaid,1,'spend',null,null,null,'1'.repeat(64),Number(entry),50,'2026-11-14',90,now);
+  stmt(f.k.sql,'INSERT INTO family_prepaid_balance_journal(homeflow_request_id,household_id,prepaid_account_id,delta_jpy,balance_after_jpy,effective_date,created_at) VALUES(?,?,?,?,?,?,?)',
+   spendApproval,hh,prepaid,-50,90,'2026-11-14',now);
+  const denied=await f.source(['points-actions'],f.intent('reversal',
+   {units:140,yen_value:140,original_request_id:topup}));
+  assert.equal(denied.status,409);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_refunds').n,0);
+  const replenish=await f.request(f.intent('transfer_prepaid',{units:80,yen_value:80}));
+  assert.equal((await f.review(replenish)).status,200);
+  assert.equal((await f.execute(replenish)).status,200);
+  const refund=await f.request(f.intent('reversal',
+   {units:140,yen_value:140,original_request_id:topup}));
+  assert.equal((await f.review(refund)).status,200);
+  const originalService=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const response=await originalService.fetch(req);
+   if(response.status===200)throw Error('prepaid reversal committed; transport lost');
+   return response;
+  }};
+  assert.notEqual((await f.execute(refund)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_refunds').n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=originalService;
+  assert.equal((await f.execute(refund)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_refunds').n,1);
  }finally{f.close()}
 });
