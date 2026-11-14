@@ -55,7 +55,7 @@ export async function approvalVerificationRoute(request,env){
  const client=request.headers.get('x-approval-client')
  const stamp=request.headers.get('x-approval-timestamp')
  const mac=request.headers.get('x-approval-signature')
- if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','kakeibo-prepaid','kakeibo-points','jp-document-assistant','it-study-platform'].includes(client)||
+ if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','kakeibo-prepaid','kakeibo-points','kakeibo-sbi-cash','jp-document-assistant','it-study-platform'].includes(client)||
   typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
   Math.abs(nowMs()-Number(stamp))>300000||
   typeof mac!=='string'||!hash.test(mac))
@@ -71,11 +71,15 @@ export async function approvalVerificationRoute(request,env){
  const settlementClient=client==='kakeibo-card-settlement';
  const prepaidClient=client==='kakeibo-prepaid';
  const pointsClient=client==='kakeibo-points';
+  const sbiCashClient=client==='kakeibo-sbi-cash';
  const studyClient=client==='it-study-platform';
  if(cardClient&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.CARD_APPROVAL_PROOF_SECRET||'')))
   return reject('card_verification_disabled',503);
- if(pointsClient&&(env.POINTS_APPROVAL_EXECUTION_ENABLED!=='true'||
+ if(sbiCashClient&&(env.SBI_CASH_APPROVAL_EXECUTION_ENABLED!=='true'||
+   !hash.test(env.SBI_CASH_APPROVAL_PROOF_SECRET||'')))
+   return reject('sbi_cash_verification_disabled',503);
+  if(pointsClient&&(env.POINTS_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.POINTS_APPROVAL_PROOF_SECRET||'')))
   return reject('points_verification_disabled',503);
  if(prepaidClient&&(env.PREPAID_APPROVAL_EXECUTION_ENABLED!=='true'||
@@ -91,7 +95,8 @@ export async function approvalVerificationRoute(request,env){
  if(studyClient&&(env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true'||
    !hash.test(env.STUDY_APPROVAL_VERIFICATION_SECRET||'')))
   return reject('study_verification_disabled',503);
- const computed=await signature(pointsClient?env.POINTS_APPROVAL_PROOF_SECRET:
+ const computed=await signature(sbiCashClient?env.SBI_CASH_APPROVAL_PROOF_SECRET:
+  pointsClient?env.POINTS_APPROVAL_PROOF_SECRET:
   prepaidClient?env.PREPAID_APPROVAL_PROOF_SECRET:
   settlementClient?env.CARD_SETTLEMENT_APPROVAL_PROOF_SECRET:
   cardClient?env.CARD_APPROVAL_PROOF_SECRET:
@@ -100,7 +105,8 @@ export async function approvalVerificationRoute(request,env){
    env.APPROVAL_VERIFICATION_SECRET,
   documentClient?'jpda:execution-proof':
    studyClient?'it-study-platform:execution-proof':
-   pointsClient?'kakeibo-points:execution-proof':
+   sbiCashClient?'kakeibo-sbi-cash:execution-proof':
+    pointsClient?'kakeibo-points:execution-proof':
    prepaidClient?'kakeibo-prepaid:execution-proof':
    settlementClient?'kakeibo-card-settlement:execution-proof':
    cardClient?'kakeibo-card:execution-proof':client,stamp,raw)
@@ -138,7 +144,12 @@ export async function approvalVerificationRoute(request,env){
   row?.resource_type==='credit_card_settlement'&&
   row?.idempotency_key==='kakeibo:cardsettle:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
- const points=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+ const sbiCash=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+  ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional'].includes(row?.operation)&&
+  row?.resource_type==='sbi_cash_action'&&
+  row?.idempotency_key==='kakeibo:sbi-cash:'+body.resource_id&&
+  Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
+  const points=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
    'finance.points.transfer_prepaid','finance.points.offset_card',
@@ -169,7 +180,7 @@ export async function approvalVerificationRoute(request,env){
   (docStudy&&env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true')))
   return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (pointsClient?!points:prepaidClient?!prepaid:settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
+  (sbiCashClient?!sbiCash:pointsClient?!points:prepaidClient?!prepaid:settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
    documentClient?!(doc||docTask||docStudy):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||

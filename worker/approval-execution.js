@@ -23,15 +23,18 @@ function enabled(env){
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch==='function'||
-   typeof env.KAKEIBO_POINTS_EXECUTION_SERVICE?.fetch==='function')&&
+   typeof env.KAKEIBO_POINTS_EXECUTION_SERVICE?.fetch==='function'||
+    typeof env.KAKEIBO_SBI_CASH_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false,prepaidAction=false,pointsAction=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false,prepaidAction=false,pointsAction=false,sbiCashAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((pointsAction?
+  new TextEncoder().encode((sbiCashAction?
+     (receiptOnly?'homeflow:sbi-cash-receipt':'homeflow:sbi-cash-execute'):
+    pointsAction?
     (receiptOnly?'homeflow:points-receipt':'homeflow:points-execute'):
    prepaidAction?
     (receiptOnly?'homeflow:prepaid-receipt':'homeflow:prepaid-execute'):
@@ -129,7 +132,12 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.resource_type==='credit_card_purchase'&&
   row.idempotency_key==='kakeibo:card:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
- const points=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+ const sbiCash=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+   ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional'].includes(row.operation)&&
+   row.resource_type==='sbi_cash_action'&&
+   row.idempotency_key==='kakeibo:sbi-cash:'+row.resource_id&&
+   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
+  const points=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
    'finance.points.transfer_prepaid','finance.points.offset_card',
@@ -161,13 +169,17 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.operation==='document.sync.study'&&
   row.resource_type==='document_sync_candidate'&&
   row.idempotency_key==='jpda:sync:'+row.resource_id;
- if((!cash&&!card&&!settlement&&!prepaid&&!points&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
+ if((!cash&&!card&&!settlement&&!prepaid&&!points&&!sbiCash&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
  if(card&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
    !hex.test(env.CARD_EXECUTION_SECRET||'')||
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('card_execution_disabled',503)
- if(points&&(env.POINTS_APPROVAL_EXECUTION_ENABLED!=='true'||
+ if(sbiCash&&(env.SBI_CASH_APPROVAL_EXECUTION_ENABLED!=='true'||
+   !hex.test(env.SBI_CASH_EXECUTION_SECRET||'')||
+   typeof env.KAKEIBO_SBI_CASH_EXECUTION_SERVICE?.fetch!=='function'))
+   return failure('sbi_cash_execution_disabled',503)
+  if(points&&(env.POINTS_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hex.test(env.POINTS_EXECUTION_SECRET||'')||
   typeof env.KAKEIBO_POINTS_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('points_execution_disabled',503)
@@ -238,7 +250,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request(points?
+ const outgoing=new Request(sbiCash?
+    'https://kakeibo.internal/api/internal/sbi-cash-actions/'+
+     (receiptOnly?'receipt':'execute'):
+   points?
    'https://kakeibo.internal/api/internal/points-actions/'+
     (receiptOnly?'receipt':'execute'):
   prepaid?
@@ -261,18 +276,20 @@ export async function approvalExecutionRoute(request,env,path,session){
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(points?env.POINTS_EXECUTION_SECRET:prepaid?
+   'x-approval-signature':await mac(sbiCash?env.SBI_CASH_EXECUTION_SECRET:
+     points?env.POINTS_EXECUTION_SECRET:prepaid?
     env.PREPAID_EXECUTION_SECRET:settlement?
     env.CARD_SETTLEMENT_EXECUTION_SECRET:card?
     env.CARD_EXECUTION_SECRET:documentStudy?
     env.DOCUMENT_STUDY_EXECUTION_SECRET:documentFinance?
     env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
-    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid,points)},
+    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid,points,sbiCash)},
   body:raw
  })
  let result=null
  try{
-  const response=await (points?env.KAKEIBO_POINTS_EXECUTION_SERVICE:
+  const response=await (sbiCash?env.KAKEIBO_SBI_CASH_EXECUTION_SERVICE:
+    points?env.KAKEIBO_POINTS_EXECUTION_SERVICE:
    prepaid?env.KAKEIBO_PREPAID_EXECUTION_SERVICE:
    settlement?env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE:
    card?env.KAKEIBO_CARD_EXECUTION_SERVICE:
@@ -421,7 +438,28 @@ export async function approvalExecutionRoute(request,env,path,session){
    (result.action==='spend'?result.bank_account_id===null:
     /^[a-f0-9]{32}$/i.test(result.bank_account_id||''))&&
    /^20\d{2}-\d{2}-\d{2}$/.test(result.date||'')))&&
-  (!settlement||(result.approver_user_id===row.approver_user_id&&
+  (!sbiCash||(
+    result.approver_user_id===row.approver_user_id&&
+    result.actor_user_id===row.approver_user_id&&
+    result.bank_version===row.expected_version&&
+    result.kind===row.operation.slice('finance.sbi_cash.'.length)&&
+    /^[a-f0-9]{32}$/i.test(result.bank_account_id||'')&&
+    /^[a-f0-9]{32}$/i.test(result.securities_account_id||'')&&
+    result.securities_account_id!==result.bank_account_id&&
+    Number.isSafeInteger(result.securities_version)&&result.securities_version>=1&&
+    Number.isSafeInteger(result.amount_jpy)&&result.amount_jpy>0&&
+    result.acquisition_cost_jpy===result.amount_jpy&&
+    Number.isSafeInteger(result.confirmed_units)&&result.confirmed_units>0&&
+    /^[A-Z0-9]{8}$/.test(result.fund_code||'')&&
+    ['growth','tsumitate'].includes(result.account_type)&&
+    /^[a-f0-9]{64}$/i.test(result.broker_reference_hash||'')&&
+    /^20\d{2}-\d{2}-\d{2}$/.test(result.debit_date||'')&&
+    /^20\d{2}-\d{2}-\d{2}$/.test(result.trade_date||'')&&
+    /^20\d{2}-\d{2}-\d{2}$/.test(result.effective_date||'')&&
+    result.debit_date<=result.trade_date&&result.trade_date<=result.effective_date&&
+    result.transfer_entry_id===result.entry_id&&
+    result.broker_reconciled===false&&result.included_in_tracked_assets_jpy===false))&&
+   (!settlement||(result.approver_user_id===row.approver_user_id&&
    result.actor_user_id===row.approver_user_id&&
    result.card_version===row.expected_version&&
    /^[a-f0-9]{32}$/i.test(result.card_account_id||'')&&
