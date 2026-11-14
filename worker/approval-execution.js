@@ -153,8 +153,14 @@ export async function approvalExecutionRoute(request,env,path,session){
  try{
   const response=await env.KAKEIBO_EXECUTION_SERVICE.fetch(outgoing)
   if(response.status===409){
-   await statusChange(db,row,session,'conflict','target_conflict')
-   return failure('target_conflict',409)
+   // A target 409 does not prove whether an earlier attempt committed and
+   // lost its receipt (or whether HomeFlow's execution proof was momentarily
+   // unavailable). Never make this approval terminal on an unsigned error.
+   // The target's immutable request-ID journal makes the SAME-ID retry safe.
+   const released=await statusChange(db,row,session,'failed_retryable',
+    'target_conflict_unconfirmed')
+   return failure(released?'target_conflict_unconfirmed_safe_to_retry':
+    'receipt_reconciliation_required',503)
   }
   if(response.status===200&&response.ok&&!response.headers.has('location')){
    const text=await response.text()
