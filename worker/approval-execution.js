@@ -313,16 +313,29 @@ export async function approvalExecutionRoute(request,env,path,session){
     /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
      result.reversed_request_id||'')&&
     result.reversed_request_id!==row.request_id&&
-    (result.target_account_id===null?result.refunded_target_account_id===null:(
-     /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
-     result.target_account_id!==result.points_account_id&&
-     result.refunded_target_account_id===result.target_account_id&&
-     Number.isSafeInteger(result.refunded_target_units)&&
-     result.refunded_target_units>0&&
-     Number.isSafeInteger(result.refunded_target_balance_after_units)&&
-     result.refunded_target_balance_after_units>=0&&
-     Number.isSafeInteger(result.refunded_target_version)&&
-     result.refunded_target_version>=1&&result.delta_units>0))))&&
+    (result.target_account_id===null?(
+      result.refunded_target_account_id===null&&result.refunded_prepaid_account_id===null):(
+      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
+      result.target_account_id!==result.points_account_id&&
+      result.delta_units>0&&(
+       (result.refunded_target_account_id===result.target_account_id&&
+        result.refunded_prepaid_account_id===null&&
+        Number.isSafeInteger(result.refunded_target_units)&&
+        result.refunded_target_units>0&&
+        Number.isSafeInteger(result.refunded_target_balance_after_units)&&
+        result.refunded_target_balance_after_units>=0&&
+        Number.isSafeInteger(result.refunded_target_version)&&
+        result.refunded_target_version>=1)
+       ||
+       (result.refunded_prepaid_account_id===result.target_account_id&&
+        result.refunded_target_account_id===null&&
+        Number.isSafeInteger(result.refunded_prepaid_jpy)&&
+        result.refunded_prepaid_jpy>0&&
+        result.refunded_prepaid_jpy===result.yen_value&&
+        Number.isSafeInteger(result.refunded_prepaid_balance_after_jpy)&&
+        result.refunded_prepaid_balance_after_jpy>=0&&
+        Number.isSafeInteger(result.refunded_prepaid_version)&&
+        result.refunded_prepaid_version>=1)))))&&
    (result.operation!=='redeem_asset'||(
      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
      result.target_account_id!==result.points_account_id&&
