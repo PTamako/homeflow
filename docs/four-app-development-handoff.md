@@ -986,3 +986,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `scripts/homeflow-legacy-exam-history-epoch.test.mjs` 实际使用 Vue 原方法测试：① 两笔历史待传，第一笔 POST 卡住后切号，必须阻止第二笔；② DELETE 已发但回执迟到，切号后不能清空原本地成绩；③ 三个入口静态检查。测试 Commit `cb9f3c5e1cf99908a302e9bdbf6e8df0f4a83b01`；添加快速验证 Commit `99aa07f8c2ca717309e037bf2bca834334213fdd`；原 Draft 内文档 Commit `3ca4a88539d0c8160d8b238d4b27d377c790e383`。
 - **准确 CI 状态**：最新 HEAD `3ca4a88539d0c8160d8b238d4b27d377c790e383` 的 [Validate #43537614688](https://github.com/PTamako/it-study-platform/actions/runs/43537614688) 首次检查 `pending`，不能提前宣称全绿。前一个 `99aa07f8...` 的 #43537562759 快速任务 success、完整任务因后续提交 cancelled，不属于精确最新 HEAD 的最终验收。必须重新获取 #43537614688 的 fast+full 最终状态，失败则修复并记录。
 - 尚未完成：其他旧异步任务/每日词/词典/离线 IndexedDB 与来源验证的每条迁移、四 App 完整 B～E 联调、家計簿旧金融 ID 全资源迁移、文书→目标服务签名实际执行，以及真实双人 iPhone PWA 登出/换号/断网验收。此两项均只修改知学 Draft，**未合并、未部署、未执行生产 D1、未创建 Preview**；A 备份 Mac 恢复 PASS 不是 F 上线授权。
+
+
+## 27. 2026-11-14 知学 #179 §26 追加最终 CI：历史考试切号模块已通过
+
+- 知学原 [Draft PR #179](https://github.com/PTamako/it-study-platform/pull/179) 的**精确最终 HEAD** `3ca4a88539d0c8160d8b238d4b27d377c790e383`，经 [Validate #43537614688](https://github.com/PTamako/it-study-platform/actions/runs/43537614688) 确认 `completed/success`。这是 §26 所述考试历史批量上传、迟到 DELETE 回执保护和新增快/全两路回归的真实绿色 CI；其余旧 HEAD #43537541510、#43537562759 在新提交后 cancelled，不可误报失败或成功。
+- 与 §25 §26 连续的两项 Stage E 增量现都在原 Draft #179 通过 GitHub Node 22 完整验证：① 三类本地离线 mock/scenario/practice 请求账号代次阻断；② 旧单人考试历史批量导入/删除的同一代次保护。两者没有改变 HomeFlow 专属在线学习接口的 actor 绑定逻辑，不删除任何旧缓存。
+- **生产状态仍未改变**：无生产 SQL、D1/R2/Worker/Pages 操作，无功能 flag 上线，无 Preview，无功能 PR 合并。剩余工作仍是其他全部 legacy 本地缓存/在线响应隔离、身份完整迁移与真实 iPhone 双人验收；本节绿色 CI 不代表 Stage B～E 全部完成。
