@@ -1,4 +1,6 @@
 -- 0054: Household approval request/review core.
+-- This migration is exclusively in unmerged Draft branches; extend the
+-- non-deployed whitelist BEFORE F-stage deployment, not by altering production.
 -- Stage D draft; ADDITIVE ONLY. Not deployed/migrated before A backup gate.
 -- Actual kakebo/document/study execution is NOT enabled by this migration.
 -- Payload bytes remain in the target app's pending storage; HomeFlow keeps
@@ -13,7 +15,7 @@ CREATE TABLE IF NOT EXISTS household_approval_requests (
   target_app TEXT NOT NULL CHECK(target_app IN
     ('homeflow','kakebo','jp-document-assistant','it-study-platform')),
   operation TEXT NOT NULL CHECK(operation IN
-    ('finance.entry.create','finance.entry.update','finance.entry.delete',
+    ('finance.entry.create','finance.credit_card.purchase','finance.entry.update','finance.entry.delete',
      'finance.entry.restore','finance.account.public_rule.change',
      'document.sync.finance','document.sync.homeflow','document.sync.study',
      'homeflow.shared_task.create')),
