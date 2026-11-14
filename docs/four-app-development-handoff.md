@@ -1657,3 +1657,24 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - **完整点数退款/撤回**仍缺储值卡、卡账、跨点数转移、关联已有消费与 SBI 份额/成本的真实反向对手凭证。必须一起做 target CAS、不可变反向资产/应付 journal 和原 HomeFlow ID 的审计，不能将本节简单误称“所有积分冲正完成”。
 - 旧积分 `family_points_legacy_links` 当前已有一次性主键/owner 审核基础，但完整批量人工对账、真实源快照去重/金额与新点数存量核对、全部历史关联仍待做；SBI 定投、追加買付、ポイント投資与估值、双资产转移、共享账目增删恢复/批量审批/周期授权/Cron 幂等、四应用 B～E R1～R9/T01～T14、生产 F 与双 iPhone 仍未做完。A 阶段 PASS 不重复。
+
+
+## 81. 2026-11-14 P0-4A 旧积分历史无重复关联：原所有者证据、完整旧记录快照与不可变只读链接（Draft，实测 CI PASS）
+
+### 实际写入代码与明确边界
+
+- 家計簿 #309 新增未部署的 `0039_points_legacy_provenance.sql`：历史 `entries.id` 是一次性主键，只能关联一个新稳定积分账户；必须先有 §C 原 `family_finance_legacy_entry_links` 不可变 original owner/source ID 证明，再由同一 current owner 通过新 `GET/POST /api/family-finance/legacy/points-links` 明确确认。仅当原 legacy stable account 是本人 `account_kind='points'`，而目标新 points account 同属本人、member_created、未归档、opening_balance=0 才准关联。**不支持依名字猜旧积分归属，更不支持替家庭另一成员无授权认领历史。**
+- GET 按 entry ID 每页最多 5 条、仅展示日期/金额/类型/原 stable account/源快照 SHA256，不把历史 OCR 原文回传。POST exact-key JSON 绑定 `expected_user_id`（防 PWA 切换用户时旧请求执行）、`entry_id`、`points_account_id`、`legacy_kind`、`source_digest`、`confirm=true`，另有独立 `KAKEIBO_POINTS_LEGACY_LINKS_ENABLED` 生产默认 OFF。持久审计在同一个 D1 batch 插入既有不可变 `family_points_legacy_links` 与新 `family_points_legacy_provenance`，后者锚定旧 owner proof、全部旧行逐字段快照、原 amount/type 与账号 ID；任何中途更改、不同目标重复认领、来源不存在、身份漂移或审计失败会整体回滚。被关联的历史原行不可 UPDATE/DELETE，后续纠错须独立新审计凭证。
+- 此操作 **没有积分 journal、没有点数新增/扣除、没有现金收入/消费/证券买付、没有历史改写、没有资产合计变化**。历史链接仅用于原值人工复核与后续迁移证据，不表示旧积分已加入新点数可用余额；家庭 `memberPointsBalances` 仍将旧历史链接数量与真正新 point units 严格分开。
+- 代码清单：`functions/api/family-finance/points-legacy-links.js`（新的所有者双确认处理器）、`functions/api/family-finance/[[path]].js`（已认证 family finance 的独立路由）、`migrations/0039_points_legacy_provenance.sql`（原行与来源不可变防线）、`tests/family-points-legacy-links.test.mjs`（真实 SQLite、伪造角色、重放、快照冲突、开关与 CSRF）。
+
+### 真实 GitHub Commit/CI
+
+- 家計簿 #309 Commit：`ec3295751b1c28bc4e26c42f3e01e6254e4cb150`（0039）、`ae4a1f067cfaf132d5d9978090d217daccd113ba`（源处理器）、`808cbad71b6b3556d300337491aef13afad7d322`（入口路由）、`49eb73363953c44276f5cd4f6b2da4533a6414b1`（新安全测试）、`56d6924027994d7e70f5b7d9b65ccfc44c964aa6`（修正原始 fixture 保留不可变审计），**Validate 43604672577 completed/success、Mobile WebKit Smoke 43604672511 completed/success**。包括前述全部积分模块与本轮真实旧数据同一 entry 重复声明拒绝、原行变更阻断、快照变更不可再签。
+- HomeFlow #306 将 `.github/workflows/ci.yml` 的精确家計簿源 pin 更新为 `56d6924027994d7e70f5b7d9b65ccfc44c964aa6`，Commit `544c2498694337a3fc9b762a039da1481e9430c8`，Validate HomeFlow **43604745668 completed/success**；该次也重新跑所有原跨应用业务真实 SQLite + 模拟 Service Binding。旧积分证明使用家計簿正式登录后的 owner session，不新建 HomeFlow 审批操作，未增加外部 Secret/Cron。
+- 交接 §§79/80/81、冻结契约 §§S/T/U 均仅在 Draft 功能分支演进；main 同步严格只文档，禁止影响 deploy.yml 的 docs/** 忽略。五功能 PR 仍是 Open/Draft，**没有生产代码部署/数据库迁移、没有自动历史回填、没有 Preview**。A 阶段安全备份 PASS 不再要求。
+
+### 留给下一个完整模块的安全边界
+
+- §81 仅覆盖**已核验原始所有者的旧 points 来源且审核者本人持有新积分账户**；并非自动完成所有旧消费行/积分商家映射或双方旧数据迁移，绝不可对未证明归属的旧项目自动 mint points。
+- 接下来 P0-4B：先核查现有 `src/sbi-investment-kind.js`、`functions/api/investment-portfolio.js`、`investment_holdings` + `sbi_transfer_links` 的现有 `monthly / purchase / point` 分类与真实适用日/份额/基金份额成本，设计无重复历史链接的本人新证券账户点数买付真实目标 ledger，并与 HomeFlow 的 P0 审批/两独立 D1 回执闭环；再做共享银行/证券双账户转账、家庭账单修改/恢复/批量审批、B～E R1～R9/T01～T14、生产 F 和两部 iPhone。禁止直接把历史手动截图持仓与新买付 lot 自动相加造成估值翻倍。
