@@ -21,15 +21,18 @@ function enabled(env){
    typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch==='function'||
-   typeof env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE?.fetch==='function')&&
+   typeof env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE?.fetch==='function'||
+   typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false,prepaidAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((settlementAction?
+  new TextEncoder().encode((prepaidAction?
+    (receiptOnly?'homeflow:prepaid-receipt':'homeflow:prepaid-execute'):
+   settlementAction?
     (receiptOnly?'homeflow:card-settlement-receipt':'homeflow:card-settlement-execute'):
    cardAction?
     (receiptOnly?'homeflow:card-receipt':'homeflow:card-execute'):
@@ -123,6 +126,11 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.resource_type==='credit_card_purchase'&&
   row.idempotency_key==='kakeibo:card:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
+ const prepaid=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+  (row.operation==='finance.prepaid.topup'||row.operation==='finance.prepaid.spend')&&
+  row.resource_type==='prepaid_action'&&
+  row.idempotency_key==='kakeibo:prepaid:'+row.resource_id&&
+  Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
  const settlement=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   row.operation==='finance.credit_card.settlement'&&
   row.resource_type==='credit_card_settlement'&&
@@ -141,12 +149,16 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.operation==='document.sync.study'&&
   row.resource_type==='document_sync_candidate'&&
   row.idempotency_key==='jpda:sync:'+row.resource_id;
- if((!cash&&!card&&!settlement&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
+ if((!cash&&!card&&!settlement&&!prepaid&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
  if(card&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
    !hex.test(env.CARD_EXECUTION_SECRET||'')||
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('card_execution_disabled',503)
+ if(prepaid&&(env.PREPAID_APPROVAL_EXECUTION_ENABLED!=='true'||
+  !hex.test(env.PREPAID_EXECUTION_SECRET||'')||
+  typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('prepaid_execution_disabled',503)
  if(settlement&&(env.CARD_SETTLEMENT_APPROVAL_EXECUTION_ENABLED!=='true'||
    !hex.test(env.CARD_SETTLEMENT_EXECUTION_SECRET||'')||
    typeof env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE?.fetch!=='function'))
@@ -210,7 +222,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request(settlement?
+ const outgoing=new Request(prepaid?
+   'https://kakeibo.internal/api/internal/prepaid-actions/'+
+    (receiptOnly?'receipt':'execute'):
+  settlement?
    'https://kakeibo.internal/api/internal/card-settlements/'+
     (receiptOnly?'receipt':'execute'):
   card?
@@ -227,17 +242,19 @@ export async function approvalExecutionRoute(request,env,path,session){
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(settlement?
+   'x-approval-signature':await mac(prepaid?
+    env.PREPAID_EXECUTION_SECRET:settlement?
     env.CARD_SETTLEMENT_EXECUTION_SECRET:card?
     env.CARD_EXECUTION_SECRET:documentStudy?
     env.DOCUMENT_STUDY_EXECUTION_SECRET:documentFinance?
     env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
-    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement)},
+    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid)},
   body:raw
  })
  let result=null
  try{
-  const response=await (settlement?env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE:
+  const response=await (prepaid?env.KAKEIBO_PREPAID_EXECUTION_SERVICE:
+   settlement?env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE:
    card?env.KAKEIBO_CARD_EXECUTION_SERVICE:
    documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
    documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
@@ -260,6 +277,17 @@ export async function approvalExecutionRoute(request,env,path,session){
  if(result?.ok===true&&result.applied===true&&
   result.approval_id===row.request_id&&
   ((documentStudy||documentFinance)?result.candidate_id:result.proposal_id)===row.resource_id&&
+  (!prepaid||(result.approver_user_id===row.approver_user_id&&
+   result.actor_user_id===row.approver_user_id&&
+   result.action===row.operation.slice('finance.prepaid.'.length)&&
+   /^[a-f0-9]{32}$/i.test(result.prepaid_account_id||'')&&
+   result.prepaid_version===row.expected_version&&
+   Number.isSafeInteger(result.amount_jpy)&&result.amount_jpy>0&&
+   Number.isSafeInteger(result.balance_after_jpy)&&result.balance_after_jpy>=0&&
+   result.delta_jpy===(result.action==='topup'?result.amount_jpy:-result.amount_jpy)&&
+   (result.action==='spend'?result.bank_account_id===null:
+    /^[a-f0-9]{32}$/i.test(result.bank_account_id||''))&&
+   /^20\d{2}-\d{2}-\d{2}$/.test(result.date||'')))&&
   (!settlement||(result.approver_user_id===row.approver_user_id&&
    result.actor_user_id===row.approver_user_id&&
    result.card_version===row.expected_version&&
