@@ -96,8 +96,7 @@ export async function approvalVerificationRoute(request,env){
  ).bind(body.request_id).first()
  const forExecution=body.purpose==='execute'
  const cash=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
-  row?.operation==='finance.entry.create'&&row?.resource_type==='finance_entry'&&
-  row?.idempotency_key==='kakeibo:finance:'+body.resource_id;
+  row?.operation==='finance.entry.create'&&row?.resource_type==='finance_entry';
  const doc=row?.source_app==='jp-document-assistant'&&
   row?.target_app==='kakebo'&&row?.operation==='document.sync.finance'&&
   row?.resource_type==='document_sync_candidate'&&

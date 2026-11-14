@@ -71,8 +71,12 @@ test('unsupported document and non-cash approvals never offer a misleading execu
  assert.match(view,/目标应用未发生更改/)
  // Backend support is exactly the same narrow subset. Do not widen UI
  // eligibility independently of a matching signed target executor.
- assert.match(executor,/row\.target_app!=='kakebo'\|\|row\.source_app!=='kakebo'/)
- assert.match(executor,/row\.operation!=='finance\.entry\.create'\|\|row\.resource_type!=='finance_entry'/)
+ assert.match(executor,/const cash=row\.target_app==='kakebo'&&row\.source_app==='kakebo'/)
+ assert.match(executor,/row\.operation==='finance\.entry\.create'&&row\.resource_type==='finance_entry'/)
+ assert.match(executor,/const documentFinance=row\.target_app==='kakebo'&&/)
+ assert.match(executor,/row\.operation==='document\.sync\.finance'&&/)
+ assert.match(executor,/env\.DOCUMENT_EXECUTION_ENABLED!=='true'/)
+ assert.match(executor,/typeof env\.DOCUMENT_EXECUTION_SERVICE\?\.fetch!=='function'/)
 })
 
 
