@@ -1584,7 +1584,7 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - 家計簿 #309 HEAD **7ff41c69c50524dbb9e6acb177f4cc261a220341**：Validate GitHub Actions **43599708124 completed/success**；Mobile WebKit Smoke **43599708130 completed/success**。包含旧点数、信用卡、银行/储值卡、身份隔离与全部构建回归；独立真实 SQLite 0033→0034→0035 检查精确兑换率、双边 journal、零新现金收入、没有重复消费、跨用户目标拒绝、CAS 漂移、故障回滚、重试幂等、已兑余额随后正常支出、禁止 UPDATE/DELETE。
 - HomeFlow #306 实际功能 HEAD **3362202917e390524a7546bf8806f62ddf259108**：Validate HomeFlow GitHub Actions **43599525955 completed/success**；通过精确 pin 的真实家計簿源码和独立 HomeFlow/家計簿 SQLite、模拟 Service Binding、完整 owner 审批/lease/proof/target 执行/immutable receipt，已验证第六种操作、丢响应使用原申请 ID 恢复、不重复加款、撤销或失效 target 不写入。
-- 首次新测试曾在家計簿 **43599164419**、HomeFlow **43599301423** 失败，原因是测试尝试直接 UPDATE 不可变 `family_financial_accounts.owner_user_id`；已保留保护，改用真正异主账户和合法归档/版本变化模拟，之后上述 CI 通过。后续需以 PR 最终最新 HEAD 对应的 CI 为准。HomeFlow 跨仓精确 Kakeibo pin 将同步到 **7ff41c69c50524dbb9e6acb177f4cc261a220341** 并重新验收。
+- 首次新测试曾在家計簿 **43599164419**、HomeFlow **43599301423** 失败，原因是测试尝试直接 UPDATE 不可变 `family_financial_accounts.owner_user_id`；已保留保护，改用真正异主账户和合法归档/版本变化模拟，之后上述 CI 通过。后续需以 PR 最终最新 HEAD 对应的 CI 为准。HomeFlow #306 最新包含 §77/§Q 和精确 Kakeibo pin **7ff41c69c50524dbb9e6acb177f4cc261a220341** 的 HEAD **fcb1fd160ef5f066ebb0cc8927a509abe4e6c9c6**：Validate HomeFlow GitHub Actions **43600035556 completed/success**；此 CI 完整覆盖两套实际独立 SQLite 和现有其他跨仓处理器测试。
 - 此处「真实」仅指提交的真实源/目标业务处理器、D1 SQLite 引擎与隔离跨仓集成，而非实际 Cloudflare Service Binding/双 iPhone 验收。HomeFlow DB 与家計簿 DB **无法跨库全局原子提交**，先以 HomeFlow lease / failed_retryable / 同一 approval ID 的只读 receipt 与补偿式重试恢复；跨 D1 最终撤权竞态及异常租约恢复仍待 F 阶段专项验证。
 
 ### 冻结契约、生产禁令及下一步
