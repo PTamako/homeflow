@@ -242,3 +242,43 @@ target 不可变回执含 approval_id,proposal_id,household_id,requester_user_id
 家計簿 tests/family-prepaid-action-execution.test.mjs 使用真实内存 SQLite 重放 0033 migration、双账号版本、两种支出/转账、余额与审计、重复请求、余额不足、同一银行流水重用、成员撤权、证明撤销、审计事务回滚，以及两人可读但原 owner 不变化的家庭余额投影。HomeFlow tests/family-prepaid-real-cross-app.test.mjs 与精确 pin 的家計簿真实源/目标处理器在两套独立 SQLite、模拟 Service Binding 中验证管理者审批、转账与消费相互隔离、原 ID 丢回执恢复及身份/CAS 失效 fail closed。必须以最新 exact SHA/CI 为准；模拟 Service Binding 不等于 Cloudflare 生产验收。
 
 仍未做历史预付账户余额映射、独立 D1 撤权的真正跨库原子一致性、退款/充值撤销/提现/特殊折扣、真实银行数据同步、两台 iPhone PWA 实机及正式生产部署迁移。后续积分充值、积分兑换、SBI、资产转移应各建会计语义不同的 journal，不得直接复制此储值卡执行器。
+
+
+## P. v1.0.10：P0-4 积分五种非现金操作真实跨应用契约（Draft，未部署）
+
+日期 2026-11-14。本节只冻结已验证的五个积分会计 operation，不代表全积分账户、SBI、信用卡抵扣或储值卡积分充值完成；这些其余功能仍不可调用此执行器模拟对手资金凭证。HomeFlow 的家庭任务积分不是家計簿的财务积分账户，不能混用。历史 ポイント還元 income、历史 Suica/nanaco/SBI 积分资金及老支付方式仍留在原始账务，不重复铸币、不按显示名重新认领个人 owner。
+
+### 当前允许的五个操作
+
+1. finance.points.earn_campaign：真实活动/返点来源参考号（只存账户域 SHA-256 哈希），向本人稳定 points account 增加积分 units，不新生成现金收入。
+2. finance.points.earn_purchase：关联本人已存在的 expense，并增加积分 units；原来的消费只统计一次。
+3. finance.points.redeem_discount：本人明确确认已按积分抵扣后的实际现金金额记账的 expense 才能关联，减少积分 units，不新建第二笔 expense。
+4. finance.points.redeem_purchase：只允许关联本人已存在的 point-funded expense，同时该 entries 的 family_account_id 与 payment_source 必须精确指向本人 stable points account；只减少 units，不再创造第二笔消费。
+5. finance.points.expire：基于明确来源与有效日减少 units，不增现金 expense 或银行扣款。
+
+真实积分账户均为 member_created stable 32hex account_id，owner_user_id 不得靠 label 推断。积分 units、日元 yen_value 和有理数兑换率 numerator / denominator 是独立字段；数据库校验比例相等，未验证市价时不把点数等于日元，不合计不同积分计划。余额必须满足 SUM(全部既往 units delta)+本次 delta >= 0。同一个账户域 source_reference_hash 不得二次发放；所有 journal 和真实 actor 审计不可变。
+
+### Backend-only wire 与密钥严格隔离
+
+家計簿源记录表 family_points_intents 使用 AES-GCM 快照，AAD 为 kakeibo-points:{32hex source request_id}；保留 payload_sha256、expected_version、requester、household、idempotency_hash 和 HomeFlow approval_id。HomeFlow 只保存最小审批元数据及摘要，不能读到账单、积分数量、购买对象和凭证。
+
+HomeFlow 审批：source_app=target_app=kakebo；resource_type=points_action；operation=finance.points.{上述五项}；resource_id={32hex source request_id}；idempotency_key=kakeibo:points:{resource_id}；expected_version=points account version；payload_sha256=规范 JSON 原始 UTF-8 SHA-256。requester 为当前活跃 member，approver 与执行 actor 为另一位活跃 owner，目标须独立再次确认身份/账户版本及真正 HomeFlow executing 租约。
+
+| 方向 | 路由 | Client / HMAC domain | 双端独立 32-byte hex secrets |
+| --- | --- | --- | --- |
+| 家計簿 → HomeFlow submit | /api/internal/approvals/points-submit | kakeibo-points / kakeibo-points:submit | KAKEIBO_POINTS_SUBMISSION_SECRET ↔ POINTS_SUBMISSION_SECRET |
+| 家計簿 → HomeFlow proof | /api/internal/approvals/verify | kakeibo-points / kakeibo-points:execution-proof | KAKEIBO_POINTS_PROOF_SECRET ↔ POINTS_APPROVAL_PROOF_SECRET |
+| HomeFlow → 家計簿 execute | /api/internal/points-actions/execute | homeflow / homeflow:points-execute | POINTS_EXECUTION_SECRET ↔ KAKEIBO_POINTS_EXECUTION_SECRET |
+| HomeFlow → 家計簿 receipt | /api/internal/points-actions/receipt | homeflow / homeflow:points-receipt | 同上 execute 密钥，但独立 HMAC domain |
+
+签名 HMAC-SHA256 输入 domain + LF + 13 位毫秒 timestamp + LF + raw JSON；时间窗口 ±5 分钟、无 Origin/Cookie/Authorization。submit 精确字段 household_id,requester_user_id,resource_id,payload_sha256,expected_version,action；execute 五核心 request_id,resource_id,household_id,requester_user_id,payload_sha256 + execution_nonce；receipt 仅五核心只读；proof 五核心加 idempotency_key,expected_version,purpose:execute,execution_nonce。HomeFlow 只有 executing + nonce hash + 未过期 lease + 当前 owner/member 都有效，才给 execution proof。HomeFlow 只用新的 KAKEIBO_POINTS_EXECUTION_SERVICE Binding；不得复用 prepaid/card/bank 同域密钥。
+
+新独立 flags：HomeFlow POINTS_APPROVAL_SUBMISSION_ENABLED、POINTS_APPROVAL_EXECUTION_ENABLED；家計簿 KAKEIBO_POINTS_ACTIONS_ENABLED。均生产默认 OFF，另需原已有全局 SSO/APPROVALS/VERIFICATION/FAMILY_FINANCE 安全条件，禁止自动启用。
+
+### 真正执行、审计与回执
+
+家計簿 migration 0034_family_points_foundation.sql 尚未部署：family_points_intents、family_points_journal、family_points_actor_audit、family_points_legacy_links。已实现目标按原密文解密校验摘要、审批源与版本/角色/proof/余额；只插入一个不可变 point delta journal，SQLite trigger 同事务插入真实 requester/approver/actor 审计；这五种操作不创造任何新 entries.type=expense/income/transfer。回执字段 approval_id,proposal_id,household_id,requester_user_id,payload_sha256,approver_user_id,actor_user_id,points_account_id,points_version,operation,delta_units,balance_after_units,yen_value,linked_entry_id,applied_at,already_applied。HomeFlow 校验字段及申请一致后才可 applied；网络丢回执按原申请 ID 从 target journal 重读。过期只可只读 receipt，不得重新记一笔。
+
+真实证明范围：家計簿 tests/family-points-foundation.test.mjs 和 family-points-execution.test.mjs（真实 SQLite、AES-GCM/HMAC、余额、原 ref 幂等、owner/CAS/撤权、审计）。HomeFlow tests/family-points-real-cross-app.test.mjs（两份隔离 SQLite、双方真实处理器、模拟 Service Binding、审批租约、无审批阻断、重复和丢回执恢复）。精确 CI/SHA 见交接文件 §76；模拟测试绝不等于生产 Service Binding 或双 iPhone 实机。
+
+禁止声称完成：积分→储值卡、积分卡账抵扣、SBI ポイント投資、跨积分账户转移/兑换、反向冲正、积分完整历史归属、日元家庭资产估值与其他 P0-4/B–E，必须新建真正双边对手 journal 与更多 CI。已提交不可变财务 journal 不得 UPDATE/DELETE。阶段 F 生产迁移与上线仍须用户另授权。
