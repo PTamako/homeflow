@@ -1747,3 +1747,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 本模块是内部**以用户已核实银行对账单和券商成交为证据的人工确认账务**；没有券商实际 API、真实成交回单的独立核对、旧截图与新 lot 的份额重叠消解，也未计入正式家庭资产市场估值。对于已在旧 `entries` 或旧 `sbi_transfer_links` 出现的历史交易，仍缺逐笔、不可变来源映射和跨版本去重审批；不得无条件重新导入。银行可用余额取当前稳定账户已确认内部 entries，不能替代还未映射的全部真实银行流水。
 - SBI 现金退款/取消/卖出/转出及旧 lot 反向冲正、资产估值真实券商对账、家庭跨成员资产转移、信用卡/储值卡/银行旧账户无损映射、共享账目改删恢复/回收箱及票据、批量审批/导入、周期授权/Cron、安全 PWA UI/双 iPhone、正式 B～E R1～R9/T01～T14 全覆盖均**未完成**。不得宣称四应用全部上线。
 - A 阶段用户独立完成的生产 D1/R2 加密备份、Mac SQLite 还原及 Google Drive 回下载验证保持 PASS，不重复。本节及全部前述工作仅改 GitHub **Draft** 分支；**未触及任何正式生产数据、Worker、Pages、D1、R2、Secrets、Cron、Service Binding，未建 Preview、未合并功能 PR、未做真实银行转账/券商交易**。F 阶段需单独许可。
+
+
+### §86 最终最新代码 CI 复核（2026-11-15，写入双仓验证结论）
+
+- **家計簿 #309 最终实际 HEAD** `4c00aefb5390b7251a8c6dfdda1cdb1860212c5b`：Validate **43620328601 completed/success**；Mobile WebKit Smoke **43620328612 completed/success**。在上一笔功能 commit `be81d42...` 的两条 CI 已绿后追加 `additional` 独立成交、NISA 类型与日期/类别测试；没有删除关键安全断言。
+- **HomeFlow #306 最终功能/文档 HEAD** `bb5d391c8f23c2df73718ea4bc3b9c8eaa9055bd`：Validate HomeFlow **43620564340 completed/success**。CI 将家計簿实际源码严格 pin `4c00aefb...`，两套 SQLite 运行真实 HomeFlow owner approval、签名执行、原 approval ID 回执恢复及追加/定投类别测试。代码层面没证明独立真实 D1/Service Binding/券商/银行生产行为。
+- 此附录仅补记已经获得的真实 CI 证据；§86 本次资料更新及可能的 main 文档安全同步只修改 Markdown。所有功能 PR 仍 Draft。**生产 Cloudflare 未触及，未创建 Preview 或进行正式数据迁移**。
