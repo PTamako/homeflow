@@ -335,7 +335,7 @@ export async function approvalExecutionRoute(request,env,path,session){
         Number.isSafeInteger(result.refunded_prepaid_balance_after_jpy)&&
         result.refunded_prepaid_balance_after_jpy>=0&&
         Number.isSafeInteger(result.refunded_prepaid_version)&&
-        result.refunded_prepaid_version>=1)))))&&
+        result.refunded_prepaid_version>=1))))))&&
    (result.operation!=='redeem_asset'||(
      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
      result.target_account_id!==result.points_account_id&&
