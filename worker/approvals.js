@@ -17,6 +17,7 @@ const ALLOWED_OPS={
  'finance.points.offset_card':'kakebo',
  'finance.points.transfer_out':'kakebo',
  'finance.points.exchange_out':'kakebo',
+ 'finance.points.reversal':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',

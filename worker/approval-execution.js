@@ -133,7 +133,7 @@ export async function approvalExecutionRoute(request,env,path,session){
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
    'finance.points.transfer_prepaid','finance.points.offset_card',
-   'finance.points.transfer_out','finance.points.exchange_out'].includes(row.operation)&&
+   'finance.points.transfer_out','finance.points.exchange_out','finance.points.reversal'].includes(row.operation)&&
   row.resource_type==='points_action'&&
   row.idempotency_key==='kakeibo:points:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
@@ -305,8 +305,13 @@ export async function approvalExecutionRoute(request,env,path,session){
    Math.abs(result.delta_units)<=1000000000&&
    Number.isSafeInteger(result.balance_after_units)&&result.balance_after_units>=0&&
    (result.yen_value===null||(Number.isSafeInteger(result.yen_value)&&result.yen_value>=0))&&
-   (['earn_campaign','earn_purchase'].includes(result.operation)?
+   (result.operation==='reversal'?result.delta_units!==0:
+    ['earn_campaign','earn_purchase'].includes(result.operation)?
      result.delta_units>0:result.delta_units<0)&&
+   (result.operation!=='reversal'||(
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+     result.reversed_request_id||'')&&
+    result.reversed_request_id!==row.request_id))&&
    (result.operation!=='transfer_prepaid'||(
      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
      result.target_account_id!==result.points_account_id&&
@@ -341,7 +346,10 @@ export async function approvalExecutionRoute(request,env,path,session){
      BigInt(result.transfer_target_units)*BigInt(result.transfer_target_rate_numerator)===
       BigInt(result.yen_value)*BigInt(result.transfer_target_rate_denominator)&&
      (result.operation!=='transfer_out'||result.transfer_target_units===-result.delta_units)))&&
-   (['earn_purchase','redeem_discount','redeem_purchase'].includes(result.operation)?
+   (result.operation==='reversal'?
+     (result.linked_entry_id===null||
+      (Number.isSafeInteger(result.linked_entry_id)&&result.linked_entry_id>0)):
+    ['earn_purchase','redeem_discount','redeem_purchase'].includes(result.operation)?
      Number.isSafeInteger(result.linked_entry_id)&&result.linked_entry_id>0:
      result.linked_entry_id===null)))&&
   (!prepaid||(result.approver_user_id===row.approver_user_id&&

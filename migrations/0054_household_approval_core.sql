@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS household_approval_requests (
      'finance.points.earn_campaign','finance.points.earn_purchase',
      'finance.points.redeem_discount','finance.points.redeem_purchase',
      'finance.points.expire','finance.points.transfer_prepaid','finance.points.offset_card',
-     'finance.points.transfer_out','finance.points.exchange_out','finance.entry.update','finance.entry.delete',
+     'finance.points.transfer_out','finance.points.exchange_out','finance.points.reversal','finance.entry.update','finance.entry.delete',
      'finance.entry.restore','finance.account.public_rule.change',
      'document.sync.finance','document.sync.homeflow','document.sync.study',
      'homeflow.shared_task.create')),
