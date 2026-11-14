@@ -750,7 +750,7 @@ test('Study document execution proof uses its own signing key and only live exec
    const domain=client==='jp-document-assistant'?'jpda:execution-proof':
     client==='it-study-platform'?'it-study-platform:execution-proof':client
    const signature=createHmac('sha256',Buffer.from(secret,'hex'))
-    .update(domain+'\\n'+stamp+'\\n'+raw).digest('hex')
+    .update(domain+'\n'+stamp+'\n'+raw).digest('hex')
    const response=await approvalVerificationRoute(new Request(
     'https://homeflow.example.test/api/internal/approvals/verify',{
      method:'POST',headers:{'content-type':'application/json',
