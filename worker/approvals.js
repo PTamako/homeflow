@@ -4,6 +4,7 @@ import {json,nowMs,sameOrigin,readBody} from './security.js'
 // target-app execution privileges. "approved" must never mean "applied".
 const ALLOWED_OPS={
   'finance.entry.create':'kakebo',
+  'finance.credit_card.purchase':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
