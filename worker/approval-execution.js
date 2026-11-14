@@ -266,7 +266,7 @@ export async function approvalExecutionRoute(request,env,path,session){
    /^[a-f0-9]{32}$/i.test(result.card_account_id||'')&&
    /^[a-f0-9]{32}$/i.test(result.bank_account_id||'')&&
    Number.isSafeInteger(result.amount_jpy)&&result.amount_jpy>0&&
-   /^20\\d{2}-\\d{2}-\\d{2}$/.test(result.debit_date||'')&&
+   /^20\d{2}-\d{2}-\d{2}$/.test(result.debit_date||'')&&
    result.transfer_entry_id===result.entry_id))&&
   (!card||(result.approver_user_id===row.approver_user_id&&
    result.account_version===row.expected_version&&
