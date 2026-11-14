@@ -79,3 +79,18 @@
 家計簿目标 D1 必须把 entries、不可变 document_finance_applied_actions journal 和真实 approver 审计同事务提交。回执包含 approval_id,candidate_id,household_id,requester_user_id,payload_sha256,entry_id,applied_at,approver_user_id,operation_sha256,already_applied。文书源 reservation 持久记录目标执行回执后，HomeFlow 方可根据精确回执标记 applied；文书 UI 还需对照源端结果才能显示最终成功。同一 request_id 的重复执行先查目标 journal，不能重复记账；过期未明结果只查 /receipt，不得执行新写入。
 
 严格保持全部新增开关默认 OFF：HomeFlow APPROVALS_ENABLED / APPROVAL_EXECUTION_ENABLED / APPROVAL_VERIFICATION_ENABLED / DOCUMENT_EXECUTION_ENABLED，文书 DOCUMENT_EXECUTION_ENABLED，家計簿 KAKEIBO_FAMILY_FINANCE_ENABLED / KAKEIBO_DOCUMENT_FINANCE_EXECUTION_ENABLED / KAKEIBO_APPROVAL_PROOF_ENABLED。代码校验 APP_ENV=production 不构成用户的正式部署授权；在本阶段仅隔离测试环境可以注入非真实测试密钥、模拟 Binding 与 SQLite。必须以实际最新仓库 HEAD、精确 pin 的对端 SHA 和完整 CI 为准。
+
+## J. v1.0.4：文书任务目标执行补充（仅 Draft / flags 默认 OFF）
+
+本节在 §I 的金融目标之外，增加唯一允许进入 HomeFlow 任务目标内核的 `document.sync.homeflow`，不包含 `document.sync.study` 或任何非现金财务。**文书候选的批准只是执行许可，不能直接创建待办。**
+
+| 方向 | 固定路由 / 后端签名 | 约束 |
+| --- | --- | --- |
+| HomeFlow → 文书助手源端 | `POST /api/internal/document-task/prepare`，HMAC 域 `homeflow:document-task-prepare` | `X-Approval-Client: homeflow`；精确 `request_id,resource_id,household_id,requester_user_id,payload_sha256,execution_nonce`；检查当前文书 owner/member、版本、候选更新时间、映射是否撤权，AES-GCM 解密冻住的候选；文书端回调 HomeFlow `POST /api/internal/approvals/verify` HMAC `jpda:execution-proof` 验证真实 executing nonce/lease；源端先建立持久 reservation，再只返回确认过的 `task` 七字段及 operation_sha256 |
+| HomeFlow 本地 D1 事务内核 | `worker/document-task-apply.js`（不单独暴露 HTTP） | 必须先通过上方 backend 服务；检查活跃 HomeFlow owner/member 与原申请、未过期租约、nonce、request_id、候选/家庭/摘要及操作摘要；**复用 `/api/tasks` 的同一 validated/validateRefs**，保留实际 creator、assignee、visibility、bonusPoints 钱包额度、remindEnabled；一批 D1 写入完成 tasks、不可变 journal、真实 approver 事件与 approval applied；`client_request_id` 锁住同 ID 去重 |
+| HomeFlow → 文书助手源端 | `POST /api/internal/document-task/receipt`，HMAC 域 `homeflow:document-task-receipt` | 五个审批核心字段 + `operation_sha256,task_id(UUID),approver_user_id,applied_at`，文书源端必须匹配已预约候选、实际 owner 本地映射、当前冻结摘要并持久保存不可变回执/审计；原任务若已创建但回执网络丢失，管理员再执行**仅重发原 receipt**，不得建新任务 |
+| 文书助手 → HomeFlow 状态 | `POST /api/internal/approvals/document-status`，HMAC 域 `jp-document-assistant:status` | `document.sync.homeflow` 只在 HomeFlow target journal + `remote_id UUID` + executed_at/attempts 合法时回 `applied:true`；文书助手还要核对自己 `document_task_execution_reservations` 已 `applied` 且 task_id 精确一致，才把待办标为实际同步；仅批准、源端回执未达均不得显示成功 |
+
+全部 HMAC 输入均为 **域名 + LF + 13 位毫秒时间戳 + LF + JSON 原始字节**；请求必须 POST、无浏览器 Origin/Cookie/Authorization、固定 X-Approval-Client 和5分钟签名窗口、后端独立密钥和 Service Binding。Document Assistant `DOCUMENT_TASK_EXECUTION_ENABLED` 和 HomeFlow `DOCUMENT_TASK_EXECUTION_ENABLED` **分别默认 OFF**，并需原有 HomeFlow APPROVALS_ENABLED / APPROVAL_EXECUTION_ENABLED / APPROVAL_VERIFICATION_ENABLED、APP_ENV=production 等全部显式通过。文书源端 migration `0025_document_task_execution_reservation.sql` 和 HomeFlow `0056_document_task_apply.sql` 均为未在生产执行的 Draft。
+
+2026-11-14 已在隔离 GitHub Actions 的**真实两仓处理器**和独立内存 SQLite 下验证主执行链、双端状态、撤权前检查、双设备竞争、丢失源回执后同 ID 对账；固定参考 HomeFlow #306 `4a19fba5b3df09da05bdaf179ada7b893e59413e` 和文书助手 #97 `6735022c95bbd0b91a73febb0afbe0431fd3036a`。这些结果不等同生产 Service Binding/双 iPhone 验收；源端 reservation 执行期间权限撤销及失败终态的完全恢复、任务更新仍须后续深化。

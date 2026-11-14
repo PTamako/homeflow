@@ -1398,3 +1398,18 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 在同一隔离集成进程校验真实状态为 `pending:applied=false` → `approved:applied=false` → 真实目标 SQLite entry/journal/source reservation/HomeFlow applied 后，文书助手 `applied=true,target_changed=true,entry_id=1`，HomeFlow 管理员/成员 GET 审批记录同时 `applied=true`、真实 remote_id 与历史 `applied` 事件一致。该来源/目标 UI 的后端状态契约已被实际测试；**不等于两台 iPhone PWA 的实际浏览器 E2E 测试**。
 - Commit 对应 [Validate HomeFlow CI #43576488449](https://github.com/PTamako/homeflow/actions/runs/43576488449) `completed/success`；原 #305、家計簿 #309、知学 #179、文书助手 #97 未改变。继续保持 HomeFlow #306 `Draft`；本节唯一交接仍只更新 main 文档，不部署、不执行生产迁移。
 - P0-1 剩余更高并发跨数据库撤权竞态以及 F 阶段真实 Service Binding/双 iPhone 实机验收仍不可假报通过。P0-2 尚缺源端可信签名与 Service Binding；已有 HomeFlow 独立任务 kernel 详见 §67。
+
+## 69. 2026-11-14 P0-2 文书→HomeFlow 待办真实双仓审批执行闭环（隔离 CI PASS，仍 Draft）
+
+### 69.1 已实现真实代码
+
+- 文书助手 #97 Draft `b98f25f5` 新建未执行 migration `0025_document_task_execution_reservation.sql`、`worker/document-task-source.js`，在 `worker/index.js` 注册严格签名且默认 OFF 的 `/api/internal/document-task/{prepare,receipt}` 内部入口；执行前实时检查源文书、候选、HomeFlow 身份及撤权、AES-GCM 冻结快照和 HomeFlow 可信 nonce/lease；预约持久且未确认期间锁定文书/候选关键字段；应用回执后持久源端 task_id 与真实本地 approver 审计，同 ID 不重复审计。之后补充 `tests/document-task-source-execution.test.js` commit [`186151f3`](https://github.com/PTamako/jp-document-assistant/commit/186151f3833635430a691674d915b20051389b52)，[CI #43576900525](https://github.com/PTamako/jp-document-assistant/actions/runs/43576900525) **success**。
+- 文书助手 #97 [`6735022c`](https://github.com/PTamako/jp-document-assistant/commit/6735022c95bbd0b91a73febb0afbe0431fd3036a) 在原 `documentMemberApprovalStatus` 增加 HomeFlow task 回执核验和 `task_id` 状态回读，不把仅批准视作已同步。[CI #43577122000](https://github.com/PTamako/jp-document-assistant/actions/runs/43577122000) **success**。现金路径没有替换。
+- HomeFlow #306 [`7597744d`](https://github.com/PTamako/homeflow/commit/7597744ddae8f29da1b4cd1b9fdc76a1a4e6443d) 新增 `worker/document-task-orchestrator.js`，在原 owner 执行路由调用文书真实 prepare，验证源端返回身份证明、摘要和 task payload 后执行 §67 的 HomeFlow 真实 D1 task 内核；成功后独立签名发送 source receipt；applied 后重复请求只补源回执不再创建任务；修改真实 `approvalVerificationRoute` 支持 doc task 的当前 owner/member+nonce proof，修改 `documentApprovalStatusRoute` 对 task UUID 和 journal 实际比对，保留金融原有处理路径。[CI #43577073137](https://github.com/PTamako/homeflow/actions/runs/43577073137) **success**。
+- HomeFlow #306 [`4a19fba5`](https://github.com/PTamako/homeflow/commit/4a19fba5b3df09da05bdaf179ada7b893e59413e) 在 CI 中把文书源仓库 checkout **pin** 到 `6735022c95bbd0b91a73febb0afbe0431fd3036a`，新建 `tests/document-task-three-real-apps.test.mjs`，同一次 Node 测试用两个真实仓库的处理器及独立真实 SQLite schema，贯通成员提请→管理员审查→nonce 租约→文书源端解密/身份复核/预约→HomeFlow 原生 task/journal/审计/applied 事务→文书精确 receipt→两端 status API；还实测双设备竞态、执行前撤权、各端 flag OFF、目标任务已创建但源回执网络丢失后仅补回执，没重复建任务。对应 [完整 Validate CI #43577281240](https://github.com/PTamako/homeflow/actions/runs/43577281240) `completed/success`。
+
+### 69.2 诚实剩余与边界
+
+- 此次通过的是**真实双仓处理器隔离集成验收**，不是 F 阶段正式部署/迁移。还未做旧任务匹配/更新、源端正在执行时 HomeFlow 身份撤权/文书授权撤销的分布式竞态与失败终态释放/回收、完整 PWA 浏览器界面回归、生产 Cloudflare Service Binding 联调及两台 iPhone 实机验收。不要把 P0-2 宣称全部完成。
+- 完整需求仍保留：P0-3 文书→知学可信执行、P0-4 信用卡/储值/积分/SBI/转账等非现金事务以及 B–E 其余身份/金融/通知/离线隔离均未因本次任务路线提交而完成。
+- 五个功能 PR 继续 Draft/open；未修改任何 Cloudflare 生产资源/迁移/Secrets，不启用功能开关，不建 Preview。A 阶段生产备份 PASS 但 F 部署仍必须另请用户批准。
