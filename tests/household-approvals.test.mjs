@@ -698,17 +698,17 @@ test('approval center feature probe is read-only and never exposes disabled queu
   f.env.APPROVALS_ENABLED='false'
   const disabled=await approvalRoute(request,f.env,'/api/approvals/status',sessions.owner)
   assert.equal(disabled.status,200)
-  assert.deepEqual(await disabled.json(),{enabled:false,execution_enabled:false})
+  assert.deepEqual(await disabled.json(),{enabled:false,execution_enabled:false,document_execution_enabled:false})
   assert.equal((await approvalRoute(new Request(
    'https://homeflow.example.test/api/approvals'),
    f.env,'/api/approvals',sessions.owner)).status,503)
   f.env.APPROVALS_ENABLED='true'
   f.env.APPROVAL_EXECUTION_ENABLED='false'
   const active=await approvalRoute(request,f.env,'/api/approvals/status',sessions.member)
-  assert.deepEqual(await active.json(),{enabled:true,execution_enabled:false})
+  assert.deepEqual(await active.json(),{enabled:true,execution_enabled:false,document_execution_enabled:false})
   f.env.APPROVAL_EXECUTION_ENABLED='true'
   const executing=await approvalRoute(request,f.env,'/api/approvals/status',sessions.owner)
-  assert.deepEqual(await executing.json(),{enabled:true,execution_enabled:true})
+  assert.deepEqual(await executing.json(),{enabled:true,execution_enabled:true,document_execution_enabled:false})
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,beforeRequests)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,beforeEvents)
  }finally{f.sql.close()}
