@@ -128,7 +128,7 @@ async function fixture(){
   const prepared=await prepare();
   assert.equal(prepared.status,201,JSON.stringify(prepared));
   const submitted=await submit(prepared.data.prepared.request_id);
-  assert.equal(submitted.status,201,JSON.stringify(submitted));
+  assert.equal(submitted.status,200,JSON.stringify(submitted));
   assert.equal(submitted.data.applied,false);
   return {prepared:prepared.data.prepared,id:submitted.data.approval_id};
  };
