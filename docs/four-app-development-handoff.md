@@ -1002,3 +1002,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `tests/family-finance-ui.test.mjs` 新增仅本人账户、幂等字段冻结、源码中无直接账本 POST、原 user/组件 epoch 保护的 UI 断言，Commit `a12bd8cbdc884f8de399c8e0f8f4e2a15b1cab49`；原 PR 内文档 Commit `764c93cebc8fc83946b23a8fa3758adb0f2d3cc2`。
 - 本段第一次查看代码 HEAD `a12bd8c...` 的 [Validate #43538214480](https://github.com/PTamako/kakebo_jp/actions/runs/43538214480) 和 [Mobile WebKit #43538214502](https://github.com/PTamako/kakebo_jp/actions/runs/43538214502) 均为 `pending`。文档后新的精确 HEAD `764c93cebc8fc83946b23a8fa3758adb0f2d3cc2` 必须重新获取它自己的 CI 最终结果，不能引用旧 run 绿灯。若失败，按真实步骤和日志修复。
 - **未完成**：普通成员申请经 HomeFlow owner 审批后才能真实入账的全类型受信执行器、卡/储值/SBI/固定费稳定 ID 的完全无损迁移、账本与余额一致性、真正双人 iPhone PWA、通知和断网闭环。草稿 UI 不代表 Stage C/D 完成或生产可用。**原 #309 仍 Draft，全部新迁移未在正式 D1 执行、flags OFF、无生产资源修改或 Preview**。A 本地备份恢复 PASS，不等于 F 部署已授权。
+
+
+## 29. 2026-11-14 家計簿 #309：防止前台刷新破坏待提交财务申请的重试状态（仍 Draft）
+
+- 基于 §28 的 PWA 加密草稿创建入口，审核源代码发现组件原 `load(at=0)` 会先 `++revision`，再检查 `busy`。iPhone 从后台恢复时触发的无效 GET 即使因正在 POST 被拒，也可能把有效提交的 `revision` 改掉，导致原异步 `finally` 无法释放 `busy='create'`，申请按钮永久锁住，且冻结 idempotency 草稿不能继续重试。
+- 已修正 `src/FamilyFinanceProposals.vue`：先检查 `busy/组件活性/页码` 再递增 revision；提交中不允许用收起动作意外取消当前 UI 代次；仍保留一笔未确认申请的原随机幂等键、请求全部字段及真实 member 身份的隔离。安全补丁 Commit `d87ae0b63a6ff0c439587f97068ff6d6aa3cafb9`。
+- 新 `tests/family-finance-proposals-epoch.test.mjs` 用 Node VM **实际执行** Vue 原 `load/toggle` 方法，模拟 `busy='create'` 时 Safari 前台刷新/折叠尝试，断言 revision 不变、无额外 D1 GET、仍可正常最终刷新；补禁止旧缓存和本人账户原归属守卫。测试 Commit `1606a514fa29fccd3b7aea5719728b0ec5949983`，原 Draft #309 仍 open / Draft。
+- 已有上一精确 **代码** HEAD `d87ae0b...` 的 [Validate #43538371592](https://github.com/PTamako/kakebo_jp/actions/runs/43538371592) 为 `completed/success`（并非覆盖后续测试文件）。当前带实际运行测试的 HEAD `1606a514fa29fccd3b7aea5719728b0ec5949983`，[Validate #43538427829](https://github.com/PTamako/kakebo_jp/actions/runs/43538427829) 和 [Mobile WebKit #43538427785](https://github.com/PTamako/kakebo_jp/actions/runs/43538427785) 在首次核查均 `in_progress`。**需按该 HEAD 真实最终结果更新，不得夸称已全绿**。
+- 仍未完成 Stage C 全部旧金融 stable ID 迁移、D 全类型审批后目标真实受信执行器、HomeFlow applied 回报/推送、iOS 双人真机验收；不合并功能 Draft、不运行正式迁移、不启用新 flag、不部署生产或创建 Preview。A 本地备份恢复 PASS 仍不等于允许 F 上线。
