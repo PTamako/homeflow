@@ -10,7 +10,9 @@ import {documentApprovalSubmissionRoute} from '../worker/document-approval-submi
 import {approvalRoute} from '../worker/approvals.js';
 import {approvalExecutionRoute} from '../worker/approval-execution.js';
 import {approvalVerificationRoute} from '../worker/approval-verification.js';
+import {documentApprovalStatusRoute} from '../worker/document-approval-status.js';
 import {documentExecutionRoute} from '../.contract-document/worker/document-execution.js';
+import {documentMemberApprovalStatus} from '../.contract-document/worker/document-member-approval.js';
 import {sealDocumentIntent} from '../.contract-document/worker/document-intent-crypto.js';
 import {hashString} from '../.contract-document/worker/security.js';
 import {documentFinanceRoute} from '../.contract-kakeibo/functions/api/internal/document-finance/[[path]].js';
@@ -125,7 +127,9 @@ async function fixture(){
   APPROVAL_VERIFICATION_SECRET:keys.proof,
   DOCUMENT_APPROVAL_VERIFICATION_SECRET:keys.documentProof,
   DOCUMENT_EXECUTION_SECRET:keys.execute};
- const docEnv={DB:d.db,APP_ENV:'production',DOCUMENT_EXECUTION_ENABLED:'true',
+ const docEnv={DB:d.db,APP_ENV:'production',HOMEFLOW_SSO_ENABLED:'true',
+  DOCUMENT_APPROVAL_SUBMISSION_ENABLED:'true',DOCUMENT_APPROVAL_SUBMISSION_SECRET:keys.submit,
+  DOCUMENT_EXECUTION_ENABLED:'true',
   DOCUMENT_INTENT_ENCRYPTION_KEY:keys.cipher,
   HOMEFLOW_DOCUMENT_EXECUTION_SECRET:keys.execute,
   DOCUMENT_APPROVAL_VERIFICATION_SECRET:keys.documentProof,
@@ -154,7 +158,10 @@ async function fixture(){
   return documentExecutionRoute(req,docEnv,new URL(req.url).pathname.split('/').at(-1));
  }};
  docEnv.HOMEFLOW_BRIDGE_SERVICE={async fetch(req){
-  counters.verification++;return approvalVerificationRoute(req,hfEnv);
+  counters.verification++;
+  return new URL(req.url).pathname==='/api/internal/approvals/document-status'
+   ?documentApprovalStatusRoute(req,hfEnv)
+   :approvalVerificationRoute(req,hfEnv);
  }};
  kEnv.HOMEFLOW_IDENTITY_SERVICE={async fetch(req){
   counters.verification++;return approvalVerificationRoute(req,hfEnv);
@@ -421,5 +428,48 @@ test('Kakeibo execution feature flag individually blocks mutations even when two
   const rejected=await f.execute();
   assert.equal(rejected.body.applied,false);
   assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
+ }finally{f.close()}
+});
+
+
+test('real document status and HomeFlow approval APIs agree on final applied receipt, not merely approved',async()=>{
+ const f=await fixture();
+ try{
+  const user={user_id:localMember,household_id:'local',role:'member',
+   auth_source:'homeflow',homeflow_user_id:member,
+   homeflow_household_id:household};
+  const pending=await documentMemberApprovalStatus(f.docEnv,user,candidate);
+  assert.equal(pending.status,200,await pending.clone().text());
+  const stateBefore=await pending.json();
+  assert.equal(stateBefore.applied,false);
+  assert.equal(stateBefore.approval_status,'pending');
+  assert.equal((await f.review()).status,200);
+  const approved=await documentMemberApprovalStatus(f.docEnv,user,candidate);
+  assert.equal(approved.status,200,await approved.clone().text());
+  const approvalState=await approved.json();
+  assert.equal(approvalState.applied,false);
+  assert.equal(approvalState.approval_status,'approved');
+  const final=await f.execute();
+  assert.equal(final.status,200,JSON.stringify(final));
+  const source=await documentMemberApprovalStatus(f.docEnv,user,candidate);
+  assert.equal(source.status,200,await source.clone().text());
+  const result=await source.json();
+  assert.equal(result.applied,true);
+  assert.equal(result.target_changed,true);
+  assert.equal(result.approval_status,'applied');
+  assert.equal(result.entry_id,1);
+  const ownerView=await approvalRoute(new Request(home+'/api/approvals/'+f.approvalId),f.hfEnv,
+   '/api/approvals/'+f.approvalId,{household_id:household,user_id:owner,role:'owner'});
+  assert.equal(ownerView.status,200);
+  const ownerResult=await ownerView.json();
+  assert.equal(ownerResult.request.status,'applied');
+  assert.equal(ownerResult.request.applied,true);
+  assert.equal(ownerResult.request.remote_id,'1');
+  assert.equal(ownerResult.events.at(-1).action,'applied');
+  const memberView=await approvalRoute(new Request(home+'/api/approvals/'+f.approvalId),f.hfEnv,
+   '/api/approvals/'+f.approvalId,{household_id:household,user_id:member,role:'member'});
+  assert.equal(memberView.status,200);
+  assert.equal((await memberView.json()).request.applied,true);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
  }finally{f.close()}
 });
