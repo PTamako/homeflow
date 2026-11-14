@@ -132,7 +132,8 @@ export async function approvalExecutionRoute(request,env,path,session){
  const points=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
-   'finance.points.transfer_prepaid','finance.points.offset_card'].includes(row.operation)&&
+   'finance.points.transfer_prepaid','finance.points.offset_card',
+   'finance.points.transfer_out','finance.points.exchange_out'].includes(row.operation)&&
   row.resource_type==='points_action'&&
   row.idempotency_key==='kakeibo:points:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
@@ -324,6 +325,22 @@ export async function approvalExecutionRoute(request,env,path,session){
      result.card_offset_jpy===result.yen_value&&
      Number.isSafeInteger(result.card_remaining_after_jpy)&&
      result.card_remaining_after_jpy>=0))&&
+   (!['transfer_out','exchange_out'].includes(result.operation)||(
+     /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
+     result.target_account_id!==result.points_account_id&&
+     Number.isSafeInteger(result.transfer_target_version)&&result.transfer_target_version>=1&&
+     Number.isSafeInteger(result.transfer_target_units)&&
+     result.transfer_target_units>0&&result.transfer_target_units<=1000000000&&
+     Number.isSafeInteger(result.transfer_target_balance_after_units)&&
+     result.transfer_target_balance_after_units>=result.transfer_target_units&&
+     Number.isSafeInteger(result.yen_value)&&result.yen_value>0&&
+     Number.isSafeInteger(result.transfer_target_rate_numerator)&&
+     result.transfer_target_rate_numerator>=1&&
+     Number.isSafeInteger(result.transfer_target_rate_denominator)&&
+     result.transfer_target_rate_denominator>=1&&
+     BigInt(result.transfer_target_units)*BigInt(result.transfer_target_rate_numerator)===
+      BigInt(result.yen_value)*BigInt(result.transfer_target_rate_denominator)&&
+     (result.operation!=='transfer_out'||result.transfer_target_units===-result.delta_units)))&&
    (['earn_purchase','redeem_discount','redeem_purchase'].includes(result.operation)?
      Number.isSafeInteger(result.linked_entry_id)&&result.linked_entry_id>0:
      result.linked_entry_id===null)))&&

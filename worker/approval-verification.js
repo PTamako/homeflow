@@ -141,7 +141,8 @@ export async function approvalVerificationRoute(request,env){
  const points=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
-   'finance.points.transfer_prepaid','finance.points.offset_card'].includes(row?.operation)&&
+   'finance.points.transfer_prepaid','finance.points.offset_card',
+   'finance.points.transfer_out','finance.points.exchange_out'].includes(row?.operation)&&
   row?.resource_type==='points_action'&&
   row?.idempotency_key==='kakeibo:points:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;

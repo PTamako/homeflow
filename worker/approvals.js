@@ -15,6 +15,8 @@ const ALLOWED_OPS={
   'finance.points.expire':'kakebo',
  'finance.points.transfer_prepaid':'kakebo',
  'finance.points.offset_card':'kakebo',
+ 'finance.points.transfer_out':'kakebo',
+ 'finance.points.exchange_out':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
