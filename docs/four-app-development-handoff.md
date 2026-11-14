@@ -1358,3 +1358,26 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **明确未完成**：文书→HomeFlow 任务 / →知学学习卡的可信真实执行链；知学 §64 只有未接线目标内核；非现金账务（信用卡、SBI、储值、积分、资产转移）的独立会计执行器；剩余金融历史身份迁移、严格多用户/离线缓存隔离、B–E 其余需求与 F 用户授权后的正式发布。现金不应替代上述操作。
 - 继续遵守冻结契约：`document.sync.finance` 的源候选/目标账户只按稳定 ID、版本、不可变摘要、家庭/双方身份关联；HomeFlow 执行租约不携带私人 OCR 正文。失败恢复只重试原审批 ID，结果不明先查目标 journal，不能另外创建支出。密钥不可写入代码/交接。
 - **执行交接状态**：截至本节这批代码全部已直接 Commit 到各自 Draft 分支，未遗留此会话创建的本地未提交文件。另一 Work/云端工作区如有私有未提交改动，GitHub 不提供查询渠道，不能宣称已经看见或保存。下次接手以四仓库 PR HEAD 和 CI 精确 SHA 为准。
+
+## 66. 2026-11-14 P0-1 首次三仓库真实处理器隔离贯通与故障恢复回归（Draft CI 通过，未部署）
+
+### 66.1 真实核对及实际提交
+
+- 本轮重新阅读 Google Docs v1.1、唯一交接及冻结契约；开工时五个 Draft PR HEAD 与 §65 基线完全一致，没有后续提交。HomeFlow #306 仍以 #305 功能分支为 base，其他 PR 均保持 Draft/open；不做功能合并。
+- HomeFlow #306 创建 `tests/document-finance-three-real-apps.test.mjs`，**CI Checkout 精确 pin** 家計簿 #309 `900fb17c3bbc68f24c18466da321e85c496b4ea7` 与文书助手 #97 `dcfaa5f714c222d69985f1038341f0bde56c6de9`，在同一 Node 22 测试进程真正导入 HomeFlow `documentApprovalSubmissionRoute/approvalRoute/approvalExecutionRoute/approvalVerificationRoute`、文书助手 `documentExecutionRoute/sealDocumentIntent`、家計簿 `documentFinanceRoute`。三个独立内存 SQLite 分别执行真实迁移，不接入真实 Cloudflare，不用生产 Token/数据。
+- 第一笔 commit [`d555d682`](https://github.com/PTamako/homeflow/commit/d555d682afc35d69168594fdc850cf47a013f166) 创建真实执行链测试；首次 CI [#43574840721](https://github.com/PTamako/homeflow/actions/runs/43574840721) **失败**，819 个测试中 817 通过、2 个新断言失败：未审批隐藏资源按真实后端返回 404（不是预期 409），且金融账户 HomeFlow 家庭身份为不可变字段。**没有修改/削弱生产安全代码或迁移**。修正测试场景 commit [`992eaa6c`](https://github.com/PTamako/homeflow/commit/992eaa6cd3a6568e56cd86c7bdf951cd0dba0f52)，精确 CI [#43574957949](https://github.com/PTamako/homeflow/actions/runs/43574957949) `completed/success`。
+- 追加并发/事务失败/网络断开/过期回执/变更身份场景 commit [`96beabb0`](https://github.com/PTamako/homeflow/commit/96beabb03b721e01fe967aaed428da4ea2d7b1cd)，精确最终 [Validate HomeFlow #43575145862](https://github.com/PTamako/homeflow/actions/runs/43575145862) `completed/success`。此 commit 为本节核对的 HomeFlow #306 HEAD，**不是生产部署**。
+- HomeFlow main 的仅 Markdown 冻结契约 `docs/four-app-cross-app-contract-v1.md` 已安全更新 `v1.0.3`：把旧 `applied:false` 静态表格改为文书金融真实执行状态，记载六条跨服务 HMAC 域、Binding、精确字段、回执/恢复和默认 OFF 规则。独立 docs-only commit [`11fb5b7c`](https://github.com/PTamako/homeflow/commit/11fb5b7c892eb74f620d1cf593ecb2b20697cf34)，[main Validate CI #43575044869](https://github.com/PTamako/homeflow/actions/runs/43575044869) `completed/success`。已核对 HomeFlow `deploy.yml` 的 `paths-ignore: docs/**, **/*.md`，该 main 文档提交未触发生产部署工作流。
+
+### 66.2 同一次 CI 真实三端处理器的覆盖与结论
+
+- 文书助手真实 AES-GCM 冻结快照和用户/家庭/候选/账户版本建立后，真实 HomeFlow 签名提交建立 `pending`；成员未经 owner 审查不写账；owner 后端真实 `review/approve`；HomeFlow 原子执行租约签名调用文书真实处理器，文书后端再次取得 HomeFlow 真实执行中 proof；文书把加密收入/支出操作交给家計簿真实处理器，家計簿取得 HomeFlow 真实 proof 与文书实时 `source-check`，真实 SQLite 事务提交 `entries`、目标不可变 journal、真实 approver 审计，随后源端持久 reservation/receipt，HomeFlow 标记 `applied`。
+- 覆盖同名不同稳定账户 ID、源撤权、账户版本变化、HomeFlow 身份停用及跨家庭管理员不能审批/执行、文书版本和候选更新的旧申请失效；flags 缺失在三端分别拒绝；伪造目标 HMAC 被拒绝。身份链接家庭改写在家計簿被不可变触发器阻止。
+- 覆盖双设备并发只写一条、重复点击和 journal replay 不增记账、目标已成功入账但调用方回执丢失同 ID 重试、执行前 source-check 网络断开后同 ID 恢复、目标 SQLite 在第一笔 `entries` 写入后人工注入异常并强制回滚，确保未产生孤儿流水、journal 或审计；审批过期后的未知回执走**只读 receipt** 而非再次执行；0023/0024/0030 等相关**幂等增量迁移**在内存 SQLite 重放并检查关键索引。
+- 特别注意：测试中的 `APP_ENV=production` 仅用于使真实 Worker 业务模块在**内存环境**走同一分支；绝未调用 Cloudflare API、真实 Worker Service Binding 或正式 D1/R2。尚未验证真实 iPhone 两个账号的独立 PWA、真实 Cloudflare Service Binding 与正式迁移后的完整业务链，均属于以后 F 阶段用户明确许可后才能进行的验收。不可称已经上线。
+
+### 66.3 余项与安全交接
+
+- P0-1 的主要跨仓库真实处理器隔离测试已通过。仍可扩展细粒度 HTTP 超时/回执签名及更高并发量、不同成员/家庭异常字段注入、源权限变化的跨库并发竞态和两 App 完整 UI 浏览器回归；**跨 D1 的撤权与已开始执行竞态仍须谨慎验证/改进，不可把内存 SQLite 误报成实际多 Worker 生产事务**。
+- 尚未完成：P0-2 文书→HomeFlow 待办真实可信执行；P0-3 文书→知学 §64 内核的真实 Service Binding 执行；P0-4 非现金账务（信用卡、储值、积分、SBI、转账、修删恢复等）独立执行；B–E 剩余身份迁移/通知/多用户离线缓存覆盖，以及 F 阶段生产批准后迁移与双 iPhone 实机验收。不要重写 §65 的三端现金逻辑。
+- 本轮功能代码只提交至 HomeFlow #306 Draft 分支；main 只做文档更新。其余四个 Draft PR 未因本次测试而更新；各自 §65 精确 HEAD 保持可核对。没有创建 Preview、没有启用 Flag、没有生产写入/部署，不重新要求 A 阶段备份。CI 中运行的 GitHub Runner 临时空间不代表可访问上一位 Work 未提交代码；本轮变更均有以上 GitHub commit，可继续从实时 HEAD 接手。
