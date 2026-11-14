@@ -1299,6 +1299,6 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - 文书助手 [Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 分支 `feature/homeflow-identity-link-safety-20261113`，代码 commit [`d973a2aec557034fd718a4a08faa603e8061e9e3`](https://github.com/PTamako/jp-document-assistant/commit/d973a2aec557034fd718a4a08faa603e8061e9e3)。在尚未执行生产的 0023 Draft 迁移中把待执行快照改为 AES-GCM 密文与随机 96-bit IV；AAD 绑定候选、文书、两套用户/家庭身份、目标、版本和摘要。独立 256-bit `DOCUMENT_INTENT_ENCRYPTION_KEY` 缺失时申请入口和预览 fail closed；不在仓库保存密钥，不改任何生产 Secret。
 - 重试先解密并比对原内容、digest 和身份，丢包后继续使用原申请；更改密文、密钥或身份导致解密失败。修改 0023 只适用于该迁移尚未在目标库执行的前提；任何已经试运行旧 0023 的隔离数据库需单独设计迁移，不能假设旧表自动升级。将来部署前须按受控发布流程准备和安全备份独立密钥。
-- 本地针对性 SSO/审批测试通过；安装项目依赖后完整 `npm test` 和 `npm run build` 通过，`npm run check:syntax` 通过。首次完整测试因本地缺少 yaml 依赖失败，`npm ci` 后完整重跑通过；不是删减测试。精确 HEAD 的 GitHub Actions 触发后**待核查**，写本节时尚未取得运行记录。
+- 本地针对性 SSO/审批测试通过；安装项目依赖后完整 `npm test` 和 `npm run build` 通过，`npm run check:syntax` 通过。首次完整测试因本地缺少 yaml 依赖失败，`npm ci` 后完整重跑通过；不是删减测试。精确 HEAD 的 [Pre-merge CI #43557319867](https://github.com/PTamako/jp-document-assistant/actions/runs/43557319867) 已 **completed/success**，包含全量测试、模型验证及前端构建。
 - **未完成**：这仅是源快照保护，不是 `document.sync.finance/homeflow/study` 的目标执行、journal、可靠回执、通知或源撤权竞态闭环；也未完成非现金账务、金融历史完整迁移、知学全部离线隔离或 B–E 验收。下一步应优先实现至少一条完整的可信文书目标执行流程，包括 HomeFlow 执行租约、源快照版本与身份复核、目标同事务写入与幂等 journal、回执丢失同 ID 恢复，再扩展其他目标；不能把 approved 显示为 applied。
 - 无生产部署、D1 迁移、数据回填、Preview 或 Secret 修改；PR #97 保持 Draft。A 备份恢复已通过，不代表 F 正式发布已授权。
