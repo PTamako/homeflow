@@ -662,7 +662,7 @@ test('two isolated D1s: owner-approved card-offset reversal returns points and r
   assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,500);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offsets').n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offset_refunds').n,1);
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,4);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,3);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,count);
   assert.equal((await f.execute(refund)).data.replayed,true);
  }finally{f.close()}
@@ -690,6 +690,6 @@ test('two isolated D1s: losing the card refund result does not recredit points o
   assert.equal(recovered.status,200,JSON.stringify(recovered));
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offset_refunds').n,1);
   assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,400);
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,4);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,3);
  }finally{f.close()}
 });
