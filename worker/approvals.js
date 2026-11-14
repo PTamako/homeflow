@@ -13,6 +13,7 @@ const ALLOWED_OPS={
   'finance.points.redeem_discount':'kakebo',
   'finance.points.redeem_purchase':'kakebo',
   'finance.points.expire':'kakebo',
+ 'finance.points.transfer_prepaid':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',

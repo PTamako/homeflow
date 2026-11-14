@@ -140,7 +140,8 @@ export async function approvalVerificationRoute(request,env){
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
  const points=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
-   'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire'].includes(row?.operation)&&
+   'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
+   'finance.points.transfer_prepaid'].includes(row?.operation)&&
   row?.resource_type==='points_action'&&
   row?.idempotency_key==='kakeibo:points:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;

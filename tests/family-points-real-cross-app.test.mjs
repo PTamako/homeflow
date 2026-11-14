@@ -15,7 +15,7 @@ import {approvedPointsRoute} from '../.contract-kakeibo/functions/api/internal/p
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
  member='22222222-2222-4222-8222-222222222222',
- points='a'.repeat(32),card='b'.repeat(32);
+ points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32);
 const keys={pending:'1'.repeat(64),submit:'2'.repeat(64),
  execution:'3'.repeat(64),proof:'4'.repeat(64)};
 const stmt=(s,q,...a)=>s.prepare(q).run(...a),get=(s,q,...a)=>s.prepare(q).get(...a);
@@ -51,12 +51,14 @@ function financeSchema(s){
   'category TEXT,merchant TEXT,note TEXT,raw TEXT,type TEXT,transfer_target TEXT,'+
   'transfer_applied INTEGER,transfer_date TEXT,client_request_id TEXT UNIQUE,'+
   'payment_source TEXT,family_account_id TEXT,family_transfer_target_account_id TEXT);');
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0033_member_prepaid_actions.sql',import.meta.url),'utf8'));
  const migration=readFileSync(new URL('../.contract-kakeibo/migrations/0034_family_points_foundation.sql',import.meta.url),'utf8');
  s.exec(migration);s.exec(migration);
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0035_points_prepaid_atomic.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
- for(const [a,kind] of [[points,'points'],[card,'credit_card']])
+ for(const [a,kind] of [[points,'points'],[card,'credit_card'],[prepaid,'prepaid']])
   stmt(s,'INSERT INTO family_financial_accounts(account_id,household_id,owner_user_id,label,account_kind,origin,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?)',
    a,hh,member,kind,kind,'member_created',member,member);
  stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(1,'2026-11-14','',900,'食費','Shop','','','expense',NULL,0,NULL,'purchase-1',?, ?,NULL)",
@@ -108,6 +110,7 @@ async function fixture(){
   linked_entry_id:['earn_purchase','redeem_discount'].includes(operation)?1:
    operation==='redeem_purchase'?2:null,
   expense_net_confirmed:operation==='redeem_discount',
+  ...(operation==='transfer_prepaid'?{target_account_id:prepaid,target_version:1}:{}),
   ...overrides
  });
  const request=async body=>{
@@ -212,4 +215,49 @@ test('true points-funded purchase must reference its existing one expense; no se
   assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,50);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
  }finally{f.close()}
+});
+
+test('two isolated D1s: approved point-to-prepaid posting is double-sided, immutable, and receipt-recoverable',async()=>{
+ const f=await fixture();try{
+  const baseline=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const earned=await f.request(f.intent('earn_campaign',{units:400,yen_value:400}));
+  assert.equal((await f.review(earned)).status,200);
+  assert.equal((await f.execute(earned)).status,200);
+  const transfer=await f.request(f.intent('transfer_prepaid',{units:150,yen_value:150}));
+  assert.equal((await f.review(transfer)).status,200);
+  const original=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const result=await original.fetch(req);
+   if(result.status===200)throw Error('lost acknowledgement after atomic SQLite credit');
+   return result;
+  }};
+  assert.notEqual((await f.execute(transfer)).status,200);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,250);
+  assert.equal(get(f.k.sql,'SELECT SUM(amount_jpy) n FROM family_points_prepaid_credits').n,150);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,baseline);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=original;
+  const recovered=await f.execute(transfer);
+  assert.equal(recovered.status,200,JSON.stringify(recovered));
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',transfer).status,'applied');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_credits').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type IN ('income','expense','transfer')").n,
+   get(f.k.sql,'SELECT COUNT(*) n FROM entries').n);
+ }finally{f.close()}
+});
+test('two isolated D1s: revoked prepaid ownership and stale prepaid CAS cannot mint prepaid credit',async()=>{
+ for(const mode of ['stale','cross_owner']){
+  const f=await fixture();try{
+   const earned=await f.request(f.intent('earn_campaign',{units:200,yen_value:200}));
+   assert.equal((await f.review(earned)).status,200);
+   assert.equal((await f.execute(earned)).status,200);
+   const transfer=await f.request(f.intent('transfer_prepaid',{units:100,yen_value:100}));
+   assert.equal((await f.review(transfer)).status,200);
+   if(mode==='stale')stmt(f.k.sql,'UPDATE family_financial_accounts SET version=2 WHERE account_id=?',prepaid);
+   if(mode==='cross_owner')stmt(f.k.sql,'UPDATE family_financial_accounts SET owner_user_id=? WHERE account_id=?',owner,prepaid);
+   assert.notEqual((await f.execute(transfer)).status,200);
+   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_credits').n,0);
+   assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM family_points_journal WHERE operation='transfer_prepaid'").n,0);
+  }finally{f.close()}
+ }
 });

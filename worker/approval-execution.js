@@ -131,7 +131,8 @@ export async function approvalExecutionRoute(request,env,path,session){
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
  const points=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   ['finance.points.earn_campaign','finance.points.earn_purchase',
-   'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire'].includes(row.operation)&&
+   'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
+   'finance.points.transfer_prepaid'].includes(row.operation)&&
   row.resource_type==='points_action'&&
   row.idempotency_key==='kakeibo:points:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
@@ -305,6 +306,14 @@ export async function approvalExecutionRoute(request,env,path,session){
    (result.yen_value===null||(Number.isSafeInteger(result.yen_value)&&result.yen_value>=0))&&
    (['earn_campaign','earn_purchase'].includes(result.operation)?
      result.delta_units>0:result.delta_units<0)&&
+   (result.operation!=='transfer_prepaid'||(
+     /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
+     result.target_account_id!==result.points_account_id&&
+     Number.isSafeInteger(result.prepaid_version)&&result.prepaid_version>=1&&
+     Number.isSafeInteger(result.prepaid_credit_jpy)&&result.prepaid_credit_jpy>0&&
+     result.prepaid_credit_jpy===result.yen_value&&
+     Number.isSafeInteger(result.prepaid_balance_after_jpy)&&
+     result.prepaid_balance_after_jpy>=result.prepaid_credit_jpy))&&
    (['earn_purchase','redeem_discount','redeem_purchase'].includes(result.operation)?
      Number.isSafeInteger(result.linked_entry_id)&&result.linked_entry_id>0:
      result.linked_entry_id===null)))&&
