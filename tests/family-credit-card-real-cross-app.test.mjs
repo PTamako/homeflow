@@ -85,7 +85,11 @@ async function fixture(){
  const calls={submit:0,proof:0,execute:0,receipt:0};
  financial.HOMEFLOW_IDENTITY_SERVICE={async fetch(req){
   if(new URL(req.url).pathname==='/api/internal/approvals/card-submit'){
-   calls.submit++;return cardApprovalSubmissionRoute(req,home);
+   calls.submit++;
+   const response=await cardApprovalSubmissionRoute(req,home);
+   assert.ok([200,201].includes(response.status),
+    'real HomeFlow card submission rejected: '+response.status+' '+await response.clone().text());
+   return response;
   }
   calls.proof++;return approvalVerificationRoute(req,home);
  }};
