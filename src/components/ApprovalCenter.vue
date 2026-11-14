@@ -207,7 +207,9 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  }catch(e){
   if(account===props.userId){
    const reason=(e as Error).message
-   error.value=kind==='execute'&&[
+   error.value=kind==='execute'&&reason==='expired_receipt_unknown'
+    ?'审批已过期，暂未查到确定的入账回执。可再次核对原审批；系统不会重新入账。'
+    :kind==='execute'&&[
     'target_conflict_unconfirmed_safe_to_retry',
     'target_result_unknown_safe_to_retry',
     'receipt_reconciliation_required',

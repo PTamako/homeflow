@@ -560,6 +560,66 @@ test('lost target response is retryable, reuses same approval ID and settles onc
  }finally{f.sql.close()}
 })
 
+test('expired uncertain cash execution only reads the original target receipt and can reconcile it',async()=>{
+ const f=fixture()
+ try{
+  const secret='c'.repeat(64)
+  Object.assign(f.env,{APP_ENV:'production',APPROVAL_VERIFICATION_SECRET:secret,
+   APPROVAL_EXECUTION_ENABLED:'true',APPROVAL_VERIFICATION_ENABLED:'true'})
+  const created=await f.call(sessions.member,'/api/approvals','POST',
+   entry('expired-receipt-recovery-0001',{resource_id:'d'.repeat(32)}))
+  const id=created.body.request.request_id
+  await f.call(sessions.owner,'/api/approvals/'+id+'/review','POST',{decision:'approve'})
+  let attempts=0,postedAt=0,found=false
+  f.env.KAKEIBO_EXECUTION_SERVICE={async fetch(request){
+   const path=new URL(request.url).pathname,raw=await request.text()
+   const timestamp=request.headers.get('x-approval-timestamp')
+   const data=JSON.parse(raw)
+   assert.equal(data.request_id,id)
+   if(!attempts++){
+    assert.equal(path,'/api/internal/approved-actions/execute')
+    postedAt=Date.now()
+    throw Error('committed but response lost')
+   }
+   assert.equal(path,'/api/internal/approved-actions/receipt')
+   assert.equal('execution_nonce' in data,false)
+   assert.equal(request.headers.get('x-approval-signature'),createHmac('sha256',Buffer.from(secret,'hex'))
+    .update('homeflow:receipt\n'+timestamp+'\n'+raw).digest('hex'))
+   if(!found)return Response.json({ok:false,applied:false},{status:404})
+   return Response.json({ok:true,applied:true,approval_id:id,proposal_id:'d'.repeat(32),
+    household_id:'primary',requester_user_id:'member',payload_sha256:'a'.repeat(64),
+    entry_id:876,already_applied:true,applied_at:postedAt})
+  }}
+  const execute=()=>approvalExecutionRoute(new Request('https://homeflow.example.test/api/approvals/'+id+'/execute',{
+   method:'POST',headers:{origin:'https://homeflow.example.test','content-type':'application/json'},body:'{}'
+  }),f.env,'/api/approvals/'+id+'/execute',sessions.owner)
+  assert.equal((await execute()).status,503)
+  f.sql.prepare('UPDATE household_approval_requests SET expires_at=created_at+1 WHERE request_id=?').run(id)
+  await new Promise(resolve=>setTimeout(resolve,5))
+  const uncertain=await execute()
+  assert.equal(uncertain.status,503)
+  assert.equal((await uncertain.json()).code,'expired_receipt_unknown')
+  assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests WHERE request_id=?').get(id).status,'failed_retryable')
+  found=true
+  const settled=await execute()
+  assert.equal(settled.status,200,await settled.clone().text())
+  assert.equal((await settled.json()).remote_id,'876')
+  assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests WHERE request_id=?').get(id).status,'applied')
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events WHERE request_id=? AND action='applied'").get(id).n,1)
+  const neverStarted=await f.call(sessions.member,'/api/approvals','POST',
+   entry('expired-never-executed-0001',{resource_id:'e'.repeat(32)}))
+  const freshId=neverStarted.body.request.request_id
+  await f.call(sessions.owner,'/api/approvals/'+freshId+'/review','POST',{decision:'approve'})
+  f.sql.prepare('UPDATE household_approval_requests SET expires_at=created_at+1 WHERE request_id=?').run(freshId)
+  await new Promise(resolve=>setTimeout(resolve,5))
+  const stale=await approvalExecutionRoute(new Request('https://homeflow.example.test/api/approvals/'+freshId+'/execute',{
+   method:'POST',headers:{origin:'https://homeflow.example.test','content-type':'application/json'},body:'{}'
+  }),f.env,'/api/approvals/'+freshId+'/execute',sessions.owner)
+  assert.equal(stale.status,409)
+  assert.equal(attempts,3,'expired unexecuted approval does not contact the target')
+ }finally{f.sql.close()}
+})
+
 
 
 test('target 409 is not a terminal conflict: unchanged approval can reconcile a late applied receipt',async()=>{

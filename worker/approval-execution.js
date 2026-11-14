@@ -19,12 +19,12 @@ function enabled(env){
   typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw){
+async function mac(secret,stamp,raw,receiptOnly=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode('homeflow\n'+stamp+'\n'+raw))
+  new TextEncoder().encode((receiptOnly?'homeflow:receipt':'homeflow')+'\n'+stamp+'\n'+raw))
  return Array.from(new Uint8Array(data),x=>x.toString(16).padStart(2,'0')).join('')
 }
 async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=null,remoteAppliedAt=null){
@@ -117,8 +117,12 @@ export async function approvalExecutionRoute(request,env,path,session){
   row=await ownerApproval(db,m[1],session)
   if(!row)return failure('not_found',404)
  }
+ // An expired approval can only reconcile a previous uncertain attempt. It
+ // must never be sent to the target's mutation route again after expiry.
+ const receiptOnly=Number(row.expires_at)<=nowMs()
  if(!['approved','failed_retryable'].includes(row.status)||
-  Number(row.expires_at)<=nowMs())return failure('approval_not_executable',409)
+  (receiptOnly&&(row.status!=='failed_retryable'||row.execution_attempts<1)))
+  return failure('approval_not_executable',409)
  const nonce=randomToken(),nonceHash=await sha256(nonce)
  const stamp=nowMs(),lease=stamp+LEASE_MS
  try{
@@ -127,8 +131,9 @@ export async function approvalExecutionRoute(request,env,path,session){
     "execution_nonce_hash=?,execution_lease_until=?,updated_at=?,"+
     "last_error_code=NULL,execution_attempts=execution_attempts+1,version=version+1 "+
     "WHERE request_id=? AND household_id=? AND approver_user_id=? "+
-    "AND status IN ('approved','failed_retryable') AND expires_at>?")
-    .bind(nonceHash,lease,stamp,row.request_id,row.household_id,session.user_id,stamp),
+    "AND ((status IN ('approved','failed_retryable') AND expires_at>?) "+
+    "OR (status='failed_retryable' AND execution_attempts>0 AND expires_at<=? AND ?=1))")
+    .bind(nonceHash,lease,stamp,row.request_id,row.household_id,session.user_id,stamp,stamp,receiptOnly?1:0),
    db.prepare('INSERT INTO household_approval_events '+
     '(event_id,request_id,actor_user_id,actor_type,action,created_at) '+
     "SELECT ?,request_id,?,'integration','executing',? "+
@@ -140,13 +145,13 @@ export async function approvalExecutionRoute(request,env,path,session){
  row={...row,execution_nonce_hash:nonceHash,execution_lease_until:lease}
  const payload={request_id:row.request_id,resource_id:row.resource_id,
   household_id:row.household_id,requester_user_id:row.requester_user_id,
-  payload_sha256:row.payload_sha256,execution_nonce:nonce}
+  payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request('https://kakeibo.internal/api/internal/approved-actions/execute',{
+ const outgoing=new Request('https://kakeibo.internal/api/internal/approved-actions/'+(receiptOnly?'receipt':'execute'),{
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(env.APPROVAL_VERIFICATION_SECRET,timestamp,raw)},
+   'x-approval-signature':await mac(env.APPROVAL_VERIFICATION_SECRET,timestamp,raw,receiptOnly)},
   body:raw
  })
  let result=null
@@ -181,7 +186,7 @@ export async function approvalExecutionRoute(request,env,path,session){
    replayed:result.already_applied===true})
   return failure('applied_remote_receipt_pending_reconciliation',503)
  }
- const released=await statusChange(db,row,session,'failed_retryable','target_result_unknown')
- return failure(released?'target_result_unknown_safe_to_retry':
+ const released=await statusChange(db,row,session,'failed_retryable',receiptOnly?'expired_receipt_unknown':'target_result_unknown')
+ return failure(released?(receiptOnly?'expired_receipt_unknown':'target_result_unknown_safe_to_retry'):
   'receipt_reconciliation_required',503)
 }
