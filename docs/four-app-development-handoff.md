@@ -1413,3 +1413,14 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 此次通过的是**真实双仓处理器隔离集成验收**，不是 F 阶段正式部署/迁移。还未做旧任务匹配/更新、源端正在执行时 HomeFlow 身份撤权/文书授权撤销的分布式竞态与失败终态释放/回收、完整 PWA 浏览器界面回归、生产 Cloudflare Service Binding 联调及两台 iPhone 实机验收。不要把 P0-2 宣称全部完成。
 - 完整需求仍保留：P0-3 文书→知学可信执行、P0-4 信用卡/储值/积分/SBI/转账等非现金事务以及 B–E 其余身份/金融/通知/离线隔离均未因本次任务路线提交而完成。
 - 五个功能 PR 继续 Draft/open；未修改任何 Cloudflare 生产资源/迁移/Secrets，不启用功能开关，不建 Preview。A 阶段生产备份 PASS 但 F 部署仍必须另请用户批准。
+
+
+## 70. 2026-11-14 P0-3 知学可信目标执行及审批人原子审计：隔离 CI PASS，跨仓整体待完成
+
+- 本轮以真实 Study #179 HEAD 1a5420cc41b2573eb733c3d6d835cf2af6827589 为基线，在原 Draft PR 开发，不重新实现 §64 事务内核。
+- [7bfb4dab](https://github.com/PTamako/it-study-platform/commit/7bfb4dab7afe6f82ff2bf4e98af54fa4373a8300) 新增 worker/document-study-execution.ts，且为 worker/index.ts 增加独立后端路由。目标端要求文书助手 13 位时间戳原始 JSON 签名、HomeFlow 有效 executing nonce/lease 以及文书端当前源内容的独立签名复核，才可执行 §64 applyVerifiedDocumentStudy；重复 ID 只读原 receipt。
+- 新未执行 migration 0192_homeflow_document_study_approver_audit.sql：真实审批人与申请人分别记录、严格校验同家庭 active member/owner，个人词汇/句子、immutable journal、actor audit 同一 D1 batch；若审计插入失败则个人学习记录与 journal 全事务回滚。没有更改现有手动收藏路由。
+- [9402e17c](https://github.com/PTamako/it-study-platform/commit/9402e17c57ed421325e11bd6a9f738bda9a08177) 加入 scripts/document-study-execution.test.mjs：真实内存 SQLite、签名模拟 HomeFlow/文书源、错误签名/Origin、重复 ID、撤权和跨用户隔离、回执复核及强制审计故障回滚。
+- 初始 [CI 43578060278](https://github.com/PTamako/it-study-platform/actions/runs/43578060278) 失败：部分原 Worker 测试用 data: URL 加载入口，无法解析新增静态 import。采用项目已存在的 lazy-load 模式，不弱化任何测试，修复 commit [c4e7928a](https://github.com/PTamako/it-study-platform/commit/c4e7928ad3c94c2bcfdbfc92c3d646ebd45cb1ed) 后 [完整 CI 43578236478](https://github.com/PTamako/it-study-platform/actions/runs/43578236478) completed/success。Study #179 当前 HEAD c4e7928a、保持 Draft。
+- **P0-3 尚未完成：** HomeFlow real study proof 客户端、文书真实 study-source-check/源预约/回执、HomeFlow study 执行编排、申请人状态更新、真实三仓处理器集成测试、撤权并发恢复均未接线；目前目标后端在缺少真实 Service Binding/独立密钥或默认 OFF 的新开关时拒绝写入。不能使用普通收藏桥接绕过审批。
+- P0-4 非现金金融及 B–E 其他所有未完成项仍保留，F 正式部署与双 iPhone 实机验收仍须用户另行授权。未触碰正式 Cloudflare/生产数据，未创建 Preview、未部署、未执行正式迁移。

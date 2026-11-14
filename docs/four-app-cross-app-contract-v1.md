@@ -94,3 +94,18 @@
 全部 HMAC 输入均为 **域名 + LF + 13 位毫秒时间戳 + LF + JSON 原始字节**；请求必须 POST、无浏览器 Origin/Cookie/Authorization、固定 X-Approval-Client 和5分钟签名窗口、后端独立密钥和 Service Binding。Document Assistant `DOCUMENT_TASK_EXECUTION_ENABLED` 和 HomeFlow `DOCUMENT_TASK_EXECUTION_ENABLED` **分别默认 OFF**，并需原有 HomeFlow APPROVALS_ENABLED / APPROVAL_EXECUTION_ENABLED / APPROVAL_VERIFICATION_ENABLED、APP_ENV=production 等全部显式通过。文书源端 migration `0025_document_task_execution_reservation.sql` 和 HomeFlow `0056_document_task_apply.sql` 均为未在生产执行的 Draft。
 
 2026-11-14 已在隔离 GitHub Actions 的**真实两仓处理器**和独立内存 SQLite 下验证主执行链、双端状态、撤权前检查、双设备竞争、丢失源回执后同 ID 对账；固定参考 HomeFlow #306 `4a19fba5b3df09da05bdaf179ada7b893e59413e` 和文书助手 #97 `6735022c95bbd0b91a73febb0afbe0431fd3036a`。这些结果不等同生产 Service Binding/双 iPhone 验收；源端 reservation 执行期间权限撤销及失败终态的完全恢复、任务更新仍须后续深化。
+
+
+## K. v1.0.5：知学文书执行目标端（仅 Draft，整体 P0-3 尚未贯通）
+
+知学 #179 目前只实现目标端签名入口和独立 SQLite/D1 审批人审计。必须明确：文书助手真实 source-check、HomeFlow 给知学的执行租约验证和三仓编排仍未接线；切勿把模拟 Service Binding 的成功等同于跨仓完整验收。现有手动收藏路由不具有家庭审批执行权限。
+
+已编写的目标端 Service Binding 契约（HMAC 输入均为 domain + LF + 13 位毫秒时间戳 + LF + 原始 JSON）：
+- 文书助手 → 知学 POST /api/internal/document-study/execute，域 jpda:study-execute；签名客户端 jp-document-assistant；固定 request_id,resource_id,household_id,requester_user_id,payload_sha256,execution_nonce,snapshot。snapshot 原文字节的 SHA-256 必须等于 HomeFlow 冻结摘要，只能向本人学习数据目标发出，不能向 HomeFlow 传播私人词汇/句子。
+- 文书助手 → 知学 POST /api/internal/document-study/receipt，域 jpda:study-receipt；同一签名客户端，五个核心字段；只读原始不可变 receipt，不执行新写入。
+- 知学 → HomeFlow POST /api/internal/approvals/verify，域 it-study-platform:execution-proof；客户端 it-study-platform；五个核心字段、idempotency_key=jpda:sync:{candidate_id},expected_version:null,purpose:execute,execution_nonce。**当前 HomeFlow 真实校验端尚未登记此新客户端/密钥，必须继续 fail closed。**
+- 知学 → 文书助手 POST /api/internal/document-actions/study-source-check，域 it-study:document-source-check；客户端 it-study-platform，现有 Study 调用方发送五核心字段。源端正式实现时应冻结增加 nonce 与来源执行 reservation 的一致性检查，并同步更改调用方和兼容测试。**当前文书端未接线，必须 fail closed。**
+
+Study 目标 handler 不依赖手动收藏桥接；复用 §64 applyVerifiedDocumentStudy 原 D1 batch。新未执行 migration 0192_homeflow_document_study_approver_audit.sql 强制 requester≠approver、有效 member+owner、相同家庭、不可变审计。所有新开关和独立签名密钥、两个 Fetcher Service Binding 缺一即拒绝执行；DOCUMENT_STUDY_EXECUTION_ENABLED 默认 OFF。词汇目标 remote_id 内含私人词，未来 HomeFlow 只允许保存不泄露原内容的 opaque 请求标识。
+
+已实际通过知学 #179 c4e7928ad3c94c2bcfdbfc92c3d646ebd45cb1ed 的完整 CI 43578236478；其中 Lease 与源检查均是签名模拟后端，并非其他两个仓库真实处理器。此结果不允许正式生产部署/迁移。
