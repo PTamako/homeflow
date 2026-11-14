@@ -1302,3 +1302,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 本地针对性 SSO/审批测试通过；安装项目依赖后完整 `npm test` 和 `npm run build` 通过，`npm run check:syntax` 通过。首次完整测试因本地缺少 yaml 依赖失败，`npm ci` 后完整重跑通过；不是删减测试。精确 HEAD 的 [Pre-merge CI #43557319867](https://github.com/PTamako/jp-document-assistant/actions/runs/43557319867) 已 **completed/success**，包含全量测试、模型验证及前端构建。
 - **未完成**：这仅是源快照保护，不是 `document.sync.finance/homeflow/study` 的目标执行、journal、可靠回执、通知或源撤权竞态闭环；也未完成非现金账务、金融历史完整迁移、知学全部离线隔离或 B–E 验收。下一步应优先实现至少一条完整的可信文书目标执行流程，包括 HomeFlow 执行租约、源快照版本与身份复核、目标同事务写入与幂等 journal、回执丢失同 ID 恢复，再扩展其他目标；不能把 approved 显示为 applied。
 - 无生产部署、D1 迁移、数据回填、Preview 或 Secret 修改；PR #97 保持 Draft。A 备份恢复已通过，不代表 F 正式发布已授权。
+
+
+## 62. 2026-11-14 家庭现金审批：过期后仅查原回执的真实恢复
+
+- 冻结契约补充 §G（[commit 99458d6be2e09e496feec93b3e65f5ccb756f76a](https://github.com/PTamako/homeflow/commit/99458d6be2e09e496feec93b3e65f5ccb756f76a)）：已尝试现金执行但结果不明，且审批随后过期时，HomeFlow 只用原审批 ID、家庭、申请人、资源与摘要查询家計簿 journal；签名域 `homeflow:receipt`，严格 backend-only，查不到不视作未入账的确定证明，也不再次执行。
+- [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) [`4c2542b921d3ff94838eac811d29e0b7f2111aab`](https://github.com/PTamako/kakebo_jp/commit/4c2542b921d3ff94838eac811d29e0b7f2111aab)：新增签名隔离的 `POST /api/internal/approved-actions/receipt`，只查不可变 `family_finance_applied_actions`，严格字段及原身份/摘要匹配；不存在或冲突不能修改账本。真实 SQLite 测试覆盖未入账只查、签名域混淆拒绝、成功原回执、摘要冲突及额外字段拒绝。
+- [HomeFlow Draft #306](https://github.com/PTamako/homeflow/pull/306) [`eca357d41faff0a66fc01dde1878094fea9e788c`](https://github.com/PTamako/homeflow/commit/eca357d41faff0a66fc01dde1878094fea9e788c)：已过期且曾尝试的 `failed_retryable` 取得租约后只调用 receipt，匹配目标回执方标记 applied；404、丢包及不确定结果仍为 failed_retryable，原 ID 可再次核对。未曾执行且过期的审批不联系目标；UI 对过期且回执不明明确提示不会重新入账。HomeFlow 本地测试模拟目标已落账丢回执、过期查询、查无结果、再次查询成功和事件唯一；两仓库各自使用真实 SQLite 测试，**跨仓库真实 Service Binding 的端到端集成仍待补测**。
+- 本地 HomeFlow 完整 `npm run check`：813 项测试通过及构建通过；其后增加“过期但从未执行不联系目标”断言并单独通过。家計簿 `npm run verify:release`：902 项测试、生产依赖审计和构建通过。两个精确 HEAD 的 GitHub Actions **待核查**。
+- 这修复现有现金执行器的同 ID 失败恢复，不代表非现金、新增/修改/删除/恢复全部类型、文书三目标执行、通知或 B–E 已完成；仍按 §61 优先推进文书真实执行链和非现金账务，不能把 approved 当 applied。两端须配套，均默认关闭；未合并、部署、执行生产迁移或修改正式资源，无 Preview。A 备份恢复已通过；F 正式部署仍须用户单独批准。
