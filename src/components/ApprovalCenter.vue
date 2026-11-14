@@ -87,7 +87,7 @@ async function discover(){
  }catch{/* Feature is deliberately hidden while migrations/flags are OFF. */}
 }
 watch(()=>[props.active,props.userId,props.isOwner],()=>{void discover()},{immediate:true})
-async function load(reset=true){
+async function load(reset=true,preserveFeedback=false){
  if(!available.value||busyId.value)return
  const ticket=epoch
  const account=props.userId,kind=filter.value
@@ -96,7 +96,8 @@ async function load(reset=true){
  if(loading.value&&inFlightQuery===queryKey)return
  const generation=++requestGeneration
  inFlightQuery=queryKey
- loading.value=true;error.value='';message.value=''
+ loading.value=true
+ if(!preserveFeedback){error.value='';message.value=''}
  try{
   const url='/api/approvals?page='+nextPage+
    (kind?'&status='+encodeURIComponent(kind):'')
@@ -203,9 +204,22 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
    kind==='reject'?'已拒绝，不会入账':
    kind==='cancel'?'已撤回，无法再批准':
    result.applied===true?'已执行并入账':'执行结果待核对'
- }catch(e){if(account===props.userId)error.value=(e as Error).message}
- finally{
-  if(account===props.userId){busyId.value='';await load(true)}
+ }catch(e){
+  if(account===props.userId){
+   const reason=(e as Error).message
+   error.value=kind==='execute'&&[
+    'target_conflict_unconfirmed_safe_to_retry',
+    'target_result_unknown_safe_to_retry',
+    'receipt_reconciliation_required',
+    'applied_remote_receipt_pending_reconciliation'
+   ].includes(reason)
+    ?'家計簿的执行结果尚未确认。请核对原审批后通过“安全重试”对账，不要新建申请。'
+    :reason
+  }
+ }finally{
+  // Keep an action's visible success OR failure message while refreshing the
+  // authoritative state. Previously load(true) erased it immediately.
+  if(account===props.userId){busyId.value='';await load(true,true)}
  }
 }
 </script>
