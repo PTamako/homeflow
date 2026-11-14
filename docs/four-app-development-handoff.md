@@ -1318,3 +1318,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - [HomeFlow Draft #306](https://github.com/PTamako/homeflow/pull/306) [`db494ab2d2c93905ba720e8500ad60730149898e`](https://github.com/PTamako/homeflow/commit/db494ab2d2c93905ba720e8500ad60730149898e) 新增 `tests/cross-app-cash-receipt.test.mjs`，在两个互相隔离的内存 SQLite 中加载两仓库真实迁移，以进程内模拟 Service Binding 连接实际 HomeFlow 审批、验证、执行处理器与家計簿 `approvedActionRoute`，不请求生产 URL/数据库。建立受审批现金意图后，真实目标入账并丢弃回执，审批过期后只查询目标原 journal 并恢复 applied；断言一条账目、一条目标 journal 与审计、仅一次 execute 和一次 receipt。
 - HomeFlow CI 新增只读 checkout 家計簿固定契约版本 `4c2542b921d3ff94838eac811d29e0b7f2111aab`，设 `KAKEBO_CONTRACT_ROOT` 将跨仓库测试纳入完整检查；今后修改目标协议时需同步审查并更新固定版本。无对应检出时本地可跳过该专项，CI 明确提供检出路径，不以跳过替代验收。本地对两仓库实际代码运行 `KAKEBO_CONTRACT_ROOT=… npm run check`：814 项测试通过、0 skipped，构建通过；精确 HEAD 的 [HomeFlow Validate #43565275359](https://github.com/PTamako/homeflow/actions/runs/43565275359) 已 completed/success，包含固定目标版本检出、跨仓库实际处理器测试、完整构建与迁移校验。
 - 这验证的是双真实处理器通过本地模拟 Service Binding/真实 SQLite 的现金回执对账，不是 Cloudflare 正式部署或双 iPhone 实测，也不等于非现金与文书三目标真实执行已完成。文书可信执行链、非现金会计语义和其他 B–E 缺口仍需继续开发。所有功能 PR 保持 Draft，未触碰生产 D1/Worker/Pages/R2/Secret，未建立 Preview。
+
+
+## 64. 2026-11-14 文书→知学目标事务内核（未接线，不能称跨应用已完成）
+
+- 契约补充 §H [`c533ef75b7a582b0e125beb0e4d9b1130ec78efe`](https://github.com/PTamako/homeflow/commit/c533ef75b7a582b0e125beb0e4d9b1130ec78efe)：确定目标本人句子/词汇、原审批及候选 ID 不可重复使用、私有词条不覆盖和被删除词不擅自恢复；这不是外部 wire 协议，也未开启接口。
+- [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179) [`01cc3097532d842964eb31db1f57f07c806260fa`](https://github.com/PTamako/it-study-platform/commit/01cc3097532d842964eb31db1f57f07c806260fa)：新增**未注册为 HTTP 路由**的 `worker/document-study-apply.ts` 和未执行生产的 `0191_homeflow_document_study_receipts.sql`，提供将已验证的文书快照写入指定 member 本人的句子或词汇、同事务写入不可变回执及必要审计的内部函数；相同 ID 与摘要重放返回原回执，身份/摘要冲突拒绝，现有私人词条不覆盖、软删除词不复活。未执行生产的 0190 允许 document 来源；手动公开 API 仍硬编码 manual。因为修改的是未执行的 0190，若隔离环境曾试跑旧版本，需先处理 schema 版本差异，不可假定 CREATE IF NOT EXISTS 会升级旧约束。
+- SQLite 专项覆盖两账号相同句子隔离、同 ID 重试、已存在私人词条保留、被删除词拒绝、身份撤权、私密信息/摘要篡改、回执冲突，以及注入 journal 失败时句子/词汇和审计一起回滚；4 项专项、原句子/词汇专项及前端/新增 Worker 代码类型检查均在本地通过。当前环境为 Node 24，而仓库完整本地工作流要求 Node 22 和生成题库，故没有声称完整本地 CI 通过；精确 HEAD 的 GitHub Actions **待核查**。
+- **关键边界：内部函数并不证明批准或源授权，任何调用者都必须先独立验证 HomeFlow nonce、申请人/审批人/家庭、文书快照及版本、源撤权；目前没有可信服务端路由、源版本锁、HomeFlow 执行调度、跨服务联调、状态/通知和丢包对账。** 因此尚不能执行任何文书同步，不能以这批工作或 commit 数提高整体完成率。下一步必须接通这条真实链路及回执，然后才可标记 applied；finance/homeflow 目标与非现金审批亦仍未完成。
+- 无生产迁移、资源修改、Preview 或合并；所有 PR 保持 Draft，F 阶段部署仍需另行批准。
