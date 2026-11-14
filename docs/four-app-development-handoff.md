@@ -993,3 +993,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 知学原 [Draft PR #179](https://github.com/PTamako/it-study-platform/pull/179) 的**精确最终 HEAD** `3ca4a88539d0c8160d8b238d4b27d377c790e383`，经 [Validate #43537614688](https://github.com/PTamako/it-study-platform/actions/runs/43537614688) 确认 `completed/success`。这是 §26 所述考试历史批量上传、迟到 DELETE 回执保护和新增快/全两路回归的真实绿色 CI；其余旧 HEAD #43537541510、#43537562759 在新提交后 cancelled，不可误报失败或成功。
 - 与 §25 §26 连续的两项 Stage E 增量现都在原 Draft #179 通过 GitHub Node 22 完整验证：① 三类本地离线 mock/scenario/practice 请求账号代次阻断；② 旧单人考试历史批量导入/删除的同一代次保护。两者没有改变 HomeFlow 专属在线学习接口的 actor 绑定逻辑，不删除任何旧缓存。
 - **生产状态仍未改变**：无生产 SQL、D1/R2/Worker/Pages 操作，无功能 flag 上线，无 Preview，无功能 PR 合并。剩余工作仍是其他全部 legacy 本地缓存/在线响应隔离、身份完整迁移与真实 iPhone 双人验收；本节绿色 CI 不代表 Stage B～E 全部完成。
+
+
+## 28. 2026-11-14 家計簿 #309 Stage C/D：成员发起加密家庭收支申请 UI（原 Draft，CI 待精确 HEAD）
+
+- 在原 [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) 的 `feature/homeflow-sso-isolated-foundation-20261113` 继续，不新建 PR。原 `FamilyFinanceProposals.vue` 只能查看、提交/取消已存在草稿，会员尚无 UI 创建入口；新增移动优先创建表单，选择当前已验证 member 本人名下的 `member_created`、未归档稳定金融账户，输入普通 `income/expense`、整数日元金额、日期、商家/收入来源、分类、可选备注；提交前显式确认“**只保存草稿，不影响正式共享账本或余额；还需提交 HomeFlow 审批**”。代码 Commit `547d0837414e750b25f74bb874255d6a39aa114c`。
+- 表单沿用现有 `POST /api/family-finance/proposals` 的服务端真实 HomeFlow member、账户归属和 AES-GCM 密文、14 天和不可变 SHA-256 等检查；仅前端调用原有安全 API，没有新建任何可直接写正式 `entries` 的路由。每次提交为当前草稿生成稳定随机 idempotency key 并在不确定网络回执时冻结字段与 key 原样重试；账号切换及组件卸载失效旧回执、清理临时表单，不写任何浏览器 LocalStorage。只有返回 `prepared_not_submitted` 且 `ledger_changed:false` 才显示“已保存待审批草稿”，绝不显示已入账。
+- `tests/family-finance-ui.test.mjs` 新增仅本人账户、幂等字段冻结、源码中无直接账本 POST、原 user/组件 epoch 保护的 UI 断言，Commit `a12bd8cbdc884f8de399c8e0f8f4e2a15b1cab49`；原 PR 内文档 Commit `764c93cebc8fc83946b23a8fa3758adb0f2d3cc2`。
+- 本段第一次查看代码 HEAD `a12bd8c...` 的 [Validate #43538214480](https://github.com/PTamako/kakebo_jp/actions/runs/43538214480) 和 [Mobile WebKit #43538214502](https://github.com/PTamako/kakebo_jp/actions/runs/43538214502) 均为 `pending`。文档后新的精确 HEAD `764c93cebc8fc83946b23a8fa3758adb0f2d3cc2` 必须重新获取它自己的 CI 最终结果，不能引用旧 run 绿灯。若失败，按真实步骤和日志修复。
+- **未完成**：普通成员申请经 HomeFlow owner 审批后才能真实入账的全类型受信执行器、卡/储值/SBI/固定费稳定 ID 的完全无损迁移、账本与余额一致性、真正双人 iPhone PWA、通知和断网闭环。草稿 UI 不代表 Stage C/D 完成或生产可用。**原 #309 仍 Draft，全部新迁移未在正式 D1 执行、flags OFF、无生产资源修改或 Preview**。A 本地备份恢复 PASS，不等于 F 部署已授权。
