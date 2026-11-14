@@ -942,3 +942,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **GitHub CI 最终结果更新**：HomeFlow #306 整合 HEAD `79efaddd4fe741f5f09cb5b68bc24bd2a707334d` 的 [Validate #43533342466](https://github.com/PTamako/homeflow/actions/runs/43533342466) 已 completed/success，覆盖 GitHub Node 22 的测试、构建、迁移检查与 Worker dry-run；PR 仍为 Draft，未上线。
 
 - **知学最终 CI 更新**：[Validate #43533113361](https://github.com/PTamako/it-study-platform/actions/runs/43533113361) 精确 HEAD `39ffac408eecefdc4f2a4bdbd0186cfa566bcde1` 的两个任务均 completed/success；快速任务 15 秒，完整任务 6 分 52 秒。旧完整任务 6 分 51 秒，新完整任务没有实质提速，改善的是身份/类型错误反馈时间。新完整任务中例句生成 248 秒、本地 D1 迁移 109 秒，完整总耗时优化与缓存仍需实施及复验。分支保护权限问题仍未解决。
+
+
+## 22. 2026-11-14 知学 #179 完整 CI 生成文件缓存（真实代码已提交；当前 HEAD 待 CI 验收）
+
+- 工作范围：仍使用知学原 [Draft #179](https://github.com/PTamako/it-study-platform/pull/179)，branch `feature/homeflow-identity-isolated-20261113`；只调整 PR 验证流程和新增只读本地验证脚本，不改 HomeFlow 身份/知学个人学习业务 API、数据或历史归属；保留原完整 validate，不新建 Preview、不部署生产。
+- 新增 `scripts/verify-language-generated-artifacts.mjs`：校验 0081/0082/0084/0087/0115 五个生成迁移存在且大小合理，并核对日英 10,000 句与两份词典资产 manifest、SHA-256 文件名指纹及数量；Commit `5d28472a886274837595817c273f70e4dec0140d`。
+- 原 `.github/workflows/validate-pr.yml`：为 Tatoeba 生成的公共 SQL、静态语言/词典文件添加以生成器、辅助算法、词典输入和 0079 种子为 key 的缓存。**首次未命中时仍正常调用完整 Python 生成器**；命中时仅跳过重复生成，始终运行资产指纹校验、语言质量审核、npm 完整测试、Vue 构建、完整本地 D1 迁移、JSON 检查和 Worker `--dry-run`。源数据更换要显式更新 `public-language-fixtures-v1` epoch，避免不受控的新版本混用；Commit `f0159098d19e3dfec175975e1d68bd9cbe6e660f`。
+- 实际 GitHub 提交：以上两个 SHA；PR #179 经实时核查仍 `open / Draft`，本次代码 HEAD `f0159098d19e3dfec175975e1d68bd9cbe6e660f`。相应 [Validate #43535202780](https://github.com/PTamako/it-study-platform/actions/runs/43535202780) 在首次查询时为 `pending`，**不得标记为通过、缓存加速成功或上线**。原完整 CI 基线 #43533113361 已成功，但不覆盖这两次新增提交。
+- 待办：① 取得 #43535202780 对精确 HEAD 的最终结果，失败则按 job logs 修复；② 首次 cache miss 的完整测试绿灯后，后续同 key cache hit 再实测耗时、检查缓存恢复结果与完整本地 D1 验证；③ B～E 的真实剩余功能依 §20.3 持续开发，特别是旧离线队列防串号、家計簿完整金融归属、文书审批后真实目标执行与 iPhone 双人 E2E；④ 生产 D1/Workers/Pages/R2 仍未授权变更。
