@@ -1592,3 +1592,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 在 `docs/four-app-cross-app-contract-v1.md` 追加 **§Q / v1.0.11**，冻结原 §P wire 的兼容扩展：加密 payload 仅 `transfer_prepaid` 含 target_account_id,target_version，已核验 `units * rate_numerator == yen_value * rate_denominator`；稳定本人 points→prepaid 双边凭证及上述 receipt 校验。其它积分操作精确 schema 不变。
 - **未改变任何正式生产环境。** 没有执行 D1 migration/回填、Worker/Pages/R2/Secrets/Cron 更新、银行或券商交易、Preview 资源创建，未合并五个功能 Draft PR。A 阶段用户真实备份、Mac SQLite 恢复和 Google Drive 回下载验证仍 PASS，勿要求重做。
 - 剩余 P0-4A：积分抵扣信用卡应付并与还款 allocation 对账、积分账户之间的兑换/转移、积分退款/冲正的不可变反向凭证、SBI ポイント投資对手资产份额/成本、旧积分的安全映射及真实点数估值；随后 P0-4B SBI 積立/追加買付/适用日/份额及资产估值、P0-4C 共享转账/修改删除恢复/批量审批/周期授权/Cron 幂等，B～E 完整 R1～R9、T01～T14 和生产 F/双 iPhone 实机仍未完工。不得把本节 1 个积分双边模块视为全部系统交付。
+
+
+## 78. 2026-11-14 P0-4A 积分抵扣信用卡真实应付、与银行还款 allocation 的精确合并核销（Draft；F 阶段未授权）
+
+### 已实际开发（严格接续 §77，不修改第 76 节及生产数据）
+
+- 家計簿 #309 新增尚未部署的 `0036_points_card_offset.sql`，仅允许积分源 `finance.points.offset_card` 按已经审批记入的、可核实的 **本人稳定信用卡账户** 和具体 `family_card_purchase_applied.homeflow_request_id` 抵扣应付，不按卡名、账单月文本或消费商家猜测。原 AES-GCM intent 仅对该操作新增冻结 `target_account_id`、`target_version`、`target_purchase_request_id`；源/目标核验 owner、家庭、当前版本 CAS、未归档、原消费日期不晚于抵扣适用日、余额和精确点数↔JPY 兑换率。
+- 目标 `family_points_journal` 负 delta INSERT 的 SQLite AFTER trigger **同一事务**自动创建不可变 `family_points_card_offsets`，源扣减点数、该张已记录信用卡的具体 purchase liability 减少相等的 JPY。任何超额抵扣、会计 audit、卡归属/版本漂移、目标失败均回滚源 journal。**没有新现金收入、消费、银行扣款、信用卡账单行改写**。原 `family_card_purchase_applied.amount_jpy` 与原 expense 永久保留。
+- 银行已发生的还款 `family_card_settlement_allocations` 和积分抵扣 `family_points_card_offsets` 共享余额上限：`remaining = purchase.amount_jpy - SUM(bank allocations) - SUM(points card offsets)`。0036 将原银行 allocation 的 D1 不可变 trigger 改为双源余额核验；银行还款准备/执行前的 outstanding、家庭卡账只读统计同步扣除积分抵扣。银行 `settled_jpy` 与 `points_offset_jpy` 在投影中仍分别显示，绝不能将积分看成第二笔已发生银行扣款或把未还金额扣成负值。跨 Approval 并发由同一目标 D1 writer/trigger 串行保护，后到的超额银行核销必须失败并恢复/重新审批，绝不静默调整原银行扣款。
+- HomeFlow #306 扩展既有 `kakeibo-points` HMAC/owner approval/lease/proof/receipt 仅放行 `finance.points.offset_card`；校验 `card_purchase_request_id` 为真实 UUID、`card_version`、`target_account_id`、`card_offset_jpy===yen_value`、`card_remaining_after_jpy>=0`，才允许 source/target 原审批 ID 转为 applied。丢回执仍通过 target `receipt` 幂等重查，拒绝重记账。不改变现有生产开关、密钥和 binding；HomeFlow D1 与家計簿 D1 不假装具有跨库原子性。
+
+### 已推送 Commit 与 CI 真实覆盖
+
+- 家計簿 #309：功能 `7f33c7a65ba304cc71857c028e46f2e6c06267d7`、真实积分目标/信用卡投影回归 `b56e006868c9824de2103e66861bc6eec50fd227`、已有银行付款 500+积分抵扣 350 对一笔 1000 日元账单、再次核销 200 被拒绝的不可变共享余额测试 `744f7cb3578d10f4da32ce1df94f0e94fe147593`。最新 Validate **43601216537 completed/success**；Mobile WebKit Smoke **43601216353 completed/success**。全量代码测试同时覆盖旧业务迁移无效化、银行付款与积分抵扣互不冒充、超额和多次请求拒绝、zero-new-cash-expense。
+- HomeFlow #306：功能 `1a1bd4eeda31bae2d32c453700c2445bc1dd64af`、真实源/目标双 SQLite+审批/丢回执/卡账剩余验证及旧银行 settlement 兼容回归 `5011a0d54729916d16ae32b49153805745ca56a5`，Validate HomeFlow **43601164586 completed/success**（当时精确 Kakeibo pin 为 b56e006）。最终精确 Kakeibo pin **744f7cb3578d10f4da32ce1df94f0e94fe147593** 已写入 #306 的 §78/§R 功能分支 HEAD **416c6fa526d8420c89b159d6f2e225f1b342243d**，跨仓 Validate HomeFlow **43601547917 completed/success**。这次仍是原家計簿目标真实执行器 + 双隔离 SQLite、模拟 Service Binding 的全部 CI，不是生产运行。
+- 对账测试覆盖已发生银行 allocation 后积分抵扣余额、再新增银行超额核销拒绝、原始消费数和支出数不变，另有 HomeFlow 独立 D1 的 owner 审批、执行、目标独立签名验证和消息丢失恢复。以上全是隔离真实 SQLite/模拟 Service Binding，**不是**生产系统已开启、更不是绑定真实银行数据。
+
+### 未完成/禁止提前交付
+
+- 本轮完成的是积分抵扣卡账的后端执行/一致性模块；全面 PWA 用户表单、各种信用卡历史自动映射、生产 F 环境实机、已有老卡账非稳定 ID 兼容仍需要另行做完整验收。不得静默用积分冲销尚未真实建立的旧卡账债务。
+- P0-4A 下一步：积分间兑换/转移、退款/撤销/冲正的不可变反向账、历史积分无重复关联/核对、SBI 点数投资；P0-4B SBI 定投/追加买付/适用日/份额/市场估值；P0-4C 共享资产转移、家庭共享账目增删恢复/批量审批、固定费/Cron；四 PWA B～E R1～R9/T01～T14、生产 F 和双 iPhone 仍未完成。
+- 全部功能 PR 保持 Draft，**没有合并、生产迁移、Cloudflare 部署、Preview、Secrets/Worker/Cron/R2 修改或旧用户财务覆盖**。A 阶段生产加密备份与恢复 PASS 不重做。本节冻结扩展见契约 **§R**。
