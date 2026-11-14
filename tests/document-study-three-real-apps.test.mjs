@@ -76,7 +76,7 @@ async function fixture(){
   h.sql.prepare('INSERT INTO household_members(household_id,user_id,role) VALUES(?,?,?)')
    .run(hh,id,role);
   s.sql.prepare('INSERT INTO homeflow_identity_links '+
-   '(homeflow_user_id,homeflow_household_id,role,display_name,state,profile_version) '+
+   '(homeflow_user_id,homeflow_household_id,role,display_name,state,created_at) '+
    "VALUES(?,?,?,?,'active',1)")
    .run(id,hh,role,id);
  }
