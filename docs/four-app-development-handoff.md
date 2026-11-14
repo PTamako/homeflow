@@ -1424,3 +1424,42 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 初始 [CI 43578060278](https://github.com/PTamako/it-study-platform/actions/runs/43578060278) 失败：部分原 Worker 测试用 data: URL 加载入口，无法解析新增静态 import。采用项目已存在的 lazy-load 模式，不弱化任何测试，修复 commit [c4e7928a](https://github.com/PTamako/it-study-platform/commit/c4e7928ad3c94c2bcfdbfc92c3d646ebd45cb1ed) 后 [完整 CI 43578236478](https://github.com/PTamako/it-study-platform/actions/runs/43578236478) completed/success。Study #179 当前 HEAD c4e7928a、保持 Draft。
 - **P0-3 尚未完成：** HomeFlow real study proof 客户端、文书真实 study-source-check/源预约/回执、HomeFlow study 执行编排、申请人状态更新、真实三仓处理器集成测试、撤权并发恢复均未接线；目前目标后端在缺少真实 Service Binding/独立密钥或默认 OFF 的新开关时拒绝写入。不能使用普通收藏桥接绕过审批。
 - P0-4 非现金金融及 B–E 其他所有未完成项仍保留，F 正式部署与双 iPhone 实机验收仍须用户另行授权。未触碰正式 Cloudflare/生产数据，未创建 Preview、未部署、未执行正式迁移。
+
+
+## 71. 2026-11-14 P0-3 文书→知学真实三仓执行闭环：隔离完整 CI PASS；正式联调仍阻断
+
+### 71.1 本次实际增量与真实 PR/Commit
+
+本轮从 §70、设计书 v1.1 和冻结契约 §K 继续。先核对五个 Draft PR 最新 HEAD：HomeFlow #305 `b8b877388639b1a2b3ac19dbca58ea8072b8a037`（#306 base 仍是 #305 功能分支），HomeFlow #306、家計簿 #309 `900fb17c3bbc68f24c18466da321e85c496b4ea7`、知学 #179、文书助手 #97；未重复开发 §66/§68 现金或 §69 任务事务内核。无法通过 GitHub API 查看上一位开发者**未提交的私有本地工作区**，只核实了服务端 Git refs 及提交。
+
+- **HomeFlow Draft #306**（branch `feature/family-approval-state-machine-20261113`）：`c1bda1ba` 给 HomeFlow proof 路由增加独立知学签名客户端 `it-study-platform` 和精确 `document.sync.study` / `document_sync_candidate` 类型校验；`321cb43f` 加独立 HMAC、活跃成员、nonce/lease、跨客户端拒绝测试；`4fb79734` 增加所有者执行租约调度文书 Study 源端，同一 request_id receipt-only 到期回读，不复用家計簿现金业务；`f88dcdea` 支持文书源端独立签名复核同一 Study 工单；`80ad0480` 文书审批状态 API 只接受 opaque 32hex Study remote_id、有效 applied 回执；`ab69088a` 修复新 HMAC 测试采用 LF 原始字节；`a07fdead` 新 `tests/document-study-three-real-apps.test.mjs` 真实三仓处理器与隔离 SQLite 测试；`db044b7a` 将 JPDA `ade2dba8` 与 Study `496b06a0` 精确 pin 为 CI 对端；`5abc869d`、`7a1a0534` 修复测试真实数据库表字段及独立文书源 proof 预期。**最后一次完整功能代码提交：`7a1a0534c47368ff0a6afadb53209fb48cb1ceed`**。 [CI `43584526633`](https://github.com/PTamako/homeflow/actions/runs/43584526633) `completed/success`。
+- **文书助手 Draft #97**（branch `feature/homeflow-identity-link-safety-20261113`）：`288e52fc` 新未执行 migration `0026_document_study_execution_reservation.sql`（防删除/身份不可变/执行源版本锁）；`28cb1e94` 新 `worker/document-study-source.js`：HomeFlow 私有 execute/receipt、Study 独立源 check、AES-GCM 冻结候选解密、活跃身份/源版本和审批租约核实、持久 reservation/nonces、知学目标真实 Service Binding 执行及回执对账、实际 approver 审计、失去 target 回复后同 request_id 先读原 journal 再决定是否执行；`57d94201` 注册严格内部签名路由；`ade2dba8` 文书状态只有核对 HomeFlow opaque ID 与自己已保存的真实 Study 回执才显示已同步。**当前功能 HEAD：`ade2dba88f95a183a6bf31f73309a9792a6daa5e`**。[完整 CI `43583992542`](https://github.com/PTamako/jp-document-assistant/actions/runs/43583992542) `completed/success`。
+- **知学 Draft #179**（branch `feature/homeflow-identity-isolated-20261113`）：`de995da6` 独立 Study→文书 source-check 加 **execution_nonce**、校验持久 reservation、nonce_hash、源摘要；回执 JOIN 新 immutable approver audit，而不只读目标词句，避免无法从私人目标回读真实审批人；`496b06a0` 更新真实内存 SQLite、签名模拟后端测试，保留错误 HMAC、撤权、跨用户、事务回滚验证。**当前功能 HEAD：`496b06a021cdd1c822f49774b31a26f31bca9895`**。[完整 CI `43583598302`](https://github.com/PTamako/it-study-platform/actions/runs/43583598302) `completed/success`。
+- 冻结跨应用契约更新：HomeFlow #306 `docs/four-app-cross-app-contract-v1.md` 新 **§L v1.0.6**，固定原始 JSON HMAC 域、Study 双独立 proof/Service Binding、source-check nonce/reservation、回执隔离及开关默认 OFF；覆盖 §K 待协调项但不改变 §I/J 已完成现金和任务协议。**此契约修改仅存在原 Draft 分支，尚未合并 main、未部署**。
+- 三仓集成测试真实 import HomeFlow `approvalExecutionRoute`、`approvalVerificationRoute`、`documentApprovalStatusRoute`，文书 `documentStudySourceRoute`、`documentMemberApprovalStatus`，知学 `documentStudyExecution`；三个仓库各自在独立 SQLite 打开实际迁移。mock 仅用于 **Service Binding 传输**，而非整个业务处理器。测试批准仍不改目标、AES-GCM 快照、源端预约、知学实际个人词汇/receipt/approver 审计、文书真实 receipt、HomeFlow applied、重复 ID 不再写入、目标已提交但回执网络丢失后读取原 receipt、安全失败（撤权/过期功能开关）和 migration 重放/不可变触发器。
+
+### 71.2 验收边界、未来优先级与绝对限制
+
+- **P0-3 现已通过三仓实际处理器的隔离集成 CI**；但这不代表全产品完成，也不代表生产三套 Cloudflare Service Binding、真实迁移、网页/PWA、夫妻 iPhone、生产 R2/D1 联调已授权或通过。所有新功能仍默认 OFF。
+- 已知待补：执行中跨独立 D1 的真正并发身份/文书撤权与 target commit 竞态、源端失效租约和失败终态清理（目前持久 reservation 可保持锁，需可靠且可审计恢复）、浏览器级审批状态 UI/PWA 回归、双设备跨网络联调。
+- **下一优先 P0-4**：从完整非现金业务模块实际执行开始（信用卡消费及应付、储值充值/消费、积分、SBI 積立/追加/ポイント投资、资产转移、历史关联、共享账簿增改删恢复/批量/周期授权），明确资产/应付/现金流的不同会计语义。不得借现金执行器假装非现金目标已实现。
+- **B–E 仍未完成**：跨 PWA 首次 OAuth/PKCE/禁用、双人完整金融账户 CRUD 与历史正确迁移、审批周期和高风险动作、私人文书共享权限及全部知学离线/缓存隔离均需按设计书 R1–R9 与 T01–T14 逐项检验。家計簿 #309 未因本次 Study 完成而变更。
+- A 阶段四 D1+三 R2 真实加密备份与 Mac 恢复 PASS；绝不重新要求用户执行 A。五个功能 PR 均保持 Draft，**不合并、不创建 Preview、不执行生产迁移/回填、不改生产 Secrets、不部署/启用 flag**。F 阶段生产及两台 iPhone 验收必须单独经用户明确批准。
+
+
+## 72. 2026-11-14 P0-4 第一组完整非现金业务：信用卡消费+独立应付账款，两仓真实处理器 SQLite / 完整 CI PASS
+
+### 72.1 交付事实与对应 PR
+
+此节从 §71 的 P0-3 三仓 PASS 继续，而非回到 §70 重新开发。**本节只宣告首组 `finance.credit_card.purchase` 隔离闭环，不代表 P0-4 全部完成**。冻结契约已经追加 §M v1.0.7（见 HomeFlow Draft #306 `docs/four-app-cross-app-contract-v1.md`）。
+
+- **家計簿 Draft #309** `feature/homeflow-sso-isolated-foundation-20261113`：增加未执行 migration `0031_family_card_purchase_execution.sql`：加密意图、版本 CAS、不可变共享家庭消费及独立信用卡截账月应付、实际 requester/approver 审计；独立 `functions/api/family-finance/card-purchases.js` 成员申请准备/提交/查询/取消；独立 `functions/api/internal/card-purchases/[[path]].js` 真正信用卡执行（AES-GCM 解密、HomeFlow 同 nonce/lease 签名证明、entries + 目标 journal + audit 单事务、回执同 ID 恢复），绝不调用现金账户执行器；`functions/api/family-finance/assets.js` 稳定 `account_id` 的家庭应付账期汇总，与资产分离，不虚构银行现金扣款；成员 `src/FamilyFinanceCardPurchases.vue` 及家族账户页面挂载，`src/FamilyFinanceAssetOwnership.vue` 双人共享显示；`tests/family-card-purchase-execution.test.mjs` 实测独立 SQLite 幂等、HMAC、真实事务与审计回滚、身份/版本失效、迁移重复执行。当前最新功能 Commit **`244535227826f6caa2258179ba30aa32162c7ad1`**，完整 CI **`43586044462` success**、**`43586044499` success**。此前 CI 中测试用 `revoked` 而真实 Kakeibo enum 仅有 `disabled`，已修复，未删除安全断言。
+- **HomeFlow Draft #306** `feature/family-approval-state-machine-20261113`：新 `worker/card-approval-submission.js` 严格后端卡片独立 HMAC 提交，`worker/index.js` 注册，`worker/approvals.js` 新 `finance.credit_card.purchase`；`worker/approval-verification.js` 独立卡端 `kakeibo-card` proof key + 精确 `operation/resource_type/version`；`worker/approval-execution.js` HomeFlow owner 租约调度真实 Kakeibo 卡目标及不可变回执后置 applied，不把批准误报入账。**首次双仓 CI 发现未执行审批表的操作 CHECK 白名单遗漏了新 operation，修复**：因为 `migrations/0054_household_approval_core.sql` 从未进入 main 或生产，只在 Draft #306 上对未执行的迁移扩展操作白名单（不触碰现有生产 D1），保留原始身份触发器/审计。工作流精确 pin 家計簿 `24453522` 为对应处理器。新 `tests/family-credit-card-real-cross-app.test.mjs` 真实 HomeFlow+Kakeibo 处理器、两套独立内存 SQLite、只模拟 Cloudflare Service Binding 传输，验证 member 提案→owner 批准→真实非现金目标事务→HomeFlow applied、目标已提交但 HomeFlow 收不到回执仍同 ID 恢复、撤权与 CAS fail-closed。最后功能/迁移 Commit **`16e3e3d44bf920bf7fff0962c003b87415880fe6`**；完整 HF CI **`43586512718` success**（tests + build + migrations + Wrangler dry-run）。契约 §M 提交 **`fb077e129384d6a89988f415e44fd1344c07941f`**。
+- **文书助手 Draft #97** `ade2dba88f95a183a6bf31f73309a9792a6daa5e`、**知学 Draft #179** `496b06a021cdd1c822f49774b31a26f31bca9895`，本节没有修改；§71 三仓业务及完整 CI 仍保存。**HomeFlow #305** 保持原 Draft/base 关系；**HomeFlow #306** 仍基于 #305，不是 main。
+
+### 72.2 已验收财务边界与仍未完成内容
+
+- 信用卡购买**一笔家庭消费**进入 entries，源端本人独立 `stable account_id`，不使用旧卡显示名冒充稳定账户，目标另记一笔 `family_card_purchase_applied` 应付负债与批准人不可变审计，不应立即减现金、银行、储值卡余额或 SBI 份额；截账月根据卡片 closing_day 计算，卡片还款日/实际扣款不凭空推断。
+- **未完成且不能对外宣称已实现**：卡片账单还款与银行现金扣款、积分抵扣卡账或兑换、储值卡充值/消费及现金流关系、SBI 積立/追加买付/积分投资、资产转移与历史关联、家庭共享修改/删除/恢复、批量与高风险审批、周期定投/固定费授权。每类需独立账务语义、真实事务、CAS、审计、回执和跨仓测试。下一步应按一类完整模块推进，而不是创建大量不可用的接口。
+- 待完成安全验收：HomeFlow/Kakeibo 当前版本 CAS、跨独立 D1 执行途中撤权的真实竞态一致性（虽然双方执行前都会验身份、但不能将单次 mock 验证宣称并发证明）、实际 PWA 浏览器 UI/E2E/双 iPhone、生产 Cloudflare Service Binding 与本地/远程迁移应用，及 R1–R9、T01–T14 其余 B–E 项。
+- A 阶段历史加密备份与 Mac 真实恢复全部 PASS，不重做。**绝对限制延续**：五 PR 都保持 Draft，不合并、不碰正式 Workers/Pages/D1/R2/Secrets，不重建 Preview，不启用正式 flag，不动任何真实用户历史；F 阶段必须由用户额外明确授权。此轮 GitHub API 只能查看远程提交/分支，不可能读取上一位开发者工作区未提交的代码，不能虚称已清理他们的本地更改。
