@@ -282,3 +282,27 @@ HomeFlow 审批：source_app=target_app=kakebo；resource_type=points_action；o
 真实证明范围：家計簿 tests/family-points-foundation.test.mjs 和 family-points-execution.test.mjs（真实 SQLite、AES-GCM/HMAC、余额、原 ref 幂等、owner/CAS/撤权、审计）。HomeFlow tests/family-points-real-cross-app.test.mjs（两份隔离 SQLite、双方真实处理器、模拟 Service Binding、审批租约、无审批阻断、重复和丢回执恢复）。精确 CI/SHA 见交接文件 §76；模拟测试绝不等于生产 Service Binding 或双 iPhone 实机。
 
 禁止声称完成：积分→储值卡、积分卡账抵扣、SBI ポイント投資、跨积分账户转移/兑换、反向冲正、积分完整历史归属、日元家庭资产估值与其他 P0-4/B–E，必须新建真正双边对手 journal 与更多 CI。已提交不可变财务 journal 不得 UPDATE/DELETE。阶段 F 生产迁移与上线仍须用户另授权。
+
+
+## Q. v1.0.11：P0-4A 积分兑换本人储值卡双边原子凭证（Draft；§P 向后兼容扩展）
+
+日期：2026-11-14。**仅**增加 `finance.points.transfer_prepaid`。冻结 §P 已通过的五个积分操作、AES-GCM AAD (`kakeibo-points:{source_request_id}`)、最小 HomeFlow 工单、HMAC 路由/密钥/签名域、nonce/lease/receipt 的不兼容变更一律禁止。HomeFlow 家庭奖励积分不属于家計簿金融 points，不能作为充值资金；不可将旧积分记录/旧储值卡余额自动转为可用资金。
+
+### 业务语义与绝不越过的会计边界
+
+1. 操作人必须是 HomeFlow 已认证的当前活跃 household member；积分源账户 `points_account_id` 和储值卡目标 `target_account_id` 均为其本人持有、`origin=member_created`、未归档、`opening_balance=0` 的不同 32hex 稳定账户，分别严格 CAS `points_version` 和 `target_version`（两者均 >=1）。另一成员的目标账户不能转入，管理员只能审批或审计、不能绕过源账户归属。
+2. 正数 `units`、正数 `yen_value`（1～10,000,000 JPY）和 `rate_numerator` / `rate_denominator` 均需安全整数、独立精确保存；必须满足 **`BigInt(yen_value)*BigInt(rate_denominator) === BigInt(units)*BigInt(rate_numerator)`**，不能假设任何积分永远等于 1 日元。积分扣减后余额不可为负，储值卡加款余额只增加兑换日元，不生成现金收入、额外消费或银行流水。家庭统计不重复。
+3. 积分源的现有 `POST /api/family-finance/points-actions` 请求保留 §P 的所有已需字段，**仅 transfer_prepaid** 在精确 schema 中额外必填 `target_account_id`、`target_version`。源 AES-GCM 密文规范 JSON 同样仅为该操作追加这两个字段；普通五操作没有这些字段，防止无关 payload 膨胀。源准备及 submit 都检查本人 target ownership/CAS；未审批不改变 points 或 prepaid 正式余额。
+4. HomeFlow 工单仍 `source_app=target_app=kakebo`、`resource_type=points_action`、`operation=finance.points.transfer_prepaid`、`resource_id=32hex points intent`、`idempotency_key=kakeibo:points:{resource_id}`、`expected_version=points_version`、`payload_sha256`。HomeFlow 只得到这组身份/摘要元数据；**不接收** amount/points units/兑换比例/账户展示名/票据原文，审批 actor 与 requester 保持不同有效 owner/member。使用 §P 的 POINTS_* flags 和四条独立 backend HMAC domains，不开启新生产凭证或开关。
+5. 目标须独立验证解密 sha256、两个账户 owner/household/版本、执行 lease/nonce、有效 approval proof，然后对 `family_points_journal` 写入负 `delta_units`、目标账户 ID、真实 JPY/兑换率。**尚未部署** `0035_points_prepaid_atomic.sql` 的 `AFTER INSERT` SQL trigger 自动插入 `family_points_prepaid_credits`，精确按原 journal `yen_value` 增加目标余额并冻结 `prepaid_version`。任何 CHECK、源/目标 CAS、余额、trigger、actor audit 写入失败，则整条 SQLite statement 回滚，不允许半条积分扣款。
+6. `family_points_prepaid_credits` 不可 UPDATE/DELETE；其 `homeflow_request_id` 为主键/FK 指向唯一 point journal，余额后值是该 prepaid 稳定账户的 `SUM(family_prepaid_balance_journal.delta_jpy)+SUM(family_points_prepaid_credits.amount_jpy)`。新储值卡的本行余额、支出核验、真实支出执行器和家庭资产投影全用这个组合金额；此前银行充值原 `family_prepaid_actions_applied` 与银行流水凭证不被改写。禁止用 label 连接旧 Suica/nanaco。
+7. 只读 target receipt 对所有 §P 原字段保持兼容，额外提供 `target_account_id`、`prepaid_version`、`prepaid_credit_jpy`、`prepaid_balance_after_jpy`（非 transfer_prepaid 为 null）。HomeFlow 仅对 transfer_prepaid 限定目标为合法独立账户、版本正整数、`prepaid_credit_jpy===yen_value>0`、合理且非负的 balance_after，并仅在原 approval ID 的真实目标双边落库回执得到确认后从 executing/failed_retryable 转为 applied。丢 target HTTP 返回时必须用原 ID 的 `receipt` 重查，不能再新建另一笔 points/prepaid 账务。
+8. §Q 的「原子」仅表示 **同一家計簿 D1 SQLite writer 中的两边会计写入**；HomeFlow D1 与家計簿 D1 之间并无跨库事务，仍使用签名 lease、immutable journal、幂等与失败可重试/回执查询处理最终一致性。跨两独立生产数据库的撤权/租约竞态、真实 Cloudflare 身份配置和双 iPhone PWA 需要 F 阶段另验；不要把隔离 mock transport 当作生产认证事实。
+
+### 代码与验证
+
+家計簿 Draft #309：`migrations/0035_points_prepaid_atomic.sql`、`functions/api/family-finance/points-actions.js`、`functions/api/internal/points-actions/points-execution.js`、`functions/api/family-finance/prepaid-actions.js`、`functions/api/internal/prepaid-actions/[[path]].js`、`functions/api/family-finance/prepaid-balance-projection.js`。功能 commit `e7a04693f52019214c75bb5d1b7b445fee5f1288`、安全测试修复 `7fd5d19d22eb43b035dc3687437ce2e38359c669`、真实已兑余额再消费测试 `7ff41c69c50524dbb9e6acb177f4cc261a220341`。Validate **43599708124 success**、Mobile WebKit Smoke **43599708130 success**。
+
+HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-verification.js`、`worker/approval-execution.js`、`worker/approvals.js`、尚未部署 migration 0054 whitelist、`tests/family-points-real-cross-app.test.mjs` 和 `tests/family-prepaid-real-cross-app.test.mjs`。功能 `336e1c0530a5bda81975e90ba9f4f329d14aa0de`、测试修复 `3362202917e390524a7546bf8806f62ddf259108`；Validate **43599525955 success**。最终 CI 通过精确 SHA pin 后复验，实时状态以 PR 为准。
+
+**禁止过度宣称：** `finance.points.offset_card` 信用卡应付冲抵、跨 points 兑换/转移、SBI 投资、积分冲正与原账无重复回填均仍未实现；本节不授予生产迁移、部署、合并或 Preview 授权。
