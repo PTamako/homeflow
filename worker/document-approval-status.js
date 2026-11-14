@@ -90,14 +90,17 @@ export async function documentApprovalStatusRoute(request,env){
  const finance=row.target_app==='kakebo'&&row.operation==='document.sync.finance'
  const task=row.target_app==='homeflow'&&row.operation==='document.sync.homeflow'&&
    env.DOCUMENT_TASK_EXECUTION_ENABLED==='true'
- const states=(finance||task)?
+ const study=row.target_app==='it-study-platform'&&row.operation==='document.sync.study'&&
+   env.DOCUMENT_STUDY_EXECUTION_ENABLED==='true'
+ const states=(finance||task||study)?
   ['pending','approved','executing','applied','failed_retryable',
    'rejected','cancelled','expired','failed_final','conflict']:
   ['pending','approved','rejected','cancelled','expired','failed_final','conflict']
  if(!states.includes(row.status))return deny('document_execution_not_supported',503)
- const applied=(finance||task)&&row.status==='applied'
+ const applied=(finance||task||study)&&row.status==='applied'
  if(applied&&((finance&&!/^[1-9][0-9]*$/.test(row.remote_id||''))||
     (task&&!uuid.test(row.remote_id||''))||
+    (study&&(!candidateId.test(row.remote_id||'')||row.remote_id!==row.resource_id))||
     !Number.isSafeInteger(row.executed_at)||row.executed_at<1||
     !Number.isSafeInteger(row.execution_attempts)||row.execution_attempts<1))
    return deny('document_target_receipt_not_proven',503)
