@@ -70,7 +70,7 @@ export async function documentApprovalStatusRoute(request,env){
  const row=await env.DB.prepare(`SELECT request_id,household_id,requester_user_id,
    source_app,target_app,operation,resource_type,resource_id,
    payload_schema_version,payload_sha256,idempotency_key,status,
-   reviewed_at,expires_at,version
+   reviewed_at,expires_at,version,executed_at,remote_id,execution_attempts
   FROM household_approval_requests WHERE request_id=? LIMIT 1`)
   .bind(body.approval_id).first()
  // Do not distinguish an absent approval from somebody else's approval,
@@ -86,16 +86,26 @@ export async function documentApprovalStatusRoute(request,env){
   row.payload_sha256!==body.payload_sha256||
   row.idempotency_key!=='jpda:sync:'+body.resource_id)
   return deny('not_found',404)
- // No document.sync.* target executor exists yet: anomalous "applied"
- // states must never be presented as a valid write confirmation.
- if(!['pending','approved','rejected','cancelled','expired',
-   'failed_final','conflict'].includes(row.status))
-  return deny('document_execution_not_supported',503)
+ // Only finance currently has a trusted target D1 journal. The other
+ // document operations must not accept a fabricated applied state.
+ const finance=row.target_app==='kakebo'&&row.operation==='document.sync.finance'
+ const states=finance?
+  ['pending','approved','executing','applied','failed_retryable',
+   'rejected','cancelled','expired','failed_final','conflict']:
+  ['pending','approved','rejected','cancelled','expired','failed_final','conflict']
+ if(!states.includes(row.status))return deny('document_execution_not_supported',503)
+ const applied=finance&&row.status==='applied'
+ if(applied&&(!/^[1-9][0-9]*$/.test(row.remote_id||'')||
+    !Number.isSafeInteger(row.executed_at)||row.executed_at<1||
+    !Number.isSafeInteger(row.execution_attempts)||row.execution_attempts<1))
+   return deny('document_target_receipt_not_proven',503)
  return json({ok:true,approval_id:row.request_id,
   status:row.status,household_id:row.household_id,
   requester_user_id:row.requester_user_id,
   resource_id:row.resource_id,target_app:row.target_app,
   payload_sha256:row.payload_sha256,version:row.version,
   reviewed_at:row.reviewed_at||null,expires_at:row.expires_at,
-  applied:false,target_changed:false})
+  remote_id:applied?row.remote_id:null,
+  executed_at:applied?row.executed_at:null,
+  applied,target_changed:applied})
 }
