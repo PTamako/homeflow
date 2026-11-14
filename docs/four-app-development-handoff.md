@@ -1011,3 +1011,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 新 `tests/family-finance-proposals-epoch.test.mjs` 用 Node VM **实际执行** Vue 原 `load/toggle` 方法，模拟 `busy='create'` 时 Safari 前台刷新/折叠尝试，断言 revision 不变、无额外 D1 GET、仍可正常最终刷新；补禁止旧缓存和本人账户原归属守卫。测试 Commit `1606a514fa29fccd3b7aea5719728b0ec5949983`，原 Draft #309 仍 open / Draft。
 - 已有上一精确 **代码** HEAD `d87ae0b...` 的 [Validate #43538371592](https://github.com/PTamako/kakebo_jp/actions/runs/43538371592) 为 `completed/success`（并非覆盖后续测试文件）。当前带实际运行测试的 HEAD `1606a514fa29fccd3b7aea5719728b0ec5949983`，[Validate #43538427829](https://github.com/PTamako/kakebo_jp/actions/runs/43538427829) 和 [Mobile WebKit #43538427785](https://github.com/PTamako/kakebo_jp/actions/runs/43538427785) 在首次核查均 `in_progress`。**需按该 HEAD 真实最终结果更新，不得夸称已全绿**。
 - 仍未完成 Stage C 全部旧金融 stable ID 迁移、D 全类型审批后目标真实受信执行器、HomeFlow applied 回报/推送、iOS 双人真机验收；不合并功能 Draft、不运行正式迁移、不启用新 flag、不部署生产或创建 Preview。A 本地备份恢复 PASS 仍不等于允许 F 上线。
+
+
+## 30. 2026-11-14 家計簿 #309 §29 CI 实测补记：完整 Validate 通过，WebKit 仍需真实结果
+
+- 当前家計簿原 [Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) HEAD `1606a514fa29fccd3b7aea5719728b0ec5949983`；其 [Validate #43538427829](https://github.com/PTamako/kakebo_jp/actions/runs/43538427829) 已真实核查 `completed/success`，覆盖成员新建 AES-GCM 草稿表单、个人账户隔离、同一幂等键原样重试及前台 `load/toggle` VM 运行时检查。之前精确代码 HEAD `d87ae0b...` 的 Validate #43538371592 亦 `completed/success`，但不能代替最新增加的 VM 测试。
+- 同 HEAD [Mobile WebKit Smoke #43538427785](https://github.com/PTamako/kakebo_jp/actions/runs/43538427785) 最后检查依然为 `in_progress`，job 当前在 `npx playwright install --with-deps webkit`；**尚不能宣称 WebKit 通过或失败**。待 run 完成需核对 URL 的真实 conclusion；如失败优先从 job steps/logs 修复。真机双人 iPhone/PWA 手动验收不是 WebKit CI 的替代品。
+- HomeFlow 主仓库本交接仅追加 docs/** 文本，生产 Deploy 工作流已设置 docs-only paths-ignore；本轮没有合并任何四应用功能 PR、部署正式 Cloudflare、改生产 D1/R2/Secret 或创建 Preview。所有阶段 F 上线门槛继续阻断。
