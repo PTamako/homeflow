@@ -109,3 +109,60 @@
 Study 目标 handler 不依赖手动收藏桥接；复用 §64 applyVerifiedDocumentStudy 原 D1 batch。新未执行 migration 0192_homeflow_document_study_approver_audit.sql 强制 requester≠approver、有效 member+owner、相同家庭、不可变审计。所有新开关和独立签名密钥、两个 Fetcher Service Binding 缺一即拒绝执行；DOCUMENT_STUDY_EXECUTION_ENABLED 默认 OFF。词汇目标 remote_id 内含私人词，未来 HomeFlow 只允许保存不泄露原内容的 opaque 请求标识。
 
 已实际通过知学 #179 c4e7928ad3c94c2bcfdbfc92c3d646ebd45cb1ed 的完整 CI 43578236478；其中 Lease 与源检查均是签名模拟后端，并非其他两个仓库真实处理器。此结果不允许正式生产部署/迁移。
+
+
+## L. v1.0.6：P0-3 文书→知学三仓可信执行（Draft；对 §K source-check 的兼容补正）
+
+2026-11-14 在隔离 GitHub Actions 中，采用真实 HomeFlow、文书助手、知学处理器与三套独立内存 SQLite，验证完整三仓执行路径。**此节替代 §K 中「Study source-check 仅五字段、尚无持久 reservation」的待协调描述；不改变既有现金与任务域，不代表 F 阶段生产 Service Binding 或 iPhone 验收。**
+
+### 可信签名与身份契约
+
+所有内部调用：仅 POST、后端 Service Binding、`content-type: application/json`、禁止 Origin/Cookie/Authorization、`X-Approval-Client` 固定、13 位毫秒 `X-Approval-Timestamp` 在 ±5 分钟内、`X-Approval-Signature`=HMAC-SHA256(32 byte 独立 Hex 密钥, `domain + LF + timestamp + LF + raw_JSON_bytes`)。每个接收端严格白名单字段、检查当前独立 feature flag、签名/身份/摘要与未过期租约。不能用客户端声明批准状态或普通生词收藏 API 代替业务执行。
+
+| 调用方 → 目标 | 路由 | 客户端 / HMAC 域 | 固定 JSON |
+| --- | --- | --- | --- |
+| HomeFlow → 文书助手 | `/api/internal/document-study/execute` | `homeflow` / `homeflow:document-study-execute` | 五字段 `request_id,resource_id,household_id,requester_user_id,payload_sha256` + `execution_nonce` |
+| HomeFlow → 文书助手 | `/api/internal/document-study/receipt` | `homeflow` / `homeflow:document-study-receipt` | 仅五字段，只读目标回执及源端对账 |
+| 文书助手 → HomeFlow | `/api/internal/approvals/verify` | `jp-document-assistant` / `jpda:execution-proof` | 五字段 + `idempotency_key=jpda:sync:{candidate_id},expected_version:null,purpose:execute,execution_nonce` |
+| 文书助手 → 知学 | `/api/internal/document-study/execute` | `jp-document-assistant` / `jpda:study-execute` | 五字段 + `execution_nonce,snapshot`（AES-GCM 解密后的原始冻结 JSON 字节） |
+| 文书助手 → 知学 | `/api/internal/document-study/receipt` | `jp-document-assistant` / `jpda:study-receipt` | 五字段，只读知学不可变目标回执 |
+| 知学 → HomeFlow | `/api/internal/approvals/verify` | `it-study-platform` / `it-study-platform:execution-proof` | 五字段 + `idempotency_key=jpda:sync:{candidate_id},expected_version:null,purpose:execute,execution_nonce` |
+| 知学 → 文书助手 | `/api/internal/document-actions/study-source-check` | `it-study-platform` / `it-study:document-source-check` | **五字段 + `execution_nonce`**；服务端必须确认同一持久 reservation，回 `reserved:true,snapshot_sha256,execution_nonce_hash`，目标必须核验 hash 与 nonce |
+
+五字段全部与 HomeFlow 不可变工单匹配；operation 必为 `document.sync.study`，resource_type 必为 `document_sync_candidate`，source_app 必为 `jp-document-assistant`，target_app 必为 `it-study-platform`。Study 与文书助手分别持有各自独立 proof key；HomeFlow 只能对活跃 requester member、活跃 approver owner、审批非过期、`status=executing`、原 nonce 租约返回可执行证明。知学目标仅写 **requester_user_id** 本人私人词汇或句子，含不可变 journal 与真实 approver 审计，绝不通过 HomeFlow 存放明文词句。
+
+### 独立绑定、持久恢复与状态
+
+- HomeFlow：`DOCUMENT_STUDY_EXECUTION_ENABLED`（默认 OFF）、`DOCUMENT_STUDY_EXECUTION_SECRET`、`DOCUMENT_STUDY_EXECUTION_SERVICE`（到文书助手），`STUDY_APPROVAL_VERIFICATION_SECRET`（只验证知学 proof）。同时必须满足已有全局审批执行/验证开关。
+- 文书助手：`DOCUMENT_STUDY_EXECUTION_ENABLED`（默认 OFF）、`HOMEFLOW_STUDY_EXECUTION_SECRET`、`DOCUMENT_APPROVAL_VERIFICATION_SECRET`、`DOCUMENT_STUDY_TARGET_SECRET`、`STUDY_DOCUMENT_SOURCE_SECRET`、`DOCUMENT_INTENT_ENCRYPTION_KEY`、`HOMEFLOW_BRIDGE_SERVICE`、`STUDY_DOCUMENT_EXECUTION_SERVICE`。新 migration `0026_document_study_execution_reservation.sql`，未在生产执行。
+- 知学：`DOCUMENT_STUDY_EXECUTION_ENABLED`（默认 OFF）、`DOCUMENT_STUDY_EXECUTION_SECRET`、`DOCUMENT_STUDY_PROOF_SECRET`（必须与 HomeFlow 独立 Study proof key 对应）、`DOCUMENT_STUDY_SOURCE_SECRET`（与文书 source-check key 对应）、`DOCUMENT_STUDY_HOMEFLOW_SERVICE`、`DOCUMENT_STUDY_SOURCE_SERVICE`。Study 目标未执行 migrations `0191`、`0192`。
+- 文书端只有源版本、candidate updated_at、真实 owner/member 关联、冻结 AES-GCM 解密摘要、HomeFlow nonce/租约全部匹配后才建立 reservation；执行期阻止源文书/候选变化。知学首次目标 D1 写入必须通过 **两个独立后端 proof**，事务内写私人生词/句子、不可变目标 receipt、真实申请人和审批人原子审计；重放同 ID 只读取原 journal。
+- 知学目标原始词汇 `remote_id` 可能包含私人文本；文书源端可存真实目标 ID，但对 HomeFlow 只返回 **opaque candidate_id (32 hex)**。HomeFlow 只有收到包含 approver、原 request/candidate/household/digest、时间和此 opaque ID 的真实 source receipt 才标为 `applied`。文书 UI 进一步核对本地 reservation `status=applied` 与 HomeFlow `remote_id` 才显示“已同步”。
+- 执行中网络超时/回执丢失使用原 `request_id` 对目标只读 `receipt`，然后在源端落地回执；不得重复创建词句或新审批。审批过期只能读原目标回执，不能发送新的 execute。跨 D1 并发撤权最终一致性、失效租约的源端回收策略、PWA 浏览器回归及正式双 iPhone / Service Binding 联调仍为 **未完成的安全验收项**。
+
+**已核验**：HomeFlow #306 `tests/document-study-three-real-apps.test.mjs` pin 文书助手 #97 `ade2dba88f95a183a6bf31f73309a9792a6daa5e`、知学 #179 `496b06a021cdd1c822f49774b31a26f31bca9895`，三真实处理器/独立 SQLite 完整 HomeFlow CI `43584526633` success。三个功能 PR 保持 Draft，零生产迁移、零部署、零 Preview。
+
+
+## M. v1.0.7：P0-4 第一组非现金执行——成员信用卡消费、共享支出和应付账款（Draft）
+
+2026-11-14。**不覆盖 §I 的现金执行或 §K/L 的文书执行**。选择一组完整业务：`finance.credit_card.purchase`（信用卡购买，不是信用卡结算、储值卡、积分、SBI 或资产转移）。家計簿新未执行 migration `0031_family_card_purchase_execution.sql`，HomeFlow 未执行 migration `0054_household_approval_core.sql` 的草稿白名单同步加入此新 operation；两者均未出现在生产或 main。不能将运行中的生产 schema 假定已具备此列和 CHECK。
+
+### 固定操作、身份和密钥
+
+- HomeFlow 不可变请求：`source_app=kakebo`，`target_app=kakebo`，`operation=finance.credit_card.purchase`，`resource_type=credit_card_purchase`，`resource_id={32hex intent request ID}`，`idempotency_key=kakeibo:card:{resource_id}`，`payload_sha256` 是家計簿独立 AES-GCM 明文 JSON 的 SHA-256，`expected_version` 为该信用卡 `family_financial_accounts.version` 的整数，不得为 null。请求人是当前 `member`、拥有该 `member_created` `credit_card` `account_id`，批准人是**另一位**当前 `owner`。只有 HomeFlow 提供已审核并处于执行租约中的证明才允许目标写入。
+- 审批提交：家計簿后端 → HomeFlow `POST /api/internal/approvals/card-submit`，`X-Approval-Client: kakeibo-card`，HMAC domain `kakeibo-card:submit`，32字节 Hex 独立 `CARD_SUBMISSION_SECRET/KAKEIBO_CARD_SUBMISSION_SECRET`；body 严格仅 `{household_id,requester_user_id,resource_id,payload_sha256,expected_version}`，不含消费金额、商家、卡号、密钥和现金账信息。
+- 审批核验：家計簿目标 → HomeFlow `POST /api/internal/approvals/verify`，`X-Approval-Client: kakeibo-card`，domain `kakeibo-card:execution-proof`，独立 `CARD_APPROVAL_PROOF_SECRET/KAKEIBO_CARD_PROOF_SECRET`。body `{request_id,resource_id,household_id,requester_user_id,payload_sha256,idempotency_key,expected_version,purpose:'execute',execution_nonce}`，签名请求字节与当前 HomeFlow 不可变工单/活跃 member+owner/未过期 execution lease/nonce hash 精确匹配。
+- 执行：HomeFlow → 家計簿 `POST /api/internal/card-purchases/execute`，domain `homeflow:card-execute`，独立 `CARD_EXECUTION_SECRET/KAKEIBO_CARD_EXECUTION_SECRET`；body 五字段 `{request_id,resource_id,household_id,requester_user_id,payload_sha256}` + `execution_nonce`。回执：`POST /api/internal/card-purchases/receipt`，domain `homeflow:card-receipt`，仅五字段；不得将不存在的回执当成可以安全重建一张卡账单的证明。内部后端 JSON 一律 POST、无 Origin/Cookie/Authorization、timestamp 13 位毫秒 ±300 秒、HMAC-SHA256(raw bytes)，所有 flags 默认 OFF。
+
+### 事务结果、共享口径与恢复
+
+- 源 intent 只以真实 `stable account_id` + `account_version` 表示卡，不依赖相同显示名。目标 AES-GCM 解密并核对 SHA-256、签名 HomeFlow 审批、当前账号版本 CAS 与 owner/member。目标单事务 `DB.batch` 插入一次 `entries` 家庭 `expense`（`client_request_id=hfcard:{approval_id}`, `family_account_id=account_id`, `payment_source=cc:{account_id}`，仅用于新家族稳定账号）、一次 `family_card_purchase_applied`（实际信用卡应付款，独立 bill_month）和一次不可变 `family_card_purchase_audit`（requester/approver 分离），失败全部 rollback。
+- `bill_month` 为信用卡 **截账月**，依据购买日与卡片当时 `closing_day` 及短月夹紧计算，不推断账单付款日或银行已扣款。家計簿家庭账本两成员共享 `expense`；另提供按 `stable account_id, bill_month` 分组的累计应付，**不把这笔应付再次计入支出/不减现有资产**；未实装消费还款匹配，因此状态为 `not_reconciled`，不是银行真实未付余额或净资产。
+- 同 ID 再入参仅返回不可变目标 receipt；即使目标提交后断网，HomeFlow `failed_retryable` 重用 **原 approval ID** 只接收原始目标 receipt，不再次借记或创建另一笔应付。状态只有目标成功提交并返回含 entry_id/approver/版本/摘要的真实回执后才 `applied`。任何浏览器自报批准无效。
+- flags：HomeFlow `CARD_APPROVAL_SUBMISSION_ENABLED`, `CARD_APPROVAL_EXECUTION_ENABLED`, `CARD_SUBMISSION_SECRET`, `CARD_APPROVAL_PROOF_SECRET`, `CARD_EXECUTION_SECRET`, `KAKEIBO_CARD_EXECUTION_SERVICE`；家計簿 `KAKEIBO_CARD_PURCHASES_ENABLED`, `KAKEIBO_CARD_SUBMISSION_SECRET`, `KAKEIBO_CARD_PROOF_SECRET`, `KAKEIBO_CARD_EXECUTION_SECRET`，复用已经隔离的私有 `KAKEIBO_FAMILY_PENDING_KEY`、`HOMEFLOW_IDENTITY_SERVICE`。全域仍要求已存在的 family finance、SSO/identity、approval exec/verification 功能开关。
+
+### 实际隔离验收与明确未完成项
+
+- 家計簿 #309：`244535227826f6caa2258179ba30aa32162c7ad1`，两组完整 CI `43586044462`、`43586044499` **PASS**；真实 SQLite 交易、CAS 拒绝、失效身份、HMAC 伪造、审计 rollback、migration 重放和重复回执均已覆盖。
+- HomeFlow #306：`tests/family-credit-card-real-cross-app.test.mjs` 真实导入 HomeFlow 审批提交/验证/执行和家計簿源端/目标执行，在**两套独立内存 SQLite** 上以模拟 Service Binding 传递签名 Request。实际成功测试通过、目标提交后断线同 ID 恢复、对批准/执行分离、成员撤权/旧版本 fail closed。HomeFlow 代码 `16e3e3d44bf920bf7fff0962c003b87415880fe6`，完整 CI `43586512718` **PASS**。这个 CI 使用 .contract-kakeibo 精确 pin 上述 Kakeibo SHA。
+- **仍未完成**：信用卡还款真实现金记账/已结负债匹配、信用卡特殊扣款/积分兑换、储值/积分/SBI/资产转移、跨 D1 最终撤权竞态、HomeFlow+家計簿两台 iPhone PWA 浏览器级 UI 以及 F 阶段实际 Service Binding/生产迁移。不得把首类非现金成功描述成整个 P0-4 或 B–E 已完成。全部 PR 均 Draft、生产 flags OFF，零生产资源变更。
