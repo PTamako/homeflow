@@ -1725,3 +1725,32 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - P0-4B **现金 SBI 積立与追加買付**从 member 银行 stable ID 审批后双边资金/实际 NISA 口数/取得成本和客观适用日的完整执行与旧截图重叠防重；积分买付已有 §82（新 lot 未与真实账户对账，不加到旧资产 NAV）。SBI 买付的卖出退款、基金撤销/对手 lot 冲正未完成。
 - P0-4C 本人/跨家庭成员**银行、现金、证券真实双向账户资产转移**、家庭条目 edit/delete/restore/bulk、固定费/定投周期批准与 Cron 幂等、shared ledger 回收箱和 R2 票据一致性仍待真实业务模块；知学/文书 B～E 整体 UI 权限、全 PWA 实机 Safari/双 iPhone、生产 F 阶段未完成。千万不要把 §§82～85 的后端 isolate CI 误认为四 App 全量上线。A 阶段用户已完成备份及本机恢复验证 PASS，不重复。
+
+
+## 86. 2026-11-15 P0-4B SBI 现金定期積立与追加買付：审批后银行→证券不可变资金/lot 对手账（Draft，双仓 CI）
+
+### 开发范围与实际修改
+
+- 从 §85、冻结契约 §Y 及设计书 v1.1 实时 HEAD 接续；没有重做 §65～§85。家計簿 #309 新增 `0044_sbi_cash_purchases.sql` 和独立 `sbi-cash-actions` 源/目标，带本人 bank/securities stable IDs 双 CAS、AES-GCM 冻结金额/基金/日期、银行账单确认和券商人工成交确认、精确积立与追加买付类别；目标一笔 SQLite batch 落地实际银行内部资产转移 entry、唯一 bank debit evidence、不可变证券 acquisition lot 与 actor audit。对银行/信用卡既有 debit hash、积分券商 trade hash 做交叉重复拒绝。账户余额不足、撤权、版本漂移或真实审计 SQL 写失败整笔回滚，不对外下单。
+- HomeFlow #306 加入两个新金融类型 `finance.sbi_cash.tsumitate` / `finance.sbi_cash.additional`，独立 `kakeibo-sbi-cash` 提交/证明域及独立 `homeflow:sbi-cash-execute/receipt`，沿用 owner 审批、nonce/lease、idempotent 回执和 HomeFlow 跨库最终一致性安全逻辑。只以家計簿真实 source/target、两个独立 SQLite 和模拟 Service Binding 测试，不把模拟说成生产。HomeFlow #306 仍以 #305 为 base。
+- Kakeibo 为旧 `investment_holdings`、`investment_plans`、`sbi_transfer_links`、截图持仓增加明确**不重复累计**的隔离只读 cash lot 汇总：`broker_reconciled=false`，`included_in_tracked_assets_jpy=false`；没有虚构股数、买付日期或自动改变旧资产。手续费、NISA 基金识别和份额来自用户明确确认字段而非文字推测。
+- 针对性单仓 SQLite 重新运行未部署 migration 的重放、银行/证券账户原 owner、有效扣款和成交凭证、独立追加买付/积立日期、现金不重复 expense、目标不可变凭证、审计回滚、CAS/撤权/资金不足及不可变重复重试。HomeFlow 两套独立数据库通过真实跨仓源、owner approve、执行、丢回应原 ID 再查原凭证和两种买付差异。跨应用冻结契约只 append **§Z / v1.0.20**，不修改 §P～Y。
+
+### Commit / CI（均保持 Open / Draft）
+
+- 家計簿 #309：`be81d42a2c7dc0baa50ad4e6c21ae0e51ebed73b`（0044、专用源/执行器、只读投影及首次真实 SQLite 测试）；Validate GitHub Actions **43619890461 completed/success**、Mobile WebKit Smoke **43619890345 completed/success**。`4c00aefb5390b7251a8c6dfdda1cdb1860212c5b` 另增加明确 `additional`（不进入定期積立）的真实成交单元/数据库用例；最终 CI 必须以该 SHA 实际 run 结论为准。
+- HomeFlow #306：`bac618098ef461b2c83ef7fd42f67b4589899caa`（两个审批类型、签名执行、源 K commit pin `be81d42a2c7dc0baa50ad4e6c21ae0e51ebed73b`、两库真实 SQLite 端到端正常及丢回执测试）；Validate HomeFlow **43620164802 completed/success**。本 §86 所在后续提交会同步 pin 家計簿最终已验证 `4c00aef...`，加入 `additional` 两仓测试并更新文档，须以该提交 CI 最终结果为准。
+- 未部署 migration：家計簿 **0044**；HomeFlow 既有未部署 **0054** 白名单仅追加两种操作；没有创建新生产 migration、Cloudflare Worker/Service Binding/Secret/Cron/Preview 配置。契约版本 **v1.0.20 / §Z**。
+
+### 明确未完成风险/下一阶段
+
+- 本模块是内部**以用户已核实银行对账单和券商成交为证据的人工确认账务**；没有券商实际 API、真实成交回单的独立核对、旧截图与新 lot 的份额重叠消解，也未计入正式家庭资产市场估值。对于已在旧 `entries` 或旧 `sbi_transfer_links` 出现的历史交易，仍缺逐笔、不可变来源映射和跨版本去重审批；不得无条件重新导入。银行可用余额取当前稳定账户已确认内部 entries，不能替代还未映射的全部真实银行流水。
+- SBI 现金退款/取消/卖出/转出及旧 lot 反向冲正、资产估值真实券商对账、家庭跨成员资产转移、信用卡/储值卡/银行旧账户无损映射、共享账目改删恢复/回收箱及票据、批量审批/导入、周期授权/Cron、安全 PWA UI/双 iPhone、正式 B～E R1～R9/T01～T14 全覆盖均**未完成**。不得宣称四应用全部上线。
+- A 阶段用户独立完成的生产 D1/R2 加密备份、Mac SQLite 还原及 Google Drive 回下载验证保持 PASS，不重复。本节及全部前述工作仅改 GitHub **Draft** 分支；**未触及任何正式生产数据、Worker、Pages、D1、R2、Secrets、Cron、Service Binding，未建 Preview、未合并功能 PR、未做真实银行转账/券商交易**。F 阶段需单独许可。
+
+
+### §86 最终最新代码 CI 复核（2026-11-15，写入双仓验证结论）
+
+- **家計簿 #309 最终实际 HEAD** `4c00aefb5390b7251a8c6dfdda1cdb1860212c5b`：Validate **43620328601 completed/success**；Mobile WebKit Smoke **43620328612 completed/success**。在上一笔功能 commit `be81d42...` 的两条 CI 已绿后追加 `additional` 独立成交、NISA 类型与日期/类别测试；没有删除关键安全断言。
+- **HomeFlow #306 最终功能/文档 HEAD** `bb5d391c8f23c2df73718ea4bc3b9c8eaa9055bd`：Validate HomeFlow **43620564340 completed/success**。CI 将家計簿实际源码严格 pin `4c00aefb...`，两套 SQLite 运行真实 HomeFlow owner approval、签名执行、原 approval ID 回执恢复及追加/定投类别测试。代码层面没证明独立真实 D1/Service Binding/券商/银行生产行为。
+- 此附录仅补记已经获得的真实 CI 证据；§86 本次资料更新及可能的 main 文档安全同步只修改 Markdown。所有功能 PR 仍 Draft。**生产 Cloudflare 未触及，未创建 Preview 或进行正式数据迁移**。
