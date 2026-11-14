@@ -354,3 +354,35 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 - GET 按 entry id 上限 5 条逐页，返回原稳定账户 ID、entry ID、date/amount/type/category、原始全行字段加旧 stable mapping proof 计算的 SHA256 摘要，只供审核，不传 OCR 全文。POST exact keys `expected_user_id,entry_id,points_account_id,legacy_kind,source_digest,confirm`。后端重新读全部原 entry 字段生成摘要，SQL 写点用所有字段条件 CAS；同时以一次 DB batch 插入不可变 `family_points_legacy_links` 与 0039 新 `family_points_legacy_provenance`（保存 SHA、原 owner、原 legacy account、new point account、金额/类型、审查时间），缺任何条件失败整体回滚；重复原 entry 原证据只可幂等同样回执，不能绑定第二个目标账户。
 - 新 0039 migration 添加历史来源与目标 owner/household 验证、source journal 不能同时 mint 的冲突检查、provenance 不可 UPDATE/DELETE、已证明关联的旧 entry 不可 UPDATE/DELETE。当前 `memberPointsBalances` 只读显示历史链接数，**不将旧 JPY 收入冒充新的积分单位**，无需跨 D1 原子写入。
 - 家計簿 #309 HEAD `56d6924027994d7e70f5b7d9b65ccfc44c964aa6`、Validate `43604672577` success、WebKit `43604672511` success；HomeFlow #306 pin `544c2498694337a3fc9b762a039da1481e9430c8` Validate `43604745668` success。为隔离 SQLite 和模拟服务验证，实际 Cloudflare 绑定/生产迁移/旧积分批量确认仍在后续 F 阶段，五 Draft PR 禁止合并。
+
+
+## V. v1.0.16：SBI 确认成交的积分买付账务（仅 Draft，§U 兼容）
+
+- 精确增加 `finance.points.redeem_asset`（原 0034 白名单已有占位，真实执行仅此新阶段开放），必须本人 points source 和本人 securities target stable IDs/版本、人工核实 SBI 确已成交的 fund_code 8 位、NISA account_type growth/tsumitate、正 `sbi_confirmed_units`、broker trade reference hash SHA256、明确确认成交；`units`、`yen_value` 与分数估值不可误差。所有原本非 SBI points 操作都不得包含这些独有字段。
+- 源端 `family_points_intents` AES-GCM 完整密文冻结这些私有财务值及目标证券账户 owner/CAS。HomeFlow 只接触通用 `resource_type=points_action`、原 32hex resource ID、`operation=finance.points.redeem_asset`、source account expected_version 和 SHA256 payload，不接收成交内容和金额。原 lease/nonce HMAC/fail-closed 开关与 signer 不变。
+- SQLite `0040_points_sbi_lots.sql` 中 `family_points_journal` 负 delta 与 `family_sbi_point_lots` 目标份额/取得成本严格同语句不可分割，receipt 增加目标 version、code、NISA 类型、units、acquisition cost、post balance、日期和券商证据 hash。原 trade hash UNIQUE、所有行不可 UPDATE/DELETE。HomeFlow 按严格非负/等值和身份/审批人校验后才能 applied。
+- 旧 SBI `investment_holdings`、`investment_plans`、`sbi_transfer_links` 和旧截图估值不可被这个新点数事件静默覆盖或增加第二遍。只在单独标记 **unreconciled / excluded from tracked assets** 的 `member_sbi_point_lots` 投影展示新确认的份额/成本；还需要真实券商截图/份额重叠对账。没有真实下单、没有实际券商 API。
+- 功能提交与完成实测 CI 见 handoff §82、§84；正式 Cloudflare/手机尚未验收。
+
+## W. v1.0.17：跨积分账户双向冲正（仅 Draft；§S/§T 向后兼容）
+
+- `finance.points.reversal` 的原交易安全名单扩展为 `transfer_out` / `exchange_out`。必须原 HomeFlow UUID 未被 reversals 使用、原 source/target owner 与 household、现时目标 CAS/余额、安全日期；原入账仍全数不可变，禁止猜测外部积分运营商余额。
+- `0041_points_transfer_atomic_refund.sql` 在新反向 source journal 返还原来源 `ABS(old.delta_units)` 后，SQL AFTER INSERT 原子创建 `family_points_transfer_refunds`，在原目标积分账户扣除**原 credit.target_units**（异倍率兑换可与源点数不同）。新目标可用余额必须足够；不能擅自反向套用当前兑换比率，也不能只给源账户返还单位。
+- 实际目标余额 = `SUM(journal.delta_units)+SUM(transfer_credits.target_units)-SUM(transfer_refunds.debited_target_units)`。源/目标钱包投影、write-path CAS、原 hash 和审计不可损坏。HomeFlow 回执新增 `refunded_target_account_id`、`refunded_target_units`、`refunded_target_balance_after_units`、`refunded_target_version`，只对应原 transfer/exchange 时为非空；原 receipt 及原 HMAC 不变，source/target 必须一致才能标 applied。
+- 以 §83/§84 实际两仓完整 CI 为验收基线，生产仍 OFF。
+
+## X. v1.0.18：积分兑换储值卡的双边补偿退款（仅 Draft）
+
+- `finance.points.reversal` 另允许原 `transfer_prepaid`，并且 **必须**原可验证的 `family_points_prepaid_credits` 与同一成员稳定 prepaid target。新 source 反向 credit 恢复原点数；同一 SQL trigger 为该原 approval ID 生成唯一不可变 `family_points_prepaid_refunds`，按原精确 `yen_value` 扣减目标预付余额，不生成现金收入、expense、银行转账或券商记录；原 target 余额不足/目标版本漂移/多次/失败均阻断整笔 source 退款。
+- 预付净余额统一为 `SUM(family_prepaid_balance_journal.delta_jpy)+SUM(family_points_prepaid_credits.amount_jpy)-SUM(family_points_prepaid_refunds.debited_prepaid_jpy)`，真实 prepaid spend 与家庭只读持仓均遵守相同余额；receipt `refunded_prepaid_account_id/refunded_prepaid_jpy/refunded_prepaid_balance_after_jpy/refunded_prepaid_version` 只对应原 prepaid refund，有 source/target 身份及原 approval、签名和目标不可变审计约束。
+- 真正 CI 全通过基线：家計簿 #309 HEAD `60a82b528a05a7c92d703461c20d12f042b88dcc` Validate `43609431396` success、Mobile WebKit `43609431342` success；HomeFlow #306 真实跨仓最新修复提交 `4c5b6633d68d5822fa47df10acf76896ca28b5c2` Validate HomeFlow `43615838190` success。测试仅模仿 Service Binding 的两套隔离 SQLite、没有真实生产服务、银行账户或第三方积分系统转账。原 flags 默认 OFF；不得操作生产/Preview/自动部署或合并。
+
+
+## Y. v1.0.19：积分冲销真实信用卡应付的不可变反向恢复（仅 Draft）
+
+日期：2026-11-15，兼容 §§P～X 与既有已验收 card settlement/points-offset 业务。
+1. 不新增加 HomeFlow 操作类型：`finance.points.reversal` 允许原 `finance.points.offset_card` 且仅可指向原同一 member 原 source points、原 stable card account 与唯一特定 approved `family_card_purchase_applied.homeflow_request_id`。新申请必须严格原始 `original_request_id` UUID、当前 source points version/家庭/owner、原 `units` / 比率 / `yen_value` 全等、`effective_date>=original.effective_date`。原积分/卡抵扣不可双重 reversal。
+2. 同一个家計簿 D1 SQLite INSERT 的新 `family_points_journal` source credit（source points restored） + `family_points_card_offset_refunds` counterpart（original card purchase 未还额 **增加** 精确原 `yen_value`，不是新消费）必须原子；任何旧凭证缺失、target owner/account version 或已归档、提交 actor/approve/lease 失效、卡账 SQL guard 错误或审计故障都整笔回滚。新退款有唯一 HomeFlow request ID/原抵扣请求 ID、关联卡 purchase ID、card CAS、恢复日元、恢复后实际负债、actor 时间，不可 UPDATE/DELETE；原 `family_points_card_offsets` / `family_card_purchase_applied` / bank settlement/expense **一律不可改写**。
+3. 所有 purchase-level 的 outstanding、卡负债汇总、后来的银行 allocation 与积分 offset 共享预算公式：`original_purchase.amount_jpy - SUM(family_card_settlement_allocations.amount_jpy) - SUM(family_points_card_offsets.amount_jpy) + SUM(family_points_card_offset_refunds.restored_jpy)`。按 purchase ID、owner 及账户 ID 核验，不用账单名、商家或文字；一笔原 offset 最多一次 refund，因此 net offset 永不合法为负。银行还款只有已签署银行 statement 的正式审批才能再使用释放的应付空间，退款本身不生成银行 debit 也不产生额外 income/expense。
+4. Points 家計簿只读 receipt 增加 `refunded_card_account_id`、`refunded_card_version`、`refunded_card_purchase_request_id`、`refunded_card_offset_jpy`（必须==原 `yen_value` 且 >0）、`refunded_card_liability_after_jpy`（安全非负），非卡 refund 一律 null。HomeFlow 原 owner review / HMAC / lease/nonce/proof/receipt 只接受回执证明旧 journal 和 target counterparty 同时存在，核对原 actor/requester、source 交易 ID/原 refund ID/目标 stable 卡 ID 和签名 SHA256 后才能置 applied；丢响应须按原 approval ID 只读查验，不得生成第二次转账。新增五个字段不会绕开已有积分双边 transfer/prepaid 的严格校验。
+5. Unexecuted migration `0043_points_card_offset_refund.sql`，功能/测试实际 SHA 见 handoff §85。家計簿 #309 **`970be36c43337117b1da6e51c5514dd3013182c2`** Validate **43617293723 success** / Mobile WebKit **43617293697 success**；HomeFlow #306 pin 同一 K SHA `a4adccd4db0a5f9173760120d3911f789555abf8` Validate **43617539406 success**。严格限定两套隔离真实 SQLite/模拟 Service Binding，没有生产 API 跑单；全部 Draft/flags 默认 OFF/不合并、不部署、不建 Preview，真实用户四 D1、R2、银行/券商不修改。
