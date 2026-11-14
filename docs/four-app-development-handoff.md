@@ -951,3 +951,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 原 `.github/workflows/validate-pr.yml`：为 Tatoeba 生成的公共 SQL、静态语言/词典文件添加以生成器、辅助算法、词典输入和 0079 种子为 key 的缓存。**首次未命中时仍正常调用完整 Python 生成器**；命中时仅跳过重复生成，始终运行资产指纹校验、语言质量审核、npm 完整测试、Vue 构建、完整本地 D1 迁移、JSON 检查和 Worker `--dry-run`。源数据更换要显式更新 `public-language-fixtures-v1` epoch，避免不受控的新版本混用；Commit `f0159098d19e3dfec175975e1d68bd9cbe6e660f`。
 - 实际 GitHub 提交：以上两个 SHA；PR #179 经实时核查仍 `open / Draft`，本次代码 HEAD `f0159098d19e3dfec175975e1d68bd9cbe6e660f`。相应 [Validate #43535202780](https://github.com/PTamako/it-study-platform/actions/runs/43535202780) 在首次查询时为 `pending`，**不得标记为通过、缓存加速成功或上线**。原完整 CI 基线 #43533113361 已成功，但不覆盖这两次新增提交。
 - 待办：① 取得 #43535202780 对精确 HEAD 的最终结果，失败则按 job logs 修复；② 首次 cache miss 的完整测试绿灯后，后续同 key cache hit 再实测耗时、检查缓存恢复结果与完整本地 D1 验证；③ B～E 的真实剩余功能依 §20.3 持续开发，特别是旧离线队列防串号、家計簿完整金融归属、文书审批后真实目标执行与 iPhone 双人 E2E；④ 生产 D1/Workers/Pages/R2 仍未授权变更。
+
+
+## 23. 2026-11-14 文书助手 #97 审批原始候选版本不可复用（已提交、最新 CI 验证中）
+
+- 在原 [文书助手 Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97) 上继续 Stage D/E，branch `feature/homeflow-identity-link-safety-20261113`，未新建 PR。原申请在文书助手存储原文书版本、候选更新时间和不可变私有快照，HomeFlow 只持摘要。
+- 修复 `worker/document-member-approval.js`：成员单次读取 HomeFlow 审批状态前，必须验证当前文书 `version`、候选 `updated_at` 与冻结的 `document_member_sync_intents` 完全一致，同时按 SHA-256 校验私有 `payload_json` 完整性；任一不一致返回 409 `APPROVAL_SOURCE_CHANGED` / `APPROVAL_SNAPSHOT_INVALID`，不去 HomeFlow 查询、不会将旧批准误解为新内容已获许可。成员再次请求提交同一冻结审批时也校验旧文书/候选版本，不允许源已改却使用旧回执重复提交。代码 Commit `4fb5944c6c348488345b57d260acc6f8711919f6`。
+- `tests/homeflow-sso.test.js` 增真实 SQLite + Worker 的原候选 `updated_at` 改动回归：旧批准状态读取和重复提交分别 409，既不向 HomeFlow 发受信后端调用，也不改变 `integration_links`；测试 Commit `75e41988d62bbfbbd3f7eea1e4d8f88157d1657f`。原 approved≠applied、拒绝/断网/损坏签名、幂等及双用户验证仍保留。
+- **准确状态**：PR #97 在核查时仍 `open / Draft`，HEAD `75e41988d62bbfbbd3f7eea1e4d8f88157d1657f`，[Pre-merge CI #43535741281](https://github.com/PTamako/jp-document-assistant/actions/runs/43535741281) 为 `in_progress`，不能宣称本修复全绿；需取得精确 HEAD 的最终 CI 并记录，若失败按原 job logs 修复。
+- **未完成**：旧审批终止/重申请业务 UI 仍需专门交互（当前只安全拒绝），文书→家計簿/HomeFlow/知学的可信目标执行器、双人真机 Google 授权与身份/缓存隔离完整验收仍待实施；所有生产迁移/开关/资源完全未变，未合并 Draft、不部署生产、不建立 Preview。A 本地备份恢复 PASS，不能替代生产 F 上线批准。
