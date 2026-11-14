@@ -1270,3 +1270,15 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
   3. 在现有 `tests/homeflow-sso-isolated.test.mjs` 中用真实 SQLite 和双 HomeFlow SSO Cookie 回归：旧主权利未认领时 unknown、经 owner 原证据映射后两人同一结果、非法查询拒绝、跨页 44 条无重复、撤权 401、正式账本和原 SBI 历史不变、没有创建假入账事件。
 - **精确代码 HEAD `f7ebf7b3c4c3c89235cb11e9cc3bf5d9908da77e` CI 双绿**：[Validate #43555179660](https://github.com/PTamako/kakebo_jp/actions/runs/43555179660) **completed/success**（先专项双人身份/SQLite 与 UI 回归，再全量 release tests/build）；[Mobile WebKit Smoke #43555179691](https://github.com/PTamako/kakebo_jp/actions/runs/43555179691) **completed/success**。没有人为删除旧测试，没有每文件重复提交取消 Actions。
 - **没有完成/不可上线代替**：这是历史固定费/SBI 资源的归属可视性，不是稳定 ID 全链编辑 CRUD；投资/信用卡/储值卡/积分完整 owner 和会计动作、非现金审批执行、跨应用文书真实目标写入、完整知学隔离、T01–T14 实机/正式 F 仍缺。四应用正式 D1 迁移、flags、Workers/Pages/R2/Secrets **均未操作**；Draft PR 仍 Draft、没有创建 Preview、没有合并功能 PR。A 的四 D1/三 R2 加密备份+Mac 隔离恢复 PASS，绝不能视为 F 部署许可。
+
+
+## 59. 2026-11-14 批量交付第 2 模块：知学 #179 本人收藏 UI 与跨账号原始操作人安全栅栏
+
+- **真实缺口**：知学原 Stage E 已有 `worker/homeflow-vocabulary.ts` + `0181_homeflow_user_vocabulary.sql` 的 per-user 后端，但是 HomeFlow 首次进入的 PWA 尚无本人收藏/删除/历史导入 UI；本人收藏 POST/原 owner 导入 POST 没有绑定**发起操作时的 HomeFlow user_id**，设备换号后可能把已确认前一身份的写入发到新 Cookie。此处必须补齐，同时保留已有生词隔离、旧库历史、复合键、审计和 feature gate。
+- 在知学原 [Draft #179](https://github.com/PTamako/it-study-platform/pull/179)，原分支 `feature/homeflow-identity-isolated-20261113`，**单模块原子 Commit [`d1a97ae803bf440b4dcd6b3bd3166715dc65f857`](https://github.com/PTamako/it-study-platform/commit/d1a97ae803bf440b4dcd6b3bd3166715dc65f857)**，6 文件：
+  1. `worker/homeflow-vocabulary.ts` 的个人 save/remove 与 owner-only `legacy/adopt` 强制包含 `expected_user_id`，再由原服务端 `verifiedStudyActor` 实时重查 SSO 身份，不匹配在任何 SQLite 写入/原数据读取前 `403 ACTOR_CHANGED`。客户端身份只能作为比对栅栏，不能冒充权限来源。
+  2. 新 `src/StudyHomeFlowVocabulary.vue`：独立 HomeFlow user_id PWA 个人生词列表、分页、收藏、移除与 owner 经明确确认后原历史每批 20 行只复制到本人；无法核对回执时保留**原始请求**供同一账号重试，换号/unmount/前台恢复丢弃旧回执，不读写旧 `localStorage` 或 `IndexedDB`。原 `StudyHomeFlowAccess.vue` 仅认证后按当前 user_id 独立挂载。
+  3. `scripts/homeflow-sso-isolated.test.mjs` 原有双账号、损坏历史导入等测试全部保留并按新契约附加原操作人；新增真实 SQLite/双 Cookie 的跨账号 stale POST、缺失原 actor 403、相同单词两账号独立、同请求重试不重复审计、撤权 401、原 owner 旧库不变回归。`scripts/homeflow-pwa-ui.test.mjs` 检查 PWA 不碰旧缓存；`.github/workflows/validate-pr.yml` 在完整 CI 前**批量运行个人句子卡 + 个人词本相关真实 SQLite 专项**，然后保留完整旧校验。
+- **CI 状态与精确 run**：[`Validate pull request #43555788635`](https://github.com/PTamako/it-study-platform/actions/runs/43555788635) 绑定 HEAD `d1a97ae803bf440b4dcd6b3bd3166715dc65f857`；已核实 **Fast identity and type checks completed/success**（专项真实 D1、原 PWA 与缓存回归、Vue typecheck），**完整 validate job 截至写本节仍在运行、不能冒充通过**。必须待同一 HEAD 全量 `completed/success`，否则按失败 job 精确修复，而不是重复无关的全面审查。
+- **剩余且未完成**：完整全应用旧 `src/App.vue` 本机数据/队列逐身份隔离、旧句子/收藏归属证明与全量 owner 历史迁移、文书 `document.sync.study` 经 HomeFlow 审批后的真实 Service Binding 目标执行、书本其余个人学习链路、两部 iPhone 实机与完整 T01–T14。家計簿非现金审批执行、金融稳定 ID 全类型 CRUD、文书同步真实 finance/task/study 执行器均没有因此完成。
+- 本轮 **只改 Draft 源码/测试**；`HOMEFLOW_STUDY_VOCAB_ENABLED` 默认 OFF，未执行任何生产迁移，没有改 HomeFlow 生产库/正式 Worker、没有合并功能 PR、没有 Preview。A 备份 PASS 与最终 F 部署许可严格分离。
