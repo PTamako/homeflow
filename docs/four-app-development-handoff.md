@@ -880,3 +880,38 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 知学 `worker/homeflow-exams.ts` 和 `worker/homeflow-language.ts` 的六个 POST 原用户栅栏与家計簿账户设置相同设计：客户端声明原操作 actor，服务器永远以重新验证的 HomeFlow Cookie 决定真正 actor；错误在写入前拒绝。知学的 `zhixue:legacy-cache-quarantine-v1` 只防旧本机资料被新成员**自动显示/认领**，不删除旧资料；旧 App.vue 全量缓存/IDB/离线 pending 用户命名空间仍待实现。
 - 本节提交时知学新代码完整 CI [Validate #43491407028](https://github.com/PTamako/it-study-platform/actions/runs/43491407028) 尚未最终完成；先前 [#43490495841](https://github.com/PTamako/it-study-platform/actions/runs/43490495841) 失败**仅因新 PWA 测试正则字面量斜线未转义 `SyntaxError`**，已经在代码 Commit `0e985b297aa8cbed6f6cecf864a212f3e2370107` 修正，后续只能在最新 run `completed/success` 后声称本轮成功。§18 文档-only [HomeFlow Validate #43490663447](https://github.com/PTamako/homeflow/actions/runs/43490663447) **已 `completed/success`**。
 - **所有** HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 仍为 Draft，全部新身份/审批功能 flags OFF，全部开发 SQL 文件未在正式 D1 运行，未合并会生产部署的 PR，未在生产 Cloudflare Workers/Pages/D1/R2 做写操作，未创建任何 Preview。真实 iPhone PWA、Cloudflare 独立恢复/回滚、生产 F 上线审批分别待做。
+
+
+## 20. 2026-11-14 B～E 继续：知学 #179 七项 CI 修复和旧缓存持久化隔离
+
+> 用户要求首先修复知学 #179 最新 CI 的七项失败，再继续 B～E，所有既有 PR 保持 Draft，不动生产环境。本轮只使用 GitHub 已有 Draft 和 HomeFlow main 文档交接；没有合并任何功能 PR、启用 Feature Flag、执行生产 SQL、部署 Pages/Workers、读写生产 D1/R2 或创建 Preview。**阶段 A 用户 4 个 D1 + 3 个 R2 Bucket（6 个对象）的加密备份与 Mac SQLite 本地恢复、SHA-256 和 Drive 回下载验证已 PASS**；Cloudflare 隔离恢复和正式回滚测试仍未做，不能据此授权生产迁移。
+
+### 20.1 知学 #179 七项真实 CI 失败原因与最终修复
+
+- 原 [Validate #43492418101](https://github.com/PTamako/it-study-platform/actions/runs/43492418101)，精确 HEAD `accf7c0fc596d21a08fbfcf372e987b4281273e4`，`completed/failure`；仔细核对 job logs，真正 **7 项失败只有 2 类测试框架问题**：
+  - `scripts/daily-task-runtime.test.mjs` 六项失败共因：旧 VM 隔离沙箱只截取了 App.vue 的每日任务函数片段，没有模拟新增加的 `legacyWritesAllowed()`；运行时报 `ReferenceError: legacyWritesAllowed is not defined`。被影响的跨天点击、云端迟到响应、离线失败保留、连续点击重试及换号后旧请求回执测试都因此无法执行。真实应用本身声明了该函数；不能为使测试通过而删掉隔离安全逻辑。
+  - `scripts/homeflow-pwa-ui.test.mjs` 一项静态断言错误：正则要求 `function rolloverDailyTasks(){`，但实际 Vue 源码合法格式有空格 `function rolloverDailyTasks() {`。
+- 修复：`scripts/daily-task-runtime.test.mjs` 的真实 VM 模拟同时提供 `authenticated`、`legacyRequiresPassword` 和 `homeflowIdentityUser`，`context.legacyWritesAllowed()` 与 App 实际授权判定一致；额外跑真实函数断言 **HomeFlow member/未重新通过旧密码均不可能写入旧任务缓存**，旧 owner 明确重新输入密码后跨天行为正常。PWA 静态正则接受源码空白，但不放宽认证要求。代码 Commit `a3928d0f0a8cdd6ccf0dd04fdd7e147b1a38aa3c` / `e61220acef43b858053768af1df477343bd07ea4`。
+- **已经真实确认** [Validate #43529836222](https://github.com/PTamako/it-study-platform/actions/runs/43529836222) 对精确 HEAD `e61220acef43b858053768af1df477343bd07ea4` 返回 `completed/success`：原 7 项 CI 失败全修复。这是该 HEAD 的绿灯，后续新增代码要用其**新的 HEAD** 再验证。
+
+### 20.2 E 继续：旧单人学习缓存“持久化写入”访问栅栏
+
+- 原 [知学 Draft #179](https://github.com/PTamako/it-study-platform/pull/179)、branch `feature/homeflow-identity-isolated-20261113`，新增功能仍默认 OFF。原 `src/App.vue` 的 localStorage 曾包含不带 HomeFlow user ID 的单人缓存，不能把原 owner 本地记录自动认领为现在登录的 member，也不能在新账号加载后覆盖旧 owner 的离线草稿。
+- 在已经建立的 `zhixue:legacy-cache-quarantine-v1` 入口隔离基础上，本轮对以下原旧 owner 写入加 `legacyWritesAllowed() = authenticated && !legacyRequiresPassword && !homeflowIdentityUser` 栅栏：
+  1. `persistDailyPending` 每日任务待同步队列；
+  2. `persistActiveMockExam` 模拟考试本机答卷草稿；
+  3. `persistDailyWordState` 每日单词复习进度和待同步队列；
+  4. 旧问题解析、情景会话中文解释、本机语言选择、掌握进度和语言复习 Vue watcher；
+  5. 旧最近字典、本机保存的字典词条、生词本 Vue watcher；
+  6. 每日单词选词记录和语言场景分配的原本直接 localStorage 写入。
+- 不改原来的 localStorage key 和数据字节、不清空任何旧缓存、不写入 HomeFlow 新账号下的 D1。此更改是**阻止错误持久化/覆盖**，不是从机身存储里做完整的历史个人数据迁移。
+- 对应代码 Commit `819516cd839be94a159074186e7ff43ba0fa28cf`、`59ec265d332ce89bbb256ca810a2f6c781152e84`；新增 `scripts/homeflow-legacy-cache-runtime.test.mjs` 实际从 Vue 源码抽取上述 mock/每日单词保存函数，用 Node VM 分别在禁用/旧主人解锁/切号后验证存储零写入、合法写入、旧快照字节不变，Commit `69c492dc8f782e1d7b6ea90d28e06b8204e9864b`；`scripts/homeflow-pwa-ui.test.mjs` 新增关键 watcher 和 pending 保存路径核查，Commit `d4e9faeb876a0b58c998de6869cc99f8c5d1db49`。
+- 原知学 Draft 内文档 `docs/homeflow-stage-e-legacy-cache-quarantine.md` 更新说明，Commit `a828ae048cd380cff3ceaa661e60c58339040624`。**截至编写本段，新的完整 [Validate #43531154525](https://github.com/PTamako/it-study-platform/actions/runs/43531154525) 精确 HEAD `a828ae048cd380cff3ceaa661e60c58339040624` 尚在执行**；必须查到 `completed/success` 才能声称本轮附加缓存安全模块全绿，若失败必须逐条按日志修正，不能引用前面的绿灯冒充最新成功。
+
+### 20.3 当前 B～E 未完成事项和不可触碰的生产门槛
+
+- **B**：正式跨 PWA 初次登录、统一昵称改动/撤权/退出与两人切号的真实 Safari/iPhone 和多设备端到端验收仍未完成，既有草案代码仅供测试。
+- **C**：家計簿虽然已开发个人金融 stable ID sidecar、家庭明细和统计、部分资产快照、有限现金记账审批执行器，旧信用卡账单、储值余额、SBI 定投/追加买付/积分、固定费等**全部金融资源稳定 ID 与业务编辑路径**的无损完整迁移、所有余额与账本一致性仍未完。
+- **D**：HomeFlow finance 受限现金执行器和文书 signed submit/status 已存在，不应重复开发；但文书到账本/家庭任务/个人知学的受认证真实目标执行器、approval `approved→executing→applied` 幂等结果回报、Push、失败补偿和目标账户映射均未贯通，绝不能把审批完成当作已同步生效。
+- **E**：知学已有多种个人 online-only D1 学习模块和旧缓存入口/写入防串号栅栏，旧本地 IndexedDB、所有 in-flight 异步回执、每条旧离线重试队列的完全 owner-proof、原 owner 全量旧记录领回、文书词句导入分别归属两人的 E2E 都未完；文书私人/共享写权限及审批后目标同步也未完整验收。
+- HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 均应保持**open/Draft/未合并**；新迁移 SQL 仅开发文件、不在 Cloudflare 生产运行，功能开关 OFF，不能重建已弃用 Preview。A 本地恢复 PASS **不等于**用户批准 F 生产上线。
