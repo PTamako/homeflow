@@ -202,3 +202,68 @@ test('concurrent token exchanges cannot issue two access tokens for same code',a
    assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM oauth_access_tokens').get().n,1)
  }finally{sqlite.close()}
 })
+
+
+test('server-only proof follows HomeFlow source session and has exact client audience',async()=>{
+ const {sqlite,authorize,exchange,call}=database()
+ try{
+  const grant=await authorize()
+  const code=new URL(grant.body.redirect_uri).searchParams.get('code')
+  const exchanged=await exchange(code)
+  assert.equal(exchanged.status,200)
+  const proof=exchanged.body.session_assertion
+  assert.match(proof,/^[a-f0-9]{64}$/)
+  assert.equal(exchanged.body.session_assertion_expires_in,900)
+  assert.notEqual(proof,exchanged.body.access_token)
+  const form=(client_id=client,session_assertion=proof)=>
+    new URLSearchParams({client_id,session_assertion})
+  const good=await call('/api/oauth/session-introspect','POST',form(),null)
+  assert.equal(good.status,200)
+  assert.deepEqual(good.body,{active:true,sub:'owner',user_id:'owner',
+    household_id:'primary',role:'owner',nickname:'小白',audience:client})
+  assert.equal((await call('/api/oauth/session-introspect','POST',form('other-client'),null)).status,401)
+  assert.equal((await call('/api/oauth/session-introspect','POST',form(client,'f'.repeat(64)),null)).status,401)
+  assert.equal((await call('/api/oauth/session-introspect','POST',form(),null,
+    {origin:'https://bad.test'})).status,403)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM oauth_session_assertions').get().n,1)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM oauth_security_events').get().n,2,
+    'indexed liveness reads must not write audit on every request')
+  sqlite.prepare('DELETE FROM sessions WHERE token_hash=?').run(sessionHash(authCookies.owner))
+  assert.equal((await call('/api/oauth/session-introspect','POST',form(),null)).status,401)
+  assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM oauth_session_assertions').get().n,0)
+ }finally{sqlite.close()}
+})
+test('disabling a HomeFlow account or removing membership denies linked-app proof',async()=>{
+ const {sqlite,authorize,exchange,call}=database()
+ try{
+  const memberUser={user_id:'member',household_id:'primary',role:'member',login_name:'test-member'}
+  const grant=await authorize(memberUser)
+  const code=new URL(grant.body.redirect_uri).searchParams.get('code')
+  const token=await exchange(code)
+  const form=new URLSearchParams({client_id:client,session_assertion:token.body.session_assertion})
+  const inspect=()=>call('/api/oauth/session-introspect','POST',form,null)
+  assert.equal((await inspect()).body.role,'member')
+  sqlite.prepare("UPDATE users SET disabled_at='2026-11-13' WHERE id='member'").run()
+  assert.equal((await inspect()).status,401)
+  sqlite.prepare("UPDATE users SET disabled_at=NULL WHERE id='member'").run()
+  assert.equal((await inspect()).status,200)
+  sqlite.prepare("DELETE FROM household_members WHERE user_id='member'").run()
+  assert.equal((await inspect()).status,401)
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM oauth_session_assertions WHERE user_id='member'").get().n,0)
+ }finally{sqlite.close()}
+})
+test('an expired or revoked introspection assertion cannot outlive app authorization',async()=>{
+ const {sqlite,authorize,exchange,call}=database()
+ try{
+  const grant=await authorize()
+  const code=new URL(grant.body.redirect_uri).searchParams.get('code')
+  const token=await exchange(code)
+  const form=new URLSearchParams({client_id:client,session_assertion:token.body.session_assertion})
+  const inspect=()=>call('/api/oauth/session-introspect','POST',form,null)
+  assert.equal((await inspect()).status,200)
+  sqlite.prepare('UPDATE oauth_session_assertions SET revoked_at=?').run(Date.now())
+  assert.equal((await inspect()).status,401)
+  sqlite.prepare('UPDATE oauth_session_assertions SET revoked_at=NULL,expires_at=?').run(Date.now()-1)
+  assert.equal((await inspect()).status,401)
+ }finally{sqlite.close()}
+})
