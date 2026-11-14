@@ -246,7 +246,7 @@ test('two isolated D1s: approved point-to-prepaid posting is double-sided, immut
  }finally{f.close()}
 });
 test('two isolated D1s: revoked prepaid ownership and stale prepaid CAS cannot mint prepaid credit',async()=>{
- for(const mode of ['stale','cross_owner']){
+ for(const mode of ['stale','archived']){
   const f=await fixture();try{
    const earned=await f.request(f.intent('earn_campaign',{units:200,yen_value:200}));
    assert.equal((await f.review(earned)).status,200);
@@ -254,10 +254,23 @@ test('two isolated D1s: revoked prepaid ownership and stale prepaid CAS cannot m
    const transfer=await f.request(f.intent('transfer_prepaid',{units:100,yen_value:100}));
    assert.equal((await f.review(transfer)).status,200);
    if(mode==='stale')stmt(f.k.sql,'UPDATE family_financial_accounts SET version=2 WHERE account_id=?',prepaid);
-   if(mode==='cross_owner')stmt(f.k.sql,'UPDATE family_financial_accounts SET owner_user_id=? WHERE account_id=?',owner,prepaid);
+   if(mode==='archived')stmt(f.k.sql,'UPDATE family_financial_accounts SET is_archived=1 WHERE account_id=?',prepaid);
    assert.notEqual((await f.execute(transfer)).status,200);
    assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_credits').n,0);
    assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM family_points_journal WHERE operation='transfer_prepaid'").n,0);
   }finally{f.close()}
  }
+});
+
+test('two isolated D1s: another user owned prepaid ID is rejected before approval',async()=>{
+ const f=await fixture();try{
+  const foreign='d'.repeat(32);
+  stmt(f.k.sql,"INSERT INTO family_financial_accounts(account_id,household_id,owner_user_id,label,account_kind,origin,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,'member_created',?,?)",
+   foreign,hh,owner,'Other prepaid','prepaid',owner,owner);
+  const r=await f.source(['points-actions'],f.intent('transfer_prepaid',{target_account_id:foreign}));
+  assert.equal(r.status,409);
+  assert.equal(r.data.code,'POINTS_PREPAID_TARGET_CHANGED');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_intents').n,0);
+  assert.equal(get(f.h.sql,'SELECT COUNT(*) n FROM household_approval_requests').n,0);
+ }finally{f.close()}
 });
