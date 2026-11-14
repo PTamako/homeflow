@@ -44,17 +44,28 @@ function homeSchema(s){
  }
 }
 function financeSchema(s){
+ // Prepaid execution now consults the immutable points-funded refund ledger.
+ // Load the REAL migration chain rather than synthesizing just its table;
+ // otherwise a newly added production counterparty looks like a broken prepaid flow.
  for(const name of ['0001_support_tables.sql','0002_versioned_migration_tracking.sql',
-  '0022_homeflow_identity_foundation.sql','0023_family_financial_account_identities.sql'])
+  '0022_homeflow_identity_foundation.sql','0023_family_financial_account_identities.sql',
+  '0027_family_legacy_entry_link_audit.sql'])
   s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8'));
  s.exec('CREATE TABLE entries(id INTEGER PRIMARY KEY,date TEXT,time TEXT,amount INTEGER,'+
   'category TEXT,merchant TEXT,note TEXT,raw TEXT,type TEXT,transfer_target TEXT,'+
   'transfer_applied INTEGER,transfer_date TEXT,client_request_id TEXT UNIQUE,'+
   'payment_source TEXT,family_account_id TEXT,family_transfer_target_account_id TEXT);');
- const migration=readFileSync(new URL('../.contract-kakeibo/migrations/0033_member_prepaid_actions.sql',import.meta.url),'utf8');
- s.exec(migration);s.exec(migration);
- s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0034_family_points_foundation.sql',import.meta.url),'utf8'));
- s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0035_points_prepaid_atomic.sql',import.meta.url),'utf8'));
+ for(const name of ['0031_family_card_purchase_execution.sql',
+  '0032_family_card_settlement_foundation.sql','0033_member_prepaid_actions.sql',
+  '0034_family_points_foundation.sql','0035_points_prepaid_atomic.sql',
+  '0036_points_card_offset.sql','0037_points_transfer_exchange.sql',
+  '0038_points_earn_expiry_reversals.sql','0039_points_legacy_provenance.sql',
+  '0040_points_sbi_lots.sql','0041_points_transfer_atomic_refund.sql',
+  '0042_points_prepaid_refund.sql']){
+  const sql=readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8');
+  s.exec(sql);
+  if(name==='0033_member_prepaid_actions.sql')s.exec(sql);
+ }
  for(const [user,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    user,hh,role,role,'active',Date.now());
