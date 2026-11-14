@@ -1463,3 +1463,36 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **未完成且不能对外宣称已实现**：卡片账单还款与银行现金扣款、积分抵扣卡账或兑换、储值卡充值/消费及现金流关系、SBI 積立/追加买付/积分投资、资产转移与历史关联、家庭共享修改/删除/恢复、批量与高风险审批、周期定投/固定费授权。每类需独立账务语义、真实事务、CAS、审计、回执和跨仓测试。下一步应按一类完整模块推进，而不是创建大量不可用的接口。
 - 待完成安全验收：HomeFlow/Kakeibo 当前版本 CAS、跨独立 D1 执行途中撤权的真实竞态一致性（虽然双方执行前都会验身份、但不能将单次 mock 验证宣称并发证明）、实际 PWA 浏览器 UI/E2E/双 iPhone、生产 Cloudflare Service Binding 与本地/远程迁移应用，及 R1–R9、T01–T14 其余 B–E 项。
 - A 阶段历史加密备份与 Mac 真实恢复全部 PASS，不重做。**绝对限制延续**：五 PR 都保持 Draft，不合并、不碰正式 Workers/Pages/D1/R2/Secrets，不重建 Preview，不启用正式 flag，不动任何真实用户历史；F 阶段必须由用户额外明确授权。此轮 GitHub API 只能查看远程提交/分支，不可能读取上一位开发者工作区未提交的代码，不能虚称已清理他们的本地更改。
+
+
+## 73. 2026-11-14 P0-4 后续：信用卡银行流水核对、还款核销、两仓真实执行（Draft；生产 F 未授权）
+
+### 先确认最新真实基线
+
+- 家計簿 #309 最新完整功能 SHA：e37d66a09256c85884f3f745208a587469b5b287。GitHub Actions Validate run 43591071019 completed/success；Mobile WebKit Smoke run 43591071020 completed/success。均为 PR 隔离 CI，不是生产双 iPhone 验收。
+- HomeFlow 家庭审批 #306 代码与精确 Kakeibo 对端 SHA pin：5e903a08669f88e02b280b82c758ddb623b5659c。GitHub Actions Validate HomeFlow run 43591391921 completed/success（包括新真实 HomeFlow → Kakeibo 处理器的双 SQLite 回归）。#306 仍以 #305 功能分支为 base；不要以 main 为功能基线。
+- 原有身份 #305、文书助手 #97、知学 #179 仍采用 §72 所列 Draft 基线，未合并、未部署；继续作业前必须再核对 HEAD/CI，以上 SHA 只是本节核验时点。
+- §71/§72 的完整交接文件从 #306 安全 append-only 同步到 main：main docs-only commits 5c535b4c93fe878e70896edc9a0885d920551055 和 cda8209d2ebafc6cdab53a51dcc951ad837d4f5f；首次同步前已经确认 .github/workflows/deploy.yml 的 docs/** 与 **/*.md paths-ignore，未合入 #306 功能代码。§N 新冻结契约也已 append-only docs-only 同步 main，commit 6ddd994b3a8d348931bf73d30e1640bddf09510a。只将文档同步视为文档可见，不得解释为生产协议部署。
+
+### 已真实编码、提交、通过针对性/完整 CI 的功能
+
+- 家計簿新增未执行 migration 0032_family_card_settlement_foundation.sql：独立密文源申请 family_card_settlement_intents；银行流水凭证 family_card_bank_debit_evidence；不可变还款转账 family_card_settlements_applied；每笔跨账期、部分偿还的 family_card_settlement_allocations；强制金额全部核对、实际 actor/approver 分离、变更拒绝的 family_card_settlement_audit；加数据库 triggers 防过额、跨卡、版本漂移、伪造日期、重复来源参考号、无审计篡改和购买前还款。此迁移从未执行于生产 D1。
+- 家計簿新成员源 API functions/api/family-finance/card-settlements.js，受真实 HomeFlow member 身份 + stable card/bank account ID + expected_version + flag 控制；申请仅在人工勾选确认实际银行流水、提供交易参考号、真实扣款日期与多购买分配后才生成 AES-GCM 冻结申请。银行参考号不明文进入 HomeFlow；新只读 outstanding 只列本人有剩余应付的购买。借记日期不得晚于 JST 今天，亦不得早于拟核销的原消费日期。仅 prepare 不创建费用/转账，提交后状态是等待 HomeFlow，不可把 approved 显示成 applied。
+- 家計簿新目标 functions/api/internal/card-settlements/[[path]].js：单独 HMAC execute/receipt，单独 HomeFlow 审批租约 nonce proof，双账户/用户身份 CAS，解密源快照与 digest；真实 D1 batch 一次插入银行已确认扣款 evidence、entries.type=transfer（bank stable account → credit stable account）、应用 journal、逐笔原消费核销分配和审计。采购早已记过的 expense 不再插入第二次；同一 HomeFlow request ID 丢回执或重试先读原不可变结果。
+- 家計簿新增 read-only memberCardLiabilities 投影：按卡及原 bill_month 算 gross_charge、settled 与 remaining；用户能看到部分结算及跨账期核销，应付总额随真实核销减少，家庭消费不会重复加算。家庭资产 UI 明示此结果不是银行实时余额/净资产。新增 FamilyFinanceCardSettlements.vue 在既有 FamilyFinanceAccess 内呈现本人卡、本人银行账户、人工确认扣款日期/参考号、待清偿原消费逐条分配及 HomeFlow 状态；切号时清理内存私密状态。
+- HomeFlow #306 新 worker/card-settlement-approval-submission.js + index 路由、approval whitelist、0054 migration 操作 CHECK 白名单、approval-verification 新独立 client/secret/domain、approval-execution 独立 Service Binding/secret/lease/receipt 路由；owner 必须在 HomeFlow 另行审批并执行，member 不得直改正式家庭共享账。
+- 独立冻结契约扩展为 §N v1.0.8，明确各方向独立 HMAC 密钥与域、签名字段、幂等 ID、银行日期证据、分配、实际 actor、受控 flags 与数据边界；不覆盖 §M 信用卡消费 / §I 现金。HomeFlow CI 的 .contract-kakeibo 精确 pin 到 e37d66a09256c85884f3f745208a587469b5b287，未动态引用会移动的分支。
+
+### 测试事实与边界（不得缩写为“生产验收成功”）
+
+- 家計簿 tests/family-card-settlement-foundation.test.mjs：真实 SQLite migration 重复载入、消费与转账不重复计费、跨账期拆分、超额/重复参考号保护、不可变审计和账户版次、日期匹配失败。
+- 家計簿 tests/family-card-settlement-execution.test.mjs：真实 SQLite AES 申请加密、不暴露银行参考号、签名验证、重复执行原回执、同笔只记一次 transfer、真实流水日期、无第二笔 expense、gross－已分配净应付、撤权/版本错误/禁用开关/注入审计失败完全回滚，以及拒绝未来扣款日期/购买前还款。对应完整 Validate 和 Mobile WebKit 成功。
+- HomeFlow tests/family-credit-card-settlement-real-cross-app.test.mjs：真实 HomeFlow 申请、审批、proof、租约、执行，以及真实家計簿源和目标处理器，在两套独立 SQLite 和模拟后端 Service Binding 上验证审批前无流水、审批后执行一次、跨月部分还款、重复请求、目标先提交但返回网络丢失后同审批 ID恢复、member 撤权、card/bank CAS、owner 禁用。与 HomeFlow 完整 CI 43591391921 成功。
+- 所有独立 flag 仍默认 OFF；APP_ENV=production 只是隔离测试构造条件，不代表启用生产。没有操作任何生产 D1/R2/Worker/Pages/Secret、没有建立 Preview、没有在两台 iPhone 上实际运行功能。
+
+### 必须继续、绝不能误报已完成的内容
+
+1. 信用卡退款、消费撤销、还款冲正、重复出现于遗留银行流水中的对账与真正银行端交易核实：当前还款仅对**人工确认已发生的银行交易**建独立 journal，未接银行 API；不能声称已经验证第三方银行数据或实现退款反向账务。不能直接修改已完成消费/还款/审计，只能设计并实现可追溯反向凭证。银行实时余额也未在此迭代启用计算。
+2. P0-4 下一整模块：按会计语义分别打通储值卡充值/消费/余额、积分充值/兑换/抵扣、SBI 積立/追加買付/ポイント投資和真实生效日、资产转移的双账户借贷、共享账目修改/删除/恢复/批量导入、周期授权/固定费/定投 Cron 幂等，先真实 SQLite，再 HomeFlow+目标仓跨仓真实处理器 CI；不得复用现金或信用卡消费 journal 冒充其他财务类型。
+3. 其他 B–E 未完成：设计书 R1–R9、T01–T14 的首次 PWA 安装/重授权/切号、全账户历史归属及 CRUD 边界、审批 Push/长期租约终态、文书已有三条跨应用联动剩余旧任务匹配/更新及恢复、知学旧考试/错题/进度/收藏/离线队列/端侧缓存隔离、跨 D1 最终撤权与持久 reservation 回收、真实浏览器级 PWA 回归等。绝不能按本节完成来高估整个项目进度。
+4. 未来继续每完整业务模块时，记录精确仓库 HEAD、PR Draft、CI run、真实测试失败与修复、迁移/contract version、风险与未完成项；必要时将 **仅文档** append-only 同步 main，但部署生产 workflow 必须再次校验路径排除。严禁误合并 #306 功能代码或操作生产/Preview。
