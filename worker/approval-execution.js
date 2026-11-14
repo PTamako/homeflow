@@ -16,15 +16,18 @@ function enabled(env){
   env.APPROVAL_VERIFICATION_ENABLED==='true'&&
   typeof env.APPROVAL_VERIFICATION_SECRET==='string'&&
   hex.test(env.APPROVAL_VERIFICATION_SECRET)&&
-  typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'&&
+  (typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'||
+   typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((receiptOnly?'homeflow:receipt':'homeflow')+'\n'+stamp+'\n'+raw))
+  new TextEncoder().encode((documentAction?
+    (receiptOnly?'homeflow:document-receipt':'homeflow:document-execute'):
+    (receiptOnly?'homeflow:receipt':'homeflow'))+'\n'+stamp+'\n'+raw))
  return Array.from(new Uint8Array(data),x=>x.toString(16).padStart(2,'0')).join('')
 }
 async function statusChange(db,row,session,newStatus,errorCode=null,remoteId=null,remoteAppliedAt=null){
@@ -103,10 +106,20 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.member_role!=='member'||row.member_disabled!=null||
   row.requester_user_id===session.user_id)
   return failure('current_membership_invalid',403)
- if(row.target_app!=='kakebo'||row.source_app!=='kakebo'||
-  row.operation!=='finance.entry.create'||row.resource_type!=='finance_entry'||
-  !hex.test(row.payload_sha256))
-  return failure('operation_not_executable',409)
+ const cash=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+  row.operation==='finance.entry.create'&&row.resource_type==='finance_entry';
+ const documentFinance=row.target_app==='kakebo'&&
+  row.source_app==='jp-document-assistant'&&
+  row.operation==='document.sync.finance'&&
+  row.resource_type==='document_sync_candidate';
+ if((!cash&&!documentFinance)||!hex.test(row.payload_sha256))
+  return failure('operation_not_executable',409);
+ if(cash&&typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch!=='function')
+  return failure('execution_disabled',503);
+ if(documentFinance&&(env.DOCUMENT_EXECUTION_ENABLED!=='true'||
+   !hex.test(env.DOCUMENT_EXECUTION_SECRET||'')||
+   typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('document_execution_disabled',503)
  if(row.status==='applied')
   return reply({ok:true,status:'already_applied',approval_id:row.request_id,
    remote_id:row.remote_id,applied:true,replayed:true})
@@ -147,16 +160,23 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request('https://kakeibo.internal/api/internal/approved-actions/'+(receiptOnly?'receipt':'execute'),{
+ const outgoing=new Request(documentFinance?
+  'https://jp-document-assistant.internal/api/internal/document-actions/'+
+    (receiptOnly?'receipt':'execute'):
+  'https://kakeibo.internal/api/internal/approved-actions/'+
+    (receiptOnly?'receipt':'execute'),{
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(env.APPROVAL_VERIFICATION_SECRET,timestamp,raw,receiptOnly)},
+   'x-approval-signature':await mac(documentFinance?
+    env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
+    timestamp,raw,receiptOnly,documentFinance)},
   body:raw
  })
  let result=null
  try{
-  const response=await env.KAKEIBO_EXECUTION_SERVICE.fetch(outgoing)
+  const response=await (documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
+   env.KAKEIBO_EXECUTION_SERVICE).fetch(outgoing)
   if(response.status===409){
    // A target 409 does not prove whether an earlier attempt committed and
    // lost its receipt (or whether HomeFlow's execution proof was momentarily
@@ -173,7 +193,8 @@ export async function approvalExecutionRoute(request,env,path,session){
   }
  }catch{/* A lost response does NOT prove the target failed to post. */}
  if(result?.ok===true&&result.applied===true&&
-  result.approval_id===row.request_id&&result.proposal_id===row.resource_id&&
+  result.approval_id===row.request_id&&
+  (documentFinance?result.candidate_id:result.proposal_id)===row.resource_id&&
   result.household_id===row.household_id&&
   result.requester_user_id===row.requester_user_id&&
   result.payload_sha256===row.payload_sha256&&

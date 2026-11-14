@@ -55,7 +55,8 @@ export async function approvalVerificationRoute(request,env){
  const client=request.headers.get('x-approval-client')
  const stamp=request.headers.get('x-approval-timestamp')
  const mac=request.headers.get('x-approval-signature')
- if(client!=='kakeibo'||typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
+ if(!['kakeibo','jp-document-assistant'].includes(client)||
+  typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
   Math.abs(nowMs()-Number(stamp))>300000||
   typeof mac!=='string'||!hash.test(mac))
   return reject('unauthorized',403)
@@ -65,7 +66,13 @@ export async function approvalVerificationRoute(request,env){
   if(raw.length>2048)return reject('invalid_body',400)
   body=JSON.parse(raw)
  }catch{return reject('invalid_body',400)}
- const computed=await signature(env.APPROVAL_VERIFICATION_SECRET,client,stamp,raw)
+ const documentClient=client==='jp-document-assistant';
+ if(documentClient&&(env.DOCUMENT_EXECUTION_ENABLED!=='true'||
+   !hash.test(env.DOCUMENT_APPROVAL_VERIFICATION_SECRET||'')))
+  return reject('document_verification_disabled',503);
+ const computed=await signature(documentClient?
+  env.DOCUMENT_APPROVAL_VERIFICATION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
+  documentClient?'jpda:execution-proof':client,stamp,raw)
  if(!constantEqualHex(computed,mac))return reject('unauthorized',403)
  if(!valid(body))return reject('invalid_request',400)
  // Exact equality with HomeFlow's immutable approval record is mandatory:
@@ -88,10 +95,15 @@ export async function approvalVerificationRoute(request,env){
   "WHERE r.request_id=?1 LIMIT 1"
  ).bind(body.request_id).first()
  const forExecution=body.purpose==='execute'
+ const cash=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+  row?.operation==='finance.entry.create'&&row?.resource_type==='finance_entry'&&
+  row?.idempotency_key==='kakeibo:finance:'+body.resource_id;
+ const doc=row?.source_app==='jp-document-assistant'&&
+  row?.target_app==='kakebo'&&row?.operation==='document.sync.finance'&&
+  row?.resource_type==='document_sync_candidate'&&
+  row?.idempotency_key==='jpda:sync:'+body.resource_id;
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  row.source_app!=='kakebo'||
-  row.target_app!=='kakebo'||row.operation!=='finance.entry.create'||
-  row.resource_type!=='finance_entry'||
+  (documentClient?!doc:!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
   row.payload_sha256!==body.payload_sha256||
@@ -114,5 +126,7 @@ export async function approvalVerificationRoute(request,env){
   approver_user_id:row.approver_user_id,
   approved_at:row.reviewed_at,expires_at:row.expires_at,
   execution_authorized:forExecution,execution_status:row.status,
+  source_app:row.source_app,target_app:row.target_app,
+  operation:row.operation,resource_type:row.resource_type,
   applied:false,ledger_changed:false})
 }
