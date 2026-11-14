@@ -1381,3 +1381,13 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - P0-1 的主要跨仓库真实处理器隔离测试已通过。仍可扩展细粒度 HTTP 超时/回执签名及更高并发量、不同成员/家庭异常字段注入、源权限变化的跨库并发竞态和两 App 完整 UI 浏览器回归；**跨 D1 的撤权与已开始执行竞态仍须谨慎验证/改进，不可把内存 SQLite 误报成实际多 Worker 生产事务**。
 - 尚未完成：P0-2 文书→HomeFlow 待办真实可信执行；P0-3 文书→知学 §64 内核的真实 Service Binding 执行；P0-4 非现金账务（信用卡、储值、积分、SBI、转账、修删恢复等）独立执行；B–E 剩余身份迁移/通知/多用户离线缓存覆盖，以及 F 阶段生产批准后迁移与双 iPhone 实机验收。不要重写 §65 的三端现金逻辑。
 - 本轮功能代码只提交至 HomeFlow #306 Draft 分支；main 只做文档更新。其余四个 Draft PR 未因本次测试而更新；各自 §65 精确 HEAD 保持可核对。没有创建 Preview、没有启用 Flag、没有生产写入/部署，不重新要求 A 阶段备份。CI 中运行的 GitHub Runner 临时空间不代表可访问上一位 Work 未提交代码；本轮变更均有以上 GitHub commit，可继续从实时 HEAD 接手。
+
+## 67. 2026-11-14 P0-2 HomeFlow 真实任务目标 D1 事务内核（隔离 CI 通过；文书源端尚未接线）
+
+- 本节在 §66 的真实三仓库文书现金测试成功后继续；HomeFlow #306 保持 Draft，基于 #305，原来四个其他功能 Draft PR 不变。
+- HomeFlow #306 新建未执行 migration `0056_document_task_apply.sql`（独立 `document_task_applied_actions` journal、身份/任务/执行租约约束、不可变更新/删除触发器、创建时由 D1 trigger 原子标记 HomeFlow 审批 `applied` 并追加**真实 approver** 事件）、`worker/document-task-apply.js` 的 `applyDocumentTask` 及 `documentTaskReceipt`、`tests/document-task-apply.test.mjs`；仅导出已有 `worker/tasks.js` 的 `validated`/`validateRefs` 以复用**同一套任务业务约束**，并将 0056 纳入 `scripts/check_migrations.py` 的完整迁移/索引/trigger 检查。
+- 新 target kernel 必须有 `APP_ENV=production` 以及 `APPROVALS_ENABLED`、`APPROVAL_EXECUTION_ENABLED`、`APPROVAL_VERIFICATION_ENABLED`、`DOCUMENT_TASK_EXECUTION_ENABLED` 全部显式 `true`、当前且未过期的审批 executing lease + nonce、owner/member 当前身份、相同候选 ID/摘要、HomeFlow 任务的 visibility / assignee / bonusPoints / reminder 和剩余额外积分校验。它**没有注册任何外部 HTTP 路由**，没有建立文书助手 Service Binding，因此未经文书实时源端复核不可能经网络调用这个 kernel；不得将 `DOC_TASK_EXECUTION_ENABLED` 或其他开关在生产打开。
+- 首笔 commit [`3b621496`](https://github.com/PTamako/homeflow/commit/3b62149600df8e873c9e2c7c8498e0c50eb3e464) 的 [CI #43576036320](https://github.com/PTamako/homeflow/actions/runs/43576036320) 失败：两个历史测试将 migration count 固定为 57；新 0056 应为 58，**没有跳过/删除/削弱测试**。修复硬编码清单计数的 [`bef0706e`](https://github.com/PTamako/homeflow/commit/bef0706e88ecf5dee516c63ca88c6cec1736df20)，[完整 Validate CI #43576129976](https://github.com/PTamako/homeflow/actions/runs/43576129976) `completed/success`。
+- 测试实际使用 HomeFlow 全量历史迁移 + 新 0056 的内存 SQLite，检查任务/审批 journal/真实 owner 审计的同 D1 事务、重复 ID 回执不重复写、租约 nonce、当前成员停用/账户归属、过期/篡改的拒绝、私人任务分配他人的拒绝、额外积分余额不足的拒绝、任务写完但 journal 之前失败的整事务回滚、迁移 SQL 幂等重播及新开关默认 OFF。
+- **P0-2 尚未完成：** 文书后端签名 source-check / 持久 source reservation、HomeFlow 后端真实任务 Service Binding 执行路由、回执回源/网络故障恢复、文书与 HomeFlow 双端 UI 状态更新、跨仓库真实处理器测试，特别是执行过程中的撤权竞态。当前只是可复用的原子 D1 任务目标内核；不得在交接或 UI 宣称文书待办已经同步。P0-3、P0-4 和 B–E 其余全部未完成项沿用 §66。
+- 所有改动仅在 Draft 功能 PR（未合并），交接文件仅作为 main 的 docs-only Commit 更新；没有创建 Preview、生产迁移、部署、Cloudflare 资源改动、密钥或敏感文书内容外泄。
