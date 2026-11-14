@@ -931,3 +931,10 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 最新五个原 PR 均 open/Draft：HomeFlow #305 `b8b877388639b1a2b3ac19dbca58ea8072b8a037`、#306 `bbcb7da52d1c7fdc83ce788fff9b34fb16b80169`、家計簿 #309 `576af15e305e19fd95e22f65815a177ab3a79c98`、文书 #97 `8f589a8b4ac0632513f15799d814be579da7aa47`；上述 HEAD 的 PR 工作流均成功。知学最新 HEAD 与状态以上段为准。
 - HomeFlow #306 基于 #305 的早期提交，两分支对比显示 #306 比 #305 落后 7 个提交，另有自身 65 个提交。修改或最终合并审批功能前须安全整合最新 #305 并对整合后精确 HEAD 验证，不能误以为当前审批 CI 已覆盖最新身份撤销代码。
 - 无生产迁移、生产资源变更、启用开关或部署，未创建 Preview。继续 B～E 依照 §20.3 的未完清单；真机 PWA、完整账务迁移与审批后真实目标执行仍未完成。
+
+### 21.1 追加：快速反馈实测与审批分支依赖整合
+
+- 知学 #179 新 HEAD `39ffac408eecefdc4f2a4bdbd0186cfa566bcde1` 的 [CI #43533113361](https://github.com/PTamako/it-study-platform/actions/runs/43533113361) 中快速身份/类型检查已 success，job 15 秒；完整 validate 截至本记录仍在运行。旧 HEAD 完整 CI #43531773002 的任务实际 6 分 51 秒、整个 run 6 分 54 秒。二者覆盖范围不同，不能称完整 CI 已从 6 分钟缩短到 15 秒。旧完整任务瓶颈是 Tatoeba 生成 249 秒、D1 本地迁移 111 秒。新完整时长及其最终状态需复查。
+- 连接读取 `main` branch protection 返回 GitHub 403 `Resource not accessible by integration`；规则集列表为空，但这不能证明 branch protection 不存在。当前无法核实或配置完整验收为必需状态检查，仍需有仓库管理权限的连接核验。不得只凭快速任务绿灯合并。
+- 本地隔离合并 #305 的最新 `b8b877388639b1a2b3ac19dbca58ea8072b8a037` 到 #306 原 HEAD，Git 无文本冲突；本地合并结果树 `f4b9c23ecd290dafb8d544f7be88acb933a8e5b9`，`npm run check` 807 测试通过、Vue 构建通过（本地 Node 24）；额外 OAuth、审批和文书审批 36 项通过。使用带预期 HEAD 的更新提交双亲 merge commit `79efaddd4fe741f5f09cb5b68bc24bd2a707334d` 到原 #306 Draft 分支；这不是合并 PR 或生产部署。必须核验该精确 HEAD 的 GitHub Node 22 CI 最终结果。
+- `main` 本次交接仅修改 docs；已核对 HomeFlow deploy.yml 使用 docs-only paths-ignore。未对生产 D1/R2、Workers 或 Pages 做任何操作。仍需完成 §20.3 核心功能与真实跨应用测试。
