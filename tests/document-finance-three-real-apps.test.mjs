@@ -198,7 +198,7 @@ test('real three-app chain: member submits, owner approves, leased signed execut
  const f=await fixture();
  try{
   const premature=await f.execute();
-  assert.equal(premature.status,409);
+  assert.equal(premature.status,404,'pending approval is concealed until reviewed');
   assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
   const reviewed=await f.review();
   assert.equal(reviewed.status,200,await reviewed.clone().text());
@@ -248,15 +248,15 @@ test('lost remote response: target committed, same request id reconciles without
  }finally{f.close()}
 });
 test('revoked document source and changed stable account version both prevent target mutation',async()=>{
- for(const scenario of ['revoked','account-version','wrong-household']){
+ for(const scenario of ['revoked','account-version','disabled-member']){
   const f=await fixture();
   try{
    assert.equal((await f.review()).status,200);
    if(scenario==='revoked')f.d.sql.prepare("UPDATE homeflow_identity_links SET state='revoked',revoked_at=? WHERE homeflow_user_id=?")
     .run(new Date().toISOString(),member);
    if(scenario==='account-version')f.k.sql.prepare('UPDATE family_financial_accounts SET version=2 WHERE account_id=?').run(account);
-   if(scenario==='wrong-household')f.k.sql.prepare('UPDATE homeflow_identity_links SET household_id=? WHERE user_id=?')
-    .run('other-household',member);
+   if(scenario==='disabled-member')f.h.sql.prepare('UPDATE users SET disabled_at=? WHERE id=?')
+    .run(Date.now(),member);
    const rejected=await f.execute();
    assert.equal(rejected.body.applied,false,scenario);
    assert.notEqual(rejected.status,200,scenario);
@@ -293,5 +293,14 @@ test('additive Kakeibo 0023/0024/0030 and document 0023/0024 replay without inde
   assert.equal(f.k.sql.prepare("SELECT COUNT(*) n FROM family_financial_accounts").get().n,2);
   assert.equal(f.d.sql.prepare("SELECT COUNT(*) n FROM document_member_sync_intents").get().n,1);
   assert.equal(f.k.sql.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='index' AND name='idx_document_finance_applied_household'").get().n,1);
+ }finally{f.close()}
+});
+
+test('household identity is immutable in the Kakeibo database itself',async()=>{
+ const f=await fixture();
+ try{
+  assert.throws(()=>f.k.sql.prepare('UPDATE homeflow_identity_links SET household_id=? WHERE user_id=?')
+   .run('other-household',member),/immutable HomeFlow identity/);
+  assert.equal(f.k.sql.prepare('SELECT household_id FROM homeflow_identity_links WHERE user_id=?').get(member).household_id,household);
  }finally{f.close()}
 });
