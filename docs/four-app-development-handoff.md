@@ -1546,3 +1546,26 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **本节仅为积分基础层，不能宣称 P0-4 积分完整业务已完成。** 当前未将积分 source prepare/submit、AES-GCM 实际解密 target execution、HomeFlow 审批证明/租约/回执、积分充值储值卡和应付抵扣/SBI 对手 journal、取消与冲正、两套独立 D1 真实处理器跨仓模拟 Service Binding 接通。新 source/target 写入路由、真正 HomeFlow wire/domain/密钥并未定稿，因此 **冻结契约尚未追加正式 §P**；应当等独立后端签名/事务/跨仓验收真实成功后才冻结。不要将现有 §M/§N/§O 冒充积分协议。
 - 下一位按该最新 #309 HEAD，首先完成积分模块剩余的真实双仓闭环与 counterpart 原子事务、测试和契约；之后再做 SBI 積立/追加買付/ポイント投資的持仓份额/成本/适用日与现有历史关联、家庭转账、共享账目修删恢复、周期授权及 B～E 其余 R1～R9/T01～T14。每个完成模块才追加真实结果、精确 CI 与剩余项，避免重复已经通过的 §65～§74 核心。
 - **本节未执行任何正式 D1 migration/回填、Worker/Pages 部署、R2/Secrets/Cron 变更、Preview 建立或账户交易；五个功能 PR 均保持 Draft，不合并。** F 阶段正式环境及双 iPhone 验收仍须用户单独明确授权。已有 A 阶段安全备份与 Mac 恢复 PASS，不重做。
+
+
+## 76. 2026-11-14 P0-4 积分五个非现金操作：真实审批/执行与隔离跨仓 CI（Draft；不等于全积分模块完成）
+
+### 代码与真实分支进展
+
+- 基于 §75 和 migration 0034 的未部署积分基础，家計簿 #309 新增真正 source 准备、AES-GCM 加密、幂等、submit 与查询端（functions/api/family-finance/points-actions.js），以及独立 HMAC target execute/receipt（functions/api/internal/points-actions/points-execution.js）、原 family-finance 路由。新 POINTS_* flags 默认 OFF，未添加正式 Worker deploy，不操作任何生产 D1。
+- 已接通五种不需要其他资产/负债对手流水的 operation：earn_campaign 活动/返点积分、earn_purchase 关联购物获取积分、redeem_discount 关联已记录实际现金净额的折抵、redeem_purchase 关联已经存在并正确识别资金来源的积分全额购买、expire 失效。新增的积分 journal 只变更 units，没有多算任何现金 income/expense。不同个人账号/原购物 owner、稳定账户版本和 source reference 都实际重新核验。
+- 原 HomeFlow Draft #306 新增 worker/points-approval-submission.js、approval-execution.js 的独立 leased target/receipt、approval-verification.js 的独立签名 proof 和 active owner/member 检查、index.js private submit、approvals.js/0054 migration 五操作 whitelist；CI 精确 pin 到真实家計簿对手 commit。其余 M/N/O 消费/还款/预付执行器没有重新开发。
+- 家計簿 #309 精确功能提交：451e1bea27a4e8a2eb266486c333041c353dd3c6；53c67660eb3c88b694b52f0ea2a3cb5dc17471bd；dfe215b237a9fd625ce366dc7a76bcf667092026（最终）；之前 §75 的积分迁移/只读投影均保留。HomeFlow #306 精确功能提交：b4482a939089d060fc2cfcf98a9b4b849f85d613；2697baac2b0f8585a4e4427689cf7a7582248e62；7e49cfaa944c0b38b80372d9dc9636baadfa2f98（本节文档写入前最后功能 HEAD）。#306 仍以 #305 身份分支为 base，五功能 PR 仍均是 Draft/Open。
+
+### CI 验收事实与限制
+
+- 家計簿 #309 上述最终功能 HEAD dfe215b237a9fd625ce366dc7a76bcf667092026：Validate Actions 43597174901 completed/success；Mobile WebKit Smoke 43597174812 completed/success。
+- HomeFlow #306 上述最终功能 HEAD 7e49cfaa944c0b38b80372d9dc9636baadfa2f98：Validate HomeFlow Actions 43597222965 completed/success。它通过 CI 从家計簿精确 pin 拉取真实源/目标 JavaScript，用两套独立内存 SQLite 执行 HomeFlow 实际提交、owner review、execution lease、真实家計簿 proof、积分 journal 与目标 immutable audit，覆盖正常积分增减、关联已存在 expense、完全积分消费、额度不足、错误角色/版本/撤权、目标已提交但网络丢回执后原 approval ID 恢复，不是只 mock handler。
+- 五个积分操作的私有 HMAC domains、snapshot schema、HomeFlow 源/目标请求和不可变 receipt 现已冻结在 §P；未实现的其他积分金融操作不在当前 source/target operation whitelist，不能借此伪造银行扣款、卡应付减少或资产转移。
+
+### 仍必须开发，禁止错误宣布完成
+
+1. P0-4 积分账户尚缺储值卡积分充值（现有 0033 prepaid balance journal 只能由银行动作 applied 支持）、信用卡积分抵扣真实应付与银行还款 allocation 协同、SBI 积分投资资产份额、积分跨账户兑换转移、原积分操作的不可变反向凭证与安全历史归属回填、完整积分点数和日元资产估值。都必须同事务借贷双边对手流水，不能简单把积分到账当新现金 income 或按名字认领旧数据。
+2. SBI 定投/追加買付/ポイント投資与市场估值/份额/适用日、共享银行和个人资产转账、历史信用卡与储值卡迁移、共享账目修改删除恢复与批量审批、固定费用及 Cron 周期授权、B–E 其余 R1～R9/T01～T14、多设备 PWA 及跨独立 D1 撤权竞态未做完。
+3. §P 的 CI 仅证明隔离 SQLite 与模拟 Service Binding，不等于两部 iPhone、真实 Cloudflare 双 D1、正式生产迁移验收。不得提前执行 F；绝不合并五个 Draft 功能 PR，不创建 Preview，不执行 D1 正式迁移、不修改 Worker/Pages/R2/Secrets/Cron、银行或证券。A 阶段备份 Mac 恢复 PASS 不重做。
+4. 下一轮先验证五仓实时 HEAD 与 CI、再继续剩余积分双边账务，不重新做 §65～§76 已验证内核；模块完成后按真实新 Commit/CI append-only 更新此唯一文件与契约。
