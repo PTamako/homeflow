@@ -915,3 +915,9 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **D**：HomeFlow finance 受限现金执行器和文书 signed submit/status 已存在，不应重复开发；但文书到账本/家庭任务/个人知学的受认证真实目标执行器、approval `approved→executing→applied` 幂等结果回报、Push、失败补偿和目标账户映射均未贯通，绝不能把审批完成当作已同步生效。
 - **E**：知学已有多种个人 online-only D1 学习模块和旧缓存入口/写入防串号栅栏，旧本地 IndexedDB、所有 in-flight 异步回执、每条旧离线重试队列的完全 owner-proof、原 owner 全量旧记录领回、文书词句导入分别归属两人的 E2E 都未完；文书私人/共享写权限及审批后目标同步也未完整验收。
 - HomeFlow #305/#306、家計簿 #309、知学 #179、文书助手 #97 均应保持**open/Draft/未合并**；新迁移 SQL 仅开发文件、不在 Cloudflare 生产运行，功能开关 OFF，不能重建已弃用 Preview。A 本地恢复 PASS **不等于**用户批准 F 生产上线。
+
+
+### 20.4 追加：E 新运行时测试语法修复（本节更新时最新 CI 运行中）
+
+- [新增缓存验收 CI #43531154525](https://github.com/PTamako/it-study-platform/actions/runs/43531154525) 精确 HEAD `a828ae048cd380cff3ceaa661e60c58339040624` 已 `completed/failure`。实际日志发现仅 **新增** `scripts/homeflow-legacy-cache-runtime.test.mjs` 有 Node SyntaxError：测试消息中的英文 `former owner's` 用单引号包裹导致意外提前结束；**不是身份门槛、旧缓存保存或业务 SQL 测试失败**。其他现有回归在测试时正常。
+- 已在原知学 Draft #179 的同一分支精确修复为双引号，Commit `f5c6f3ef997185bf363eba47856262e7ccde0388`；重新执行 [最新 Validate #43531773002](https://github.com/PTamako/it-study-platform/actions/runs/43531773002)。本节写入时它还未完成，**不得宣称 f5c6f3e 已全绿**。必须按该最终 HEAD/最新 CI 核验后再补通过记录。
