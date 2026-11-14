@@ -921,3 +921,13 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 - [新增缓存验收 CI #43531154525](https://github.com/PTamako/it-study-platform/actions/runs/43531154525) 精确 HEAD `a828ae048cd380cff3ceaa661e60c58339040624` 已 `completed/failure`。实际日志发现仅 **新增** `scripts/homeflow-legacy-cache-runtime.test.mjs` 有 Node SyntaxError：测试消息中的英文 `former owner's` 用单引号包裹导致意外提前结束；**不是身份门槛、旧缓存保存或业务 SQL 测试失败**。其他现有回归在测试时正常。
 - 已在原知学 Draft #179 的同一分支精确修复为双引号，Commit `f5c6f3ef997185bf363eba47856262e7ccde0388`；重新执行 [最新 Validate #43531773002](https://github.com/PTamako/it-study-platform/actions/runs/43531773002)。本节写入时它还未完成，**不得宣称 f5c6f3e 已全绿**。必须按该最终 HEAD/最新 CI 核验后再补通过记录。
+
+
+## 21. 2026-11-14 接手核查：知学 CI 快速反馈
+
+- 用户确认 A 阶段四个 D1 与三个 R2 Bucket 的加密备份、Mac 本地恢复与 Drive 校验已 PASS；Cloudflare 隔离恢复、生产迁移前新鲜快照、回滚准备与上线授权仍未完成。不得重做已完成的本地备份或据此上线。
+- 知学 [Validate #43531773002](https://github.com/PTamako/it-study-platform/actions/runs/43531773002) 对 HEAD `f5c6f3ef997185bf363eba47856262e7ccde0388` 已 completed/success；§20.4 的七项历史失败及后续测试语法问题无需重复修复。
+- 知学原 Draft #179 分支提交 `39ffac408eecefdc4f2a4bdbd0186cfa566bcde1`：在原完整 validate 任务并行增加快速身份/旧缓存/迟到请求回归与 Vue 类型检查，原有完整步骤未删除。该新 HEAD CI 尚待核验；本提交只改善早期反馈，**未完成生成缓存、完整任务并行、合并保护设置或优化前后时长实测**。完整验收必须保持必要条件，不可用快速任务代替。
+- 最新五个原 PR 均 open/Draft：HomeFlow #305 `b8b877388639b1a2b3ac19dbca58ea8072b8a037`、#306 `bbcb7da52d1c7fdc83ce788fff9b34fb16b80169`、家計簿 #309 `576af15e305e19fd95e22f65815a177ab3a79c98`、文书 #97 `8f589a8b4ac0632513f15799d814be579da7aa47`；上述 HEAD 的 PR 工作流均成功。知学最新 HEAD 与状态以上段为准。
+- HomeFlow #306 基于 #305 的早期提交，两分支对比显示 #306 比 #305 落后 7 个提交，另有自身 65 个提交。修改或最终合并审批功能前须安全整合最新 #305 并对整合后精确 HEAD 验证，不能误以为当前审批 CI 已覆盖最新身份撤销代码。
+- 无生产迁移、生产资源变更、启用开关或部署，未创建 Preview。继续 B～E 依照 §20.3 的未完清单；真机 PWA、完整账务迁移与审批后真实目标执行仍未完成。
