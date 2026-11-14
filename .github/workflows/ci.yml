@@ -9,12 +9,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Reviewed contract counterpart. Update the pinned commit with the
+      # cross-app contract whenever the target execution protocol changes.
+      - name: Checkout Kakeibo contract counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 4c00aefb5390b7251a8c6dfdda1cdb1860212c5b
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant execution counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: ade2dba88f95a183a6bf31f73309a9792a6daa5e
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study execution counterpart (immutable reviewed SHA)
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: 496b06a021cdd1c822f49774b31a26f31bca9895
+          path: .contract-study
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Run tests and typechecked build
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
         run: npm run check
       - name: Verify D1 migrations and schema
         run: python3 scripts/check_migrations.py

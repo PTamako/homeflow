@@ -3,6 +3,7 @@ import {ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
+import ApprovalCenter from './ApprovalCenter.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
 import StatusBadge from './StatusBadge.vue'
@@ -11,7 +12,7 @@ import EditBottomSheet from './EditBottomSheet.vue'
 import PageToast from './PageToast.vue'
 import {usePageToast} from '../page-toast'
 
-const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
+const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;profiles?:Array<{memberUserId:string|null;displayName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
 const emit=defineEmits<{logout:[]}>()
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminderRulesOpen=ref(false)
@@ -60,6 +61,8 @@ async function generateInvite(){
        </div>
      </div>
    </section>
+   <ApprovalCenter v-if="active" :active="active" :user-id="userId"
+     :is-owner="isOwner" :members="members" :profiles="profiles"/>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
      <PushPanel v-if="active" :user-id="userId" :members="members" @status="pushStatus=$event"/>
