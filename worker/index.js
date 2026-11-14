@@ -6,6 +6,7 @@ import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
 import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
 import {cardSettlementApprovalSubmissionRoute} from './card-settlement-approval-submission.js'
+import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
 import {documentApprovalStatusRoute} from './document-approval-status.js'
 import {approvalExecutionRoute} from './approval-execution.js'
@@ -57,6 +58,8 @@ async function routeRequest(request,env,ctx,state){
         return approvalVerificationRoute(request,env)
       if(path==='/api/internal/approvals/submit')
         return approvalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/prepaid-submit')
+        return prepaidApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/card-settlement-submit')
         return cardSettlementApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/card-submit')
