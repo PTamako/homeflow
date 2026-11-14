@@ -19,15 +19,18 @@ function enabled(env){
   hex.test(env.APPROVAL_VERIFICATION_SECRET)&&
   (typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function'||
-   typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch==='function')&&
+   typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch==='function'||
+   typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((studyAction?
+  new TextEncoder().encode((cardAction?
+    (receiptOnly?'homeflow:card-receipt':'homeflow:card-execute'):
+   studyAction?
     (receiptOnly?'homeflow:document-study-receipt':'homeflow:document-study-execute'):
    documentAction?
     (receiptOnly?'homeflow:document-receipt':'homeflow:document-execute'):
@@ -112,6 +115,11 @@ export async function approvalExecutionRoute(request,env,path,session){
   return failure('current_membership_invalid',403)
  const cash=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   row.operation==='finance.entry.create'&&row.resource_type==='finance_entry';
+ const card=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+  row.operation==='finance.credit_card.purchase'&&
+  row.resource_type==='credit_card_purchase'&&
+  row.idempotency_key==='kakeibo:card:'+row.resource_id&&
+  Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
  const documentFinance=row.target_app==='kakebo'&&
   row.source_app==='jp-document-assistant'&&
   row.operation==='document.sync.finance'&&
@@ -125,8 +133,12 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.operation==='document.sync.study'&&
   row.resource_type==='document_sync_candidate'&&
   row.idempotency_key==='jpda:sync:'+row.resource_id;
- if((!cash&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
+ if((!cash&&!card&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
+ if(card&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
+   !hex.test(env.CARD_EXECUTION_SECRET||'')||
+   typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('card_execution_disabled',503)
  if(cash&&typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch!=='function')
   return failure('execution_disabled',503);
  if(documentFinance&&(env.DOCUMENT_EXECUTION_ENABLED!=='true'||
@@ -186,7 +198,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request(documentStudy?
+ const outgoing=new Request(card?
+   'https://kakeibo.internal/api/internal/card-purchases/'+
+    (receiptOnly?'receipt':'execute'):
+  documentStudy?
   'https://jp-document-assistant.internal/api/internal/document-study/'+
     (receiptOnly?'receipt':'execute'):
   documentFinance?
@@ -197,15 +212,17 @@ export async function approvalExecutionRoute(request,env,path,session){
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(documentStudy?
+   'x-approval-signature':await mac(card?
+    env.CARD_EXECUTION_SECRET:documentStudy?
     env.DOCUMENT_STUDY_EXECUTION_SECRET:documentFinance?
     env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
-    timestamp,raw,receiptOnly,documentFinance,documentStudy)},
+    timestamp,raw,receiptOnly,documentFinance,documentStudy,card)},
   body:raw
  })
  let result=null
  try{
-  const response=await (documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
+  const response=await (card?env.KAKEIBO_CARD_EXECUTION_SERVICE:
+   documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
    documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
    env.KAKEIBO_EXECUTION_SERVICE).fetch(outgoing)
   if(response.status===409){
@@ -226,6 +243,11 @@ export async function approvalExecutionRoute(request,env,path,session){
  if(result?.ok===true&&result.applied===true&&
   result.approval_id===row.request_id&&
   ((documentStudy||documentFinance)?result.candidate_id:result.proposal_id)===row.resource_id&&
+  (!card||(result.approver_user_id===row.approver_user_id&&
+   result.account_version===row.expected_version&&
+   result.account_id&&/^[a-f0-9]{32}$/.test(result.account_id)&&
+   Number.isSafeInteger(result.amount_jpy)&&result.amount_jpy>0&&
+   /^20\d{2}-\d{2}$/.test(result.bill_month)))&&
   result.household_id===row.household_id&&
   result.requester_user_id===row.requester_user_id&&
   result.payload_sha256===row.payload_sha256&&
