@@ -18,15 +18,18 @@ function enabled(env){
   typeof env.APPROVAL_VERIFICATION_SECRET==='string'&&
   hex.test(env.APPROVAL_VERIFICATION_SECRET)&&
   (typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch==='function'||
-   typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function')&&
+   typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch==='function'||
+   typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((documentAction?
+  new TextEncoder().encode((studyAction?
+    (receiptOnly?'homeflow:document-study-receipt':'homeflow:document-study-execute'):
+   documentAction?
     (receiptOnly?'homeflow:document-receipt':'homeflow:document-execute'):
     (receiptOnly?'homeflow:receipt':'homeflow'))+'\n'+stamp+'\n'+raw))
  return Array.from(new Uint8Array(data),x=>x.toString(16).padStart(2,'0')).join('')
@@ -117,7 +120,12 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.source_app==='jp-document-assistant'&&
   row.operation==='document.sync.homeflow'&&
   row.resource_type==='document_sync_candidate';
- if((!cash&&!documentFinance&&!documentTask)||!hex.test(row.payload_sha256))
+ const documentStudy=row.target_app==='it-study-platform'&&
+  row.source_app==='jp-document-assistant'&&
+  row.operation==='document.sync.study'&&
+  row.resource_type==='document_sync_candidate'&&
+  row.idempotency_key==='jpda:sync:'+row.resource_id;
+ if((!cash&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
  if(cash&&typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch!=='function')
   return failure('execution_disabled',503);
@@ -129,6 +137,10 @@ export async function approvalExecutionRoute(request,env,path,session){
    !hex.test(env.DOCUMENT_EXECUTION_SECRET||'')||
    typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('document_task_execution_disabled',503)
+ if(documentStudy&&(env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true'||
+   !hex.test(env.DOCUMENT_STUDY_EXECUTION_SECRET||'')||
+   typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('document_study_execution_disabled',503)
  if(row.status==='applied'){
   const sourceAck=documentTask?await reconcileDocumentTaskReceipt(env,row):true
   return reply({ok:true,status:'already_applied',approval_id:row.request_id,
@@ -174,7 +186,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request(documentFinance?
+ const outgoing=new Request(documentStudy?
+  'https://jp-document-assistant.internal/api/internal/document-study/'+
+    (receiptOnly?'receipt':'execute'):
+  documentFinance?
   'https://jp-document-assistant.internal/api/internal/document-actions/'+
     (receiptOnly?'receipt':'execute'):
   'https://kakeibo.internal/api/internal/approved-actions/'+
@@ -182,14 +197,16 @@ export async function approvalExecutionRoute(request,env,path,session){
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(documentFinance?
+   'x-approval-signature':await mac(documentStudy?
+    env.DOCUMENT_STUDY_EXECUTION_SECRET:documentFinance?
     env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
-    timestamp,raw,receiptOnly,documentFinance)},
+    timestamp,raw,receiptOnly,documentFinance,documentStudy)},
   body:raw
  })
  let result=null
  try{
-  const response=await (documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
+  const response=await (documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
+   documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
    env.KAKEIBO_EXECUTION_SERVICE).fetch(outgoing)
   if(response.status===409){
    // A target 409 does not prove whether an earlier attempt committed and
@@ -208,16 +225,20 @@ export async function approvalExecutionRoute(request,env,path,session){
  }catch{/* A lost response does NOT prove the target failed to post. */}
  if(result?.ok===true&&result.applied===true&&
   result.approval_id===row.request_id&&
-  (documentFinance?result.candidate_id:result.proposal_id)===row.resource_id&&
+  ((documentStudy||documentFinance)?result.candidate_id:result.proposal_id)===row.resource_id&&
   result.household_id===row.household_id&&
   result.requester_user_id===row.requester_user_id&&
   result.payload_sha256===row.payload_sha256&&
-  Number.isSafeInteger(result.entry_id)&&result.entry_id>0&&
+  (documentStudy?
+    (typeof result.remote_id==='string'&&result.remote_id===row.resource_id&&
+     result.approver_user_id===row.approver_user_id):
+    (Number.isSafeInteger(result.entry_id)&&result.entry_id>0))&&
   Number.isSafeInteger(result.applied_at)&&result.applied_at>=Number(row.reviewed_at)&&
   result.applied_at<=nowMs()+60000){
-  const stored=await statusChange(db,row,session,'applied',null,String(result.entry_id),result.applied_at)
+  const remoteId=documentStudy?result.remote_id:String(result.entry_id)
+  const stored=await statusChange(db,row,session,'applied',null,remoteId,result.applied_at)
   if(stored)return reply({ok:true,status:'applied',approval_id:row.request_id,
-   remote_id:String(result.entry_id),applied:true,
+   remote_id:remoteId,applied:true,
    replayed:result.already_applied===true})
   return failure('applied_remote_receipt_pending_reconciliation',503)
  }
