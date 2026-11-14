@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/jp-document-assistant
-          ref: dcfaa5f714c222d69985f1038341f0bde56c6de9
+          ref: 186151f3833635430a691674d915b20051389b52
           path: .contract-document
           persist-credentials: false
       - uses: actions/setup-node@v4

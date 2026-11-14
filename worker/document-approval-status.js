@@ -86,19 +86,32 @@ export async function documentApprovalStatusRoute(request,env){
   row.payload_sha256!==body.payload_sha256||
   row.idempotency_key!=='jpda:sync:'+body.resource_id)
   return deny('not_found',404)
- // Only finance currently has a trusted target D1 journal. The other
- // document operations must not accept a fabricated applied state.
+ // Only finance and the locally journaled task target can report actual apply.
  const finance=row.target_app==='kakebo'&&row.operation==='document.sync.finance'
- const states=finance?
+ const task=row.target_app==='homeflow'&&row.operation==='document.sync.homeflow'&&
+   env.DOCUMENT_TASK_EXECUTION_ENABLED==='true'
+ const states=(finance||task)?
   ['pending','approved','executing','applied','failed_retryable',
    'rejected','cancelled','expired','failed_final','conflict']:
   ['pending','approved','rejected','cancelled','expired','failed_final','conflict']
  if(!states.includes(row.status))return deny('document_execution_not_supported',503)
- const applied=finance&&row.status==='applied'
- if(applied&&(!/^[1-9][0-9]*$/.test(row.remote_id||'')||
+ const applied=(finance||task)&&row.status==='applied'
+ if(applied&&((finance&&!/^[1-9][0-9]*$/.test(row.remote_id||''))||
+    (task&&!uuid.test(row.remote_id||''))||
     !Number.isSafeInteger(row.executed_at)||row.executed_at<1||
     !Number.isSafeInteger(row.execution_attempts)||row.execution_attempts<1))
    return deny('document_target_receipt_not_proven',503)
+ if(task&&applied){
+  const journal=await env.DB.prepare('SELECT * FROM document_task_applied_actions WHERE request_id=?')
+    .bind(row.request_id).first().catch(()=>null)
+  if(!journal||journal.task_id!==row.remote_id||
+   journal.candidate_id!==row.resource_id||
+   journal.household_id!==row.household_id||
+   journal.requester_user_id!==row.requester_user_id||
+   journal.payload_sha256!==row.payload_sha256||
+   journal.applied_at!==row.executed_at)
+   return deny('document_task_journal_not_proven',503)
+ }
  return json({ok:true,approval_id:row.request_id,
   status:row.status,household_id:row.household_id,
   requester_user_id:row.requester_user_id,

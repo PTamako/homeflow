@@ -3,6 +3,7 @@
 // Remote success is the sole basis for 'applied'; timeout is retryable and
 // retries reuse the SAME immutable approval ID, never a new debit.
 import {json,nowMs,randomToken,sha256,sameOrigin} from './security.js'
+import {runDocumentTaskExecution,reconcileDocumentTaskReceipt} from './document-task-orchestrator.js'
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const hex=/^[a-f0-9]{64}$/i
@@ -112,7 +113,11 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.source_app==='jp-document-assistant'&&
   row.operation==='document.sync.finance'&&
   row.resource_type==='document_sync_candidate';
- if((!cash&&!documentFinance)||!hex.test(row.payload_sha256))
+ const documentTask=row.target_app==='homeflow'&&
+  row.source_app==='jp-document-assistant'&&
+  row.operation==='document.sync.homeflow'&&
+  row.resource_type==='document_sync_candidate';
+ if((!cash&&!documentFinance&&!documentTask)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
  if(cash&&typeof env.KAKEIBO_EXECUTION_SERVICE?.fetch!=='function')
   return failure('execution_disabled',503);
@@ -120,9 +125,16 @@ export async function approvalExecutionRoute(request,env,path,session){
    !hex.test(env.DOCUMENT_EXECUTION_SECRET||'')||
    typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('document_execution_disabled',503)
- if(row.status==='applied')
+ if(documentTask&&(env.DOCUMENT_TASK_EXECUTION_ENABLED!=='true'||
+   !hex.test(env.DOCUMENT_EXECUTION_SECRET||'')||
+   typeof env.DOCUMENT_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('document_task_execution_disabled',503)
+ if(row.status==='applied'){
+  const sourceAck=documentTask?await reconcileDocumentTaskReceipt(env,row):true
   return reply({ok:true,status:'already_applied',approval_id:row.request_id,
-   remote_id:row.remote_id,applied:true,replayed:true})
+   remote_id:row.remote_id,applied:true,replayed:true,
+   ...(documentTask?{source_receipt_confirmed:sourceAck}:{})})
+ }
  if(row.status==='executing'){
   if(Number(row.execution_lease_until)>nowMs())
    return failure('execution_in_progress',409)
@@ -156,6 +168,8 @@ export async function approvalExecutionRoute(request,env,path,session){
   if(changes.some(x=>x.meta?.changes!==1))return failure('execution_claim_conflict',409)
  }catch{return failure('execution_claim_conflict',409)}
  row={...row,execution_nonce_hash:nonceHash,execution_lease_until:lease}
+ if(documentTask)return runDocumentTaskExecution(env,row,nonce,receiptOnly,
+  async code=>statusChange(db,row,session,'failed_retryable',code))
  const payload={request_id:row.request_id,resource_id:row.resource_id,
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}

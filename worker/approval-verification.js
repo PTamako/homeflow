@@ -67,8 +67,7 @@ export async function approvalVerificationRoute(request,env){
   body=JSON.parse(raw)
  }catch{return reject('invalid_body',400)}
  const documentClient=client==='jp-document-assistant';
- if(documentClient&&(env.DOCUMENT_EXECUTION_ENABLED!=='true'||
-   !hash.test(env.DOCUMENT_APPROVAL_VERIFICATION_SECRET||'')))
+ if(documentClient&&!hash.test(env.DOCUMENT_APPROVAL_VERIFICATION_SECRET||''))
   return reject('document_verification_disabled',503);
  const computed=await signature(documentClient?
   env.DOCUMENT_APPROVAL_VERIFICATION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
@@ -101,8 +100,15 @@ export async function approvalVerificationRoute(request,env){
   row?.target_app==='kakebo'&&row?.operation==='document.sync.finance'&&
   row?.resource_type==='document_sync_candidate'&&
   row?.idempotency_key==='jpda:sync:'+body.resource_id;
+ const docTask=row?.source_app==='jp-document-assistant'&&
+  row?.target_app==='homeflow'&&row?.operation==='document.sync.homeflow'&&
+  row?.resource_type==='document_sync_candidate'&&
+  row?.idempotency_key==='jpda:sync:'+body.resource_id;
+ if(documentClient&&((doc&&env.DOCUMENT_EXECUTION_ENABLED!=='true')||
+  (docTask&&env.DOCUMENT_TASK_EXECUTION_ENABLED!=='true')))
+  return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (documentClient?!doc:!(cash||doc))||
+  (documentClient?!(doc||docTask):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
   row.payload_sha256!==body.payload_sha256||
