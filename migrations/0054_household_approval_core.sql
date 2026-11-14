@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS household_approval_requests (
   target_app TEXT NOT NULL CHECK(target_app IN
     ('homeflow','kakebo','jp-document-assistant','it-study-platform')),
   operation TEXT NOT NULL CHECK(operation IN
-    ('finance.entry.create','finance.credit_card.purchase','finance.credit_card.settlement','finance.prepaid.topup','finance.prepaid.spend','finance.entry.update','finance.entry.delete',
+    ('finance.entry.create','finance.credit_card.purchase','finance.credit_card.settlement','finance.prepaid.topup','finance.prepaid.spend',
+     'finance.points.earn_campaign','finance.points.earn_purchase',
+     'finance.points.redeem_discount','finance.points.expire','finance.entry.update','finance.entry.delete',
      'finance.entry.restore','finance.account.public_rule.change',
      'document.sync.finance','document.sync.homeflow','document.sync.study',
      'homeflow.shared_task.create')),

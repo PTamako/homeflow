@@ -22,15 +22,18 @@ function enabled(env){
    typeof env.DOCUMENT_STUDY_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch==='function'||
    typeof env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE?.fetch==='function'||
-   typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch==='function')&&
+   typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch==='function'||
+   typeof env.KAKEIBO_POINTS_EXECUTION_SERVICE?.fetch==='function')&&
   !!env.DB?.prepare
 }
-async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false,prepaidAction=false){
+async function mac(secret,stamp,raw,receiptOnly=false,documentAction=false,studyAction=false,cardAction=false,settlementAction=false,prepaidAction=false,pointsAction=false){
  const bytes=Uint8Array.from(secret.match(/.{2}/g),x=>parseInt(x,16))
  const key=await crypto.subtle.importKey('raw',bytes,
   {name:'HMAC',hash:'SHA-256'},false,['sign'])
  const data=await crypto.subtle.sign('HMAC',key,
-  new TextEncoder().encode((prepaidAction?
+  new TextEncoder().encode((pointsAction?
+    (receiptOnly?'homeflow:points-receipt':'homeflow:points-execute'):
+   prepaidAction?
     (receiptOnly?'homeflow:prepaid-receipt':'homeflow:prepaid-execute'):
    settlementAction?
     (receiptOnly?'homeflow:card-settlement-receipt':'homeflow:card-settlement-execute'):
@@ -126,6 +129,12 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.resource_type==='credit_card_purchase'&&
   row.idempotency_key==='kakeibo:card:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
+ const points=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
+  ['finance.points.earn_campaign','finance.points.earn_purchase',
+   'finance.points.redeem_discount','finance.points.expire'].includes(row.operation)&&
+  row.resource_type==='points_action'&&
+  row.idempotency_key==='kakeibo:points:'+row.resource_id&&
+  Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
  const prepaid=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
   (row.operation==='finance.prepaid.topup'||row.operation==='finance.prepaid.spend')&&
   row.resource_type==='prepaid_action'&&
@@ -149,12 +158,16 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.operation==='document.sync.study'&&
   row.resource_type==='document_sync_candidate'&&
   row.idempotency_key==='jpda:sync:'+row.resource_id;
- if((!cash&&!card&&!settlement&&!prepaid&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
+ if((!cash&&!card&&!settlement&&!prepaid&&!points&&!documentFinance&&!documentTask&&!documentStudy)||!hex.test(row.payload_sha256))
   return failure('operation_not_executable',409);
  if(card&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
    !hex.test(env.CARD_EXECUTION_SECRET||'')||
    typeof env.KAKEIBO_CARD_EXECUTION_SERVICE?.fetch!=='function'))
   return failure('card_execution_disabled',503)
+ if(points&&(env.POINTS_APPROVAL_EXECUTION_ENABLED!=='true'||
+  !hex.test(env.POINTS_EXECUTION_SECRET||'')||
+  typeof env.KAKEIBO_POINTS_EXECUTION_SERVICE?.fetch!=='function'))
+  return failure('points_execution_disabled',503)
  if(prepaid&&(env.PREPAID_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hex.test(env.PREPAID_EXECUTION_SECRET||'')||
   typeof env.KAKEIBO_PREPAID_EXECUTION_SERVICE?.fetch!=='function'))
@@ -222,7 +235,10 @@ export async function approvalExecutionRoute(request,env,path,session){
   household_id:row.household_id,requester_user_id:row.requester_user_id,
   payload_sha256:row.payload_sha256,...(receiptOnly?{}:{execution_nonce:nonce})}
  const raw=JSON.stringify(payload),timestamp=String(nowMs())
- const outgoing=new Request(prepaid?
+ const outgoing=new Request(points?
+   'https://kakeibo.internal/api/internal/points-actions/'+
+    (receiptOnly?'receipt':'execute'):
+  prepaid?
    'https://kakeibo.internal/api/internal/prepaid-actions/'+
     (receiptOnly?'receipt':'execute'):
   settlement?
@@ -242,18 +258,19 @@ export async function approvalExecutionRoute(request,env,path,session){
   method:'POST',redirect:'manual',headers:{'content-type':'application/json',
    'accept':'application/json','x-approval-client':'homeflow',
    'x-approval-timestamp':timestamp,
-   'x-approval-signature':await mac(prepaid?
+   'x-approval-signature':await mac(points?env.POINTS_EXECUTION_SECRET:prepaid?
     env.PREPAID_EXECUTION_SECRET:settlement?
     env.CARD_SETTLEMENT_EXECUTION_SECRET:card?
     env.CARD_EXECUTION_SECRET:documentStudy?
     env.DOCUMENT_STUDY_EXECUTION_SECRET:documentFinance?
     env.DOCUMENT_EXECUTION_SECRET:env.APPROVAL_VERIFICATION_SECRET,
-    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid)},
+    timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid,points)},
   body:raw
  })
  let result=null
  try{
-  const response=await (prepaid?env.KAKEIBO_PREPAID_EXECUTION_SERVICE:
+  const response=await (points?env.KAKEIBO_POINTS_EXECUTION_SERVICE:
+   prepaid?env.KAKEIBO_PREPAID_EXECUTION_SERVICE:
    settlement?env.KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE:
    card?env.KAKEIBO_CARD_EXECUTION_SERVICE:
    documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
@@ -277,6 +294,20 @@ export async function approvalExecutionRoute(request,env,path,session){
  if(result?.ok===true&&result.applied===true&&
   result.approval_id===row.request_id&&
   ((documentStudy||documentFinance)?result.candidate_id:result.proposal_id)===row.resource_id&&
+  (!points||(result.approver_user_id===row.approver_user_id&&
+   result.actor_user_id===row.approver_user_id&&
+   result.operation===row.operation.slice('finance.points.'.length)&&
+   /^[a-f0-9]{32}$/i.test(result.points_account_id||'')&&
+   result.points_version===row.expected_version&&
+   Number.isSafeInteger(result.delta_units)&&result.delta_units!==0&&
+   Math.abs(result.delta_units)<=1000000000&&
+   Number.isSafeInteger(result.balance_after_units)&&result.balance_after_units>=0&&
+   (result.yen_value===null||(Number.isSafeInteger(result.yen_value)&&result.yen_value>=0))&&
+   (['earn_campaign','earn_purchase'].includes(result.operation)?
+     result.delta_units>0:result.delta_units<0)&&
+   (['earn_purchase','redeem_discount'].includes(result.operation)?
+     Number.isSafeInteger(result.linked_entry_id)&&result.linked_entry_id>0:
+     result.linked_entry_id===null)))&&
   (!prepaid||(result.approver_user_id===row.approver_user_id&&
    result.actor_user_id===row.approver_user_id&&
    result.action===row.operation.slice('finance.prepaid.'.length)&&
@@ -307,10 +338,11 @@ export async function approvalExecutionRoute(request,env,path,session){
   (documentStudy?
     (typeof result.remote_id==='string'&&result.remote_id===row.resource_id&&
      result.approver_user_id===row.approver_user_id):
-    (Number.isSafeInteger(result.entry_id)&&result.entry_id>0))&&
+    points?true:(Number.isSafeInteger(result.entry_id)&&result.entry_id>0))&&
   Number.isSafeInteger(result.applied_at)&&result.applied_at>=Number(row.reviewed_at)&&
   result.applied_at<=nowMs()+60000){
-  const remoteId=documentStudy?result.remote_id:String(result.entry_id)
+  const remoteId=documentStudy?result.remote_id:points?
+    'points:'+result.points_account_id+':'+row.request_id:String(result.entry_id)
   const stored=await statusChange(db,row,session,'applied',null,remoteId,result.applied_at)
   if(stored)return reply({ok:true,status:'applied',approval_id:row.request_id,
    remote_id:remoteId,applied:true,
