@@ -345,3 +345,12 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 4. 新的 `family_points_journal` 反向插入和 `family_points_actor_audit` 同一 SQLite statement；原始发放扣回如果已有点数被花掉使余额负数，则整个反向写入拒绝，需后续专门的人工补偿流程，不得私自填平差额。误到期恢复是正向点数 credit，并必须有 HomeFlow owner 审核及新的来源参考。
 5. 目标 receipt 返回 §P 原字段加 `reversed_request_id`（仅本操作为 UUID，其余 null）。HomeFlow 校验 receipt actor、原当前审批 ID、签名 digest、reversed ID 格式、delta 非零（正或负）、original linked entry 的合法编码、时戳/household，未知结果仍进入 failed_retryable，按原工单 ID 的只读 receipt 恢复而非再记账。
 6. 家計簿 #309 最终本节 HEAD `5a2c35a182db3e62559836768813ddcf31b5657c`、Validate `43603748785` success / WebKit `43603748722` success；HomeFlow #306 源/目标真实跨仓测试功能 HEAD `4f167b558c322a083cfffa70909bce63cce212b6`、Validate `43603895452` success。均在隔离内存 SQLite 和模拟 Service Binding 验证，不等于生产批准。所有 flags 默认 OFF，严禁自动合并 Draft PR、部署、执行 production migration、Preview 或复写历史余额。
+
+
+## U. v1.0.15：原所有者历史积分单向不可变关联及逐字段快照指纹（仅 Draft）
+
+- 新后端 `GET/POST /api/family-finance/legacy/points-links` 在已有 HomeFlow SSO 家計簿 family-finance 身份检查之后运行，另外要求 `KAKEIBO_POINTS_LEGACY_LINKS_ENABLED='true'`、`APP_ENV='production'`，由**当前活跃 household owner 本人**发起。默认 flag OFF；该接口无审批外部调用和不写任何现金、积分日记账、旧 entries 金额或证券资产。POST 必须带同源 Origin、JSON、`expected_user_id` 与显式确认；切换 iPhone 用户时不得继承以前的操作人。
+- 仅准 `family_finance_legacy_entry_links` 已经签过原 owner、`entries.family_account_id` 对应相同 origin=legacy/account_kind=points/owner 的历史收入或消费；目标必须是**同一 owner**的新的 member_created/points/未归档/开户余额=0 稳定账户。旧交易不可自动按商户名称或支付方式猜成员，也不允许将旧遗留 member 数据归 owner。
+- GET 按 entry id 上限 5 条逐页，返回原稳定账户 ID、entry ID、date/amount/type/category、原始全行字段加旧 stable mapping proof 计算的 SHA256 摘要，只供审核，不传 OCR 全文。POST exact keys `expected_user_id,entry_id,points_account_id,legacy_kind,source_digest,confirm`。后端重新读全部原 entry 字段生成摘要，SQL 写点用所有字段条件 CAS；同时以一次 DB batch 插入不可变 `family_points_legacy_links` 与 0039 新 `family_points_legacy_provenance`（保存 SHA、原 owner、原 legacy account、new point account、金额/类型、审查时间），缺任何条件失败整体回滚；重复原 entry 原证据只可幂等同样回执，不能绑定第二个目标账户。
+- 新 0039 migration 添加历史来源与目标 owner/household 验证、source journal 不能同时 mint 的冲突检查、provenance 不可 UPDATE/DELETE、已证明关联的旧 entry 不可 UPDATE/DELETE。当前 `memberPointsBalances` 只读显示历史链接数，**不将旧 JPY 收入冒充新的积分单位**，无需跨 D1 原子写入。
+- 家計簿 #309 HEAD `56d6924027994d7e70f5b7d9b65ccfc44c964aa6`、Validate `43604672577` success、WebKit `43604672511` success；HomeFlow #306 pin `544c2498694337a3fc9b762a039da1481e9430c8` Validate `43604745668` success。为隔离 SQLite 和模拟服务验证，实际 Cloudflare 绑定/生产迁移/旧积分批量确认仍在后续 F 阶段，五 Draft PR 禁止合并。
