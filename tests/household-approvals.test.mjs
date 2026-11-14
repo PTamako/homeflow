@@ -767,8 +767,10 @@ test('Study document execution proof uses its own signing key and only live exec
   assert.equal(good.body.resource_type,'document_sync_candidate')
   assert.equal(good.body.approver_user_id,'owner')
   assert.equal(good.body.applied,false)
+  // The Document Assistant also needs its own valid proof to freeze the
+  // private source. Its credential cannot impersonate the Study client.
+  assert.equal((await verify(proof,'jp-document-assistant','b'.repeat(64))).status,200)
   for(const bad of [
-   [proof,'jp-document-assistant','b'.repeat(64)],
    [proof,'kakeibo','a'.repeat(64)],
    [proof,'it-study-platform','b'.repeat(64)],
    [{...proof,execution_nonce:'0'.repeat(64)}],
