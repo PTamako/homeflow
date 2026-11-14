@@ -117,9 +117,9 @@ async function fixture(){
   return {status:response.status,data:await response.json()};
  };
  const request=async()=>{
-  const input={expected_user_id:member,idempotency_key:'real-cross-card-settlement-20261118',
+  const input={expected_user_id:member,idempotency_key:'real-cross-card-settlement-20261114',
    card_account_id:card,card_version:1,bank_account_id:bank,bank_version:1,
-   debit_date:'2026-11-18',amount_jpy:1200,bank_reference:'verified-bank-ref-20261118',
+   debit_date:'2026-11-14',amount_jpy:1200,bank_reference:'verified-bank-ref-20261114',
    statement_confirmed:true,
    allocations:[{purchase_request_id:pa,amount_jpy:800},{purchase_request_id:pb,amount_jpy:400}]};
   const p=await source(['card-settlements'],input);
