@@ -61,6 +61,8 @@ function financeSchema(s){
    a,hh,member,kind,kind,'member_created',member,member);
  stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(1,'2026-11-14','',900,'食費','Shop','','','expense',NULL,0,NULL,'purchase-1',?, ?,NULL)",
   'cc:'+card,card);
+ stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(2,'2026-11-14','',50,'雑費','Point shop','','','expense',NULL,0,NULL,'points-purchase',?, ?,NULL)",
+  'points:'+points,points);
 }
 async function fixture(){
  const h=db(),k=db();homeSchema(h.sql);financeSchema(k.sql);
@@ -103,7 +105,8 @@ async function fixture(){
   effective_date:'2026-11-14',units:100,
   yen_value:100,rate_numerator:1,rate_denominator:1,
   source_reference:'official-points-notice-'+seq,
-  linked_entry_id:['earn_purchase','redeem_discount'].includes(operation)?1:null,
+  linked_entry_id:['earn_purchase','redeem_discount'].includes(operation)?1:
+   operation==='redeem_purchase'?2:null,
   expense_net_confirmed:operation==='redeem_discount',
   ...overrides
  });
@@ -192,4 +195,21 @@ test('two SQLite: refuse unreviewed, revoked member, stale points account, disab
    assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,0);
   }finally{f.close()}
  }
+});
+
+test('true points-funded purchase must reference its existing one expense; no second cash entry',async()=>{
+ const f=await fixture();try{
+  const baseline=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const earning=await f.request(f.intent('earn_campaign',{units:100,yen_value:100}));
+  assert.equal((await f.review(earning)).status,200);
+  assert.equal((await f.execute(earning)).status,200);
+  const spend=await f.request(f.intent('redeem_purchase',{units:50,yen_value:50}));
+  assert.equal((await f.review(spend)).status,200);
+  const done=await f.execute(spend);
+  assert.equal(done.status,200,JSON.stringify(done));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,baseline);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income'").n,0);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,50);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+ }finally{f.close()}
 });

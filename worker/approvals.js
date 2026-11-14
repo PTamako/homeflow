@@ -11,6 +11,7 @@ const ALLOWED_OPS={
   'finance.points.earn_campaign':'kakebo',
   'finance.points.earn_purchase':'kakebo',
   'finance.points.redeem_discount':'kakebo',
+  'finance.points.redeem_purchase':'kakebo',
   'finance.points.expire':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
