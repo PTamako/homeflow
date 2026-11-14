@@ -28,7 +28,7 @@ export async function pointsApprovalSubmissionRoute(req,env){
  if(!b||Array.isArray(b)||typeof b!=='object'||
   Object.keys(b).sort().join(',')!==
    ['household_id','requester_user_id','resource_id','payload_sha256','expected_version','action'].sort().join(',')||
-  !['earn_campaign','earn_purchase','redeem_discount','redeem_purchase','expire','transfer_prepaid','offset_card','transfer_out','exchange_out','reversal'].includes(b.action)||!id.test(b.resource_id)||!hex.test(b.payload_sha256)||
+  !['earn_campaign','earn_purchase','redeem_discount','redeem_purchase','expire','transfer_prepaid','offset_card','transfer_out','exchange_out','reversal','redeem_asset'].includes(b.action)||!id.test(b.resource_id)||!hex.test(b.payload_sha256)||
   typeof b.household_id!=='string'||!b.household_id||b.household_id.length>128||
   typeof b.requester_user_id!=='string'||!b.requester_user_id||b.requester_user_id.length>128||
   !Number.isSafeInteger(b.expected_version)||b.expected_version<1)

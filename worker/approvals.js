@@ -18,6 +18,7 @@ const ALLOWED_OPS={
  'finance.points.transfer_out':'kakebo',
  'finance.points.exchange_out':'kakebo',
  'finance.points.reversal':'kakebo',
+ 'finance.points.redeem_asset':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',

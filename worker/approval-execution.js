@@ -133,7 +133,8 @@ export async function approvalExecutionRoute(request,env,path,session){
   ['finance.points.earn_campaign','finance.points.earn_purchase',
    'finance.points.redeem_discount','finance.points.redeem_purchase','finance.points.expire',
    'finance.points.transfer_prepaid','finance.points.offset_card',
-   'finance.points.transfer_out','finance.points.exchange_out','finance.points.reversal'].includes(row.operation)&&
+   'finance.points.transfer_out','finance.points.exchange_out','finance.points.reversal',
+   'finance.points.redeem_asset'].includes(row.operation)&&
   row.resource_type==='points_action'&&
   row.idempotency_key==='kakeibo:points:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
@@ -312,6 +313,26 @@ export async function approvalExecutionRoute(request,env,path,session){
     /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
      result.reversed_request_id||'')&&
     result.reversed_request_id!==row.request_id))&&
+   (result.operation!=='redeem_asset'||(
+     /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
+     result.target_account_id!==result.points_account_id&&
+     Number.isSafeInteger(result.sbi_securities_version)&&
+     result.sbi_securities_version>=1&&
+     /^[A-Z0-9]{8}$/.test(result.sbi_fund_code||'')&&
+     ['growth','tsumitate'].includes(result.sbi_account_type)&&
+     Number.isSafeInteger(result.sbi_confirmed_units)&&
+     result.sbi_confirmed_units>0&&result.sbi_confirmed_units<=1000000000000&&
+     Number.isSafeInteger(result.sbi_acquisition_cost_jpy)&&
+     result.sbi_acquisition_cost_jpy>0&&
+     result.sbi_acquisition_cost_jpy===result.yen_value&&
+     Number.isSafeInteger(result.sbi_total_units_after)&&
+     result.sbi_total_units_after>=result.sbi_confirmed_units&&
+     Number.isSafeInteger(result.sbi_total_cost_after_jpy)&&
+     result.sbi_total_cost_after_jpy>=result.sbi_acquisition_cost_jpy&&
+     /^[a-f0-9]{64}$/i.test(result.sbi_reference_hash||'')&&
+     /^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(result.sbi_trade_date||'')&&
+     result.sbi_evidence_kind==='user_attested_broker_execution'&&
+     result.delta_units<0&&result.linked_entry_id===null))&&
    (result.operation!=='transfer_prepaid'||(
      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
      result.target_account_id!==result.points_account_id&&
