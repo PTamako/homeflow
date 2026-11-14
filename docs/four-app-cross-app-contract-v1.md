@@ -166,3 +166,41 @@ Study 目标 handler 不依赖手动收藏桥接；复用 §64 applyVerifiedDocu
 - 家計簿 #309：`244535227826f6caa2258179ba30aa32162c7ad1`，两组完整 CI `43586044462`、`43586044499` **PASS**；真实 SQLite 交易、CAS 拒绝、失效身份、HMAC 伪造、审计 rollback、migration 重放和重复回执均已覆盖。
 - HomeFlow #306：`tests/family-credit-card-real-cross-app.test.mjs` 真实导入 HomeFlow 审批提交/验证/执行和家計簿源端/目标执行，在**两套独立内存 SQLite** 上以模拟 Service Binding 传递签名 Request。实际成功测试通过、目标提交后断线同 ID 恢复、对批准/执行分离、成员撤权/旧版本 fail closed。HomeFlow 代码 `16e3e3d44bf920bf7fff0962c003b87415880fe6`，完整 CI `43586512718` **PASS**。这个 CI 使用 .contract-kakeibo 精确 pin 上述 Kakeibo SHA。
 - **仍未完成**：信用卡还款真实现金记账/已结负债匹配、信用卡特殊扣款/积分兑换、储值/积分/SBI/资产转移、跨 D1 最终撤权竞态、HomeFlow+家計簿两台 iPhone PWA 浏览器级 UI 以及 F 阶段实际 Service Binding/生产迁移。不得把首类非现金成功描述成整个 P0-4 或 B–E 已完成。全部 PR 均 Draft、生产 flags OFF，零生产资源变更。
+
+
+## N. v1.0.8：P0-4 信用卡还款及银行已发生扣款的人工核对（仅 Draft）
+
+2026-11-14。此增补复用 §M 的原 family_card_purchase_applied 购买和应付来源，不创建第二套账单。操作 finance.credit_card.settlement 不是新的家庭消费、银行直连、自动到期扣款或退款冲正。以下代码和 migration 均在未合并的 Draft 分支；没有经过 F 阶段生产或 iPhone 实机验收。
+
+### 家計簿源端申请
+
+家計簿的 /api/family-finance/card-settlements 只在真实 HomeFlow member 会话及功能 flags 全部允许时处理本人申请；接收的字段严格为 expected_user_id、idempotency_key、card_account_id、card_version、bank_account_id、bank_version、debit_date、amount_jpy、bank_reference、statement_confirmed:true、allocations（每项 purchase_request_id + amount_jpy）。card 与 bank 均须是此 member 的 member_created、未归档、稳定 32hex 账户 ID 和当前 CAS 版本。purchase_request_id 为既有信用卡消费的 HomeFlow UUID，所有正整数日元分配之和等于本次还款且不得超过原消费尚未清偿的本金。
+
+debit_date 是人工核对的银行实际扣款日期，不得晚于当前 JST 日期、早于任何待核销的原消费日期；不根据信用卡截账日、账单日或到期日推测。bank_reference 只在服务器计算以银行 account_id 域隔离的 SHA-256 reference_hash；AES-GCM 快照只存金额、日期、参考号哈希、stable ID 和分配信息；AAD = kakeibo-card-settlement:{intentId}，绝不将明文参考号传到 HomeFlow。银行流水证据本版本**依赖用户人工确认**，并没有第三方银行 API 验证。
+
+HomeFlow 工单不可变字段：source_app=kakebo；target_app=kakebo；operation=finance.credit_card.settlement；resource_type=credit_card_settlement；resource_id={32hex source intent}；idempotency_key=kakeibo:cardsettle:{resource_id}；payload_sha256 为家計簿 AES 快照明文 SHA-256；expected_version 为 card.version 且必须 >=1。申请人是当前 member，审批并执行者是另一位当前 owner。HomeFlow 不存银行金额、账户备注、私人参考号或源快照。
+
+### 冻结后端 wire / 独立签名
+
+所有请求是后端 POST，必须没有 Origin、Cookie、Authorization；X-Approval-Timestamp 是 13 位毫秒时间戳（允许 ±300 秒），X-Approval-Signature = HMAC-SHA256(独立 32-byte Hex 密钥, domain + LF + timestamp + LF + raw JSON)。执行核心五字段固定为 request_id,resource_id,household_id,requester_user_id,payload_sha256；execute 额外 execution_nonce，receipt 不带 nonce 且只读不可写。
+
+| 调用 | 路由 | X-Approval-Client / HMAC domain | 匹配密钥 |
+| --- | --- | --- | --- |
+| 家計簿 → HomeFlow 提交 | /api/internal/approvals/card-settlement-submit | kakeibo-card-settlement / kakeibo-card-settlement:submit | KAKEIBO_CARD_SETTLEMENT_SUBMISSION_SECRET ↔ CARD_SETTLEMENT_SUBMISSION_SECRET |
+| 家計簿 → HomeFlow proof | /api/internal/approvals/verify | kakeibo-card-settlement / kakeibo-card-settlement:execution-proof | KAKEIBO_CARD_SETTLEMENT_PROOF_SECRET ↔ CARD_SETTLEMENT_APPROVAL_PROOF_SECRET |
+| HomeFlow → 家計簿执行 | /api/internal/card-settlements/execute | homeflow / homeflow:card-settlement-execute | CARD_SETTLEMENT_EXECUTION_SECRET ↔ KAKEIBO_CARD_SETTLEMENT_EXECUTION_SECRET |
+| HomeFlow → 家計簿对账 | /api/internal/card-settlements/receipt | homeflow / homeflow:card-settlement-receipt | 同上密钥、独立 HMAC domain |
+
+提交 body 仅 household_id,requester_user_id,resource_id,payload_sha256,expected_version。proof body 为五核心 + idempotency_key,expected_version,purpose:execute,execution_nonce；HomeFlow 必须验证活跃 member/owner、当前 executing 租约、nonce 摘要和同一工单。HomeFlow 只用新 KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE Binding，不复用 §M 消费执行器。HomeFlow 新审批提交与执行 flags 分别为 CARD_SETTLEMENT_APPROVAL_SUBMISSION_ENABLED 与 CARD_SETTLEMENT_APPROVAL_EXECUTION_ENABLED；家計簿新 flag 为 KAKEIBO_CARD_SETTLEMENTS_ENABLED。全部默认 OFF，仍须原身份、家庭账本、审批执行和验证的全部基础开关。
+
+### 家計簿原子记账语义
+
+新迁移 0032_family_card_settlement_foundation.sql 只属于未合并 Draft 分支。目标在同一 D1 batch 内插入一次 family_card_bank_debit_evidence（真实日期、账户、参考号哈希、金额）、一次 entries.type=transfer（client_request_id=hfcardsettle:{approvalId}、family_account_id=bank_account_id、family_transfer_target_account_id=card_account_id）、一次 family_card_settlements_applied、各原消费的 family_card_settlement_allocations、最后一次 family_card_settlement_audit。唯一键、CHECK 和 SQLite triggers 阻止重用同银行交易参考号、同审批重复结算、超额分配、错误卡/银行、错误版次、早于购买日期的分配及缺失审计。已经落地的购买消费、银行转账及回执不可直接 UPDATE/DELETE。
+
+家庭账目的一笔信用卡购买只算一次 expense；银行还款是转移资金而不是新的 expense 或 income。新应付投影按稳定 card account_id 和原 bill_month 计算 SUM(原购买)－SUM(真实已批准还款分配)，支持一笔扣款跨账期及部分还款，不能擅自声称银行实时净资产已计算。目标原始回执固定包含 approval_id,proposal_id,household_id,requester_user_id,payload_sha256,approver_user_id,actor_user_id,card_account_id,card_version,bank_account_id,bank_version,amount_jpy,debit_date,entry_id=transfer_entry_id,applied_at,already_applied。HomeFlow 只在校验上述核心身份/版本/金额日期结构并获得已持久化回执后标记 applied。网络丢失回执必须对同一审批 ID 查看不可变目标 journal；超过有效期后仅查 receipt，不再新增扣款。
+
+### 不得误判已完成
+
+当前隔离 CI 覆盖独立 HomeFlow 与家計簿 SQLite，真实签名处理器、审批租约、CAS、失败回滚、重复执行及丢回执恢复；仅证明隔离代码路径，不是 Cloudflare 生产 Service Binding、真实银行接口或双 iPhone 实机验收。
+
+退款/冲正/已入账撤销必须另建立反向账务 journal；遗留账本匹配、跨 D1 最终撤权竞态、银行账户实时余额、全部 PWA 浏览器回归与 F 阶段生产迁移仍未完成。不得把 §N 表述成全 P0-4 或 B–E 已交付。
