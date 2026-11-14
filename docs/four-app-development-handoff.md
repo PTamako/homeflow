@@ -1063,3 +1063,13 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 新 `tests/document-member-approval-preview-epoch.test.js` 用 Node VM **实际执行真实 Vue 函数体** 和人为延迟 Promise，覆盖「候选 A 晚于候选 B 回来不可覆盖 B」「文书 A→B 后旧审批表单不可重开」「账号登出并收到旧异常不可向新账号弹出」及源码栅栏检查。测试 Commit `c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d`。
 - 此模块属 **Stage E UI 私有内容防串号**，不涉及新业务目标写入，也不代表 Stage D 文书→家計簿/家庭任务/知学 **真正经 HomeFlow 可信审批后目标执行器** 已存在。HomeFlow 当前 execute 仅支持受限现金入账，不要将文书审批状态 `approved` 伪作 `applied`。
 - 原 #97 代码 HEAD `c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d` 的 GitHub Pre-merge CI **尚需精确核验**；成功前本模块不能标为自动化全绿，失败需按具体日志修复。全部功能 PR 保持 open/Draft，不运行生产迁移、不触发 Workers/Pages/D1/R2 部署、不启用功能开关、不创建 Preview；A 用户 Mac 本地备份恢复 PASS，不代替 F 生产发布授权。
+
+
+## 36. 2026-11-14 文书助手 #97 Stage E：迟到审批提交/状态回执的界面隔离与防锁死（代码提交；精确新 HEAD 需验 CI）
+
+- §35 前一个 Document Assistant Draft #97 预览模块，精确 HEAD `c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d` 的 [Pre-merge #43541162460](https://github.com/PTamako/jp-document-assistant/actions/runs/43541162460) 已 `completed/success`，前一代码 HEAD `e702c28e424fd99f093767d0b63f0fabd9537865` 的 [Pre-merge #43541297977](https://github.com/PTamako/jp-document-assistant/actions/runs/43541297977) 也已 `completed/success`（但其后新测试须单独验）。
+- 本轮在原 `web/src/App.vue` 修复 `commitApprovedCandidate()`：原 `stillCurrent()` 只验证 `accountEpoch`，同一用户切换文书、候选或关闭审批弹层后，迟到的 HomeFlow 回执仍可能改动当前审批 UI、重新打开旧文书并显示错误 toast。现在每笔提交绑定原 `accountEpoch + detailOpenSerial + document.id + candidate.id + sheet='candidate'`。不属于当前页面的旧回执不更新审批表单、不会导航回旧文书；旧请求在同账号完成时仍释放 busy，避免用户在关闭弹窗后永远无法操作。成功后刷新本份文书使用独立 refresh serial，仅在原刷新仍当前时显示结果。代码 Commit `e702c28e424fd99f093767d0b63f0fabd9537865`。
+- 同时修复 `checkCandidateApprovalStatus()` 的旧 `finally`：此前 `if(stillCurrent())busy=false` 会因为用户关闭表单/切换文书而永远保留 busy=true；现在本账号代次仍有效时正常释放该请求锁，新账号时代次失效不触动新账号工作区。
+- 新 `tests/document-member-approval-reply-epoch.test.js` 实际 Node VM 运行 App.vue 里的两个真实 async 方法：关闭审批表单时晚到 status 不能显示旧批准且 busy 会释放；提交时切换到第二份文书后不能设置旧 HomeFlow 状态、刷新旧文书或弹成功提示；账户登出之后的旧失败不能污染新账号；当前用户正常的已提交回执仍只显示待审批，不假装目标已同步。测试 Commit `5ecf30cb63225441d8b1c474632674c383d15356`。
+- 精确最新 HEAD `5ecf30cb63225441d8b1c474632674c383d15356` 的 [Pre-merge CI #43541374689](https://github.com/PTamako/jp-document-assistant/actions/runs/43541374689) 首次核查 `in_progress`；**必须查询最新结果，失败则按日志修复，不可沿用旧绿色作为新测试通过证据**。
+- 本次只改原文书助手 Draft #97 与唯一 HomeFlow 交接 docs，未修改任何线上 Secrets/Workers/Pages/D1/R2、未合并/部署功能 Draft、未重建 Preview。阶段 D 文书审批后的跨应用可信目标执行器仍没完成；申请 `approved` 不是目标 `applied`，iPhone 双人真机授权/切号/断网仍须验收。阶段 A 本地加密备份恢复已 PASS，但 F 生产迁移/上线授权仍需单独确认。
