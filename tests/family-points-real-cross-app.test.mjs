@@ -15,7 +15,7 @@ import {approvedPointsRoute} from '../.contract-kakeibo/functions/api/internal/p
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
  member='22222222-2222-4222-8222-222222222222',
- points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32),cardPurchase='11111111-1111-4111-8111-111111111114';
+ points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32),receive='e'.repeat(32),cardPurchase='11111111-1111-4111-8111-111111111114';
 const keys={pending:'1'.repeat(64),submit:'2'.repeat(64),
  execution:'3'.repeat(64),proof:'4'.repeat(64)};
 const stmt=(s,q,...a)=>s.prepare(q).run(...a),get=(s,q,...a)=>s.prepare(q).get(...a);
@@ -58,10 +58,11 @@ function financeSchema(s){
  s.exec(migration);s.exec(migration);
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0035_points_prepaid_atomic.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0036_points_card_offset.sql',import.meta.url),'utf8'));
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0037_points_transfer_exchange.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
- for(const [a,kind] of [[points,'points'],[card,'credit_card'],[prepaid,'prepaid']])
+ for(const [a,kind] of [[points,'points'],[card,'credit_card'],[prepaid,'prepaid'],[receive,'points']])
   stmt(s,'INSERT INTO family_financial_accounts(account_id,household_id,owner_user_id,label,account_kind,origin,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?)',
    a,hh,member,kind,kind,'member_created',member,member);
  stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(1,'2026-11-14','',900,'食費','Shop','','','expense',NULL,0,NULL,'purchase-1',?, ?,NULL)",
@@ -123,6 +124,8 @@ async function fixture(){
   ...(operation==='transfer_prepaid'?{target_account_id:prepaid,target_version:1}:{}),
   ...(operation==='offset_card'?{target_account_id:card,target_version:1,
    target_purchase_request_id:cardPurchase}:{}),
+  ...(['transfer_out','exchange_out'].includes(operation)?{target_account_id:receive,
+   target_version:1,target_units:100,target_rate_numerator:1,target_rate_denominator:1}:{}),
   ...overrides
  });
  const request=async body=>{
@@ -324,6 +327,63 @@ test('two independent D1s: card offset commit with lost response reconciles orig
   f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=original;
   assert.equal((await f.execute(offset)).status,200);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offsets').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+ }finally{f.close()}
+});
+
+test('two isolated D1s: owner-approved points transfer/exchange conserves JPY and records immutable dual account credits',async()=>{
+ const f=await fixture();try{
+  const base=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const funding=await f.request(f.intent('earn_campaign',{units:450,yen_value:450}));
+  assert.equal((await f.review(funding)).status,200);
+  assert.equal((await f.execute(funding)).status,200);
+  const transfer=await f.request(f.intent('transfer_out',
+   {units:120,yen_value:120,target_units:120}));
+  assert.equal((await f.review(transfer)).status,200);
+  const sent=await f.execute(transfer);
+  assert.equal(sent.status,200,JSON.stringify(sent));
+  assert.equal(sent.data.transfer_target_units,120);
+  assert.equal(sent.data.transfer_target_balance_after_units,120);
+  const exchange=await f.request(f.intent('exchange_out',
+   {units:100,yen_value:200,rate_numerator:2,rate_denominator:1,
+    target_units:50,target_rate_numerator:4,target_rate_denominator:1}));
+  assert.equal((await f.review(exchange)).status,200);
+  const swapped=await f.execute(exchange);
+  assert.equal(swapped.status,200,JSON.stringify(swapped));
+  assert.equal(swapped.data.transfer_target_units,50);
+  assert.equal(swapped.data.transfer_target_balance_after_units,170);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal WHERE points_account_id=?',points).n,230);
+  assert.equal(get(f.k.sql,'SELECT SUM(target_units) n FROM family_points_transfer_credits WHERE target_account_id=?',receive).n,170);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_credits').n,2);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,3);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,base);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income'").n,0);
+  assert.equal(get(f.h.sql,"SELECT COUNT(*) n FROM household_approval_requests WHERE status='applied'").n,3);
+  const replay=await f.execute(exchange);
+  assert.equal(replay.status,200,JSON.stringify(replay));
+  assert.equal(replay.data.replayed,true);
+ }finally{f.close()}
+});
+test('two isolated D1s: lost response after target transfer COMMIT is retried with original approval and one credit',async()=>{
+ const f=await fixture();try{
+  const funding=await f.request(f.intent('earn_campaign',{units:220,yen_value:220}));
+  assert.equal((await f.review(funding)).status,200);
+  assert.equal((await f.execute(funding)).status,200);
+  const transfer=await f.request(f.intent('transfer_out',
+   {units:100,yen_value:100,target_units:100}));
+  assert.equal((await f.review(transfer)).status,200);
+  const original=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const r=await original.fetch(req);
+   if(r.status===200)throw Error('target transfer committed; response lost');
+   return r;
+  }};
+  assert.notEqual((await f.execute(transfer)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_credits').n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=original;
+  const done=await f.execute(transfer);
+  assert.equal(done.status,200,JSON.stringify(done));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_transfer_credits').n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
  }finally{f.close()}
 });
