@@ -141,3 +141,28 @@ Study 目标 handler 不依赖手动收藏桥接；复用 §64 applyVerifiedDocu
 - 执行中网络超时/回执丢失使用原 `request_id` 对目标只读 `receipt`，然后在源端落地回执；不得重复创建词句或新审批。审批过期只能读原目标回执，不能发送新的 execute。跨 D1 并发撤权最终一致性、失效租约的源端回收策略、PWA 浏览器回归及正式双 iPhone / Service Binding 联调仍为 **未完成的安全验收项**。
 
 **已核验**：HomeFlow #306 `tests/document-study-three-real-apps.test.mjs` pin 文书助手 #97 `ade2dba88f95a183a6bf31f73309a9792a6daa5e`、知学 #179 `496b06a021cdd1c822f49774b31a26f31bca9895`，三真实处理器/独立 SQLite 完整 HomeFlow CI `43584526633` success。三个功能 PR 保持 Draft，零生产迁移、零部署、零 Preview。
+
+
+## M. v1.0.7：P0-4 第一组非现金执行——成员信用卡消费、共享支出和应付账款（Draft）
+
+2026-11-14。**不覆盖 §I 的现金执行或 §K/L 的文书执行**。选择一组完整业务：`finance.credit_card.purchase`（信用卡购买，不是信用卡结算、储值卡、积分、SBI 或资产转移）。家計簿新未执行 migration `0031_family_card_purchase_execution.sql`，HomeFlow 未执行 migration `0054_household_approval_core.sql` 的草稿白名单同步加入此新 operation；两者均未出现在生产或 main。不能将运行中的生产 schema 假定已具备此列和 CHECK。
+
+### 固定操作、身份和密钥
+
+- HomeFlow 不可变请求：`source_app=kakebo`，`target_app=kakebo`，`operation=finance.credit_card.purchase`，`resource_type=credit_card_purchase`，`resource_id={32hex intent request ID}`，`idempotency_key=kakeibo:card:{resource_id}`，`payload_sha256` 是家計簿独立 AES-GCM 明文 JSON 的 SHA-256，`expected_version` 为该信用卡 `family_financial_accounts.version` 的整数，不得为 null。请求人是当前 `member`、拥有该 `member_created` `credit_card` `account_id`，批准人是**另一位**当前 `owner`。只有 HomeFlow 提供已审核并处于执行租约中的证明才允许目标写入。
+- 审批提交：家計簿后端 → HomeFlow `POST /api/internal/approvals/card-submit`，`X-Approval-Client: kakeibo-card`，HMAC domain `kakeibo-card:submit`，32字节 Hex 独立 `CARD_SUBMISSION_SECRET/KAKEIBO_CARD_SUBMISSION_SECRET`；body 严格仅 `{household_id,requester_user_id,resource_id,payload_sha256,expected_version}`，不含消费金额、商家、卡号、密钥和现金账信息。
+- 审批核验：家計簿目标 → HomeFlow `POST /api/internal/approvals/verify`，`X-Approval-Client: kakeibo-card`，domain `kakeibo-card:execution-proof`，独立 `CARD_APPROVAL_PROOF_SECRET/KAKEIBO_CARD_PROOF_SECRET`。body `{request_id,resource_id,household_id,requester_user_id,payload_sha256,idempotency_key,expected_version,purpose:'execute',execution_nonce}`，签名请求字节与当前 HomeFlow 不可变工单/活跃 member+owner/未过期 execution lease/nonce hash 精确匹配。
+- 执行：HomeFlow → 家計簿 `POST /api/internal/card-purchases/execute`，domain `homeflow:card-execute`，独立 `CARD_EXECUTION_SECRET/KAKEIBO_CARD_EXECUTION_SECRET`；body 五字段 `{request_id,resource_id,household_id,requester_user_id,payload_sha256}` + `execution_nonce`。回执：`POST /api/internal/card-purchases/receipt`，domain `homeflow:card-receipt`，仅五字段；不得将不存在的回执当成可以安全重建一张卡账单的证明。内部后端 JSON 一律 POST、无 Origin/Cookie/Authorization、timestamp 13 位毫秒 ±300 秒、HMAC-SHA256(raw bytes)，所有 flags 默认 OFF。
+
+### 事务结果、共享口径与恢复
+
+- 源 intent 只以真实 `stable account_id` + `account_version` 表示卡，不依赖相同显示名。目标 AES-GCM 解密并核对 SHA-256、签名 HomeFlow 审批、当前账号版本 CAS 与 owner/member。目标单事务 `DB.batch` 插入一次 `entries` 家庭 `expense`（`client_request_id=hfcard:{approval_id}`, `family_account_id=account_id`, `payment_source=cc:{account_id}`，仅用于新家族稳定账号）、一次 `family_card_purchase_applied`（实际信用卡应付款，独立 bill_month）和一次不可变 `family_card_purchase_audit`（requester/approver 分离），失败全部 rollback。
+- `bill_month` 为信用卡 **截账月**，依据购买日与卡片当时 `closing_day` 及短月夹紧计算，不推断账单付款日或银行已扣款。家計簿家庭账本两成员共享 `expense`；另提供按 `stable account_id, bill_month` 分组的累计应付，**不把这笔应付再次计入支出/不减现有资产**；未实装消费还款匹配，因此状态为 `not_reconciled`，不是银行真实未付余额或净资产。
+- 同 ID 再入参仅返回不可变目标 receipt；即使目标提交后断网，HomeFlow `failed_retryable` 重用 **原 approval ID** 只接收原始目标 receipt，不再次借记或创建另一笔应付。状态只有目标成功提交并返回含 entry_id/approver/版本/摘要的真实回执后才 `applied`。任何浏览器自报批准无效。
+- flags：HomeFlow `CARD_APPROVAL_SUBMISSION_ENABLED`, `CARD_APPROVAL_EXECUTION_ENABLED`, `CARD_SUBMISSION_SECRET`, `CARD_APPROVAL_PROOF_SECRET`, `CARD_EXECUTION_SECRET`, `KAKEIBO_CARD_EXECUTION_SERVICE`；家計簿 `KAKEIBO_CARD_PURCHASES_ENABLED`, `KAKEIBO_CARD_SUBMISSION_SECRET`, `KAKEIBO_CARD_PROOF_SECRET`, `KAKEIBO_CARD_EXECUTION_SECRET`，复用已经隔离的私有 `KAKEIBO_FAMILY_PENDING_KEY`、`HOMEFLOW_IDENTITY_SERVICE`。全域仍要求已存在的 family finance、SSO/identity、approval exec/verification 功能开关。
+
+### 实际隔离验收与明确未完成项
+
+- 家計簿 #309：`244535227826f6caa2258179ba30aa32162c7ad1`，两组完整 CI `43586044462`、`43586044499` **PASS**；真实 SQLite 交易、CAS 拒绝、失效身份、HMAC 伪造、审计 rollback、migration 重放和重复回执均已覆盖。
+- HomeFlow #306：`tests/family-credit-card-real-cross-app.test.mjs` 真实导入 HomeFlow 审批提交/验证/执行和家計簿源端/目标执行，在**两套独立内存 SQLite** 上以模拟 Service Binding 传递签名 Request。实际成功测试通过、目标提交后断线同 ID 恢复、对批准/执行分离、成员撤权/旧版本 fail closed。HomeFlow 代码 `16e3e3d44bf920bf7fff0962c003b87415880fe6`，完整 CI `43586512718` **PASS**。这个 CI 使用 .contract-kakeibo 精确 pin 上述 Kakeibo SHA。
+- **仍未完成**：信用卡还款真实现金记账/已结负债匹配、信用卡特殊扣款/积分兑换、储值/积分/SBI/资产转移、跨 D1 最终撤权竞态、HomeFlow+家計簿两台 iPhone PWA 浏览器级 UI 以及 F 阶段实际 Service Binding/生产迁移。不得把首类非现金成功描述成整个 P0-4 或 B–E 已完成。全部 PR 均 Draft、生产 flags OFF，零生产资源变更。
