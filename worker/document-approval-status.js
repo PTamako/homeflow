@@ -105,7 +105,6 @@ export async function documentApprovalStatusRoute(request,env){
   resource_id:row.resource_id,target_app:row.target_app,
   payload_sha256:row.payload_sha256,version:row.version,
   reviewed_at:row.reviewed_at||null,expires_at:row.expires_at,
-  remote_id:applied?row.remote_id:null,
-  executed_at:applied?row.executed_at:null,
+  ...(applied?{remote_id:row.remote_id,executed_at:row.executed_at}:{}),
   applied,target_changed:applied})
 }
