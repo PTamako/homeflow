@@ -1605,8 +1605,8 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 
 ### 已推送 Commit 与 CI 真实覆盖
 
-- 家計簿 #309：功能 `7f33c7a65ba304cc71857c028e46f2e6c06267d7`、真实积分目标/信用卡投影回归 `b56e006868c9824de2103e66861bc6eec50fd227`、已有银行付款 500+积分抵扣 350 对一笔 1000 日元账单、再次核销 200 被拒绝的不可变共享余额测试 `744f7cb3578d10f4da32ce1df94f0e94fe147593`。最新 Validate **43601216537 completed/success**；Mobile WebKit Smoke **43601216353**（记录时仍为 in_progress，后续应查实时状态，不能预报成功）。全量代码测试同时覆盖旧业务迁移无效化、银行付款与积分抵扣互不冒充、超额和多次请求拒绝、zero-new-cash-expense。
-- HomeFlow #306：功能 `1a1bd4eeda31bae2d32c453700c2445bc1dd64af`、真实源/目标双 SQLite+审批/丢回执/卡账剩余验证及旧银行 settlement 兼容回归 `5011a0d54729916d16ae32b49153805745ca56a5`，Validate HomeFlow **43601164586 completed/success**（当时精确 Kakeibo pin 为 b56e006）。本节同步升级精确 Kakeibo pin 至最终 **744f7cb3578d10f4da32ce1df94f0e94fe147593**，还须检查新 HomeFlow CI 完成结论；不把旧 pin 的通过冒称为新 HEAD 的结果。
+- 家計簿 #309：功能 `7f33c7a65ba304cc71857c028e46f2e6c06267d7`、真实积分目标/信用卡投影回归 `b56e006868c9824de2103e66861bc6eec50fd227`、已有银行付款 500+积分抵扣 350 对一笔 1000 日元账单、再次核销 200 被拒绝的不可变共享余额测试 `744f7cb3578d10f4da32ce1df94f0e94fe147593`。最新 Validate **43601216537 completed/success**；Mobile WebKit Smoke **43601216353 completed/success**。全量代码测试同时覆盖旧业务迁移无效化、银行付款与积分抵扣互不冒充、超额和多次请求拒绝、zero-new-cash-expense。
+- HomeFlow #306：功能 `1a1bd4eeda31bae2d32c453700c2445bc1dd64af`、真实源/目标双 SQLite+审批/丢回执/卡账剩余验证及旧银行 settlement 兼容回归 `5011a0d54729916d16ae32b49153805745ca56a5`，Validate HomeFlow **43601164586 completed/success**（当时精确 Kakeibo pin 为 b56e006）。最终精确 Kakeibo pin **744f7cb3578d10f4da32ce1df94f0e94fe147593** 已写入 #306 的 §78/§R 功能分支 HEAD **416c6fa526d8420c89b159d6f2e225f1b342243d**，跨仓 Validate HomeFlow **43601547917 completed/success**。这次仍是原家計簿目标真实执行器 + 双隔离 SQLite、模拟 Service Binding 的全部 CI，不是生产运行。
 - 对账测试覆盖已发生银行 allocation 后积分抵扣余额、再新增银行超额核销拒绝、原始消费数和支出数不变，另有 HomeFlow 独立 D1 的 owner 审批、执行、目标独立签名验证和消息丢失恢复。以上全是隔离真实 SQLite/模拟 Service Binding，**不是**生产系统已开启、更不是绑定真实银行数据。
 
 ### 未完成/禁止提前交付
