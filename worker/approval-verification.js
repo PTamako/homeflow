@@ -117,10 +117,11 @@ export async function approvalVerificationRoute(request,env){
   row?.resource_type==='document_sync_candidate'&&
   row?.idempotency_key==='jpda:sync:'+body.resource_id;
  if(documentClient&&((doc&&env.DOCUMENT_EXECUTION_ENABLED!=='true')||
-  (docTask&&env.DOCUMENT_TASK_EXECUTION_ENABLED!=='true')))
+  (docTask&&env.DOCUMENT_TASK_EXECUTION_ENABLED!=='true')||
+  (docStudy&&env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true')))
   return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (studyClient?!docStudy:documentClient?!(doc||docTask):!(cash||doc))||
+  (studyClient?!docStudy:documentClient?!(doc||docTask||docStudy):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
   row.payload_sha256!==body.payload_sha256||
