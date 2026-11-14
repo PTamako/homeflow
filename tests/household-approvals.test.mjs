@@ -6,7 +6,7 @@ import {approvalRoute} from '../worker/approvals.js'
 import {approvalVerificationRoute} from '../worker/approval-verification.js'
 import {approvalSubmissionRoute} from '../worker/approval-submission.js'
 import {approvalExecutionRoute} from '../worker/approval-execution.js'
-import {createHmac} from 'node:crypto'
+import {createHmac,createHash} from 'node:crypto'
 
 const sessions={
  owner:{household_id:'primary',user_id:'owner',role:'owner'},
@@ -711,5 +711,84 @@ test('approval center feature probe is read-only and never exposes disabled queu
   assert.deepEqual(await executing.json(),{enabled:true,execution_enabled:true,document_execution_enabled:false})
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,beforeRequests)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_events').get().n,beforeEvents)
+ }finally{f.sql.close()}
+})
+
+test('Study document execution proof uses its own signing key and only live executing lease',async()=>{
+ const f=fixture()
+ try{
+  f.env.APP_ENV='production'
+  f.env.APPROVAL_VERIFICATION_ENABLED='true'
+  f.env.APPROVAL_VERIFICATION_SECRET='a'.repeat(64)
+  f.env.DOCUMENT_APPROVAL_VERIFICATION_SECRET='b'.repeat(64)
+  f.env.STUDY_APPROVAL_VERIFICATION_SECRET='c'.repeat(64)
+  f.env.DOCUMENT_STUDY_EXECUTION_ENABLED='true'
+  const id='55555555-5555-4555-8555-555555555555'
+  const candidate='d'.repeat(32),nonce='e'.repeat(64),digest='f'.repeat(64)
+  const now=Date.now()
+  f.sql.prepare("INSERT INTO household_approval_requests ("+
+   "request_id,household_id,requester_user_id,source_app,target_app,operation,"+
+   "resource_type,resource_id,payload_sha256,idempotency_key,status,"+
+   "created_at,updated_at,expires_at) VALUES (?,? ,?,"+
+   "'jp-document-assistant','it-study-platform','document.sync.study',"+
+   "'document_sync_candidate',?,? ,?,'pending',?,?,?)")
+   .run(id,'primary','member',candidate,digest,'jpda:sync:'+candidate,
+    now-10000,now-10000,now+120000)
+  f.sql.prepare("UPDATE household_approval_requests SET status='approved',"+
+   "approver_user_id='owner',reviewed_at=?,updated_at=? WHERE request_id=?")
+   .run(now-3000,now-3000,id)
+  f.sql.prepare("UPDATE household_approval_requests SET status='executing',"+
+   "execution_nonce_hash=?,execution_lease_until=?,updated_at=? WHERE request_id=?")
+   .run(createHash('sha256').update(nonce).digest('hex'),now+90000,now,id)
+  const proof={request_id:id,resource_id:candidate,household_id:'primary',
+   requester_user_id:'member',payload_sha256:digest,
+   idempotency_key:'jpda:sync:'+candidate,expected_version:null,
+   purpose:'execute',execution_nonce:nonce}
+  async function verify(payload=proof,client='it-study-platform',secret='c'.repeat(64),
+   origin=false){
+   const raw=JSON.stringify(payload),stamp=String(Date.now())
+   const domain=client==='jp-document-assistant'?'jpda:execution-proof':
+    client==='it-study-platform'?'it-study-platform:execution-proof':client
+   const signature=createHmac('sha256',Buffer.from(secret,'hex'))
+    .update(domain+'\\n'+stamp+'\\n'+raw).digest('hex')
+   const response=await approvalVerificationRoute(new Request(
+    'https://homeflow.example.test/api/internal/approvals/verify',{
+     method:'POST',headers:{'content-type':'application/json',
+      'x-approval-client':client,'x-approval-timestamp':stamp,
+      'x-approval-signature':signature,...(origin?{origin:'https://homeflow.example.test'}:{})},
+     body:raw}),f.env)
+   return {status:response.status,body:await response.json()}
+  }
+  const good=await verify()
+  assert.equal(good.status,200,JSON.stringify(good.body))
+  assert.equal(good.body.source_app,'jp-document-assistant')
+  assert.equal(good.body.target_app,'it-study-platform')
+  assert.equal(good.body.operation,'document.sync.study')
+  assert.equal(good.body.resource_type,'document_sync_candidate')
+  assert.equal(good.body.approver_user_id,'owner')
+  assert.equal(good.body.applied,false)
+  for(const bad of [
+   [proof,'jp-document-assistant','b'.repeat(64)],
+   [proof,'kakeibo','a'.repeat(64)],
+   [proof,'it-study-platform','b'.repeat(64)],
+   [{...proof,execution_nonce:'0'.repeat(64)}],
+   [{...proof,requester_user_id:'owner'}],
+   [{...proof,resource_id:'0'.repeat(32)}],
+   [{...proof,purpose:undefined,execution_nonce:undefined}],
+  ])assert.notEqual((await verify(...bad)).status,200,JSON.stringify(bad))
+  assert.equal((await verify(proof,'it-study-platform','c'.repeat(64),true)).status,403)
+  f.env.DOCUMENT_STUDY_EXECUTION_ENABLED='false'
+  assert.equal((await verify()).status,503)
+  f.env.DOCUMENT_STUDY_EXECUTION_ENABLED='true'
+  f.env.STUDY_APPROVAL_VERIFICATION_SECRET=undefined
+  assert.equal((await verify()).status,503)
+  f.env.STUDY_APPROVAL_VERIFICATION_SECRET='c'.repeat(64)
+  f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='member'").run()
+  assert.equal((await verify()).status,409)
+  f.sql.prepare("UPDATE users SET disabled_at=NULL WHERE id='member'").run()
+  f.sql.prepare("UPDATE household_approval_requests SET execution_lease_until=? WHERE request_id=?")
+   .run(Date.now()-1,id)
+  assert.equal((await verify()).status,409)
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events").get().n,0)
  }finally{f.sql.close()}
 })
