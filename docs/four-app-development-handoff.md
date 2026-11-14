@@ -1054,3 +1054,12 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 已对原 [家計簿 Draft #309](https://github.com/PTamako/kakebo_jp/pull/309) 的精确最终 HEAD **7fd971afa27efc75de0134cf3f2478f6904108e7** 重新拉取 PR 和 Actions：PR 仍 open / Draft；[Validate #43540014025](https://github.com/PTamako/kakebo_jp/actions/runs/43540014025) **completed/success**，且 [Mobile WebKit Smoke #43540014007](https://github.com/PTamako/kakebo_jp/actions/runs/43540014007) **completed/success**。不是仅沿用早期分支 CI；此最终 SHA 包含：§31 提案全路径原 actor 栅栏、§32 只读核实 HomeFlow 已批准但尚未入账的成员 UI、§33 owner-only 旧支付来源 stable ID 差异核对 API 与 UI，包含真实 SQLite/VM/静态回归。已知中间提交导致旧 WebKit 运行 cancelled，不影响此精确最终 HEAD 的双绿结论。
 - 同时核查本次 HomeFlow 唯一交接 docs-only main SHA bd10b767be5581a971777a8d92e4f8ba83889e4c 的 [Validate HomeFlow #43540129842](https://github.com/PTamako/homeflow/actions/runs/43540129842) **completed/success**；未触发生产 Deploy 工作流。交接继续单独更新，不合并任何功能 Draft。
 - **自动化验收不能替代** 两名真实用户 iPhone PWA、Safari 首次授权/退号/断网切号、真实 OAuth 和原生产账簿数据的无损迁移校验。Stage C 金融 stable ID 仅已完成核对差异工具，历史旧流水并未自动回填；Stage D 家庭审核证明不能代替实际财务目标执行器及 applied 回报。所有生产 Cloudflare D1/R2/Workers/Pages/Secrets/flag 原样，未合并或部署功能代码，也未重建 Preview。A 用户已做的 Mac 本地备份恢复 PASS 不改变 F 生产上线授权限制。
+
+
+## 35. 2026-11-14 文书助手 Draft #97：迟到审批预览的双用户/双文书身份隔离（代码与回归已提交）
+
+- 继续原 [文书助手 Draft #97](https://github.com/PTamako/jp-document-assistant/pull/97)、branch `feature/homeflow-identity-link-safety-20261113`，不新开 PR。检查 `web/src/App.vue` 发现旧 `async prepareCandidate(item)` 直接在等待 `/api/candidates/{id}/preview` 后把私人候选、HomeFlow 审批相关字段、家庭成员候选名单和目标支付来源写入全局 reactive 状态、强行打开 `sheet='candidate'`；虽然底层 `api()` 原本已核对 `accountEpoch`，但同账号切换文书/候选、弹出其他表单或上一个 PWA 账号异常回执仍有陈旧 UI 状态风险。
+- 实际修复：`web/src/App.vue` 增 `candidatePreviewSerial`；每次准备预览捕获 **原 accountEpoch、detailOpenSerial、documentId、candidateId、原 sheet 状态及预览代次**，网络回执后先确认全部相同、该候选仍属于当前文书列表才开始设置任何字段/打开弹窗；第二次点击另一个候选会让第一个迟到回执失效；退出/身份更换 `clearPrivateWorkspace()` 同步失效全部旧预览；旧请求失败仅在当前文书/用户还匹配时显示错误。代码 Commit `226bc189a76253916f1d347a6dbc12e7712733a9`。
+- 新 `tests/document-member-approval-preview-epoch.test.js` 用 Node VM **实际执行真实 Vue 函数体** 和人为延迟 Promise，覆盖「候选 A 晚于候选 B 回来不可覆盖 B」「文书 A→B 后旧审批表单不可重开」「账号登出并收到旧异常不可向新账号弹出」及源码栅栏检查。测试 Commit `c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d`。
+- 此模块属 **Stage E UI 私有内容防串号**，不涉及新业务目标写入，也不代表 Stage D 文书→家計簿/家庭任务/知学 **真正经 HomeFlow 可信审批后目标执行器** 已存在。HomeFlow 当前 execute 仅支持受限现金入账，不要将文书审批状态 `approved` 伪作 `applied`。
+- 原 #97 代码 HEAD `c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d` 的 GitHub Pre-merge CI **尚需精确核验**；成功前本模块不能标为自动化全绿，失败需按具体日志修复。全部功能 PR 保持 open/Draft，不运行生产迁移、不触发 Workers/Pages/D1/R2 部署、不启用功能开关、不创建 Preview；A 用户 Mac 本地备份恢复 PASS，不代替 F 生产发布授权。
