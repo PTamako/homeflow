@@ -15,7 +15,7 @@ import {approvedPointsRoute} from '../.contract-kakeibo/functions/api/internal/p
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
  member='22222222-2222-4222-8222-222222222222',
- points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32),receive='e'.repeat(32),cardPurchase='11111111-1111-4111-8111-111111111114';
+ points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32),receive='e'.repeat(32),securities='6'.repeat(32),cardPurchase='11111111-1111-4111-8111-111111111114';
 const keys={pending:'1'.repeat(64),submit:'2'.repeat(64),
  execution:'3'.repeat(64),proof:'4'.repeat(64)};
 const stmt=(s,q,...a)=>s.prepare(q).run(...a),get=(s,q,...a)=>s.prepare(q).get(...a);
@@ -60,10 +60,11 @@ function financeSchema(s){
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0036_points_card_offset.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0037_points_transfer_exchange.sql',import.meta.url),'utf8'));
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0038_points_earn_expiry_reversals.sql',import.meta.url),'utf8'));
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0040_points_sbi_lots.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
- for(const [a,kind] of [[points,'points'],[card,'credit_card'],[prepaid,'prepaid'],[receive,'points']])
+ for(const [a,kind] of [[points,'points'],[card,'credit_card'],[prepaid,'prepaid'],[receive,'points'],[securities,'securities']])
   stmt(s,'INSERT INTO family_financial_accounts(account_id,household_id,owner_user_id,label,account_kind,origin,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?)',
    a,hh,member,kind,kind,'member_created',member,member);
  stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(1,'2026-11-14','',900,'食費','Shop','','','expense',NULL,0,NULL,'purchase-1',?, ?,NULL)",
@@ -128,6 +129,10 @@ async function fixture(){
   ...(['transfer_out','exchange_out'].includes(operation)?{target_account_id:receive,
    target_version:1,target_units:100,target_rate_numerator:1,target_rate_denominator:1}:{}),
   ...(operation==='reversal'?{original_request_id:'11111111-1111-4111-8111-111111111111'}:{}),
+  ...(operation==='redeem_asset'?{target_account_id:securities,target_version:1,
+   sbi_fund_code:'JP123456',sbi_account_type:'growth',sbi_confirmed_units:1000,
+   broker_trade_reference:'SBI-TRD-'+seq+'-CONFIRMED',
+   broker_execution_confirmed:true}:{}),
   ...overrides
  });
  const request=async body=>{
@@ -434,5 +439,62 @@ test('two isolated D1s: reversal result lost after target COMMIT recovers exactl
   assert.equal((await f.execute(reverse)).status,200);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_journal WHERE reversed_request_id=?',original).n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+ }finally{f.close()}
+});
+
+test('two isolated D1s: HomeFlow-approved SBI point buy records exact fund units/cost with one points debit, no cash',async()=>{
+ const f=await fixture();try{
+  const originalEntries=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const earn=await f.request(f.intent('earn_campaign',{units:550,yen_value:550}));
+  assert.equal((await f.review(earn)).status,200);
+  assert.equal((await f.execute(earn)).status,200);
+  const buy=await f.request(f.intent('redeem_asset',{
+   units:240,yen_value:240,sbi_confirmed_units:1467}));
+  assert.equal((await f.review(buy)).status,200);
+  const done=await f.execute(buy);
+  assert.equal(done.status,200,JSON.stringify(done));
+  const p=get(f.k.sql,'SELECT * FROM family_sbi_point_lots WHERE homeflow_request_id=?',buy);
+  assert.ok(p);
+  assert.equal(p.owner_user_id,member);
+  assert.equal(p.points_account_id,points);
+  assert.equal(p.securities_account_id,securities);
+  assert.equal(p.fund_code,'JP123456');
+  assert.equal(p.account_type,'growth');
+  assert.equal(p.confirmed_units,1467);
+  assert.equal(p.acquisition_cost_jpy,240);
+  assert.equal(p.total_units_after,1467);
+  assert.equal(p.total_cost_after_jpy,240);
+  assert.equal(p.evidence_kind,'user_attested_broker_execution');
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,310);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,originalEntries);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income'").n,0);
+  assert.equal(get(f.h.sql,"SELECT COUNT(*) n FROM household_approval_requests WHERE status='applied'").n,2);
+  assert.equal((await f.execute(buy)).data.replayed,true);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_point_lots').n,1);
+ }finally{f.close()}
+});
+test('two isolated D1s: lost SBI point-lot receipt recovers with SAME original owner approval',async()=>{
+ const f=await fixture();try{
+  const earn=await f.request(f.intent('earn_campaign',{units:300,yen_value:300}));
+  assert.equal((await f.review(earn)).status,200);
+  assert.equal((await f.execute(earn)).status,200);
+  const buy=await f.request(f.intent('redeem_asset',
+   {units:150,yen_value:150,sbi_confirmed_units:987}));
+  assert.equal((await f.review(buy)).status,200);
+  const service=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const response=await service.fetch(req);
+   if(response.status===200)throw Error('broker lot already recorded; lost transport reply');
+   return response;
+  }};
+  assert.notEqual((await f.execute(buy)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_point_lots').n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=service;
+  const resumed=await f.execute(buy);
+  assert.equal(resumed.status,200,JSON.stringify(resumed));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_point_lots').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,150);
  }finally{f.close()}
 });
