@@ -940,3 +940,5 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `main` 本次交接仅修改 docs；已核对 HomeFlow deploy.yml 使用 docs-only paths-ignore。未对生产 D1/R2、Workers 或 Pages 做任何操作。仍需完成 §20.3 核心功能与真实跨应用测试。
 
 - **GitHub CI 最终结果更新**：HomeFlow #306 整合 HEAD `79efaddd4fe741f5f09cb5b68bc24bd2a707334d` 的 [Validate #43533342466](https://github.com/PTamako/homeflow/actions/runs/43533342466) 已 completed/success，覆盖 GitHub Node 22 的测试、构建、迁移检查与 Worker dry-run；PR 仍为 Draft，未上线。
+
+- **知学最终 CI 更新**：[Validate #43533113361](https://github.com/PTamako/it-study-platform/actions/runs/43533113361) 精确 HEAD `39ffac408eecefdc4f2a4bdbd0186cfa566bcde1` 的两个任务均 completed/success；快速任务 15 秒，完整任务 6 分 52 秒。旧完整任务 6 分 51 秒，新完整任务没有实质提速，改善的是身份/类型错误反馈时间。新完整任务中例句生成 248 秒、本地 D1 迁移 109 秒，完整总耗时优化与缓存仍需实施及复验。分支保护权限问题仍未解决。
