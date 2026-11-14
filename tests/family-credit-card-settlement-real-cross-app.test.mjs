@@ -60,6 +60,9 @@ function financialSchema(s){
   const x=readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8');
   s.exec(x);s.exec(x);
  }
+ for(const name of ['0033_member_prepaid_actions.sql','0034_family_points_foundation.sql',
+  '0035_points_prepaid_atomic.sql','0036_points_card_offset.sql'])
+  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8'));
  for(const [user,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    user,hh,role,role,'active',Date.now());

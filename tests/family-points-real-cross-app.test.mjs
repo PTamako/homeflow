@@ -15,7 +15,7 @@ import {approvedPointsRoute} from '../.contract-kakeibo/functions/api/internal/p
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
  member='22222222-2222-4222-8222-222222222222',
- points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32);
+ points='a'.repeat(32),card='b'.repeat(32),prepaid='c'.repeat(32),cardPurchase='11111111-1111-4111-8111-111111111114';
 const keys={pending:'1'.repeat(64),submit:'2'.repeat(64),
  execution:'3'.repeat(64),proof:'4'.repeat(64)};
 const stmt=(s,q,...a)=>s.prepare(q).run(...a),get=(s,q,...a)=>s.prepare(q).get(...a);
@@ -51,10 +51,13 @@ function financeSchema(s){
   'category TEXT,merchant TEXT,note TEXT,raw TEXT,type TEXT,transfer_target TEXT,'+
   'transfer_applied INTEGER,transfer_date TEXT,client_request_id TEXT UNIQUE,'+
   'payment_source TEXT,family_account_id TEXT,family_transfer_target_account_id TEXT);');
- s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0033_member_prepaid_actions.sql',import.meta.url),'utf8'));
+ for(const name of ['0031_family_card_purchase_execution.sql','0032_family_card_settlement_foundation.sql',
+  '0033_member_prepaid_actions.sql'])
+  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8'));
  const migration=readFileSync(new URL('../.contract-kakeibo/migrations/0034_family_points_foundation.sql',import.meta.url),'utf8');
  s.exec(migration);s.exec(migration);
  s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0035_points_prepaid_atomic.sql',import.meta.url),'utf8'));
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0036_points_card_offset.sql',import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    u,hh,role,role,'active',Date.now());
@@ -65,6 +68,13 @@ function financeSchema(s){
   'cc:'+card,card);
  stmt(s,"INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,transfer_target,transfer_applied,transfer_date,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) VALUES(2,'2026-11-14','',50,'雑費','Point shop','','','expense',NULL,0,NULL,'points-purchase',?, ?,NULL)",
   'points:'+points,points);
+ const cardIntent='f'.repeat(32),now=Date.now();
+ stmt(s,"INSERT INTO family_card_purchase_intents(request_id,household_id,requester_user_id,account_id,account_version,payload_sha256,payload_cipher,payload_iv,idempotency_hash,status,homeflow_approval_id,created_at,expires_at,submitted_at) VALUES(?,?,?,?,?,?,?,?,?,'submitted',?,?,?,?)",
+  cardIntent,hh,member,card,1,'f'.repeat(64),'encrypted','iv','e'.repeat(64),
+  cardPurchase,now-1000,now+86400000,now);
+ stmt(s,'INSERT INTO family_card_purchase_applied(homeflow_request_id,proposal_id,household_id,requester_user_id,approver_user_id,account_id,account_version,payload_sha256,client_request_id,entry_id,amount_jpy,purchase_date,bill_month,applied_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+  cardPurchase,cardIntent,hh,member,owner,card,1,'f'.repeat(64),
+  'purchase-1',1,900,'2026-11-14','2026-11',now);
 }
 async function fixture(){
  const h=db(),k=db();homeSchema(h.sql);financeSchema(k.sql);
@@ -111,6 +121,8 @@ async function fixture(){
    operation==='redeem_purchase'?2:null,
   expense_net_confirmed:operation==='redeem_discount',
   ...(operation==='transfer_prepaid'?{target_account_id:prepaid,target_version:1}:{}),
+  ...(operation==='offset_card'?{target_account_id:card,target_version:1,
+   target_purchase_request_id:cardPurchase}:{}),
   ...overrides
  });
  const request=async body=>{
@@ -272,5 +284,46 @@ test('two isolated D1s: another user owned prepaid ID is rejected before approva
   assert.equal(r.data.code,'POINTS_PREPAID_TARGET_CHANGED');
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_intents').n,0);
   assert.equal(get(f.h.sql,'SELECT COUNT(*) n FROM household_approval_requests').n,0);
+ }finally{f.close()}
+});
+
+test('two independent D1s: approved card payable offset debits points, reduces existing bill and creates no second expense',async()=>{
+ const f=await fixture();try{
+  const before=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const funding=await f.request(f.intent('earn_campaign',{units:700,yen_value:700}));
+  assert.equal((await f.review(funding)).status,200);
+  assert.equal((await f.execute(funding)).status,200);
+  const offset=await f.request(f.intent('offset_card',{units:350,yen_value:350}));
+  assert.equal((await f.review(offset)).status,200);
+  const applied=await f.execute(offset);
+  assert.equal(applied.status,200,JSON.stringify(applied));
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',offset).status,'applied');
+  assert.equal(get(f.k.sql,'SELECT SUM(amount_jpy) n FROM family_points_card_offsets').n,350);
+  assert.equal(get(f.k.sql,'SELECT remaining_after_jpy n FROM family_points_card_offsets').n,550);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,350);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,before);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income'").n,0);
+  assert.equal((await f.execute(offset)).data.replayed,true);
+ }finally{f.close()}
+});
+test('two independent D1s: card offset commit with lost response reconciles original approval ID only',async()=>{
+ const f=await fixture();try{
+  const funding=await f.request(f.intent('earn_campaign',{units:450,yen_value:450}));
+  assert.equal((await f.review(funding)).status,200);
+  assert.equal((await f.execute(funding)).status,200);
+  const offset=await f.request(f.intent('offset_card',{units:300,yen_value:300}));
+  assert.equal((await f.review(offset)).status,200);
+  const original=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const r=await original.fetch(req);
+   if(r.status===200)throw Error('lost target receipt');
+   return r;
+  }};
+  assert.notEqual((await f.execute(offset)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offsets').n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=original;
+  assert.equal((await f.execute(offset)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offsets').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,2);
  }finally{f.close()}
 });
