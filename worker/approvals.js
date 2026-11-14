@@ -5,6 +5,7 @@ import {json,nowMs,sameOrigin,readBody} from './security.js'
 const ALLOWED_OPS={
   'finance.entry.create':'kakebo',
   'finance.credit_card.purchase':'kakebo',
+  'finance.credit_card.settlement':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
