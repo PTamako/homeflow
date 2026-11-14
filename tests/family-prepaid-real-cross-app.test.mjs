@@ -61,7 +61,7 @@ function financeSchema(s){
   '0036_points_card_offset.sql','0037_points_transfer_exchange.sql',
   '0038_points_earn_expiry_reversals.sql','0039_points_legacy_provenance.sql',
   '0040_points_sbi_lots.sql','0041_points_transfer_atomic_refund.sql',
-  '0042_points_prepaid_refund.sql']){
+  '0042_points_prepaid_refund.sql','0043_points_card_offset_refund.sql']){
   const sql=readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8');
   s.exec(sql);
   if(name==='0033_member_prepaid_actions.sql')s.exec(sql);
