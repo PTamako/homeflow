@@ -67,7 +67,7 @@ function financeSchema(sql){
    '(account_id,household_id,owner_user_id,label,account_kind,origin,opening_balance,created_by_user_id,updated_by_user_id) '+
    'VALUES(?,?,?,?,?,?,?,?,?)',a,hh,member,kind,kind,'member_created',opening,member,member);
 }
-async function fixture(){
+async function fixture(kind='tsumitate'){
  const h=data(),k=data();homeSchema(h.sql);financeSchema(k.sql);
  const home={APP_ENV:'production',DB:h.db,APPROVALS_ENABLED:'true',
   APPROVAL_EXECUTION_ENABLED:'true',APPROVAL_VERIFICATION_ENABLED:'true',
@@ -101,7 +101,7 @@ async function fixture(){
  const request=async()=>{
   const input={expected_user_id:member,idempotency_key:'real-cross-sbi-cash-20261115',
    bank_account_id:bank,bank_version:1,securities_account_id:securities,
-   securities_version:1,kind:'tsumitate',debit_date:'2026-11-12',trade_date:'2026-11-13',
+   securities_version:1,kind,debit_date:'2026-11-12',trade_date:'2026-11-13',
    effective_date:'2026-11-14',amount_jpy:1500,
    bank_reference:'confirmed-bank-statement-ref-20261112',
    broker_trade_reference:'confirmed-broker-execution-20261113',
@@ -160,5 +160,18 @@ test('lost target acknowledgement does not mint a second lot or debit; same appr
   const recovered=await f.execute(id);assert.equal(recovered.status,200,JSON.stringify(recovered));
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_lots').n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,1);
+ }finally{f.close();}
+});
+
+test('additional buy requires the same real owner approval and never becomes a recurring 積立',async()=>{
+ const f=await fixture('additional');try{
+  const id=await f.request();
+  assert.equal((await f.review(id)).status,200);
+  const result=await f.execute(id);
+  assert.equal(result.status,200,JSON.stringify(result));
+  assert.equal(get(f.k.sql,'SELECT kind FROM family_sbi_cash_lots').kind,'additional');
+  assert.equal(get(f.k.sql,"SELECT note FROM entries WHERE type='transfer'").note,'追加買付');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_lots').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_point_lots').n,0);
  }finally{f.close();}
 });
