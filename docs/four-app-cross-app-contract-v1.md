@@ -22,11 +22,11 @@
 | 家計簿成员现金新增 | 家計簿 `POST /api/family-finance/proposals` → `POST .../proposals/{id}/submit` → HomeFlow 后端 `POST /api/internal/approvals/submit` | `X-Approval-Client:kakeibo`，HMAC 原文域分离 `kakeibo\\n{ms_timestamp}\\n{raw_json}`；仅服务间无 Cookie/Origin，四字段 `household_id,requester_user_id,resource_id(32hex),payload_sha256(hex64)`；固定 `finance.entry.create`、`finance_entry`、幂等 `kakeibo:finance:{resource_id}` | 提交 / 审批已实现 Draft |
 | 现金目标写入 | HomeFlow owner `POST /api/approvals/{UUID}/execute` → Service Binding `POST /api/internal/approved-actions/execute`（家計簿） | HomeFlow `APPROVALS_ENABLED+APPROVAL_EXECUTION_ENABLED+APPROVAL_VERIFICATION_ENABLED`，Kakeibo 执行 flag 和原始 nonce；执行 body `request_id,resource_id,household_id,requester_user_id,payload_sha256,execution_nonce`，HMAC `homeflow\\n{ms_timestamp}\\n{raw_json}`；执行器仅本人新建的 cash 账户、income/expense，目标 journal 唯一防重复 | 签名真实写入与不确定回执重试已实现 Draft |
 | 文书同步审批申请 | 文书助手 `POST /api/candidates/{id}/request-approval` → HomeFlow 后端 `POST /api/internal/approvals/document-submit` | `X-Approval-Client:jp-document-assistant`，HMAC `jp-document-assistant\\n{ms_timestamp}\\n{raw_json}`，字段 `household_id,requester_user_id,resource_id(32hex),payload_sha256(hex64),target_app`；固定 `document_sync_candidate`，target 到操作映射 `kakebo→document.sync.finance`、`homeflow→document.sync.homeflow`、`it-study-platform→document.sync.study` | 仅申请 / 拒绝 / 只读状态校验 Draft |
-| 文书审批状态 | HomeFlow `POST /api/internal/approvals/document-status` | 后端签名域 `jp-document-assistant:status\\n{ms_timestamp}\\n{raw_json}`；固定 `approval_id,household_id,requester_user_id,resource_id,payload_sha256,target_app`；无目标执行证明，始终 `applied:false,target_changed:false` | 只读确认 Draft |
+| 文书审批状态 | HomeFlow `POST /api/internal/approvals/document-status` | HMAC 域 `jp-document-assistant:status`；固定 `approval_id,household_id,requester_user_id,resource_id,payload_sha256,target_app`。金融支持 `pending/approved/executing/applied/failed_retryable`；只有实际目标回执以及 HomeFlow 已持久化正整数 remote_id、executed_at、execution_attempts 后才可 `applied:true,target_changed:true`。非金融文书目标仍不支持 applied | 金融 Draft 已接线，正式环境未启用 |
 
 旧 `JPDA_BRIDGE_SECRET` 及旧单用户直连是**过渡通道**，不等于新 SSO 审批证明；新双用户不能仅凭旧桥接 allowlist / 客户端 `approved:true` 写目标。新的协议不能复用旧弱绑定来冒充 member 审批。
 
-## D. 后续目标执行器统一要求（尚未实现，禁止界面假显示）
+## D. 执行器完整验收要求（依 Draft/CI 确认实际状态，禁止界面假显示）
 
 | 固定操作 | 目标及预期身份范围 | 完成前必须提交的验收 |
 | --- | --- | --- |
@@ -63,3 +63,19 @@
 - `document.sync.study` 后续只允许在验证 HomeFlow 实时成员及执行租约、文书源版本与撤权后调用目标内部持久化；任何浏览器字段或单纯的快照哈希都不构成授权。知学保存原审批 ID、文书候选 ID、家庭及申请人 ID、摘要、目标记录和实际效果，审批与候选均不可重复使用；目标业务写入、持久回执及必要用户审计必须同 D1 事务。
 - 句子按申请人 user ID 写入本人句子卡，来源标记 document；两人相同句子互相隔离。词汇按本人 user ID 写入；已存在的私人词条不得覆盖注释，已删除条目不得未经用户同意重新启用。相同审批重试只返回原回执，来源身份或摘要冲突拒绝。
 - 此节仅固定目标存储语义，不定义或开启任何服务端调用路由，也不证明文书源冻结、HomeFlow nonce 校验、目标传输或真实跨应用执行已经实现。任何接线前必须补齐这些验证、源撤权竞态、同 ID 失败恢复和端到端测试；现有 flags 保持默认关闭。
+
+
+## I. 兼容补充 v1.0.3：文书现金执行跨服务 wire（§65 Draft）
+
+此节修正 §C 中旧版「文书审批只返回 applied:false」的描述。以下为已实现但未部署的现金收入/支出协议；不扩展到 document.sync.homeflow、document.sync.study、信用卡、储值、积分、SBI 或其他非现金操作。所有 HMAC 输入固定为 domain + 换行 + 13 位毫秒时间戳 + 换行 + 未修改的原始 JSON 字节。
+
+- HomeFlow → 文书助手：POST /api/internal/document-actions/execute，签名域 homeflow:document-execute；只读 /receipt 使用 homeflow:document-receipt。X-Approval-Client=homeflow。execute 精确字段 request_id,resource_id,household_id,requester_user_id,payload_sha256,execution_nonce；receipt 只有五个核心字段。使用独立 DOCUMENT_EXECUTION_SECRET 与 DOCUMENT_EXECUTION_SERVICE Binding。
+- 文书助手 → HomeFlow：POST /api/internal/approvals/verify，签名域 jpda:execution-proof，X-Approval-Client=jp-document-assistant。上述六字段 + idempotency_key=jpda:sync:{candidate_id},expected_version:null,purpose:execute；必须复核执行中的租约 nonce、成员、审批人、身份、原始摘要。
+- 文书助手 → 家計簿：POST /api/internal/document-finance/execute，签名域 jpda:finance-execute；只读 /receipt 使用 jpda:finance-receipt。X-Approval-Client=jp-document-assistant。execute 固定五个核心字段、account_id(32hex),account_version,type,amount_jpy,date,merchant,category,note,payment_source,operation_sha256,execution_nonce；receipt 仅五核心字段。名称不能代替稳定账户 ID。
+- 家計簿 → HomeFlow：POST /api/internal/approvals/verify，签名域 kakeibo，X-Approval-Client=kakeibo；目标独立再次核对 request_id、household、requester、审批摘要、nonce、幂等键、执行中状态及当前人类角色。
+- 家計簿 → 文书助手：POST /api/internal/document-actions/source-check，签名域 kakeibo:document-source-check，X-Approval-Client=kakeibo。五核心字段 + operation_sha256；源端重新复核 AES-GCM 快照、文书版本、候选版本、当前身份/撤权和持久 reservation，不向 HomeFlow 传文书正文。
+- 文书助手 → HomeFlow 状态回读：POST /api/internal/approvals/document-status，签名域 jp-document-assistant:status；finance 方可读 executing、failed_retryable、applied；applied 必须有持久目标回执证据。其他文书操作继续 fail closed。
+
+家計簿目标 D1 必须把 entries、不可变 document_finance_applied_actions journal 和真实 approver 审计同事务提交。回执包含 approval_id,candidate_id,household_id,requester_user_id,payload_sha256,entry_id,applied_at,approver_user_id,operation_sha256,already_applied。文书源 reservation 持久记录目标执行回执后，HomeFlow 方可根据精确回执标记 applied；文书 UI 还需对照源端结果才能显示最终成功。同一 request_id 的重复执行先查目标 journal，不能重复记账；过期未明结果只查 /receipt，不得执行新写入。
+
+严格保持全部新增开关默认 OFF：HomeFlow APPROVALS_ENABLED / APPROVAL_EXECUTION_ENABLED / APPROVAL_VERIFICATION_ENABLED / DOCUMENT_EXECUTION_ENABLED，文书 DOCUMENT_EXECUTION_ENABLED，家計簿 KAKEIBO_FAMILY_FINANCE_ENABLED / KAKEIBO_DOCUMENT_FINANCE_EXECUTION_ENABLED / KAKEIBO_APPROVAL_PROOF_ENABLED。代码校验 APP_ENV=production 不构成用户的正式部署授权；在本阶段仅隔离测试环境可以注入非真实测试密钥、模拟 Binding 与 SQLite。必须以实际最新仓库 HEAD、精确 pin 的对端 SHA 和完整 CI 为准。
