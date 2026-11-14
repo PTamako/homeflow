@@ -638,3 +638,58 @@ test('two isolated D1s: prepaid refund rejected when pre-existing credit is no l
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_prepaid_refunds').n,1);
  }finally{f.close()}
 });
+
+test('two isolated D1s: owner-approved card-offset reversal returns points and restores purchase liability exactly once',async()=>{
+ const f=await fixture();try{
+  const count=get(f.k.sql,'SELECT COUNT(*) n FROM entries').n;
+  const earned=await f.request(f.intent('earn_campaign',{units:500,yen_value:500}));
+  assert.equal((await f.review(earned)).status,200);
+  assert.equal((await f.execute(earned)).status,200);
+  const offset=await f.request(f.intent('offset_card',{units:300,yen_value:300}));
+  assert.equal((await f.review(offset)).status,200);
+  assert.equal((await f.execute(offset)).status,200);
+  assert.equal(get(f.k.sql,'SELECT remaining_after_jpy n FROM family_points_card_offsets WHERE homeflow_request_id=?',offset).n,600);
+  const refund=await f.request(f.intent('reversal',{units:300,yen_value:300,original_request_id:offset}));
+  assert.equal((await f.review(refund)).status,200);
+  const done=await f.execute(refund);
+  assert.equal(done.status,200,JSON.stringify(done));
+  const audit=get(f.k.sql,'SELECT * FROM family_points_card_offset_refunds WHERE homeflow_request_id=?',refund);
+  assert.equal(audit.original_request_id,offset);
+  assert.equal(audit.card_account_id,card);
+  assert.equal(audit.purchase_request_id,cardPurchase);
+  assert.equal(audit.restored_jpy,300);
+  assert.equal(audit.liability_after_jpy,900);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,500);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offsets').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offset_refunds').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,4);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,count);
+  assert.equal((await f.execute(refund)).data.replayed,true);
+ }finally{f.close()}
+});
+test('two isolated D1s: losing the card refund result does not recredit points or double-restore liability',async()=>{
+ const f=await fixture();try{
+  const earned=await f.request(f.intent('earn_campaign',{units:400,yen_value:400}));
+  assert.equal((await f.review(earned)).status,200);
+  assert.equal((await f.execute(earned)).status,200);
+  const offset=await f.request(f.intent('offset_card',{units:150,yen_value:150}));
+  assert.equal((await f.review(offset)).status,200);
+  assert.equal((await f.execute(offset)).status,200);
+  const refund=await f.request(f.intent('reversal',{units:150,yen_value:150,original_request_id:offset}));
+  assert.equal((await f.review(refund)).status,200);
+  const original=f.home.KAKEIBO_POINTS_EXECUTION_SERVICE;
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE={async fetch(req){
+   const resp=await original.fetch(req);
+   if(resp.status===200)throw Error('lost signed card refund response');
+   return resp;
+  }};
+  assert.notEqual((await f.execute(refund)).status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offset_refunds').n,1);
+  f.home.KAKEIBO_POINTS_EXECUTION_SERVICE=original;
+  const recovered=await f.execute(refund);
+  assert.equal(recovered.status,200,JSON.stringify(recovered));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_card_offset_refunds').n,1);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_units) n FROM family_points_journal').n,400);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_points_actor_audit').n,4);
+ }finally{f.close()}
+});
