@@ -1526,3 +1526,23 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 3. **B–E 安全与 UI**：跨独立 D1 执行窗口撤权竞态、版本变化与过期 source reservation 回收、不同操作的失败终态、真正浏览器级 PWA OAuth/PKCE 回跳和切号网络晚到响应、push 通知、旧文书待办匹配与 Study 所有旧学习数据隔离、迁移历史外键/触发器/金额一致性和最终 F 阶段两台 iPhone 真正 Service Binding 测试仍为未完成。真实生产 Workflows、Workers、D1、R2、Secrets 都不能触碰。
 4. 下一位执行时必须从 HomeFlow #306 最新 HEAD §73～§74 而不是单凭 main 的旧记录、逐仓最新 PR/CI 复核后继续；每个完整业务模块先针对性测试再完整 CI，保持所有五个功能 PR Draft，不操作生产或 Preview，并在新模块完成时 append-only 同步 main 的**仅文档**交接，绝不合功能代码。
 
+
+
+## 75. 2026-11-14 P0-4 积分账户第一增量：积分数量/估值与原有历史兼容的只读账务基础（Draft；非完整积分执行闭环）
+
+### 实际远程核验与代码提交
+
+- 本轮直接读取 Google Drive 正式设计书 v1.1、HomeFlow #306 交接文件 §65～§74、冻结契约 §I～§O 和五个现有 Draft PR 的实际 HEAD 与 GitHub Actions。接手时未出现 §75；五 PR 全为 Draft/Open。#306 以 HomeFlow #305 身份功能分支为 base，绝非 main。HomeFlow #305 `b8b877388639b1a2b3ac19dbca58ea8072b8a037`、#306 `0d155f2661a8f99712fb4b79a431a843edcd447b`（本段文档写入前）、知学 #179 `496b06a021cdd1c822f49774b31a26f31bca9895`、文书助手 #97 `ade2dba88f95a183a6bf31f73309a9792a6daa5e` 均未改功能代码；旧五仓 CI 全部 success。
+- 深查家計簿旧积分：`functions/api/[[path]].js` 的 `ポイント還元` income、`pointTopUpSql`、`pointSbiTransferSql`、`credit:` 卡账抵扣，以及旧 `payment_sources.stat_group='points'`、`prepaid-assets.js` 与 `investment-portfolio.js`。这些历史记录已经各自影响家庭统计/资产；不能将同一历史收入作为新积分再铸币，也不能仅按支付方式展示名称匹配新账户。
+- 家計簿原 Draft #309 新增未执行 migration `migrations/0034_family_points_foundation.sql`：家族成员自建 stable points account_id 的 AES-GCM 密文 intent/expected_version/idempotency、`family_points_journal` 独立积分数量 delta、准确 JPY 价值和有理数兑换比例、余额非负/审计/原 request_id 主键、活动奖励/购物积分/购物抵扣/积分购买/充值储值卡/卡账抵扣/投资/转移/失效/反向凭证等独立 operation 约束；自动 actor 审计与不可变 UPDATE/DELETE triggers；`family_points_legacy_links` 仅记录审查过的历史证据，**不会凭空新增旧积分余额**。
+- 新 `functions/api/family-finance/point-accounting.js` 为纯会计语义函数：积分入账不算现金收入、积分支付不自动再加一笔消费，储值/信用卡/SBI 对手方向与普通现金分开，积分兑换数量与日元估值不得混淆；有精确 rate/counterparty 验证。**它不是生产资金执行器**。
+- 新 `functions/api/family-finance/points-balance-projection.js` 与 `assets.js`/原 `src/FamilyFinanceAssetOwnership.vue`：沿用现有家庭共享资产页面，按两位真实 owner 的稳定积分账户分别只读显示单位数量及已审查的旧记录数。未验证兑换比例时 `monetary_total_jpy=null`，不把不同积分积分数相加或塞入家庭 JPY 总资产。受新 `KAKEIBO_POINTS_ACTIONS_ENABLED`（生产默认缺失/OFF）保护；页面未新增独立第二套积分账本。
+- 对应 GitHub 真实 Commit：初版 `c8b1c7bff6b4de78c49798a630b08ec0262e48e0`、SQLite 触发器与测试修正 `d1cbc1cc4b63c70fb7911daafa0c8c5b6755129d`、积分共享只读投影最终 `44d618a3c3a883cba0892b0f9d359ef008ee9424`，都已写在 **家計簿 Draft #309** 原功能分支。
+
+### 实际验证及清楚的未完成边界
+
+- 初版 [Validate 43595299809](https://github.com/PTamako/kakebo_jp/actions/runs/43595299809) 失败：4 个新增 SQLite 断言发现触发器先于 UNIQUE 或更高优先级约束拒绝，以及测试输入估值比率与积分数量不符；随后只调整错误场景期望、原样保留防重复/防负数/审计断言，修正 status trigger 范围。修正版 [Validate 43595523169](https://github.com/PTamako/kakebo_jp/actions/runs/43595523169) completed/success。
+- 最新精确 #309 HEAD `44d618a3c3a883cba0892b0f9d359ef008ee9424`：[Validate 43595709561](https://github.com/PTamako/kakebo_jp/actions/runs/43595709561) **completed/success**、[Mobile WebKit Smoke 43595709590](https://github.com/PTamako/kakebo_jp/actions/runs/43595709590) **completed/success**。新增 tests/family-points-foundation.test.mjs 使用真实内存 SQLite 执行未部署 migration 重放、正确/无权用户、CAS、不可变审计、防重、不同 owner、历史不重复铸币和家庭共享投影；WebKit Smoke 只是 CI，不是两台真实 iPhone PWA 验收。
+- **本节仅为积分基础层，不能宣称 P0-4 积分完整业务已完成。** 当前未将积分 source prepare/submit、AES-GCM 实际解密 target execution、HomeFlow 审批证明/租约/回执、积分充值储值卡和应付抵扣/SBI 对手 journal、取消与冲正、两套独立 D1 真实处理器跨仓模拟 Service Binding 接通。新 source/target 写入路由、真正 HomeFlow wire/domain/密钥并未定稿，因此 **冻结契约尚未追加正式 §P**；应当等独立后端签名/事务/跨仓验收真实成功后才冻结。不要将现有 §M/§N/§O 冒充积分协议。
+- 下一位按该最新 #309 HEAD，首先完成积分模块剩余的真实双仓闭环与 counterpart 原子事务、测试和契约；之后再做 SBI 積立/追加買付/ポイント投資的持仓份额/成本/适用日与现有历史关联、家庭转账、共享账目修删恢复、周期授权及 B～E 其余 R1～R9/T01～T14。每个完成模块才追加真实结果、精确 CI 与剩余项，避免重复已经通过的 §65～§74 核心。
+- **本节未执行任何正式 D1 migration/回填、Worker/Pages 部署、R2/Secrets/Cron 变更、Preview 建立或账户交易；五个功能 PR 均保持 Draft，不合并。** F 阶段正式环境及双 iPhone 验收仍须用户单独明确授权。已有 A 阶段安全备份与 Mac 恢复 PASS，不重做。
