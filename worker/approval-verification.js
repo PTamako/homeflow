@@ -55,7 +55,7 @@ export async function approvalVerificationRoute(request,env){
  const client=request.headers.get('x-approval-client')
  const stamp=request.headers.get('x-approval-timestamp')
  const mac=request.headers.get('x-approval-signature')
- if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','jp-document-assistant','it-study-platform'].includes(client)||
+ if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','kakeibo-prepaid','jp-document-assistant','it-study-platform'].includes(client)||
   typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
   Math.abs(nowMs()-Number(stamp))>300000||
   typeof mac!=='string'||!hash.test(mac))
@@ -69,10 +69,14 @@ export async function approvalVerificationRoute(request,env){
  const documentClient=client==='jp-document-assistant';
  const cardClient=client==='kakeibo-card';
  const settlementClient=client==='kakeibo-card-settlement';
+ const prepaidClient=client==='kakeibo-prepaid';
  const studyClient=client==='it-study-platform';
  if(cardClient&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.CARD_APPROVAL_PROOF_SECRET||'')))
   return reject('card_verification_disabled',503);
+ if(prepaidClient&&(env.PREPAID_APPROVAL_EXECUTION_ENABLED!=='true'||
+  !hash.test(env.PREPAID_APPROVAL_PROOF_SECRET||'')))
+  return reject('prepaid_verification_disabled',503);
  if(settlementClient&&(env.CARD_SETTLEMENT_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.CARD_SETTLEMENT_APPROVAL_PROOF_SECRET||'')))
   return reject('card_settlement_verification_disabled',503);
@@ -83,13 +87,15 @@ export async function approvalVerificationRoute(request,env){
  if(studyClient&&(env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true'||
    !hash.test(env.STUDY_APPROVAL_VERIFICATION_SECRET||'')))
   return reject('study_verification_disabled',503);
- const computed=await signature(settlementClient?env.CARD_SETTLEMENT_APPROVAL_PROOF_SECRET:
+ const computed=await signature(prepaidClient?env.PREPAID_APPROVAL_PROOF_SECRET:
+  settlementClient?env.CARD_SETTLEMENT_APPROVAL_PROOF_SECRET:
   cardClient?env.CARD_APPROVAL_PROOF_SECRET:
   studyClient?env.STUDY_APPROVAL_VERIFICATION_SECRET:
   documentClient?env.DOCUMENT_APPROVAL_VERIFICATION_SECRET:
    env.APPROVAL_VERIFICATION_SECRET,
   documentClient?'jpda:execution-proof':
    studyClient?'it-study-platform:execution-proof':
+   prepaidClient?'kakeibo-prepaid:execution-proof':
    settlementClient?'kakeibo-card-settlement:execution-proof':
    cardClient?'kakeibo-card:execution-proof':client,stamp,raw)
  if(!constantEqualHex(computed,mac))return reject('unauthorized',403)
@@ -126,6 +132,11 @@ export async function approvalVerificationRoute(request,env){
   row?.resource_type==='credit_card_settlement'&&
   row?.idempotency_key==='kakeibo:cardsettle:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
+ const prepaid=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+  (row?.operation==='finance.prepaid.topup'||row?.operation==='finance.prepaid.spend')&&
+  row?.resource_type==='prepaid_action'&&
+  row?.idempotency_key==='kakeibo:prepaid:'+body.resource_id&&
+  Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
  const doc=row?.source_app==='jp-document-assistant'&&
   row?.target_app==='kakebo'&&row?.operation==='document.sync.finance'&&
   row?.resource_type==='document_sync_candidate'&&
@@ -143,7 +154,7 @@ export async function approvalVerificationRoute(request,env){
   (docStudy&&env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true')))
   return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
+  (prepaidClient?!prepaid:settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
    documentClient?!(doc||docTask||docStudy):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
