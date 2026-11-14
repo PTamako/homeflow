@@ -960,3 +960,11 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - `tests/homeflow-sso.test.js` 增真实 SQLite + Worker 的原候选 `updated_at` 改动回归：旧批准状态读取和重复提交分别 409，既不向 HomeFlow 发受信后端调用，也不改变 `integration_links`；测试 Commit `75e41988d62bbfbbd3f7eea1e4d8f88157d1657f`。原 approved≠applied、拒绝/断网/损坏签名、幂等及双用户验证仍保留。
 - **准确状态**：PR #97 在核查时仍 `open / Draft`，HEAD `75e41988d62bbfbbd3f7eea1e4d8f88157d1657f`，[Pre-merge CI #43535741281](https://github.com/PTamako/jp-document-assistant/actions/runs/43535741281) 为 `in_progress`，不能宣称本修复全绿；需取得精确 HEAD 的最终 CI 并记录，若失败按原 job logs 修复。
 - **未完成**：旧审批终止/重申请业务 UI 仍需专门交互（当前只安全拒绝），文书→家計簿/HomeFlow/知学的可信目标执行器、双人真机 Google 授权与身份/缓存隔离完整验收仍待实施；所有生产迁移/开关/资源完全未变，未合并 Draft、不部署生产、不建立 Preview。A 本地备份恢复 PASS，不能替代生产 F 上线批准。
+
+
+## 24. 2026-11-14 §22/§23 最终 CI 复核：双模块通过（未部署）
+
+- **知学 Draft #179**：新生成语言文件缓存及完整性验收，精确分支 HEAD `f0159098d19e3dfec175975e1d68bd9cbe6e660f` 的 [Validate #43535202780](https://github.com/PTamako/it-study-platform/actions/runs/43535202780) 已核查 `completed / success`。此次验证为新的 cache key 首次运行，**只证明完整 CI 及缓存生成检查通过**；后续 cache-hit 命中率和实测加速尚未证明，不能宣称完整构建已加速至某个时长。新增测试、Workflow SHA 见 §22。
+- **文书助手 Draft #97**：初版 HEAD `75e41988d62bbfbbd3f7eea1e4d8f88157d1657f` 的 [Pre-merge CI #43535741281](https://github.com/PTamako/jp-document-assistant/actions/runs/43535741281) 实际 `completed / failure`，352 项测试中 351 pass / 1 fail。原因是旧提交回执检查在文书来源版本冲突判定之前比较新算出的 digest，提前报 `APPROVAL_INTENT_CONFLICT`；测试要求更明确的 `APPROVAL_SOURCE_CHANGED`。未放宽安全限制，仅将原 actor/household 验证 → 已冻结源版本检查 → digest 比较按语义正确排序。修复代码 Commit `b5f59d55f041ae36893ab9170d2ecd4309c7029b`。
+- 文书助手修复后精确 HEAD `b5f59d55f041ae36893ab9170d2ecd4309c7029b` 的 [Pre-merge CI #43536007108](https://github.com/PTamako/jp-document-assistant/actions/runs/43536007108) 已核查 `completed / success`。此前绿色基线不冒充本次结果。文书候选变更前后旧审批 status/重复提交均 fail-closed，真实目标执行器仍未开发。
+- 两 PR 均保持 `open / Draft`，未合并、未设置生产功能开关、未运行 D1 正式迁移、未部署生产 Cloudflare 或创建 Preview。仍需 Stage C 稳定金融账户全量归属及 Stage D 可信执行器、Stage E 旧离线队列完整隔离、双人真实 iOS PWA 验收。下一轮任何新 HEAD 必须重新等待其自己的 CI，不可继续使用本节的绿色结果。
