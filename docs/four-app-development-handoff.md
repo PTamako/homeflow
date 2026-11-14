@@ -1701,3 +1701,27 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - HomeFlow 提交 `f6b59ceac00a`（源/目标签名退款 receipt 验证）、`7015ad8a5a32`（双隔离 SQLite prepaid refund、目标已被消费、丢回执恢复），`2998d4f148a0945c790c14b263e4135f3fed5824`（回执条件边界修补）。上一 HomeFlow Validate `43609969141` **失败 2 项**：并非生产故障；原因是旧 `tests/family-prepaid-real-cross-app.test.mjs` fixture 只装家計簿迁移 0035，然而更新后的真实 prepaid 执行器已经查询新增的 `family_points_prepaid_refunds`，导致旧 topup 执行受 503 影响。
 - **本轮确实修复该 CI 障碍而非删减测试**：在 HomeFlow #306 `tests/family-prepaid-real-cross-app.test.mjs` 中构建完整、同顺序的 **实际 Kakeibo migration 0031～0042** 及依赖原 owner audit 0027，包括旧 0033 重复应用回归，保持两套独立 SQLite 与所有 bank/prepaid/points 审计约束。提交 **`4c5b6633d68d5822fa47df10acf76896ca28b5c2`**；**Validate HomeFlow 43615838190 completed/success**。原本失败的旧 HomeFlow 银行→储值卡充值/消费及目标 commit 丢回执两项已经重新通过，所有其他跨仓真实处理器回归同时通过。
 - 上述 §82～§84 均只是五个 Draft PR 内的后端/隔离 SQLite CI。积分抵扣信用卡退款、SBI lot 反冲/买入后的券商对账、现金 SBI 买入、共享银行/证券资金转移、家庭财务 entry 修改/删除/恢复/批量审批/Cron 授权、四应用完整前端 B～E/R1～R9/T01～T14、生产 F/双 iPhone 仍未完整交付。所有 Cloudflare Worker/Pages/D1/R2/Secret/Cron、Preview、旧用户真实财务数据均不变；禁止生产 migration/自动部署/合并 Draft。A 阶段用户加密备份与 Mac 恢复验证已经 PASS，不再重复要求。
+
+
+## 85. 2026-11-15 P0-4A 积分抵扣信用卡应付的不可变双边退款、银行还款余额重新开放与真实跨仓完整 CI PASS（Draft）
+
+### 已编写真实代码（不是计划）
+
+- 家計簿 #309 新增未部署 migration `0043_points_card_offset_refund.sql`。原 `finance.points.offset_card` 抵扣一笔 **`family_card_purchase_applied.homeflow_request_id`** 之后，允许另起一次 HomeFlow owner 审核的 `finance.points.reversal` 对其**唯一原审批 ID** 进行赔偿/撤销。新 `family_points_journal` 正向返还原 source points 的精确单位/JPY 与原比率，同一 D1 SQLite INSERT 的 AFTER trigger 必须同步创建 `family_points_card_offset_refunds`，使该笔原 card purchase 的**未还应付**恢复原积分抵扣的 JPY 金额。原 credit-card purchase expense、原积分 debit、原 `family_points_card_offsets`、已核验银行扣款/还款分配、真实操作人审计全部不 UPDATE/DELETE。没有现金收入、第二笔 expense、银行扣款、虚构信用卡交易或第三方真实退款。
+- 新 refund 表含唯一原 `homeflow_request_id`、`original_request_id` UNIQUE 严格 FK、原 source points ID、原具体 member card account stable ID、同一 owner/household、冻结 card_version CAS、明确 purchase_request_id、`restored_jpy`、`liability_after_jpy`、原申请适用日/执行时间；唯一原积分 journal `reversed_request_id`、唯一 refund 防双退、原券凭证只读。任何错误归属、账户归档、版本变化、审批身份失效、缺原卡消费、金额不一致、支出/审计触发器失败，源/目标同语句全部 ROLLBACK。不是依卡名、账单月或 OCR 推断。
+- migration 0043 仅对 **尚未部署 Draft** 的 0042 反冲 guard 作兼容扩展：`offset_card` 可冲，`transfer_prepaid`、`transfer_out/exchange_out`、误发/过期已准许的其他原业务依然受原严格约束；未实装对手的 `redeem_asset`、`redeem_discount`、`redeem_purchase` 等仍**禁止**借反冲自动回款。积分来源旧记录和用户截图不动。
+- 卡账收支模型在 SQL write-time 完整变为 `outstanding = original_purchase.amount - SUM(actual_bank_allocations) - SUM(points_card_offsets) + SUM(immutable_card_offset_refunds)`：银行 allocation 的 `trg_family_card_allocation_balance`、新 point offsets 的限额 trigger、原积分准备/执行余额检查、`card-settlements.js` 新申请及 outstanding list、`card-settlement-summary.js` 双成员 household 负债视图均按**净积分抵扣**计算；恢复的卡应付可以合法地由后续新的银行真实扣款证据核销，既不能超额还款，也不会重复计入日常现金收入/expense。老 `card_bills` 依旧不从名称猜新账。
+- `points-actions.js` 源加密申请校验原 owner 和 original card CAS；`approvedPointsRoute` 目标真实执行器验证原 offset + 原卡凭证、发出新增 `refunded_card_account_id`、`refunded_card_version`、`refunded_card_purchase_request_id`、`refunded_card_offset_jpy` 和 `refunded_card_liability_after_jpy` 的只读不可变回执；HomeFlow `approval-execution.js` 增加第三种完整双边 reversal counterpart 的严格回执校验，原两种 transfer/prepaid refund 的拒绝条件保持不变。**只有两边真实 journal 同时存在并且审批 actor、原 ID、金额、版本和原 target 一致**，HomeFlow 状态才能变为 applied；HTTP 丢失按原 request ID 只读 receipt 对账，不再重记一笔。
+- 安全范围：卡账是系统中**已记录、已审批**的家庭负债，不等同真实银行/信用卡公司的自动撤销。整个项目生产 flags 仍 OFF，未和银行、券商、积分运营方建立真正资金交易接口；正式账本旧记录依旧不变。
+
+### 实际 Commit/CI 证据
+
+- 家計簿 #309：`cae2a180f40744778b82663a39cc14a35b6d25cf`（0043 D1 双边补偿 schema/完整历史余额约束），`8e330c08bcfc65e45656c412f69b1fca00cf08e9`（原 source owner/CAS/卡负债准备），`df430b493df8412b91af788f9649151e7b64c1e3`（目标执行和不可变 signed receipt），`bae6fc3d34f2310c49d409670f5aa2eb684ad11b`（银行还款/家账视图净额），`2e4bb924a5eb17851a16de034b05c2a0a090b6f3`（完整迁移实际 SQLite 回归 setup），`40227265d60ee6303693b5fdf9f1b4e8b867c9dd`（原卡退款、反向应付、失败审计、重复拒绝测试），**`970be36c43337117b1da6e51c5514dd3013182c2`**（退款后合法银行真实还款 allocation/原 expense 不变验证）。最终 **Validate 43617293723 completed/success**、**Mobile WebKit Smoke 43617293697 completed/success**。
+- HomeFlow #306：`07d6afdbaa530237b8b69987dda21d4ac7ae9c2a`（严格签名回执校验、源 pin、原积分/储值/卡账 fixture 0043），`bc2e32685ae34fd49c363a8dac466bd57256fd69`（两独立 D1 完整 owner approval/原卡退款、丢 target response、历史不可变审计），`43c4ef0c390dcf85e96e151a2a5b2efba5a8195a`（老信用卡还款 fixture 迁移扩充到真实 0043 + 精确 3 条 actor audit 测试修复），最后 **`a4adccd4db0a5f9173760120d3911f789555abf8`** pin 家計簿最末功能 SHA `970be36c43337117b1da6e51c5514dd3013182c2`；**Validate HomeFlow 43617539406 completed/success**，源/目标签名、回执失联重试和旧银行、卡、points、prepaid 全部隔离 CI PASS。
+- 第一版 HomeFlow `43617221559` 曾 fail 5：三个旧 bank settlement 跨仓测试 DB 未加载 0043、两个新 refund 测试把三笔实际审批错误期待成四笔；已只修测试依赖和断言而不删减任何安全测试，最终 43617423540 PASS，再按最新 K pin 通过 43617539406。失败历史不是当前 HEAD 失败。
+- HomeFlow 0054/本地 Approval/Service Binding/HMAC 沿用现有白名单 `finance.points.reversal`，无需新生产 secrets/binding。包括最后 docs-only commit 在内，五功能 PR 必须一直 Draft/Open。**未合并功能、未变更正式 Cloudflare D1/Workers/Pages/R2/Cron/Secrets、未创建 Preview、未执行旧数据迁移；真实银行/券商未下单**。
+
+### 尚未完成
+
+- P0-4B **现金 SBI 積立与追加買付**从 member 银行 stable ID 审批后双边资金/实际 NISA 口数/取得成本和客观适用日的完整执行与旧截图重叠防重；积分买付已有 §82（新 lot 未与真实账户对账，不加到旧资产 NAV）。SBI 买付的卖出退款、基金撤销/对手 lot 冲正未完成。
+- P0-4C 本人/跨家庭成员**银行、现金、证券真实双向账户资产转移**、家庭条目 edit/delete/restore/bulk、固定费/定投周期批准与 Cron 幂等、shared ledger 回收箱和 R2 票据一致性仍待真实业务模块；知学/文书 B～E 整体 UI 权限、全 PWA 实机 Safari/双 iPhone、生产 F 阶段未完成。千万不要把 §§82～85 的后端 isolate CI 误认为四 App 全量上线。A 阶段用户已完成备份及本机恢复验证 PASS，不重复。
