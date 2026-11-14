@@ -1614,3 +1614,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 本轮完成的是积分抵扣卡账的后端执行/一致性模块；全面 PWA 用户表单、各种信用卡历史自动映射、生产 F 环境实机、已有老卡账非稳定 ID 兼容仍需要另行做完整验收。不得静默用积分冲销尚未真实建立的旧卡账债务。
 - P0-4A 下一步：积分间兑换/转移、退款/撤销/冲正的不可变反向账、历史积分无重复关联/核对、SBI 点数投资；P0-4B SBI 定投/追加买付/适用日/份额/市场估值；P0-4C 共享资产转移、家庭共享账目增删恢复/批量审批、固定费/Cron；四 PWA B～E R1～R9/T01～T14、生产 F 和双 iPhone 仍未完成。
 - 全部功能 PR 保持 Draft，**没有合并、生产迁移、Cloudflare 部署、Preview、Secrets/Worker/Cron/R2 修改或旧用户财务覆盖**。A 阶段生产加密备份与恢复 PASS 不重做。本节冻结扩展见契约 **§R**。
+
+
+## 79. 2026-11-14 P0-4A 同一成员跨积分账户转移/兑换：真正双边 point unit 账务、精确异倍率换算、独立数据库审批 CI PASS（Draft，未上线）
+
+### 确实已开发的单一完整业务模块
+
+- 家計簿 #309 的 **未部署** `migrations/0037_points_transfer_exchange.sql`：在原积分加密意向基础上冻结目标账户 stable ID / version、转入单位 `target_units` 和原/目标不同的单位估值分子/分母。新增 `finance.points.transfer_out`（同币种同点数、同兑换率原样转移）和 `finance.points.exchange_out`（按核验的日元价值在两家不同积分计划间换算）。**严格限同一 member 名下两个 origin=member_created / opening_balance=0 / 未归档的 point 账户**；跨成员转赠（未经收款人同意）不在当前支持名单。
+- 目标 `family_points_journal` 负 delta 写入时由 D1 `AFTER INSERT` trigger 同一 SQL 语句增加 **不可变** `family_points_transfer_credits`（source/requester/owner/target account + 目标 CAS/真实目标余额/单位数/对应 JPY/精确比率）。独立 FK、重放唯一原 HomeFlow ID、owner、版本、target units × target rate= source JPY、无负余额和不改旧账验证任一失败全部回滚。两边点数都只在本次真实业务操作变动，绝不生成 entries 现金收入、资产转移或重复消费。
+- 旧 `family_points_journal` 新事件余额约束、prepare/execute、`memberPointsBalances` 家庭只读投影均改为 **本账户原 journal 净增减 + 已经兑换转入的 credit 数量**。转入账户余额可真正用于之后的积分消费/到期扣减，仍不会把跨积分计划的数量合计成日元资产或自动把旧积分数据重铸成余额。全部仍在家計簿同一 D1 writer；HomeFlow D1 与家計簿 D1 是签名 lease + 不可变回执最终一致，不声称跨库原子性。
+- HomeFlow #306 扩充原审批 source/target/proof 的精确名单（仅 `transfer_out` / `exchange_out`），验证 target 稳定 ID、点数、目标余额、账户版本与精确目标估值、审批人/请求人隔离后才置 applied。源密文 AES-GCM、四个现有 points HMAC 签名域与 flags 默认 OFF 均沿用 §P～§R；丢目标响应以同一审批 ID 的只读 receipt 恢复，不产生第二笔。
+- 操作限制：兑换目标必须归属于本人并已确认兑换比率。当前没有接入任何实际第三方积分服务或进行积分实际转账；这是内部金融 PWA 记录的可审计审批与余额账务，不是自动将楽天等真实点数发给另一个商家账户。
+
+### 实际 Commit / CI
+
+- 家計簿 #309：`78b451a638efdd5816b69c0470d64baaeba58158`（0037）、`fb61b9ea3240fcb82b99d8d0bea6fc1cf1530cd9`（真实源）、`b5aa3fc991b2e49683799c01480a4684bc6fff45`（真实目标）、`34a14fc67b212f56fe8064347fb284188603248f`（只读余额）、`8bce633d8ae8c3e59b895dc857fa183859313ad1`（安全回归）、`f70607e1a78ff1ea68d89bf35dd77a1db7161387`（旧越权测试独立 ID 夹具修复）。最终 **Validate 43602934352 completed/success**，**Mobile WebKit Smoke 43602934343 completed/success**，独立真实 SQLite 覆盖等比转移、不同兑换率、消费收到的点数、版本漂移、异主账户拒绝、转入失败全部原子回滚、重试不重复、immutable 禁 UPDATE/DELETE。
+- HomeFlow #306：`fbeed9e33c3dff69e4317922dc2ae46149435c16`（审批/HMAC/receipt）、`e8f0d4e798a1e430c1a688b048657b8cdfeba323`（双隔离 SQLite 实际跨仓处理器测试）、`86237f2fd6ff2db25268bc644136d4af51e22564`（测试从真实家計簿凭证检查转入明细而非混用 HomeFlow status envelope）；最终 **Validate HomeFlow 43603269396 completed/success**，CI 通过精确家計簿 `f70607e1a78ff1ea68d89bf35dd77a1db7161387` pin 运行实际 HomeFlow owner review/lease/verify/target、全量已有业务和丢回执恢复，非真实生产 Service Binding。
+- 初次两仓 CI 的失败：家計簿 `43602840107` 为测试 stable ID 夹具冲突，HomeFlow `43603159635` 为错误断言 HomeFlow 状态包必含目标私有字段。均通过修正测试前提而非删除安全检查，以上最终 CI PASS；历史失败不要当成当前 HEAD 失败。
+- 当前五功能 PR 全部继续 Draft/Open，HomeFlow #306 base 仍是 #305 身份分支，未合并，生产环境、Cloudflare DB/Worker/Secrets/Pages/R2/Cron、Preview 未发生改变。main 同步只能纯文档，须确保 deploy.yml 的 docs/** paths-ignore。A 阶段 Mac/Drive 备份 PASS，不重复。
+
+### 仍未完成以及下一顺序
+
+- P0-4A：有对应目标金融资产的退款/撤销/积分不可变反向凭证（已兑换储值卡/卡账抵扣/点数转移不能无条件加回积分）、旧积分真实历史归属一致性与反复认领拦截、SBI ポイント投資。接着 P0-4B 定投/追加買付/适用日/份额/成本/估值，P0-4C 资产双向转账、共享账目删改恢复/批量审批/周期授权/Cron 幂等、B～E R1～R9/T01～T14、生产 F 与双 iPhone 实机仍未交付。不要把本节宣称为完整 P0-4 或 B～E。
