@@ -6,6 +6,8 @@ const ALLOWED_OPS={
   'finance.entry.create':'kakebo',
   'finance.credit_card.purchase':'kakebo',
   'finance.credit_card.settlement':'kakebo',
+  'finance.prepaid.topup':'kakebo',
+  'finance.prepaid.spend':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
