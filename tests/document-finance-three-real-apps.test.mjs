@@ -304,3 +304,122 @@ test('household identity is immutable in the Kakeibo database itself',async()=>{
   assert.equal(f.k.sql.prepare('SELECT household_id FROM homeflow_identity_links WHERE user_id=?').get(member).household_id,household);
  }finally{f.close()}
 });
+
+
+test('two devices racing the same approval never double-post or double-audit',async()=>{
+ const f=await fixture();
+ try{
+  assert.equal((await f.review()).status,200);
+  const results=await Promise.all([f.execute(),f.execute()]);
+  assert.ok(results.some(r=>r.status===200),JSON.stringify(results));
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM document_finance_applied_actions').get().n,1);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM family_finance_events').get().n,1);
+  assert.equal(f.d.sql.prepare('SELECT COUNT(*) n FROM audit_events WHERE kind=?').get('document_sync_applied_by_approver').n,1);
+  assert.equal((await f.execute()).body.applied,true);
+ }finally{f.close()}
+});
+test('target SQLite failure AFTER inserting entry rolls back entry, journal, and actor audit',async()=>{
+ const f=await fixture();
+ try{
+  assert.equal((await f.review()).status,200);
+  const batch=f.kEnv.DB.batch;
+  f.kEnv.DB.batch=async statements=>{
+   f.k.sql.exec('BEGIN IMMEDIATE');
+   try{
+    const inserted=statements[0].sync();
+    assert.equal(inserted.meta.changes,1);
+    throw Error('inject failure before journal and audit');
+   }finally{f.k.sql.exec('ROLLBACK')}
+  };
+  const failed=await f.execute();
+  assert.equal(failed.body.applied,false);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM document_finance_applied_actions').get().n,0);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM family_finance_events').get().n,0);
+  f.kEnv.DB.batch=batch;
+  const retry=await f.execute();
+  assert.equal(retry.status,200,JSON.stringify(retry));
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
+ }finally{f.close()}
+});
+test('source-check connection loss is retryable; original approved id may recover without duplicate money',async()=>{
+ const f=await fixture();
+ try{
+  assert.equal((await f.review()).status,200);
+  const fetcher=f.kEnv.DOCUMENT_FINANCE_SOURCE_SERVICE;
+  f.kEnv.DOCUMENT_FINANCE_SOURCE_SERVICE={async fetch(){throw Error('source network disconnected')}};
+  const failed=await f.execute();
+  assert.equal(failed.body.applied,false);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
+  f.kEnv.DOCUMENT_FINANCE_SOURCE_SERVICE=fetcher;
+  const recovered=await f.execute();
+  assert.equal(recovered.status,200,JSON.stringify(recovered));
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
+ }finally{f.close()}
+});
+test('expired approval reconciles only an existing immutable receipt, never performs a second write',async()=>{
+ const f=await fixture();
+ try{
+  assert.equal((await f.review()).status,200);
+  const original=f.hfEnv.DOCUMENT_EXECUTION_SERVICE;
+  f.hfEnv.DOCUMENT_EXECUTION_SERVICE={async fetch(req){
+   await original.fetch(req);throw Error('lost response after posting');
+  }};
+  assert.equal((await f.execute()).status,503);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
+  f.hfEnv.DOCUMENT_EXECUTION_SERVICE=original;
+  f.h.sql.prepare('UPDATE household_approval_requests SET expires_at=? WHERE request_id=?')
+   .run(Date.now()-1,f.approvalId);
+  const reconciled=await f.execute();
+  assert.equal(reconciled.status,200,JSON.stringify(reconciled));
+  assert.equal(reconciled.body.applied,true);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,1);
+  assert.equal(f.counters.source,1,'receipt lookup never repeats source-check');
+  assert.equal(f.d.sql.prepare('SELECT COUNT(*) n FROM document_member_execution_reservations').get().n,1);
+ }finally{f.close()}
+});
+test('stale document version, candidate revision, and approver revocation prevent first entry',async()=>{
+ for(const scenario of ['document-version','candidate-revision','approver-disabled']){
+  const f=await fixture();
+  try{
+   assert.equal((await f.review()).status,200);
+   if(scenario==='document-version')f.d.sql.prepare('UPDATE documents SET version=version+1 WHERE id=?').run(docId);
+   if(scenario==='candidate-revision')f.d.sql.prepare('UPDATE action_candidates SET updated_at=? WHERE id=?')
+    .run('2027-01-01T00:00:00.000Z',candidate);
+   if(scenario==='approver-disabled')f.h.sql.prepare('UPDATE users SET disabled_at=? WHERE id=?')
+    .run(Date.now(),owner);
+   const response=await f.execute();
+   assert.notEqual(response.status,200,scenario);
+   assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0,scenario);
+   assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM document_finance_applied_actions').get().n,0,scenario);
+  }finally{f.close()}
+ }
+});
+test('an owner of another household cannot execute or approve this member request',async()=>{
+ const f=await fixture();
+ try{
+  const wrongActor={user_id:'outsider',household_id:'other-household',role:'owner'};
+  const path='/api/approvals/'+f.approvalId+'/review';
+  const deniedReview=await approvalRoute(new Request(home+path,{
+   method:'POST',headers:{'content-type':'application/json',origin:home},
+   body:'{"decision":"approve"}'}),f.hfEnv,path,wrongActor);
+  assert.equal(deniedReview.status,404);
+  const deniedExecute=await approvalExecutionRoute(new Request(
+   home+'/api/approvals/'+f.approvalId+'/execute',{
+    method:'POST',headers:{'content-type':'application/json',origin:home},body:'{}'
+   }),f.hfEnv,'/api/approvals/'+f.approvalId+'/execute',wrongActor);
+  assert.equal(deniedExecute.status,404);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
+ }finally{f.close()}
+});
+test('Kakeibo execution feature flag individually blocks mutations even when two other apps enable them',async()=>{
+ const f=await fixture();
+ try{
+  assert.equal((await f.review()).status,200);
+  f.kEnv.KAKEIBO_DOCUMENT_FINANCE_EXECUTION_ENABLED='false';
+  const rejected=await f.execute();
+  assert.equal(rejected.body.applied,false);
+  assert.equal(f.k.sql.prepare('SELECT COUNT(*) n FROM entries').get().n,0);
+ }finally{f.close()}
+});
