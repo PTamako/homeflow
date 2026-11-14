@@ -1636,3 +1636,24 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 ### 仍未完成以及下一顺序
 
 - P0-4A：有对应目标金融资产的退款/撤销/积分不可变反向凭证（已兑换储值卡/卡账抵扣/点数转移不能无条件加回积分）、旧积分真实历史归属一致性与反复认领拦截、SBI ポイント投資。接着 P0-4B 定投/追加買付/适用日/份额/成本/估值，P0-4C 资产双向转账、共享账目删改恢复/批量审批/周期授权/Cron 幂等、B～E R1～R9/T01～T14、生产 F 与双 iPhone 实机仍未交付。不要把本节宣称为完整 P0-4 或 B～E。
+
+
+## 80. 2026-11-14 P0-4A 积分误发放/误过期原凭证不可变冲正：源/目标真实审批、拒绝重复及隔离 CI PASS（Draft，仅安全子集）
+
+### 实际完成与清晰限制
+
+- 家計簿 #309 新增尚未部署的 `0038_points_earn_expiry_reversals.sql`，只开放 `finance.points.reversal` 的两类**没有外部资产对手方**的原业务：`earn_campaign` / `earn_purchase`（误发奖励扣回）、`expire`（误到期恢复）。`family_points_intents.original_request_id` 绑定原不可变 HomeFlow UUID，源 AES-GCM/HMAC、真实成员账户/版本与原始交易 owner/household/units/JPY/精确分数价格/生效日期全部校验；原先 point journal 永不 UPDATE/DELETE，只插入一条相反的 `delta_units`、`reversed_request_id` 的不可变 journal 和同 SQL trigger 的真实 requester/approver/actor 审计。源余额不足、原凭证已冲正、无效成员、重复、金额不同或伪造 reference 一律拒绝，资金不重铸，现金 income/expense 不增加。
+- **不安全的单边反冲被禁止**：`transfer_prepaid`、`offset_card`、`transfer_out`、`exchange_out`、`redeem_discount`、`redeem_purchase`、SBI 资产类并不在这个子模块允许的 original.operation 名单内，因为必须同时冲正储值卡、信用卡应付、另外积分账户或真实消费/基金份额；尚未建立全部对手凭证前绝不只加回原积分。
+- HomeFlow #306 把 `finance.points.reversal` 纳入原 `kakeibo-points` 申请、owner review、nonce/lease、proof、目标执行清单。通过签名 receipt 对 `reversed_request_id` 原工单 UUID、审批人、积分方向（可能正/负）、linked purchase 原值进行规则核验，原申请 ID 丢回执重查幂等，不会两次恢复点数。
+- 仅在家計簿单一 D1 writer 内写原/反向积分 journal 和审计；Cloudflare 两库仍由审批租约、只读 receipt 和 safe retry 最终一致。**仅内部记账冲正**，不会向外部积分平台退款或自动变更银行卡余额。
+
+### Commit / 最终验证
+
+- 家計簿 #309：`19afaeb3de009ac49eb8fcfefb1c6c291bfe5dd9`（0038）、`3ba5a39ac36083fff6d596f163167fc939c4dee3`（真实源 prepare/submit）、`706170fdc0728dcad94399d93661b45bf5ebd2b8`（真实目标 journal）、`5a2c35a182db3e62559836768813ddcf31b5657c`（新增测试及旧 fixture 严格迁移更新）。Validate **43603748785 completed/success**、Mobile WebKit Smoke **43603748722 completed/success**；覆盖原始错误积分扣回、过期积分恢复、一次性冲正、错误点数/跨账户/重复/余额不足阻断、审计失败整笔 rollback、原历史行与统计不变。
+- HomeFlow #306：`9004e446261f5430164328cdd653b8846034b3fb`（approval/proof/receipt 白名单与审计）、`4f167b558c322a083cfffa70909bce63cce212b6`（真实 HomeFlow + 家計簿双 D1 隔离 SQLite 和丢回执恢复安全测试）。Validate HomeFlow **43603895452 completed/success**，CI pin 家計簿精确 SHA `5a2c35a182db3e62559836768813ddcf31b5657c`；之前 §79 的功能及文书、信用卡跨仓回归继续运行。
+- 本次全部功能 PR 仍是 Open/Draft，HomeFlow #306 base #305、五仓功能无 merge；无生产 SQL、Worker、Pages、R2、Secrets、Cron 或 Preview 变更。§79 的纯文档 main 已经同步；本节 §80/§T 同样仅允许 docs/** 安全同步 main。
+
+### 尚需继续
+
+- **完整点数退款/撤回**仍缺储值卡、卡账、跨点数转移、关联已有消费与 SBI 份额/成本的真实反向对手凭证。必须一起做 target CAS、不可变反向资产/应付 journal 和原 HomeFlow ID 的审计，不能将本节简单误称“所有积分冲正完成”。
+- 旧积分 `family_points_legacy_links` 当前已有一次性主键/owner 审核基础，但完整批量人工对账、真实源快照去重/金额与新点数存量核对、全部历史关联仍待做；SBI 定投、追加買付、ポイント投資与估值、双资产转移、共享账目增删恢复/批量审批/周期授权/Cron 幂等、四应用 B～E R1～R9/T01～T14、生产 F 与双 iPhone 仍未做完。A 阶段 PASS 不重复。
