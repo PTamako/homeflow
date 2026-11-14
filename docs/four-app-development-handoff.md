@@ -1073,3 +1073,17 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - 新 `tests/document-member-approval-reply-epoch.test.js` 实际 Node VM 运行 App.vue 里的两个真实 async 方法：关闭审批表单时晚到 status 不能显示旧批准且 busy 会释放；提交时切换到第二份文书后不能设置旧 HomeFlow 状态、刷新旧文书或弹成功提示；账户登出之后的旧失败不能污染新账号；当前用户正常的已提交回执仍只显示待审批，不假装目标已同步。测试 Commit `5ecf30cb63225441d8b1c474632674c383d15356`。
 - 精确最新 HEAD `5ecf30cb63225441d8b1c474632674c383d15356` 的 [Pre-merge CI #43541374689](https://github.com/PTamako/jp-document-assistant/actions/runs/43541374689) 首次核查 `in_progress`；**必须查询最新结果，失败则按日志修复，不可沿用旧绿色作为新测试通过证据**。
 - 本次只改原文书助手 Draft #97 与唯一 HomeFlow 交接 docs，未修改任何线上 Secrets/Workers/Pages/D1/R2、未合并/部署功能 Draft、未重建 Preview。阶段 D 文书审批后的跨应用可信目标执行器仍没完成；申请 `approved` 不是目标 `applied`，iPhone 双人真机授权/切号/断网仍须验收。阶段 A 本地加密备份恢复已 PASS，但 F 生产迁移/上线授权仍需单独确认。
+
+
+## 37. 2026-11-14 文书助手 #97 §36 最终 CI 已通过
+
+- 对文书助手原 Draft #97 的精确 HEAD 5ecf30cb63225441d8b1c474632674c383d15356 重新查询 GitHub Actions：[Pre-merge CI #43541374689](https://github.com/PTamako/jp-document-assistant/actions/runs/43541374689) 已 confirmed completed/success；§35 预览安全测试 HEAD c5a0ed7758fc508e6c5d749f1a6df5c1de64a70d 的 [CI #43541162460](https://github.com/PTamako/jp-document-assistant/actions/runs/43541162460) 也 confirmed completed/success。两模块均为原 Draft #97、没有合并或生产部署。此前后端 §23 版本校验已有独立成功测试。
+- 已通过的是迟到私有候选预览、审批状态/提交回执对跨账号/跨文书 UI 的阻断及同账号 busy 解锁；不是 HomeFlow approved 后真正写入家計簿/HomeFlow 任务/知学目标的执行链，也不是双人真机 iOS PWA 验收。该权限边界继续严格阻断。
+
+## 38. 2026-11-14 知学 #179 Stage E：旧每日任务待同步队列与语言掌握回执账号代次保护（CI 最新 HEAD 待验）
+
+- 继续原知学 [Draft PR #179](https://github.com/PTamako/it-study-platform/pull/179)，branch feature/homeflow-identity-isolated-20261113；不合并、不开 Preview、不触发生产。
+- src/App.vue：旧单密码 saveDailyTask() 在创建 pending 前检查 legacyWorkCurrent(actorGeneration)，每条排队 POST 真正发送前再次检查，网络完成后检查，远端错误解析后再次检查。这样切换 HomeFlow 账号之后不会继续发送尚未发出的原账号每日任务队列，也不会以迟到成功回执删除旧设备 zhixue:daily-pending-v1 或覆盖新身份错误提示。loadCloudDashboard() 的数据/错误仅在发起时同一代次生效；hydrateCloudProgress() 捕获旧身份 epoch，原 mastery hydrate callback 在回写 zhixue:mastery-imported-v1 前校验；language-review 网络回执写入之前再次检验，拒绝跨账号异步混合。业务代码 Commit 1580735c87ecaf44422dda18a4fb532c71b52fb2；原 legacy 数据快照不会删除或自动归给新 member。
+- 新 scripts/homeflow-legacy-daily-epoch.test.mjs 用真实 Vue 方法体和延迟 Promise 覆盖已经发出的 POST 切号后不能删本地 pending、等待前序 Promise 的旧写入不可启动、同一登录正常成功清空 pending、云端 dashboard 迟到数据不可污染 UI，以及 mastery 回调源检查；测试 Commit ec711144a9fdf67740df43bdfa6aa9da0c6eeefe；快速 CI 增补该回归 Commit d0a525dd2665750f8dfc37563b27f51f627f7c49。
+- 准确失败记录：业务代码首个 HEAD 1580735c 的 [Validate #43541626007](https://github.com/PTamako/it-study-platform/actions/runs/43541626007) completed/failure；新增快速回归后 HEAD d0a525dd 的 [Validate #43541743729](https://github.com/PTamako/it-study-platform/actions/runs/43541743729) completed/failure。日志确认为旧 scripts/daily-task-runtime.test.mjs 的单独 VM 测试切片缺少 App.vue 外层定义的 legacyOperationGeneration/legacyWorkCurrent，7 个旧每日任务测试在尚未发真实请求前失败并带未处理的 ReferenceError；不是用来证明防串号业务测试失败。已补完整真实模拟的 login generation 与 actor 守卫，明确旧会话失效需要代次增加，保持旧测试全数保留，测试修复 Commit fe4e7fd848440a145b09945a73c8de692effd153。
+- 当前精确新 HEAD fe4e7fd848440a145b09945a73c8de692effd153 的 [Validate #43541838350](https://github.com/PTamako/it-study-platform/actions/runs/43541838350) 首次核查 in_progress，必须等 job 真实 completed/success 后才能宣称本轮全绿。其他旧 WebKit/缓存/离线 IndexedDB 全归属、真机双人 PWA、Study 与文书目标受信执行联动仍未完成。所有正式 Cloudflare 环境、数据、Secrets 和应用开关未改，A Mac 本地加密备份/恢复 PASS 不等于 F 生产上线授权。
