@@ -1892,3 +1892,26 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 3. **周期金融授权**：owner 对 member 固定费/积立计划明确授权额度、账户、频率、月份和期限，真实 Cron 每 occurrence 幂等、跨 D1 reservation、同一账单不可双算、停用用户立即取消授权、结束日期/预算超过不得入账；§92 的 24h 单次同意**不能替代**可重复金融授权。
 4. 四 App B～E 仍需逐项按设计书 R1～R9/T01～T14 验证分人独立会话、首页 PWA 冷启动/OAuth 失效重新认证与 callback、iPhone Safari/cache/storage/服务端缓存分离、文书个人 Gmail/Drive 和私人/共享读写与附件回收、知学进度题库错题/日语/英语与个人离线队列隔离、跨 App 不重复或泄漏数据，及真正两台 iPhone 实机上线后再验收。CI WebKit Smoke/模拟 SQLite 不是实机。SBI 历史 screenshots 与券商/积分发行方真实 API/银行流水逐笔机构对账**依然没有完成**，原 §87/§89 的 refund 是 owner-reviewed user-attested。
 5. A 阶段用户已完成生产 D1/R2 加密备份与真实 Mac SQLite 恢复，无需重复申请操作。所有新 Flags/Secrets/Service Binding 只在功能分支写了代码要求、生产未配置/未开启；保持五个 Open/Draft PR、禁止生产 Workers/Pages/D1/R2/Cron/Secrets 改写、禁止真实银行/证券交易、禁止任何 Preview 和未授权的功能合并/部署。F 阶段需要另获正式许可。
+
+
+## 93. 2026-11-15 P0-4C 周期金融授权：成员固定费/SBI 定投的管理员额度批准与每月唯一预留（Draft；完整 CI PASS；不自动入账）
+
+### 本节真实开发
+
+- 本节接续 §92，并遵循 Google Docs 正式设计书 R3/R4/R9、T05/T07/T08。明确区分个人计划、家庭管理员授权、每期唯一预留、家計簿真实入账四个步骤。**当前只完成 HomeFlow 授权与预留骨架，不执行生产 Cron，不生成实际银行/证券/固定费记录**。
+- HomeFlow #306 新增未部署迁移 **migrations/0059_recurring_financial_authorizations.sql**，提交 **7b0052d38a772414e44302bcd072108e39f86228**，修复月份校验及合法同毫秒授权后预留 **12fbe70a084cef5ec9e11fef07a239b1a984dfc8**。三张表：household_recurring_finance_policies（固定费/sbi_tsumitate、member、原计划 SHA、账户版本、每月上限、扣款日、起止月份及不可变身份）；household_recurring_finance_events（每次成员申请、管理员批准/拒绝、撤权和预留的不可变同事务审计）；household_recurring_finance_reservations（同家庭、同计划、同月份的唯一 occurrence ID、防跨不同 ID 重复的双唯一索引、真实成员和管理员当前状态/额度/日期/原计划 digest 校验、不可 UPDATE/DELETE）。一旦目标联动出现不确定结果，不能自动释放同一期预留并重新记账。
+- 新 **worker/recurring-finance-policies.js** Commit **975e8d47510856b14d2e803b1f5dcb62a99ebb21**：当前普通成员独立申请本人固定费/SBI 定投月度授权，管理员另一次独立 SSO 操作按最高金额、due_day 1—28、账户版本和起止月份批准或拒绝，双方按权限取消或撤权，严格成员当前有效、家庭隔离、审批版本 CAS 和 SHA/idempotency。仅 owner/本人可读，所有响应明确 ledger_applied=false、cron_enabled=false、occurrence_execution_permitted=false。新功能 flag RECURRING_FINANCE_AUTH_ENABLED 默认 OFF。
+- 新 **worker/recurring-finance-reservations.js** Commit **d35407f0f946c9a2b31b266b29752c93707136d5**：POST /api/internal/recurring-finance/reserve 或 /receipt，只有后台专用 HMAC 客户端、独立默认关闭的 RECURRING_FINANCE_RESERVATIONS_ENABLED + 独立 Secret 可访问，严格原计划成员/家庭、月份、额定限额/账号版本、原始 SHA、唯一 occurrence、发生日及日本本地最多七天期限校验。原 ID 的只读 receipt 可恢复，不能以新 ID 重复创建同月流水。**这些请求只保存授权预留和审计，不调用任何家計簿 target 或真实 SBI/银行 API**。
+- 路由 **worker/index.js** Commit **48d41a2dd852fcf159ea937f5b516b0c28af98e8**，迁移脚本 **scripts/check_migrations.py** Commit **e74650628f521ccd3cc71bfecd4e9b5861a798f6**，原 migration/rewards 测试迁移文件数完整更新 60→61（**b9de6566a1b83085db91190730af81cef2607b97** 和 **53c0aa30e0f13223fe5a53cb9337d451090acf37**），没有省略旧的迁移或安全测试。
+- 新 **tests/recurring-finance-policies.test.mjs** Commit **9eaba5891d0668dc341eb90727fe03dcd7f3c4df**，真实 Node SQLite＋真正 Worker handler 验证成员申请/Owner 分开审批、同月唯一预留、原 ID 幂等 read-only receipt、原条款永不修改、上限/扣款日/月份/账号版本不符、跨家庭/伪造角色、当前 owner/member 已被禁用、撤权、审计故障原子 rollback。HMAC 签名 fixture 的 LF 分隔符与实际域统一修复 **27a6b420e468aa9c0b9c3d3e9ec3340563f652c8**，未删除核心断言。中间测试完整 Validate **43680805281 completed/success**。
+- 新移动 PWA **src/components/RecurringFinancePolicyCenter.vue** Commit **c0e811a4ddbfb05bd7906b15f8e8512cb69ab8be**、挂载 **ManagePage.vue** Commit **d0b7ce2fd007c17e239b9ed53e1ced3139823ba1**：成员本人/管理员按实际身份查看计划额度、月份、审查状态及撤销，移动端二次确认，后端标志 OFF 时隐藏；切换账号/前后台舍弃旧私有数据。Vue 类型检查发现自定义 AppIcon 不支持 calendar-check，修为已支持的 calendar-heart **1a20584172ef6d800a04344a84c01dcca12ab4da**。**最后完整功能 SHA 1a20584172ef6d800a04344a84c01dcca12ab4da，Validate HomeFlow Run 43680966561 completed/success**，包含原有安全回归、真实 SQLite、Vue build、Worker dry-run。此测试不是物理 iPhone，也不是 Cloudflare Cron 在生产执行。
+- 冻结跨应用合同升级 **§AG v1.0.27**，HomeFlow #306 文档 Commit **43707f84fed948d6a232c33d3360221d1d7ac002**；验证 main 原有合同无漂移后仅追加 docs-only main **e1f454827722976a73002edf5e18756da6dbf5bb**，没有将功能合并到 main。本 §93 记录在 #306 与 main 双方维护；部署 workflow 对 docs/** 忽略。
+
+### 后续 §94 以后必须继续实际交付
+
+1. **周期金融真实执行还未完成**：家計簿现有固定费及 SBI 定投计划的真实签名绑定（plan ID、SHA、账户归属和 CAS）、每月实际银行扣款与基金 broker trade/资金份额成本、HomeFlow Cron + K target 对每期的独立审批执行和 immutable 回执/丢失结果恢复、预算/期限/撤权后的冻结与异常处理。§93 的预留不是入账、不是 SBI 下单，也不是自动 Cron。
+2. **跨成员实际资产转账未完成**：§92 已有两个人真正独立 SSO 同意、家庭 owner 独立授权及只读 HMAC proof，但 K 尚无跨两个不同资源 owner 的实际 source/target 银行/现金/证券/储值卡账户双边 ledger；仍需双方真实资金/时间凭证、当前账户版本、安全幂等与失败对账。不准把 §91 的本人银行↔银行转账当作跨成员转账。
+3. **共享账目修改/删除/回收/恢复/R2 附件一致性**仍需家計簿现有全部统计/卡/投资投影与已批准 immutable 交易保护的真实目标执行器、可审计数据恢复；§90 是批量审核，不是批量目标执行。
+4. **B～E 全面验收**：四个 PWA 的初装/退出/HomeFlow 回跳 OAuth、私人文书 Gmail/Drive、文书共享真实 CRUD/附件、知学用户进度/错题/生词/离线、家計簿共享账本与本人金融设置、缓存/过期会话跨双 iPhone 的彻底隔离与 E2E。真实两台 iPhone 和生产 Cloudflare 端到端属于未来 F 阶段授权，CI WebKit 不可替代。
+5. **真实 SBI/积分发行方独立机构核对仍未完成**：之前的券商取消、积分返还、银行到账是 owner-reviewed 用户 attestation，不是机构 API 自动同步。历史 screenshot/持仓/现金/积分 lots 不得自动合并或重复计价。
+6. A 阶段用户四 D1 三 R2 加密备份及 Mac 隔离恢复已 PASS。继续五 Draft PR，不操作生产 D1/R2/Secrets/Cron/Workers/Pages/Service Bindings，不跑正式迁移、不建 Preview、不合并功能、不执行真实金融交易；F 阶段须另行授权。
