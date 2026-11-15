@@ -5,7 +5,8 @@ import {REQUIRED_WORKERS,REQUIRED_PAGES,checkG8Bindings,
 function complete(){
  return {workers:Object.fromEntries(Object.entries(REQUIRED_WORKERS).map(([name,r])=>[
   name,{bindings:r.names.map(key=>({name:key,
-   type:r.services.includes(key)?'service':'secret_text'}))}])),
+   type:r.services.includes(key)?'service':key==='DB'?'d1':
+    ['MEDIA','DOCUMENTS'].includes(key)?'r2_bucket':'secret_text'}))}])),
  pages:Object.fromEntries(Object.entries(REQUIRED_PAGES).map(([name,r])=>[
   name,{production:{env_vars:Object.fromEntries(r.env.map(k=>[k,true])),
    d1_databases:Object.fromEntries(r.d1.map(k=>[k,true])),
@@ -73,4 +74,38 @@ test('G8 collector only GETs production metadata and strips all returned values'
 test('G8 collector rejects partial Cloudflare responses and never uses POST/PUT',async()=>{
  await assert.rejects(()=>collectG8Bindings({accountId:'test-account',token:'fake',
   fetcher:async()=>({ok:false,status:403})}),/Cloudflare read failed/);
+});
+
+test('G8 detects missing cross-member banking, recurring, card, points and document service prerequisites',()=>{
+ const s=complete();
+ for(const key of ['KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE',
+  'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE',
+  'DOCUMENT_STUDY_EXECUTION_SECRET']){
+  s.workers.homeflow.bindings=s.workers.homeflow.bindings.filter(x=>x.name!==key);
+ }
+ for(const key of ['KAKEIBO_CROSS_MEMBER_PROOF_SECRET',
+  'KAKEIBO_RECURRING_POLICY_SUBMISSION_ENABLED',
+  'KAKEIBO_LEGACY_SHARED_RECEIPT_REPAIR_ENABLED']){
+  delete s.pages.kakeibo.production.env_vars[key];
+ }
+ delete s.workers['jp-document-assistant'].bindings.find(x=>
+  x.name==='DOCUMENT_INTENT_ENCRYPTION_KEY')?.value;
+ const result=checkG8Bindings(s);
+ assert.equal(result.ok,false);
+ for(const key of ['KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE',
+  'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE'])
+  assert.ok(result.missing.includes('worker:homeflow:missing:'+key));
+ for(const key of ['KAKEIBO_CROSS_MEMBER_PROOF_SECRET',
+  'KAKEIBO_RECURRING_POLICY_SUBMISSION_ENABLED',
+  'KAKEIBO_LEGACY_SHARED_RECEIPT_REPAIR_ENABLED'])
+  assert.ok(result.missing.includes('pages:kakeibo:missing:env:'+key));
+});
+test('G8 cannot call a text binding a D1 or a KV namespace an R2 bucket',()=>{
+ const s=complete();
+ s.workers.homeflow.bindings.find(x=>x.name==='DB').type='secret_text';
+ s.workers['jp-document-assistant'].bindings.find(x=>x.name==='DOCUMENTS').type='kv_namespace';
+ const result=checkG8Bindings(s);
+ assert.equal(result.ok,false);
+ assert.ok(result.missing.includes('worker:homeflow:invalid_resource_type:DB'));
+ assert.ok(result.missing.includes('worker:jp-document-assistant:invalid_resource_type:DOCUMENTS'));
 });
