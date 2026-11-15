@@ -60,6 +60,16 @@ async function main(){
  const accountId=process.env.CLOUDFLARE_ACCOUNT_ID;
  const token=process.env.CLOUDFLARE_API_TOKEN;
  if(!accountId||!token)fail('GITHUB_CLOUDFLARE_READ_ACCESS_MISSING');
+ // Detect a present but revoked token without logging private credentials.
+ const verification=await fetch(SECRET_BASE+'/user/tokens/verify',{
+  method:'GET',headers:{Authorization:'Bearer '+token},
+  signal:AbortSignal.timeout(20000)
+ }).catch(()=>fail('GITHUB_CLOUDFLARE_TOKEN_VERIFY_TRANSPORT_FAILED'));
+ if(!verification.ok)fail('GITHUB_CLOUDFLARE_TOKEN_VERIFY_HTTP_'+verification.status);
+ const v=await verification.json().catch(()=>fail('TOKEN_VERIFY_RESPONSE_INVALID'));
+ if(v.success!==true||v.result?.status!=='active')
+  fail('GITHUB_CLOUDFLARE_TOKEN_INACTIVE');
+ console.log(JSON.stringify({cloudflare_repo_token_active:true,token_value_returned:false}));
  const listed=await api(accountId,token,'/d1/database?per_page=100');
  if(!Array.isArray(listed))fail('D1_LIST_INVALID');
  const root=await mkdtemp(join(tmpdir(),'four-app-g9-current-'));
