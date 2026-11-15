@@ -366,7 +366,33 @@ export async function approvalExecutionRoute(request,env,path,session){
         result.refunded_card_offset_jpy>0&&
         result.refunded_card_offset_jpy===result.yen_value&&
         Number.isSafeInteger(result.refunded_card_liability_after_jpy)&&
-        result.refunded_card_liability_after_jpy>=0))))))&&
+        result.refunded_card_liability_after_jpy>=0)
+       ||
+       (result.refunded_sbi_securities_account_id===result.target_account_id&&
+        result.refunded_target_account_id===null&&
+        result.refunded_prepaid_account_id===null&&
+        result.refunded_card_account_id===null&&
+        /^[a-f0-9]{32}$/i.test(result.refunded_sbi_securities_account_id||'')&&
+        Number.isSafeInteger(result.refunded_sbi_securities_version)&&
+        result.refunded_sbi_securities_version>=1&&
+        Number.isSafeInteger(result.refunded_sbi_units)&&
+        result.refunded_sbi_units>0&&result.refunded_sbi_units<=1000000000000&&
+        Number.isSafeInteger(result.refunded_sbi_cost_jpy)&&
+        result.refunded_sbi_cost_jpy>0&&
+        result.refunded_sbi_cost_jpy===result.yen_value&&
+        Number.isSafeInteger(result.refunded_sbi_points_units)&&
+        result.refunded_sbi_points_units===result.delta_units&&
+        result.refunded_sbi_points_units>0&&
+        /^[A-Z0-9]{8}$/.test(result.refunded_sbi_fund_code||'')&&
+        ['growth','tsumitate'].includes(result.refunded_sbi_account_type)&&
+        /^[a-f0-9]{64}$/i.test(result.refunded_sbi_original_trade_hash||'')&&
+        /^[a-f0-9]{64}$/i.test(result.refunded_sbi_broker_cancel_hash||'')&&
+        /^[a-f0-9]{64}$/i.test(result.refunded_sbi_issuer_reference_hash||'')&&
+        result.refunded_sbi_original_trade_hash!==result.refunded_sbi_broker_cancel_hash&&
+        result.refunded_sbi_evidence_kind==='owner_attested_completed_cancel_and_issuer_refund'&&
+        /^20\d{2}-\d{2}-\d{2}$/.test(result.refunded_sbi_broker_cancel_date||'')&&
+        /^20\d{2}-\d{2}-\d{2}$/.test(result.refunded_sbi_points_returned_date||'')&&
+        result.refunded_sbi_broker_cancel_date<=result.refunded_sbi_points_returned_date))))))&&
    (result.operation!=='redeem_asset'||(
      /^[a-f0-9]{32}$/i.test(result.target_account_id||'')&&
      result.target_account_id!==result.points_account_id&&
