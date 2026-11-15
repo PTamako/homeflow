@@ -2224,3 +2224,21 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **其他验证**：H #306 同一 Code HEAD 常规 Validate HomeFlow **`43774220245 completed/success`**；H #305 最近完整 HEAD `9fe59f1422b4cc970aec982fb0cb5f4e90f31270` 独立 branch Push CI `43732535980 success`，K #309 Validate `43728126071 success`、Bridge `43728126045 success`、Mobile `43728126029 success`，Study #179 `43729879799 success`，Document #97 `43728610498 success`。五 PR 仍 Draft/Open、没有合并或正式 Migration/新系统部署。H #306 相关门禁更新 `docs/four-app-release-acceptance-gates.md` §115，Commit `ccdde2d7e92711dfe34757d8e2ee76ef380a5595`。
 - **唯一需要在可靠 UI 再核对的凭据条件**：HomeFlow 仓库 `Settings → Secrets and variables → Actions → Repository secrets → CLOUDFLARE_API_TOKEN` 必须是来自 Cloudflare 当前目标账户有效的 **API Token**，而非 Global API Key、Account ID 或错误仓库/环境的 Secret；并核对 `CLOUDFLARE_ACCOUNT_ID` 与 D1 所在账户一致，Token 拥有需用的 D1 list/SQL Export 访问权限。因当前 GitHub Connector 无仓库 Secret 写入接口，Chat 不能代为重设或读取 Secret。**绝对不要求用户把 Token 发到聊天**。修正后应重新执行一次**新 Run 的真实 D1 GET**，成功才能在隔离 runner 上完成全部 68 SQL 迁移与回滚。
 - **发布顺序保持 §111**：尊重用户 2026-11-14 已做完的四 D1+三 R2 加密备份及独立恢复；真正剩余 G9 演练、G8 生产完整 Secrets/Bindings/OAuth 和金融一致性放行通过后，按 H #305→#306 及其他三仓依赖合并、正式 Migration、完整四应用生产部署。G2 双实体 iPhone 与 G7 真机构交易的最终对账在部署**后**进行，不作为部署前的死循环。当前严格 **PRE-DEPLOY NO-GO**，不虚报正式上线。
+
+
+## 116. 2026-11-16：用户要求“再试一次”后，真实四生产 D1 的 Stage F 迁移和隔离恢复演练成功（G9 独立子项 PASS；尚未正式上线）
+
+### 实际执行与根因修复
+
+- 用户直接要求重试。重跑原 `Stage F read-only real production D1 migration + recovery rehearsal` `Run 43774214356` Attempt 2，结果不再是 Cloudflare 401；**已实际成功只读导出四个现有正式 D1 原始 SQL** 到 GitHub 临时运行器并恢复成 SQLite。原 Run 最终 **failure** 是 Kakeibo 数据库旧 schema 的 `0020` 重复字段（H 8、Study 13、Document 7 均顺利）。真实 SQL 私密数据未在日志打印或上传 Artifact，运行后已由脚本删除。**此前 GitHub Token 401 故障已解除，不需要再次让用户重复替换 Token。**
+- 只读调查 Kakeibo 正式库的 `PRAGMA table_info`、`sqlite_master`：`recurring_plans.weekdays_json`、`month_days_json`、`interval_months` 字段及正确 NOT NULL、DEFAULT、CHECK 都已经存在，`sbi_transfer_links.purpose` 也已经存在，但 `schema_migrations` 没有 0020/0021 的 marker。由此确认为**历史原结构已迁移但审计 marker 缺失**，不是新程序应删除/覆盖的旧数据。必须拒绝机械执行 ALTER，同时不得伪造已应用迁移标记。
+- 在 H #306 `scripts/release-local-data-rehearsal.py` 增加针对**仅这两条已确认前置迁移**的严谨 preexisting schema guard：对真实 SQLite DDL 和 PRAGMA 栏目逐项比对准确字段类型、NOT NULL、默认值、CHECK；全部一致才能作为 `verified_preexisting` 记录，部分已存在或定义不符时 **fail closed**。真实 Commit **`b65596f723acc1110468b90cf353357cba53d950`**，相应两个安全回归负向测试 Commit **`3be8977a71b96143217eba4f5edf8b1a4a526c25`**。
+- **实际完整生产快照复跑成功**：HomeFlow GitHub Actions **Run `43775130605 completed/success`**（不是模拟数据），从四正式 Cloudflare D1 的当时 SQL 导出在一次性 runner 独立恢复，在隔离副本上重放/验证 68 项 Stage F 迁移：H `8 applied`、K `38 applied + 2 verified_preexisting`、Study `13 applied`、Document `7 applied`，共 **66 条真正执行 SQL + 2 条严格相等核验 = 68/68 PASS**。每库通过 `PRAGMA integrity_check`/外键检查、旧关键数据原始列逐行 SHA-256 与家計簿既有合计不变量，并从未变更的 baseline **实地恢复独立 SQLite 副本且验证成功**；Workflow 最后显示 `real_data_migration_and_local_rollback_passed=true`、`production_writes=false`、`private_data_uploaded_as_artifacts=false`。该证据完全不用用户重新做 2026-11-14 已完成的 A 阶段加密备份。
+- 增强测试后的 H #306 HEAD `3be8977a71b96143217eba4f5edf8b1a4a526c25` Validate HomeFlow **Run `43775184061 completed/success`**。H #306 `docs/four-app-release-acceptance-gates.md` 已附 §116 精确记录，Commit `6b757f941f49e6549c10e6a5cd22c9e9bbef6331`，完成后应再核对最新 HEAD CI。
+- **边界**：这是当前真实生产 SQL 数据的**离线隔离迁移与本地数据库恢复演练成功**，不是实际生产 D1 Migration、不是对 Cloudflare D1 执行 Time Travel restore、更不是四应用 SSO/金融审批正式上线。四数据库**生产数据零写入**、未删 R2 或创建 Preview。用户和丈夫两实体 iPhone 的 G2 及银行/SBI/积分 G7 真实机构对账继续按 §111 在新完整生产部署后验收，不作部署前循环阻挡。
+
+### 下一个真正上线阻碍（不能再归咎 Token 或本次 G9 离线演练）
+
+- **G8**：对齐并验证 HomeFlow、原 K 私有 Worker、K Pages、Study、Document 在 Cloudflare 正式环境的全部 OAuth redirect、Secret 配对、Service Bindings、Flags、D1/R2/权限；此前 Secret PATCH 曾自动切到 100% 新活动版本，之后已经真实恢复旧版本 100%，不能在未协调版本切换前逐个增加密钥或宣称 G8 完成。严格保存原有 Google OAuth、旧桥、数据库数据。
+- **正式迁移及发布协调**：沿用真实成功的 68 项隔离演练、K 0020/0021 已存在严格检测，在发布窗口完成安全状态冻结/保护/核对、Cloudflare 生产 Migration 跟踪和回滚路径、K Pages 和 Doc 的自动部署隔离，以及剩余 G3～G6 合法权限与实账户执行门禁。全部 PRE-DEPLOY GO 才按 **H #305→#306** 依赖并顺序合并五 PR、部署四应用完整功能；不以删减金融功能或无限关闭 Flag 宣告完成。
+- **本轮真实状态**：§116 真实快照迁移恢复**PASS**；五功能 PR 仍 Draft/Open，正式生产 D1/Secrets/OAuth/Bindings 和部署没有因这次演练被擅自改变，尚非 FULL RELEASE PASS。绝不可重写为“还没做过真实数据演练”或“已经上线成功”。
