@@ -1915,3 +1915,22 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 4. **B～E 全面验收**：四个 PWA 的初装/退出/HomeFlow 回跳 OAuth、私人文书 Gmail/Drive、文书共享真实 CRUD/附件、知学用户进度/错题/生词/离线、家計簿共享账本与本人金融设置、缓存/过期会话跨双 iPhone 的彻底隔离与 E2E。真实两台 iPhone 和生产 Cloudflare 端到端属于未来 F 阶段授权，CI WebKit 不可替代。
 5. **真实 SBI/积分发行方独立机构核对仍未完成**：之前的券商取消、积分返还、银行到账是 owner-reviewed 用户 attestation，不是机构 API 自动同步。历史 screenshot/持仓/现金/积分 lots 不得自动合并或重复计价。
 6. A 阶段用户四 D1 三 R2 加密备份及 Mac 隔离恢复已 PASS。继续五 Draft PR，不操作生产 D1/R2/Secrets/Cron/Workers/Pages/Service Bindings，不跑正式迁移、不建 Preview、不合并功能、不执行真实金融交易；F 阶段须另行授权。
+
+
+## 94. 2026-11-15 B～E 文书助手 iPhone PWA HomeFlow OAuth 授权返回修复：原会话可恢复，PKCE/回调来源严格验证（仅 Draft，CI PASS）
+
+### 源码变更与测试
+
+- 本节接续 §93 的 HomeFlow 周期授权，并首次在 **jp-document-assistant #97** Draft PR 的真正源代码推进 B～E PWA 回归；开始前功能 SHA ade2dba88f95a183a6bf31f73309a9792a6daa5e，未动生产 Cloudflare OAuth 或 HomeFlow Secrets。用户此前遇到 iOS 主屏幕 PWA 发起 HomeFlow 认证却停留“登录中”的风险：外部 Safari 被打开，但原 standalone PWA 保持 WebView 不触发导航卸载/自动解锁，原页面的“完成登录”按钮可能始终被 homeflowSsoBusy 禁用。
+- 新 **web/src/homeflow-sso-pwa-return.js** **d3ae39897b0ae4d438c3f48456bdb938b6b01a31**：隔离浏览器 OAuth 外部导航。若已经正确调用 HTTPS Safari 导航，马上解除原 PWA 的 busy 控件锁，用户可以返回**同一个 PWA 会话**使用原短期 sessionStorage 的 state/resume_secret 手动完成 SSO；从未把一次导航当作身份认证成功，也没有允许外部 Safari 获取 PWA 的 resume_secret。
+- **web/src/App.vue** **4ba266af5e99da0d1931cfc0cdf6c4f3361d67f0** 改用上面的独立 handoff helper，并在登录页注明：iPhone 跳转 Safari 认证后返回原主屏幕文书助手，点“完成 HomeFlow 登录”。认证仍需原后端 complete 成功、清理旧私有工作区/旧 session 结果、重新 boot() 读取真实有效用户，退出登录清除 sessionStorage pending。
+- 新 **validateHomeflowAuthorizationUrl** helper **e3da5056edfd3321e45e87184d43621e5b3e8123** 与 App.vue **ab6457fd3b947eff20eb4a2325f414c97fb3432a**，在短期 state 保存和 Safari 授权导航之前校验真实 OAuth 参数的 exact client=jp-document-assistant、response_type=code、PKCE=S256 和 43 字符 challenge、随机 nonce、请求 state 本次相同、**redirect_uri 必须精确等于本 App 的 origin + /api/homeflow-sso/callback**，外部 URL 必须 HTTPS 且无 user/password/hash，任何注入额外 resume_secret 参数、恶意目标回调/篡改 PKCE 一律拒绝。服务器的 PKCE/单次 code 会话授权验证丝毫未削弱。
+- 新 **tests/homeflow-sso-pwa-return.test.js** Commit **fce652043fc02629e833e39a4763033e1afd97db**，扩展恶意 client/redirect/PKCE/state/nonce 与额外凭证污染测试 Commit **a337235de3a6c8e35db8aae63d454a37e34b9ace**：模拟 iPhone standalone PWA 的 Safari 打开后原 WebView 不关闭、原 busy 能释放、导航失败不宣称成功、源账号切换/原私有 sessionStorage 存储和退出清除、服务器 SSO complete 后才清旧账户内存并重新 boot，不能通过错误外部 URL 泄露状态。**最终 Document Assistant #97 HEAD a337235de3a6c8e35db8aae63d454a37e34b9ace，Pre-merge CI 43681571778 completed/success**。中间连续新 commits 导致旧 CI run 被取消，最新 PASS 运行对应上述真实 HEAD。
+- 冻结合同新增 **§AH/v1.0.28**，HomeFlow #306 文档提交 **0cdec06f3604f31cf15de4979999574973d13f2c**；严格对比原 main 文档内容完全匹配后，只同步 §AH 到 main 合同，docs-only Commit **945199ac5bf5305029ac2a96f5abf27653865452**。唯一交接文件本 §94 同步 #306 与 main 时只修改 docs，不合并任何实际功能 PR、不触发主线生产部署。
+
+### 剩余不可假称完成
+
+1. **四个 PWA 实机及 B～E 整体验收仍缺**：仅文书助手单 App 的一个 iOS 外部 Safari 交接失活问题有真实代码和 Node 测试；Google Gmail/Drive OAuth 权限及 callback、用户退出/重新授权后服务端数据隔离、HomeFlow/知学/家計簿自身的 Safari PWA 回跳、跨 iPhone 主屏幕新旧 sessionStorage、iOS 离线/缓存清理、联网失效/恢复/用户切换，仍必须逐仓执行 browser E2E 和最终两台真实 iPhone 实机验证。没有上线，不能称实际 iPhone/真实 Google 或 HomeFlow OAuth 环境已经测过。
+2. **P0-4C 尚未完成的真实金融事务**：§92 的跨成员独立三方确认和 §93 的周期授权均尚未接入 Kakeibo 两个不同 owner 的银行/现金/证券/储值卡账户和 signed target 执行；仅 §91 已实现本人同账户所有者的两银行已到账转账。共享账目 edit/delete/recycle/restore、R2 附件一致性与不可变 SBI/卡/积分原交易保护仍未有完整经审批的真实 K target 执行器。
+3. **券商/积分发行方机构级核验尚未完成**：旧 SBI 截图/资金 lots/单位/成本仍仅证据候选，退款/券商取消/返还点数是用户 attestation + 家庭 owner 审核，并非登录 SBI 机构 API/银行流水验证。不能将 broker_reconciled 自动改为 true 或在家庭资产里重复合并。
+4. B～E 设计书 R1～R9/T01～T14 全部剩余清单、A 阶段生产加密备份/本地 Mac 恢复 PASS、五 PR Open/Draft/不创建 Preview、无生产 Workers/Pages/D1/R2/Secrets/Cron/Binding/迁移/合并/真实汇款下单等限制持续有效。后续 §95 起应该优先攻克 K 跨成员实际签名资金双边执行、账目修改/恢复/R2 完整一致性及周期目标实际回执，然后在 F 阶段单独申请正式上线授权。
