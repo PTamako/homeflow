@@ -35,4 +35,52 @@ database_name = "homeflow"
 database_id = "3e0205b0-77e2-4259-8ac2-4c56efc43f8a"
 migrations_dir = "migrations"
 
+# Signed financial executors all target the EXISTING internal-only Kakeibo
+# Worker (workers_dev=false; no public route). It delegates to existing
+# approved Pages handlers, using the SAME Kakeibo D1 and HomeFlow proof.
+[[services]]
+binding = "KAKEIBO_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_CARD_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_POINTS_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_PREPAID_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_SBI_CASH_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_RECURRING_RECEIPT_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+# Both actions and study sync execute in the EXISTING private document Worker.
+[[services]]
+binding = "DOCUMENT_EXECUTION_SERVICE"
+service = "jp-document-assistant"
+
+[[services]]
+binding = "DOCUMENT_STUDY_EXECUTION_SERVICE"
+service = "jp-document-assistant"
+
 # Preview Worker and D1 retired on 2026-11-12. Production is the only remote environment.
