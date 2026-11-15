@@ -1954,3 +1954,18 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 3. HomeFlow §93 固定费、SBI 月度周期**预留**不代表每期实际到账或记账；Kakeibo 真实计划绑定、Cron 模拟+实际写入、独立 receipt、重复月份安全恢复仍需开发，生产 Cron 不能启用。
 4. 四 PWA HomeFlow/家計簿/知学/文书助手 B～E 的完整 OAuth/PKCE/独立账号/离线隔离/二人浏览器回归需逐项验收。iPhone 双真机及 F 生产上线等用户额外授权。
 5. 旧 SBI holdings/lot 逐笔真实券商交易记录与积分发行方/银行实际 reference 对账仍未具备机构级 API；保持 pending/user-attested、不自动加入 NAV/家庭资产。不得凭截图看起来相似就自动合并。
+
+## 96. 2026-11-15 P0-4C 第二轮：同一个银行参考不能跨 SBI / 信用卡 / 旧同一人转账重复记账；跨仓 CI 再次 PASS（仅 Draft）
+
+- **承接 §95，不覆盖任何先前开发者 Commit，功能范围限定于新跨成员已到账银行转账凭证防重复**。家計簿 #309 `feature/homeflow-sso-isolated-foundation-20261113` 的上一 HEAD `11c5b0a20d65b42ff114f76c77652ef509d81888` 已通过 Validate `43690786490` 与 Mobile WebKit Smoke `43690786487`；HomeFlow #306 `feature/family-approval-state-machine-20261113` 的上一真实功能 HEAD `9badf5c3fdb96ef6f4e7a3027582d1867fc6f5a5` 已通过 Validate `43691029091`，其 §95 交接 docs-only SHA `c5f00ed80d49fde57e36b0b1e46ea5b3e8002f17` 通过 Validate `43691214859`。
+- 家計簿 **新未部署 migration** `migrations/0050_cross_bank_statement_usage_guards.sql`（schema `schema-0050-cross-bank-statement-usage-guards`）追加 SQL 四类双向防重 Guard：新跨成员 source debit / recipient credit 的原 `account_id+SHA256(reference)` 若出现在旧同一人银行转账 source/target、信用卡银行扣款、SBI 现金买付银行扣款、SBI 现金买付退款参考，直接 ABORT，不能在新跨成员 journal 重用；跨成员记账已成功后，旧这四类 writer 也不能再次插入相同双方银行 statement。新增 migration 保持 §95 `0049` 原不可变 source + target 跨成员 journal、CAS 和原单 Kakeibo DB batch 原子性，不触碰原银行/SBI journal 的不可变历史。测试 `tests/family-cross-member-bank-transfers.test.mjs` 增加**真实 SQLite** 前序 migration 全套回放，验证 source/recipient 参考不能在后续 SBI 和信用卡银行流水重复入账、跨成员唯一 journal / entries 不变。**真实 Kakeibo 功能最终 Commit `b50f2242df6c9b6e512e194562799d9f008165b2`**。
+- **当次真实 CI**：家計簿 #309 Validate **`43691387134` completed/success**；Mobile WebKit Smoke **`43691387101` completed/success**。不是用历史成功替代最新 HEAD，也不代表实际银行 API 对账。
+- HomeFlow #306 新增冻结契约 **§AJ / v1.0.30**，继续维持 §AI 新增跨成员银行账务的双成员本人身份、HomeFlow owner 单独授权、receipt/不重复执行的原操作含义；跨仓 `tests/cross-member-bank-real-cross-app.test.mjs` 隔离 Kakeibo schema 进一步包含 `0050`，CI `.github/workflows/ci.yml` 精确 pin 上述已通过 Validate 的 Kakeibo 功能 SHA **`b50f2242df6c9b6e512e194562799d9f008165b2`**。HomeFlow 跨仓 Contract/Test/CI 功能 Commit **`59d3b6f85174d7bcd2cb2a001c30245eca759e0e`**；其 Validate **`43691540548` completed/success**，运行相互隔离的实际 SQLite 和 handler，并继续验证两条独立信任链。
+- 为保存跨会话连续状态，§95 已先更新 HomeFlow #306 的 docs-only SHA `c5f00ed80d49fde57e36b0b1e46ea5b3e8002f17`，同时确认 HomeFlow main `.github/workflows/deploy.yml` 对 `docs/**` 的 `paths-ignore` 后，仅通过 docs-only Commit **`8d40cb6d8a37c318c118522ffb0dabe1b0b83515`** 同步 §95 到 main；没有把任何 #305/#306 功能 PR 合并到 main，未触发生产 Deploy 功能 workflow。§96 将同样仅作为 docs-only handoff 与 main 保持同步。
+- 五个功能 PR 仍 Open/Draft；**无生产 Worker/Pages/D1/R2/Secrets/Cron/Service Binding、无 Preview、无数据迁移或真实银行交易、无 F 阶段**。A 阶段用户本人生产加密备份与本地恢复 PASS 保持有效。
+
+### 还需继续（下一个 Chat 不能把 §96 当全部完成）
+
+1. §95～96 仍**只支持 member→owner 两个 bank member_created account 已到账用户双侧证据的内部记账**，不支持 owner→member、现金/储值卡/证券之间未明确合法路径的直接跨成员划转；机构级银行/券商/积分真实对账尚未进行。用户独立确认 ≠ 银行已经联网证明。
+2. 第二优先：共享账目新增/修改/删除/恢复、回收箱/R2 附件一致性、不可变金融历史反冲、审批后的批量独立目标执行、actor/版本 CAS；第三优先：HomeFlow §93 周期金融授权对 Kakeibo 固定费和 SBI 每月真实计划的签名执行/幂等/Cron 隔离测试；第四优先：四应用 B～E OAuth/PKCE、二人 SSO、离线/PWA 真实 WebKit/浏览器 E2E 与身份切换，双 iPhone F 需另获授权；第五优先：SBI lot/基金 NAV 与银行积分发行方权威 reference 一致性审查。
+3. 单次本地 D1 batch 可以保持目标不可变双边账与审计完整，但 HomeFlow 与 Kakeibo 两个独立 Cloudflare D1 **不存在全局 SQL 原子性**；撤权、过期与完成瞬间的跨库竞态仍须按租约、short-lived proof、只读原 ID receipt 和不得双重写入等原则继续设计与验收，绝不能把 `reserved` 或 `consent_verified` 视作 `applied`。
