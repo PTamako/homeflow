@@ -7,6 +7,7 @@ import {approvalSubmissionRoute} from './approval-submission.js'
 import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
 import {cardSettlementApprovalSubmissionRoute} from './card-settlement-approval-submission.js'
 import {sbiCashApprovalSubmissionRoute} from './sbi-cash-approval-submission.js'
+import {bankTransferApprovalSubmissionRoute} from './bank-transfer-approval-submission.js'
 import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
 import {pointsApprovalSubmissionRoute} from './points-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
@@ -66,6 +67,8 @@ async function routeRequest(request,env,ctx,state){
         return prepaidApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/sbi-cash-submit')
          return sbiCashApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/bank-transfer-submit')
+         return bankTransferApprovalSubmissionRoute(request,env)
        if(path==='/api/internal/approvals/card-settlement-submit')
         return cardSettlementApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/card-submit')
