@@ -114,7 +114,7 @@ onUnmounted(()=>{alive=false;reset();document.removeEventListener('visibilitycha
  <section v-if="enabled" class="panel recurring-finance" aria-label="周期金融授权">
   <header class="recurring-head">
    <div class="management-section-heading">
-    <AppIcon name="calendar-check" :size="20"/>
+    <AppIcon name="calendar-heart" :size="20"/>
     <h2>周期金融授权</h2>
    </div>
    <button type="button" class="outline" :aria-expanded="expanded"
