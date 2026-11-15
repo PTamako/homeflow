@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {DatabaseSync} from 'node:sqlite'
-import {webcrypto} from 'node:crypto'
+import {webcrypto,createHash} from 'node:crypto'
 import {approvalRoute} from '../worker/approvals.js'
 import {approvalExecutionRoute} from '../worker/approval-execution.js'
 import {approvalVerificationRoute} from '../worker/approval-verification.js'
@@ -54,10 +54,13 @@ function homeSchema(sql){
 function kSchema(sql){
  sql.exec('CREATE TABLE schema_migrations(version TEXT PRIMARY KEY,description TEXT)')
  sql.exec('CREATE TABLE homeflow_identity_links(user_id TEXT PRIMARY KEY,household_id TEXT,role TEXT,state TEXT)')
+ sql.exec('CREATE TABLE family_financial_accounts(account_id TEXT PRIMARY KEY,household_id TEXT,owner_user_id TEXT,is_archived INTEGER)')
+ sql.exec('CREATE TABLE family_finance_legacy_entry_links(entry_id INTEGER PRIMARY KEY,household_id TEXT,actor_user_id TEXT,account_id TEXT,original_source TEXT,source_digest TEXT)')
+ sql.exec('CREATE TABLE receipt_r2_state(entry_id INTEGER PRIMARY KEY,deleted INTEGER,size_bytes INTEGER)')
  sql.exec('CREATE TABLE entries(id INTEGER PRIMARY KEY,date TEXT,time TEXT,amount INTEGER,category TEXT,'+
   'merchant TEXT,note TEXT,raw TEXT,type TEXT,client_request_id TEXT UNIQUE,payment_source TEXT,'+
   'family_account_id TEXT,family_transfer_target_account_id TEXT)')
- for(const file of ['0051_shared_entry_lifecycle.sql','0052_shared_mutation_approved_execution.sql'])
+ for(const file of ['0051_shared_entry_lifecycle.sql','0052_shared_mutation_approved_execution.sql','0055_legacy_shared_entry_adoption.sql','0058_adopted_shared_mutation_approval.sql'])
   sql.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+file,import.meta.url),'utf8'))
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   put(sql,"INSERT INTO homeflow_identity_links VALUES(?,?,?,'active')",u,household,role)
@@ -74,7 +77,7 @@ async function fixture(){
   SHARED_ENTRY_APPROVAL_PROOF_SECRET:secrets.proof}
  const finance={APP_ENV:'production',DB:k.db,
   KAKEIBO_FAMILY_FINANCE_ENABLED:'true',KAKEIBO_SHARED_ENTRY_ENABLED:'true',
-  KAKEIBO_SHARED_MUTATION_APPROVAL_ENABLED:'true',
+  KAKEIBO_SHARED_MUTATION_APPROVAL_ENABLED:'true',KAKEIBO_LEGACY_SHARED_ADOPTION_ENABLED:'true',
   KAKEIBO_FAMILY_PENDING_KEY:secrets.pending,
   KAKEIBO_SHARED_MUTATION_SUBMISSION_SECRET:secrets.submit,
   KAKEIBO_SHARED_MUTATION_EXECUTION_SECRET:secrets.execution,
@@ -199,3 +202,92 @@ test('HomeFlow review revocation, changed role and Kakeibo audit failure never m
   }finally{f.close()}
  }
 })
+
+
+function seedOriginalOwnerAdoptedEntry(f){
+ const sql=f.k.sql,resource='a'.repeat(32),account='b'.repeat(32),oldId=7;
+ const now=Date.now(),linkDigest='c'.repeat(64);
+ put(sql,'INSERT INTO family_financial_accounts VALUES(?,?,?,0)',account,household,owner);
+ put(sql,'INSERT INTO entries(id,date,time,amount,category,merchant,note,raw,type,client_request_id,payment_source,family_account_id,family_transfer_target_account_id) '+
+  'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',oldId,sample.date,sample.time,900,sample.category,'旧商店','原始OCR备注',
+  '原始OCR票据','expense',null,'Bank',account,null);
+ put(sql,'INSERT INTO family_finance_legacy_entry_links VALUES(?,?,?,?,?,?)',
+  oldId,household,owner,account,'Bank',linkDigest);
+ const original=get(sql,'SELECT * FROM entries WHERE id=?',oldId);
+ put(sql,'INSERT INTO family_legacy_shared_adoptions(resource_id,entry_id,household_id,original_owner_user_id,account_id,'+
+  'source_snapshot_sha256,original_link_digest,original_client_request_id,original_row_json,adopted_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+  resource,oldId,household,owner,account,'d'.repeat(64),linkDigest,null,JSON.stringify(original),now);
+ const snapshot=JSON.stringify({...sample,amount:900,merchant:'旧商店',note:'原始OCR备注'});
+ const sha=createHash('sha256').update(snapshot).digest('hex');
+ put(sql,'INSERT INTO family_shared_entry_write_context VALUES(?,?,?,?,?,?)',
+  resource,oldId,owner,'create',0,now);
+ put(sql,'INSERT INTO family_shared_entry_registry(resource_id,household_id,entry_id,creator_user_id,last_actor_user_id,'+
+  'state,version,snapshot_json,payload_sha256,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+  resource,household,oldId,owner,owner,'active',1,snapshot,sha,now,now);
+ put(sql,'DELETE FROM family_shared_entry_write_context WHERE resource_id=?',resource);
+ return {resource,account,oldId,original};
+}
+test('two actual isolated D1s: HomeFlow member proposal, owner approval and signed target revise adopted original without duplicate accounting',async()=>{
+ const f=await fixture();
+ try{
+  const original=seedOriginalOwnerAdoptedEntry(f);
+  const initial=get(f.k.sql,'SELECT COUNT(*) n,SUM(amount) total FROM entries');
+  const updateId=await f.prepare('update',original.resource,1,{...sample,amount:1550});
+  assert.equal((await f.review(updateId)).status,200);
+  assert.equal(count(f.k.sql,'entries'),1);
+  const updated=await f.execute(updateId);
+  assert.equal(updated.status,200,JSON.stringify(updated));
+  assert.equal(updated.data.applied,true);
+  let row=get(f.k.sql,'SELECT * FROM entries WHERE id=?',original.oldId);
+  assert.equal(row.amount,1550);
+  assert.equal(row.raw,original.original.raw);
+  assert.equal(row.payment_source,original.original.payment_source);
+  assert.equal(row.family_account_id,original.account);
+  assert.equal(row.client_request_id,null);
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',updateId).status,'applied');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,initial.n);
+  const deleteId=await f.prepare('delete',original.resource,2,null);
+  assert.equal((await f.review(deleteId)).status,200);
+  assert.equal((await f.execute(deleteId)).status,200);
+  assert.equal(count(f.k.sql,'entries'),0);
+  const restoreId=await f.prepare('restore',original.resource,3,null);
+  assert.equal((await f.review(restoreId)).status,200);
+  assert.equal((await f.execute(restoreId)).status,200);
+  row=get(f.k.sql,'SELECT * FROM entries WHERE id=?',original.oldId);
+  assert.equal(row.amount,1550);
+  assert.equal(row.raw,original.original.raw);
+  assert.equal(row.family_account_id,original.account);
+  assert.equal(count(f.k.sql,'entries'),1);
+  assert.equal(count(f.k.sql,'family_shared_mutation_applied'),3);
+  assert.equal(count(f.k.sql,'family_shared_entry_audit'),4);
+  assert.equal((await f.execute(restoreId)).status,200);
+  assert.equal(count(f.k.sql,'family_shared_mutation_applied'),3);
+  for(const id of [updateId,deleteId,restoreId])
+   assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',id).status,'applied');
+ }finally{f.close()}
+});
+test('adopted historical target commits once when HomeFlow response is lost and original request ID resumes',async()=>{
+ const f=await fixture();
+ try{
+  const old=seedOriginalOwnerAdoptedEntry(f);
+  const approval=await f.prepare('update',old.resource,1,{...sample,amount:1600});
+  assert.equal((await f.review(approval)).status,200);
+  const target=f.home.KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE;
+  let loseOnce=true;
+  f.home.KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE={async fetch(req){
+   const response=await target.fetch(req);
+   if(loseOnce){loseOnce=false;throw Error('LOST_ADOPTED_MUTATION_RECEIPT');}
+   return response;
+  }};
+  const unknown=await f.execute(approval);
+  assert.notEqual(unknown.status,200);
+  assert.equal(get(f.k.sql,'SELECT amount FROM entries WHERE id=?',old.oldId).amount,1600);
+  assert.equal(count(f.k.sql,'family_shared_mutation_applied'),1);
+  const recovered=await f.execute(approval);
+  assert.equal(recovered.status,200,JSON.stringify(recovered));
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',approval).status,'applied');
+  assert.equal(count(f.k.sql,'entries'),1);
+  assert.equal(count(f.k.sql,'family_shared_mutation_applied'),1);
+  assert.equal(count(f.k.sql,'family_shared_entry_audit'),2);
+ }finally{f.close()}
+});
