@@ -145,7 +145,7 @@ export async function approvalVerificationRoute(request,env){
   row?.idempotency_key==='kakeibo:cardsettle:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
  const sbiCash=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
-  ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional'].includes(row?.operation)&&
+  ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional','finance.sbi_cash.reversal'].includes(row?.operation)&&
   row?.resource_type==='sbi_cash_action'&&
   row?.idempotency_key==='kakeibo:sbi-cash:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
