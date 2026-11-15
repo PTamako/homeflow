@@ -1,0 +1,74 @@
+name: Stage F read-only real production D1 migration + recovery rehearsal
+on:
+  # Feature-branch runner only. NO Preview deployments, NO production SQL writes.
+  push:
+    branches: [feature/family-approval-state-machine-20261113]
+    paths:
+      - '.github/workflows/rehearse-current-production-d1.yml'
+      - 'scripts/release-current-production-rehearsal.mjs'
+      - 'scripts/restore-d1-sql-export.py'
+      - 'scripts/release-local-data-rehearsal.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: stage-f-sensitive-production-d1-read-only-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  read-only-production-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check out reviewed Stage F release implementation
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Review exact Kakeibo migrations with no Preview
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Review exact Study migrations with no Preview
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: 6cff757af2e4b6fd89880834965a8bbd50714ed8
+          path: .contract-study
+          persist-credentials: false
+      - name: Review exact Document migrations with no Preview
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Syntax-only verification; no remote writes
+        run: |
+          node --check scripts/release-current-production-rehearsal.mjs
+          python3 -m py_compile scripts/restore-d1-sql-export.py scripts/release-local-data-rehearsal.py
+      - name: Validate existing synthetic rollback tests
+        run: python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - name: Check scoped credentials present (never print values)
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Export four production SQL snapshots into private runner and test migrations/rollback
+        run: |
+          set +x
+          umask 077
+          node scripts/release-current-production-rehearsal.mjs
+      # No upload-artifact. The script deletes all four SQL/SQLite scratch files
+      # in its finally block. Always make runner unable to persist data.
