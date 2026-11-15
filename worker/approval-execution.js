@@ -464,8 +464,8 @@ export async function approvalExecutionRoute(request,env,path,session){
       result.original_request_id!==row.request_id&&
       hex.test(result.bank_refund_hash||'')&&
       hex.test(result.broker_cancel_hash||'')&&
-      /^20\\d{2}-\\d{2}-\\d{2}$/.test(result.bank_refund_date||'')&&
-      /^20\\d{2}-\\d{2}-\\d{2}$/.test(result.broker_cancel_date||'')&&
+      /^20\d{2}-\d{2}-\d{2}$/.test(result.bank_refund_date||'')&&
+      /^20\d{2}-\d{2}-\d{2}$/.test(result.broker_cancel_date||'')&&
       result.broker_cancel_date>=result.trade_date&&
       result.bank_refund_date>=result.broker_cancel_date&&
       result.bank_refund_date>=result.effective_date&&
