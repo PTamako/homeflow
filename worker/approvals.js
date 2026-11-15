@@ -23,6 +23,7 @@ const ALLOWED_OPS={
   'finance.sbi_cash.tsumitate':'kakebo',
   'finance.sbi_cash.additional':'kakebo',
   'finance.sbi_cash.reversal':'kakebo',
+  'finance.asset_transfer.bank_to_bank':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
