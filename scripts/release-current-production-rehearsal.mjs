@@ -76,16 +76,11 @@ async function main(){
  if(diagnostic.bearer_prefix_in_secret||diagnostic.surrounding_quotes_in_secret||
     diagnostic.embedded_whitespace_in_secret)
   fail('GITHUB_CLOUDFLARE_TOKEN_SECRET_FORMAT_INVALID');
- // Detect an inactive token without exposing private credentials.
- const verification=await fetch(SECRET_BASE+'/user/tokens/verify',{
-  method:'GET',headers:{Authorization:'Bearer '+token},
-  signal:AbortSignal.timeout(20000)
- }).catch(()=>fail('GITHUB_CLOUDFLARE_TOKEN_VERIFY_TRANSPORT_FAILED'));
- if(!verification.ok)fail('GITHUB_CLOUDFLARE_TOKEN_VERIFY_HTTP_'+verification.status);
- const v=await verification.json().catch(()=>fail('TOKEN_VERIFY_RESPONSE_INVALID'));
- if(v.success!==true||v.result?.status!=='active')
-  fail('GITHUB_CLOUDFLARE_TOKEN_INACTIVE');
- console.log(JSON.stringify({cloudflare_repo_token_active:true,token_value_returned:false}));
+ // Cloudflare /user/tokens/verify is NOT a reliable oracle for all
+ // credentials: the connected Cloudflare account successfully queries D1
+ // yet receives 401 from that verify endpoint. Demand actual scoped D1
+ // read/export access instead of blocking on token introspection.
+ // No token, signed URL or secret contents are written to logs.
  const listed=await api(accountId,token,'/d1/database?per_page=100');
  if(!Array.isArray(listed))fail('D1_LIST_INVALID');
  const root=await mkdtemp(join(tmpdir(),'four-app-g9-current-'));
