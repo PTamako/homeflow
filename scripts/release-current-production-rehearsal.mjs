@@ -67,9 +67,9 @@ async function main(){
  const diagnostic={
   token_present:true,
   surrounding_whitespace_ignored:rawToken!==token,
-  bearer_prefix_in_secret:/^Bearer\\s/i.test(token),
+  bearer_prefix_in_secret:/^Bearer\s/i.test(token),
   surrounding_quotes_in_secret:/^['"]|['"]$/.test(token),
-  embedded_whitespace_in_secret:/\\s/.test(token),
+  embedded_whitespace_in_secret:/\s/.test(token),
   secret_value_exposed:false
  };
  console.log(JSON.stringify({github_secret_shape:diagnostic}));
