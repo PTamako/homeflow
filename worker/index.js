@@ -3,6 +3,7 @@ import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {crossMemberTransferConsentsRoute} from './cross-member-transfer-consents.js'
+import {crossMemberConsentProofRoute} from './cross-member-consent-proof.js'
 import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
 import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
@@ -60,6 +61,8 @@ async function routeRequest(request,env,ctx,state){
       // same-origin cookie is accepted; never grants target write rights.
       if(path==='/api/internal/approvals/verify')
         return approvalVerificationRoute(request,env)
+      if(path==='/api/internal/cross-member/consent-proof')
+        return crossMemberConsentProofRoute(request,env)
       if(path==='/api/internal/approvals/submit')
         return approvalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/points-submit')
