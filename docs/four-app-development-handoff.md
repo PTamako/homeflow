@@ -2175,3 +2175,28 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **G2/G7**：按 §111 仅在完整四应用安全部署后执行两实体 iPhone 和新生产内部 journal 对官方可信账单的真正联合验证；它们本身不再先于部署被要求完成，但最终 FULL RELEASE PASS 仍须通过。
 
 **最终状态**：本节已提交代码、测试、Cloudflare 只读真实核查和完整 handoff；五 PR 均 Open/Draft，未执行生产 migration/Cloudflare 配置或部署，未改变现有 4 个正式应用，未创建 Preview；**PRE-DEPLOY NO-GO**。后续开发从 §112 继续，先把 G3～G6 剩余合法账户/金融路径和真实迁移/备份/回滚门禁填完，只有门禁证据满足后才合并 H #305→#306 与其他三个 PR，并部署四应用完整功能。
+
+
+## 113. 2026-11-15：接续 §112 — 用户 A 阶段加密备份确已完成、修复生产私有金融执行路由、声明式 OAuth/Bindings、隔离真实数据回滚工具与防止合并自动部署（上线前仍 NO-GO）
+
+### 用户已确认的备份不能重新当作未完成任务
+
+- 用户再次明确：**2026-11-14 已经完成四个生产 D1 和三个 R2 的全量加密备份及独立恢复验证**，此项 A 阶段验收应视为既有成果，不能让用户从零重复。当前连接的**私有未共享** Google Drive `四应用生产加密备份/2026-11-13-A阶段` 中确实存在 `A-stage-verified-cqf3T3.7z`、`A-stage-clean-20261114-004412.7z` 等近 3 MB 的 7z 加密包。旧 `backup-preflight-status.json` 出自较早准备阶段，不能推翻用户之后实际通过的恢复核验。本轮没有读取解密密码、没有解密或泄漏备份。
+- 之前已获取四库生产 Time Travel bookmark、迁移 marker SHA、关键业务摘要。新版本迁移基于真实快照的 **§113 G9 隔离演练** 是独立于已完成 A 阶段的发布新任务：保护**备份后至发布时**新增的流水，需要发布冻结点恢复点和新版本回滚预案，但不意味着要求重做 11 月 14 日的整个备份。
+
+### 真实代码与跨应用联通开发
+
+- **P0 G3/G4/G5 重大执行路径修复**：Kakeibo 是 Cloudflare Pages，不能把其 Functions 直接当作可供 HomeFlow Service Binding 调用的独立 Worker；原有私有 `kakeibo-homeflow-bridge` 只有 ledger GET/JPDA POST。此前 H #306 金融 approval executor 依赖 `KAKEIBO_*_EXECUTION_SERVICE` 走内部 `/api/internal/{action}/execute|receipt`，无有效目标执行服务，无法在生产闭环。K #309 新 `workers/family-finance-service-router.js` Commit `69b26b16c888adbbc6f07006b925f93b08d972f5`，以原私有 Worker 导入已存在 Pages finance backend 签名处理器，无新增 Worker/D1/Preview；覆盖现金、bank（含 cross-member 双边同意证明）、card purchase/settlement、points、prepaid、SBI、shared entries、recurring receipt、document finance。原私有桥入口接入 Commit `60c3d4e80ee3f69be4dc90bd9b9a18dd02f90ab6`；签名、HomeFlow 审批验证、业务权限、D1 CAS 和幂等仍由各目标原处理器强制校验；未知路由、GET、Cookie、Origin、Authorization、错误 header 均拒绝，无外网金融写入。K 测试 `51431dbb189e3a74ee2c67c66681b7dfcc9beb2a`、现有私有 Worker dry-run 编译 CI `d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc` success。
+- **完整生产现有 Service Bindings 声明式配置，仍未部署**：K #309 `wrangler.homeflow-bridge.toml` 新 `APP_ENV=production`、H OAuth origin、`HOMEFLOW_IDENTITY_SERVICE=homeflow`、`DOCUMENT_FINANCE_SOURCE_SERVICE=jp-document-assistant`，`workers_dev=false`、无 Preview；K Pages `wrangler.toml` 加 H 身份服务绑定、精确 K public origin、H OAuth origin 和 production 环境。H #306 `wrangler.toml` 全部 K finance services → 原私有桥，document executions → 原文书 Worker，并追加三 App 精确正式 OAuth redirect allowlist。Study #179 三个 H/Doc Service Bindings 和 H/Study 正式 origin。Doc #97 现有 Worker 增加 `KAKEIBO_DOCUMENT_FINANCE_SERVICE=kakeibo-homeflow-bridge`、H/Doc 正式 OAuth origin 和 `APP_ENV=production`。全部无明文密钥、无新资源；现存 Secrets 绝不重置。H G8 `scripts/release-g8-binding-preflight.mjs` Commits `9930a9e9e4359f5fce4157f019e73ab146a2da3f`、`e1f6fdbbed16a5fb79cc45161a989f094bfe700d`：检查**包括第五个 K 私有 Worker**的 Secret/Flag/Service Binding 名称、类型及真实目标服务，防止同名绑定指向错误应用；G8 通过 CI，并不证明 Cloudflare 正式配置已经生效。
+- **Doc CI 真失败后修复**：Doc #97 原安全白名单阻挡新 K Service Binding，Run `43727549683 failure` 的 381 个测试中 380 PASS、1 FAIL；实际更新严格白名单 `414c730c6b6c5fc806293c868cc61f72c5274840`，而不是跳过断言。Doc 最终 HEAD `1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e`、Pre-merge CI Run **`43728610498 completed/success`**。
+- **G9 新离线备份迁移+物理恢复工具（仍待真实备份现场运行）**：H #306 新 `scripts/release-local-data-rehearsal.py` 初版 `ba1d476fd284c02ab98056196d63b0c26fe192bd`，从用户已恢复的四个本地 SQLite 原件只读克隆，独立应用固定四仓 68 条 Stage F Migration，验证完整性、外键、旧账本计数/金额与**全部受保护原始列逐行 SHA-256**（增补 `07d8aaabddd29e3a9785d0c26869bcf31d196d54`），故障无论何时都从不动的 baseline 恢复隔离副本。合成 SQLite 负向测试 `tests/test_release_local_data_rehearsal.py` 初版 `baaa957637da41cc8ba6dda3de6aac951c82d8a4`、同计数私人原文更改和两笔等额相反金额冲抵仍拒绝 `dc3dfaa9165e804dcb73dd40d8c546d5fe1972ef`。HomeFlow CI `43729560556 completed/success`、增强后 `43730104563 completed/success`。**工具已开发及验证，但因用户解密密钥只在个人本地保存，当前 Chat 工具无法对那份真实用户加密备份运行新迁移回滚。** 尝试 Cloudflare API 只读导出家計簿当前 SQL，临时 Export 完成，但封闭容器不允许经受控内部渠道直接提取该私人 signed URL；没有下载、存储、公布或迁入 SQL，没有任何生产写入。不能将合成 CI 视为真实 G9 完成。
+- **防止五 PR 合并产生残缺自动生产版本**：HomeFlow #305、#306 和 Study #179 原生产部署 Workflow 已改为严格 `workflow_dispatch` + 人工 `FOUR_APP_RELEASE_APPROVED` 触发，合并这些 PR 将不再自动部署；H #305 配置 `4ef943687bc29370ef18db2c03c55ac6e61f2e17` 和测试最后 `abbd7a6c5cf7ad03c4da6e0ffe9d1c2f90add233`；H #306 `e6bb5cd9a947010a9b9aa383e5c0a831695ad0d3`、同测试最后 `a46434d8f355d924cefd7daaeaf2272b732f89a8`；Study `6cff757af2e4b6fd89880834965a8bbd50714ed8`。**K Pages / Doc Cloudflare Builds 自动生产仍需在正式发布窗口受控停止、按依赖恢复；当前并未直接更改 Cloudflare Live 构建政策。**
+
+### 最新 CI、现实安全结论
+
+- K #309 最新 HEAD `d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc`: Validate **`43728126071 success`**、Private Bridge **`43728126045 success`**、Mobile WebKit **`43728126029 success`**。
+- Study #179 HEAD `6cff757af2e4b6fd89880834965a8bbd50714ed8`: Validate **`43729879799 success`**。
+- Doc #97 HEAD `1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e`: Pre-merge CI **`43728610498 success`**。
+- H #306 HEAD 记录于本节最新 PR 实际分支，在 `dc3dfaa9165e804dcb73dd40d8c546d5fe1972ef` 行逐列数据指纹测试时 CI **`43730104563 success`**；后续 Deployment-only CI 回归已在 `a46434d8f355d924cefd7daaeaf2272b732f89a8` 触发 Validate Run **`43730556187 completed/success`**，§113 Gate 文档后若 HEAD 前进需重新验证最新 Run。
+- **H #305 注意**：HEAD `abbd7a6c5cf7ad03c4da6e0ffe9d1c2f90add233` 的新 Workflow-only 分支暂时没有 GitHub Actions pull_request Run，旧的 `43402025579 success` 是更早 HEAD，不应冒充最后一版 CI；正式合并前 G0 还要取得该最新 HEAD 验证。
+- **状态**：四生产 D1、三私有 R2 原已完成的 A 阶段备份受用户确认；业务代码、配置声明、自动 CI、合成隔离回滚有实质进展。但**正式 Cloudflare Secrets/Bindings/OAuth 并未写入生产环境，也没有在真实解密数据上执行 68 条新迁移/回滚演练或获得 G9 实签，PRE-DEPLOY NO-GO**。五 PR 继续 Draft/Open，不合并、不运行 remote D1 Migration、不启用设计金融 Flags、无生产 Worker/Pages 部署、无 Preview。双 iPhone/G7 官方发行方对账依 §111 **生产后再验**，不是上生产前循环阻碍。
