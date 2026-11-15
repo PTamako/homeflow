@@ -80,6 +80,14 @@ function parseTodayItemKey(key){
 }
 export async function tasksRoute(request,db,path,session,onComplete=null,options={}) {
   const household=session.household_id,who=session.user_id
+  // Offline task operations originate from a specific authenticated PWA actor.
+  // The browser's old IndexedDB queue must NEVER run under a switched cookie,
+  // even if the target is visible as a shared household task.
+  const offlineActor=request.headers.get('x-homeflow-offline-actor')
+  if(offlineActor!==null&&(
+     !['POST','PATCH'].includes(request.method)||
+     offlineActor!==who||!/^[-a-zA-Z0-9_]{1,128}$/.test(offlineActor)))
+    return json({error:'offline_actor_changed'},403)
   if(path==='/api/tasks/today/dismiss'){
     if(request.method!=='POST')return json({error:'method_not_allowed'},405)
     const body=await readBody(request)
