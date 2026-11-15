@@ -43,5 +43,7 @@ jobs:
         run: npm run check
       - name: Verify D1 migrations and schema
         run: python3 scripts/check_migrations.py
+      - name: Exercise fail-closed isolated SQLite data migrations and rollback (synthetic only)
+        run: python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
       - name: Verify Worker bundle
         run: npx wrangler deploy --dry-run --outdir .wrangler/dryrun
