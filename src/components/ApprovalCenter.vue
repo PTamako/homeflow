@@ -172,6 +172,68 @@ function statusLabel(item:Approval){
   ?'已批准 · 未入账':'已批准 · 待目标处理'
  return statusNames[item.status]||'处理中'
 }
+
+const selectedApprovals=computed(()=>items.value.filter(x=>
+ selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
+function toggleBatchSelected(item:Approval){
+ if(!props.isOwner||!batchReviewEnabled.value||item.status!=='pending'||
+  unconfirmedBatch.value||busyId.value||loading.value)return
+ selectedIds.value=selectedIds.value.includes(item.request_id)
+  ?selectedIds.value.filter(id=>id!==item.request_id)
+  :selectedIds.value.length<20?[...selectedIds.value,item.request_id]:selectedIds.value
+}
+async function reconcileBatch(){
+ const saved=unconfirmedBatch.value
+ if(!saved||!available.value||!props.isOwner||!props.active||busyId.value)return
+ const current=props.userId,token=epoch
+ busyId.value='batch-reconcile';error.value=''
+ try{
+  const receipt=await getJson('/api/approvals/batch-review/'+saved.batch_id)
+  if(token!==epoch||props.userId!==current||!props.active)return
+  if(receipt.reviewed===true&&receipt.applied===false){
+   unconfirmedBatch.value=null;selectedIds.value=[]
+   message.value='批量审核已经记录，目标应用尚未执行。'
+  }else error.value='审核回执不一致，须人工核对同一批次 ID。'
+ }catch{
+  if(token===epoch&&props.userId===current)
+   error.value='批量审核结果尚未确认。保留原批次 ID，不要重复创建新批次。'
+ }finally{
+  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
+ }
+}
+async function reviewBatch(decision:'approve'|'reject'){
+ if(!batchReviewEnabled.value||!props.isOwner||!available.value||!props.active||
+  !!busyId.value||loading.value||unconfirmedBatch.value)return
+ const selected=selectedApprovals.value
+ if(selected.length===0||selected.length>20)return
+ const current=props.userId,token=epoch
+ const ids=selected.map(x=>({request_id:x.request_id,expected_version:x.version}))
+ const label=decision==='approve'?'批准':'拒绝'
+ if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
+  message:'本次审核'+selected.length+'笔申请，将全部成功或全部拒绝。批准仅代表通过审核，目标账务不会立即生效。',
+  ...(decision==='reject'?{danger:true}:{})}))return
+ if(token!==epoch||current!==props.userId||!props.active||
+  ids.some(p=>!items.value.some(item=>item.request_id===p.request_id&&
+    item.version===p.expected_version&&item.status==='pending')))return
+ const payload:BatchRequest={batch_id:crypto.randomUUID(),decision,expected_user_id:current,items:ids}
+ unconfirmedBatch.value=payload;busyId.value='batch-review';error.value='';message.value=''
+ try{
+  const result=await getJson('/api/approvals/batch-review',{
+   method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
+  if(token!==epoch||props.userId!==current||!props.active)return
+  if(result.reviewed!==true||result.applied!==false||result.count!==ids.length){
+   error.value='服务器回执不完整，请使用原批次 ID 核对。';return
+  }
+  unconfirmedBatch.value=null;selectedIds.value=[]
+  message.value='已批量'+label+' '+ids.length+' 笔，尚未执行入账。'
+ }catch{
+  if(token===epoch&&props.userId===current)
+   error.value='批量审核结果不确定。请使用“核对原批次”查看，不要新建另一批。'
+ }finally{
+  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
+ }
+}
+
 async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  const allowed=kind==='cancel'
   ?!props.isOwner&&item.requester_user_id===props.userId&&item.status==='pending'
@@ -232,67 +294,6 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
   // Keep an action's visible success OR failure message while refreshing the
   // authoritative state. Previously load(true) erased it immediately.
   if(account===props.userId){busyId.value='';await load(true,true)}
- }
-}
-
-const selectedApprovals=computed(()=>items.value.filter(x=>
- selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
-function toggleBatchSelected(item:Approval){
- if(!props.isOwner||!batchReviewEnabled.value||item.status!=='pending'||
-  unconfirmedBatch.value||busyId.value||loading.value)return
- selectedIds.value=selectedIds.value.includes(item.request_id)
-  ?selectedIds.value.filter(id=>id!==item.request_id)
-  :selectedIds.value.length<20?[...selectedIds.value,item.request_id]:selectedIds.value
-}
-async function reconcileBatch(){
- const saved=unconfirmedBatch.value
- if(!saved||!available.value||!props.isOwner||!props.active||busyId.value)return
- const current=props.userId,token=epoch
- busyId.value='batch-reconcile';error.value=''
- try{
-  const receipt=await getJson('/api/approvals/batch-review/'+saved.batch_id)
-  if(token!==epoch||props.userId!==current||!props.active)return
-  if(receipt.reviewed===true&&receipt.applied===false){
-   unconfirmedBatch.value=null;selectedIds.value=[]
-   message.value='批量审核已经记录，目标应用尚未执行。'
-  }else error.value='审核回执不一致，须人工核对同一批次 ID。'
- }catch{
-  if(token===epoch&&props.userId===current)
-   error.value='批量审核结果尚未确认。保留原批次 ID，不要重复创建新批次。'
- }finally{
-  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
- }
-}
-async function reviewBatch(decision:'approve'|'reject'){
- if(!batchReviewEnabled.value||!props.isOwner||!available.value||!props.active||
-  !!busyId.value||loading.value||unconfirmedBatch.value)return
- const selected=selectedApprovals.value
- if(selected.length===0||selected.length>20)return
- const current=props.userId,token=epoch
- const ids=selected.map(x=>({request_id:x.request_id,expected_version:x.version}))
- const label=decision==='approve'?'批准':'拒绝'
- if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
-  message:'本次审核'+selected.length+'笔申请，将全部成功或全部拒绝。批准仅代表通过审核，目标账务不会立即生效。',
-  ...(decision==='reject'?{danger:true}:{})}))return
- if(token!==epoch||current!==props.userId||!props.active||
-  ids.some(p=>!items.value.some(item=>item.request_id===p.request_id&&
-    item.version===p.expected_version&&item.status==='pending')))return
- const payload:BatchRequest={batch_id:crypto.randomUUID(),decision,expected_user_id:current,items:ids}
- unconfirmedBatch.value=payload;busyId.value='batch-review';error.value='';message.value=''
- try{
-  const result=await getJson('/api/approvals/batch-review',{
-   method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
-  if(token!==epoch||props.userId!==current||!props.active)return
-  if(result.reviewed!==true||result.applied!==false||result.count!==ids.length){
-   error.value='服务器回执不完整，请使用原批次 ID 核对。';return
-  }
-  unconfirmedBatch.value=null;selectedIds.value=[]
-  message.value='已批量'+label+' '+ids.length+' 笔，尚未执行入账。'
- }catch{
-  if(token===epoch&&props.userId===current)
-   error.value='批量审核结果不确定。请使用“核对原批次”查看，不要新建另一批。'
- }finally{
-  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
  }
 }
 </script>
