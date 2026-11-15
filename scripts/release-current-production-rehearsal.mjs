@@ -57,10 +57,26 @@ async function exportSql(accountId,token,uuid,dest){
  return {bytes:total,sha256:hash.digest('hex'),bookmark_obtained:true};
 }
 async function main(){
- const accountId=process.env.CLOUDFLARE_ACCOUNT_ID;
- const token=process.env.CLOUDFLARE_API_TOKEN;
+ const accountId=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+ const rawToken=process.env.CLOUDFLARE_API_TOKEN||'';
+ const token=rawToken.trim();
  if(!accountId||!token)fail('GITHUB_CLOUDFLARE_READ_ACCESS_MISSING');
- // Detect a present but revoked token without logging private credentials.
+ // GitHub Actions can have an older run's environment. This fresh-commit
+ // execution also diagnoses common copy mistakes with non-sensitive booleans.
+ // Never print the credential, its length, a prefix or a digest.
+ const diagnostic={
+  token_present:true,
+  surrounding_whitespace_ignored:rawToken!==token,
+  bearer_prefix_in_secret:/^Bearer\\s/i.test(token),
+  surrounding_quotes_in_secret:/^['"]|['"]$/.test(token),
+  embedded_whitespace_in_secret:/\\s/.test(token),
+  secret_value_exposed:false
+ };
+ console.log(JSON.stringify({github_secret_shape:diagnostic}));
+ if(diagnostic.bearer_prefix_in_secret||diagnostic.surrounding_quotes_in_secret||
+    diagnostic.embedded_whitespace_in_secret)
+  fail('GITHUB_CLOUDFLARE_TOKEN_SECRET_FORMAT_INVALID');
+ // Detect an inactive token without exposing private credentials.
  const verification=await fetch(SECRET_BASE+'/user/tokens/verify',{
   method:'GET',headers:{Authorization:'Bearer '+token},
   signal:AbortSignal.timeout(20000)
