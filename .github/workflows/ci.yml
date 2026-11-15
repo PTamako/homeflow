@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: fdfe823b13e224e453ccd92f35d2c19b41221bb3
+          ref: 92aa44683cdf35bd0d4ba58de8e9f09af9c9d2b5
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
