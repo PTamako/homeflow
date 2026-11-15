@@ -1754,3 +1754,27 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **家計簿 #309 最终实际 HEAD** `4c00aefb5390b7251a8c6dfdda1cdb1860212c5b`：Validate **43620328601 completed/success**；Mobile WebKit Smoke **43620328612 completed/success**。在上一笔功能 commit `be81d42...` 的两条 CI 已绿后追加 `additional` 独立成交、NISA 类型与日期/类别测试；没有删除关键安全断言。
 - **HomeFlow #306 最终功能/文档 HEAD** `bb5d391c8f23c2df73718ea4bc3b9c8eaa9055bd`：Validate HomeFlow **43620564340 completed/success**。CI 将家計簿实际源码严格 pin `4c00aefb...`，两套 SQLite 运行真实 HomeFlow owner approval、签名执行、原 approval ID 回执恢复及追加/定投类别测试。代码层面没证明独立真实 D1/Service Binding/券商/银行生产行为。
 - 此附录仅补记已经获得的真实 CI 证据；§86 本次资料更新及可能的 main 文档安全同步只修改 Markdown。所有功能 PR 仍 Draft。**生产 Cloudflare 未触及，未创建 Preview 或进行正式数据迁移**。
+
+## 87. 2026-11-15 P0-4B SBI 现金买付全额取消与已到账退款的**不可变双边冲正**（Draft；真实双 D1 CI PASS）
+
+### 原有 §86 保持不动，真实增量代码
+
+- 接手前实查五 PR 均 Draft，HomeFlow main 与 #306 都到 §86，冻结契约到 §Z/v1.0.20；本节没有重建 0044 中已经完成的银行扣款、现金定投、追加买付及原 lot。新冻结契约 **§AA/v1.0.21** 记录这次反向操作，完全沿用 §Z 的原执行签名域。
+- **家計簿 #309** 新未部署迁移 `0045_sbi_cash_reversals.sql`（提交 **`b05abcd2eab5e2b2c17046d7e6dc0983660418a8`**）：`family_sbi_cash_reversal_intents` 限制一个原始现金买付仅一份新退款申请，冻结账户、身份、加密摘要与 CAS；`family_sbi_cash_refund_evidence` 单独记录已完成券商取消及**银行实际到账**退款凭证（日期、金额、原账+对手账参考指纹，唯一且不可复用）；`family_sbi_cash_reversals` 以一笔 **securities→bank reverse transfer** 指向原 approval/原 transfer ID，完整抵减原基金 lot 的**原单位数和取得成本**，另有 `family_sbi_cash_reversal_audit` 保存真实申请者、审批人和执行者。原 `entries`、银行 statement、原 lot、原审批及原审计全数不可 UPDATE/DELETE；反向 transfer、退款凭证和新审计也不可 UPDATE/DELETE。金额、账户版本、参与人、资金可用余额、相同历史来源、重复退款及交易时间不吻合时触发器拒绝，SQL 事务回滚而不是绕过约束。已消费或转走的证券余额不能凭审批创造银行退款。
+- 家計簿 `functions/api/family-finance/sbi-cash-reversals.js`：SSO 成员本人通过来源隔离的 prepare / submit / cancel / GET，以 **`bank_refund_confirmed=true` 与 `broker_cancel_confirmed=true`**、精确原 approval UUID、原 bank/securities 两套稳定账户及当前 CAS、实际日期/退款及取消参考作为不可缺失条件，AES-GCM 冻结私有数据并用现有 `kakeibo-sbi-cash:submit` HMAC 向 HomeFlow 提交最小新操作 `finance.sbi_cash.reversal`。默认开关 **`KAKEIBO_SBI_CASH_REVERSALS_ENABLED` OFF**，既不接入真实券商撤单，也不认为用户输入为机构核验成功。
+- 家計簿 `functions/api/internal/sbi-cash-actions/reversal.js`：复用原隔离后端 `homeflow:sbi-cash-execute|receipt` 签名/nonce/lease/verification，实际执行器在一个家計簿 SQLite D1 `DB.batch` 写入**退款证据 + 证券到银行反向转账 + 全额 lot/cost 不可变反向凭证 + actor 审计**；签名目标回执逐条重新验证原/新两边凭证，处理目标写成功、HomeFlow 回执丢失的**同一新审批 ID** 安全只读重查和重复请求。失败返回 retryable/unknown，不伪造本地存款或自动退款。原 0044 内部接口保持兼容，关闭退款 flag 时未知原 receipt 仍是 404。
+- 原 `memberSbiCashPositions` 改为 LEFT JOIN 原不可变 lot 和 reversal，计算 `confirmed_units - reversed_units`、`acquisition_cost_jpy - reversed_cost_jpy`，显示 `reversed_trades`、`all_trades_reversed`，全额撤销净份额及净成本为零但原 lot 和证据可追踪；**仍然 broker_reconciled=false、excluded from tracked assets，不会重计新现金与旧截图两种持仓**。
+- HomeFlow **#306** 修改 `worker/approvals.js`、`worker/sbi-cash-approval-submission.js`、`worker/approval-verification.js`、`worker/approval-execution.js`，追加新操作权限/签名、审批人当前身份、原/新日期和 hash、原与反向 transfer ID 的强制回执校验。关键修复 **`e59361f178b37a57994f735b0e7404fb91dcb707`** 同步扩展尚未部署 `migrations/0054_household_approval_core.sql` 的 SQLite CHECK，避免 API 白名单已增加但数据库拒绝真正提交审批。Kakeibo 精确源码 pin **`5139affefedd0ed917b3c4ce60ac5bfe233c7559`** 在 HomeFlow `.github/workflows/ci.yml`，不使用浮动分支或旧实现。
+
+### 真实测试与中途错误（未跳过安全断言）
+
+- 家計簿 `tests/family-sbi-cash-execution.test.mjs` 使用真实 Node SQLite 迁移 0044+0045，含重复重放、原现金购买、退款全成本/份额逆向、重复退款拒绝、银行凭证及原审计不可变、负证券余额、账户版本漂移、错误审计 rollback、签名反向 execute 和 receipt 重试、退款后净份额/净成本=0。实际发现并修复 source envelope 未返回 `payload_sha256` 导致 403（**`7ded9ccfd2e2fef451a11457eef8ab3406e6c387`**），以及原幂等键退款重查被误当作第二次退款拒绝 409（**`0466619b445f7c3063dfc7e9f32747c336ab3d4a`**），没有关闭签名/金额/证据安全门。最终 Kakeibo 功能 HEAD **`5139affefedd0ed917b3c4ce60ac5bfe233c7559`**：Validate **43673588232 completed/success**；Mobile WebKit Smoke **43673588231 completed/success**。先前失败的 CI `43673137747`、`43673253041`、`43673483422` 不得算最终成功；多次中间取消属于连续提交被 supersede。
+- HomeFlow `tests/family-sbi-cash-real-cross-app.test.mjs` 用两套独立 SQLite（HomeFlow 0054/0055 与家計簿 0044/0045）及精确 commit pin 的真实 Kakeibo handlers + 模拟 Service Binding：先完成原银行/证券买付，再完整的新家庭成员申请/owner review/nonce lease/新审批执行、退款银行回款、原 lot/审计不变、重复 owner 执行安全，以及 target 已 commit 但 HomeFlow 响应丢失后**相同审批 ID**恢复。真实发现 0054 CHECK 未更新导致 HomeFlow submission 503，**已通过修改未部署迁移而非绕开表约束**。功能 HEAD **`e59361f178b37a57994f735b0e7404fb91dcb707`**：Validate HomeFlow **43673710466 completed/success**；只追加契约文档的 **`1ced81306d91260c7c75abf0b4754231d2b8b0dd`** CI 在撰写时仍需读取最终结果。不要把中途 **43673601648 failure** 当作最终成功。
+- 所有原 Kakeibo ledger 回归及 HomeFlow 其它审批/SSO/跨应用隔离测试均在这些成功的最终功能头上执行；WebKit Smoke 是 CI 自动浏览器测试，**不是两台真实 iPhone**。
+
+### 仍未完成 / 下一接手顺序与生产约束
+
+1. **P0-4B**：旧 `investment_holdings`（尤其 combined snapshot）/ `investment_plans` / `sbi_transfer_links` 与新现金、积分 lot、NAV 的**逐证据券商对账**仍需实现；绝不能凭同名基金、截图相似或仅日期自动合并。需要专门的可审计 owner 确认/唯一 link/CAS/无双资产计算。SBI 积分成交的完整安全反冲、部分卖出和真实机构退款尚未完成；不得在现金 0045 中假装支持。
+2. **P0-4C**：本人/跨成员双账户银行/现金/证券/储值转账，跨 D1 可靠 reservation、同 ID 回执与审计；家庭共享账目编辑/回收站/恢复/永久删除和 R2 附件引用；批量审批、固定费/定投 Cron 周期金融授权及取消/撤权/超时状态回收。
+3. **B～E**：按照正式设计书 R1～R9 / T01～T14，四 PWA 的双人 iPhone 独立会话、OAuth/PKCE 回跳、旧账号缓存/离线队列清理、文书 Gmail/Drive 私有与共享权限、知学学习进度/错题/收藏等隔离、前端真实回归及权限撤销仍待完整验收。切勿误将现存基础和 CI 计作全部交付。
+4. **A 阶段用户生产 D1/R2 加密备份及 Mac 完整恢复验证已 PASS**，不需重复。**本节所有功能都只在 Draft PR / 内存 SQLite CI；未触碰生产 Worker/Pages/D1/R2/Secrets/Binding/Cron，未合并/未建 Preview/未修改真实银行/SBI 或历史金融记录。F 阶段需用户额外授权后才能真正上线和两台 iPhone 验收。**
