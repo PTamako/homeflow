@@ -72,7 +72,7 @@ export async function crossMemberConsentProofRoute(request,env){
   row.recipient_account_version!==b.recipient_account_version||
   row.status!=='owner_authorized'||!Number.isSafeInteger(row.version)||row.version!==3||
   row.recipient_decided_at==null||row.owner_authorized_at==null||
-  row.recipient_decided_at>=row.owner_authorized_at||
+  row.recipient_decided_at>row.owner_authorized_at||
   row.owner_authorized_at>=row.expires_at||nowMs()>=row.expires_at||
   !['owner','member'].includes(row.source_role)||
   !['owner','member'].includes(row.recipient_role)||
