@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
+import {executeApprovedBatch} from '../approval-batch-execution.mjs'
 import ConfirmActionSheet from './ConfirmActionSheet.vue'
 import {useConfirmAction} from '../use-confirm-action'
 
@@ -23,6 +24,7 @@ const allowedFilters=['','pending','approved','applied','rejected',
 type Filter=typeof allowedFilters[number]
 const enabled=ref(false),executionEnabled=ref(false),documentExecutionEnabled=ref(false)
 const batchReviewEnabled=ref(false),selectedIds=ref<string[]>([])
+const selectedExecutionIds=ref<string[]>([])
 type BatchRequest={batch_id:string;decision:'approve'|'reject';expected_user_id:string;items:Array<{request_id:string;expected_version:number}>}
 const unconfirmedBatch=ref<BatchRequest|null>(null)
 const filter=ref<Filter>('pending')
@@ -79,7 +81,7 @@ async function discover(){
  loading.value=false
  cancelConfirm()
  enabled.value=false;executionEnabled.value=false;batchReviewEnabled.value=false;expanded.value=false
- selectedIds.value=[];unconfirmedBatch.value=null;documentExecutionEnabled.value=false
+ selectedIds.value=[];selectedExecutionIds.value=[];unconfirmedBatch.value=null;documentExecutionEnabled.value=false
  items.value=[];page.value=0;hasMore.value=false
  error.value='';message.value='';busyId.value=''
  if(!props.active||!props.userId)return
@@ -176,6 +178,48 @@ function statusLabel(item:Approval){
 
 const selectedApprovals=computed(()=>items.value.filter(x=>
  selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
+const selectedExecutions=computed(()=>items.value.filter(x=>
+ selectedExecutionIds.value.includes(x.request_id)&&canExecute(x)))
+function toggleExecutionSelected(item:Approval){
+ if(!canExecute(item)||loading.value||busyId.value)return
+ selectedExecutionIds.value=selectedExecutionIds.value.includes(item.request_id)
+  ?selectedExecutionIds.value.filter(id=>id!==item.request_id)
+  :selectedExecutionIds.value.length<10?[...selectedExecutionIds.value,item.request_id]
+  :selectedExecutionIds.value
+}
+async function runSelectedExecutions(){
+ if(!available.value||!props.isOwner||!executionEnabled.value||busyId.value||
+    loading.value||selectedExecutions.value.length<1||
+    selectedExecutions.value.length>10)return
+ const actor=props.userId,ticket=epoch
+ const selected=selectedExecutions.value.map(x=>({id:x.request_id,status:x.status,version:x.version}))
+ if(!await confirmAction({
+  title:'逐项执行已批准账务',confirmLabel:'逐项执行',
+  message:'最多 10 笔将按顺序独立执行。每笔使用原审批 ID，逐项取得实际账本回执；不是跨数据库原子批量事务。一旦有失败或结果不明，立即停止，不会自动重试。',
+ }))return
+ if(ticket!==epoch||actor!==props.userId||!props.active||
+   selected.some(p=>!items.value.some(x=>x.request_id===p.id&&
+      x.status===p.status&&x.version===p.version&&canExecute(x))))return
+ busyId.value='batch-execute';error.value='';message.value=''
+ const result=await executeApprovedBatch(selected.map(x=>x.id),async id=>{
+  const receipt=await getJson('/api/approvals/'+id+'/execute',{
+   method:'POST',headers:{'content-type':'application/json'},body:'{}'
+  })
+  return {ok:receipt.ok,applied:receipt.applied,status:receipt.status,
+   approval_id:receipt.approval_id,remote_id:receipt.remote_id}
+ },()=>ticket===epoch&&actor===props.userId&&props.active)
+ if(ticket!==epoch||actor!==props.userId||!props.active)return
+ selectedExecutionIds.value=[]
+ if(result.ok){
+  message.value='已逐项确认 '+result.applied.length+' 笔真实目标入账回执；每笔各自独立提交。'
+ }else{
+  error.value='已确认 '+result.applied.length+' 笔；停在原审批 '+String(result.stopped_at||'').slice(0,8)+
+   '（'+result.code+'）。后续未执行；请核对原审批 ID，不要创建重复财务申请。'
+ }
+ busyId.value=''
+ await load(true,true)
+}
+
 function toggleBatchSelected(item:Approval){
  if(!props.isOwner||!batchReviewEnabled.value||item.status!=='pending'||
   unconfirmedBatch.value||busyId.value||loading.value)return
@@ -339,6 +383,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       @click="reviewBatch('approve')">批量批准</button>
     </template>
    </div>
+   <div v-if="isOwner&&executionEnabled" class="approval-batch-toolbar">
+    <span>已选 {{selectedExecutions.length}} 笔 · 按原 ID 逐笔实际入账 · 非跨库原子事务</span>
+    <button type="button" class="primary" :disabled="!!busyId||loading||!selectedExecutions.length"
+     @click="runSelectedExecutions">逐项执行（最多 10 笔）</button>
+   </div>
    <p v-if="error" class="approval-error" role="alert">{{ error }}</p>
    <p v-if="message" class="approval-feedback" role="status">{{ message }}</p>
    <p v-if="loading" class="approval-empty" role="status">读取中…</p>
@@ -346,6 +395,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
    <ul v-else class="approval-list">
     <li v-for="item in items" :key="item.request_id" class="approval-item">
      <div class="approval-titleline">
+      <label v-if="canExecute(item)" class="approval-batch-check">
+       <input type="checkbox" :checked="selectedExecutionIds.includes(item.request_id)"
+        :disabled="!!busyId||loading" @change="toggleExecutionSelected(item)"/>
+       <span>选择执行</span>
+      </label>
       <label v-if="isOwner&&batchReviewEnabled&&item.status==='pending'" class="approval-batch-check">
        <input type="checkbox" :checked="selectedIds.includes(item.request_id)"
         :disabled="!!busyId||loading||!!unconfirmedBatch"
