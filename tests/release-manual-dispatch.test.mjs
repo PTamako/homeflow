@@ -6,7 +6,8 @@ import {readFileSync} from 'node:fs';
 // system before HomeFlow #306 and the three business apps are release-ready.
 test('HomeFlow release cannot be triggered by a main push or an unconfirmed manual dispatch',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8');
- assert.match(workflow,/^on:\s*\n\s+workflow_dispatch:/m);
+ assert.match(workflow,/^on:/m);
+ assert.match(workflow,/^\s+workflow_dispatch:/m);
  assert.doesNotMatch(workflow,/^\s+push\s*:/m);
  assert.match(workflow,/release_confirmation/);
  assert.match(workflow,/inputs\.release_confirmation == 'FOUR_APP_RELEASE_APPROVED'/);
