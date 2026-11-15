@@ -2153,3 +2153,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 - **G7 特别边界**：银行/SBI/积分机构官方原始交易文件如已存在，原则上可提前通过发行方官方渠道获取及验证来源；真正结合新系统内部真实账目/journal 的对照必须待生产可用之后进行。尚未获得真实、可验证的官方明细，不得伪造机构核验、创建无真实凭证的证券交易或以模拟数据宣布通过。开户/密码通知不能用作交易证明，密码和令牌不得流入仓库。
 - **生产部署并非此刻已获 GO**：之前只读核实 G8 生产 OAuth/approval Secrets/Bindings 缺项，G1 发布日备份恢复/G3～G6 全部业务闭环/G9 实回滚演练尚缺可信通过证据，因此 **PRE-DEPLOY 仍为 NO-GO**。此修正本身不合并 PR、不执行 remote D1 migration、不配置 Cloudflare Secrets/Bindings/Flags、不创建 Preview、更不替代 G2 及 G7 完成后的最终 PASS。
 - **执行者下一步**：依 §111 的准确先后顺序补齐真正的部署前门禁；所有安全前置满足后按 HomeFlow #305→#306 的依赖、其余 PR/数据迁移顺序完成四应用**完整功能正式部署**，立即邀请用户与丈夫通过两台 iPhone 执行 G2，收集官方流水并作 G7，只在所有真实门禁通过后宣称最终上线完成；若任何高风险生产验收失败立即按预案停止有风险写入并修复/回滚，保留证据。避免重复要求用户在真实生产版本尚未可用前完成 iPhone 终验。
+
+
+## 112. 2026-11-15：接续 §111 实际开发 — G8 全金融配置检测、四生产 D1 指纹与 68 条迁移清单验收（PRE-DEPLOY 仍 NO-GO）
+
+### 确实完成的代码及最终 CI
+
+- **以实时五 PR 和正式设计书 v1.1 为起点**：H #305 `b8b877388639b1a2b3ac19dbca58ea8072b8a037`，H #306 接手时 `bfea8f1a6ed0878b37e758a9cf4a3513e17dce07`，K #309 `a0fad85f6aceab1001f590c73e5098d02c999355`，Study #179 `9548aa6d47a2e3d1fc0deb0de106e9e8903f012f`，Document #97 `11efa62df27618a24d4cdbe9f76c14aa517c67eb`，全部对应 PR CI success。新部署顺序遵守 §111：生产前 G0/G1/G3～G6/G8/G9；生产后真实双 iPhone G2、实际机构/新 journal G7 和最终签署。没有要求用户在部署前完成不可能的 iPhone 终验。
+- **G8 实际强化 HomeFlow #306**：旧 `scripts/release-g8-binding-preflight.mjs` 只检查少量基础 SSO/执行绑定，漏检跨成员同意、银行/SBI/积分、信用卡/储值卡、周期金融、批量审批及文书加密等关键服务/flag，可能误报“配置齐全”。本轮新增全部已审阅业务执行中的配置名称及 Service Bindings，并对正式 Worker 的 DB `d1`、MEDIA/DOCUMENTS `r2_bucket` 做类型判断。真实代码 Commits `e5fd629eb39ee959aa7e72488af9e0dd163c9a17`、`b2b41bbea07b7778db7144b0b30f91862dced55e`、`2cca2fa277eaa062df3e175cb891fc04713922f8`；负向测试 `472bf9e839ab2f17a0f5d54d034c68032c541a04`、`a5c8eaa09902054593904e3fa6967731e861fc72`。通过正式 Actions：H #306 `43723163590`、`43723952017` completed/success。预检仅识别是否存在绑定及类型，不验证 Secret 值/授权对象、也没有写入 Cloudflare 配置。
+- **G1/G9 新跨库只读预检工具**：功能分支新增 `scripts/release-d1-migration-inventory.mjs`（初始 `5d38becd2e5befae3fe23d3593b1152d1255a448`，哈希分隔符修正 `f1e0a66293c451ecdac8497eb7855c05dcb41e41`，可测试性 `08389c11c5a70c32965089b305051d787f380f53`）。工具只 GET D1 list 与 POST **固定字面量 SELECT** migration marker；无法找到唯一生产库、marker 数量/全名排序 SHA-256 不匹配、出现重复、返回可能变更数据库的 meta 或迁移文件顺序错误，就 fail closed；所有情况下 `production_migration_authorized=false`。测试 `a9e4cf1685e2be8764da965c6f446b44f3865ec5`；新增 CI 固定四仓库全部 68 个 SQL 文件存在性检查 `460409567c04b2cf48720b4cd99370a8f15a4c59`。对应 HomeFlow Validate **`43723720960`、`43724109809` completed/success**。
+- **真实生产元数据读证据（无 DB 写）**：Cloudflare D1 GET 列表 + SELECT 4 库显示：H `d1_migrations` 54 个标记，最后 0052；K `schema_migrations` 16 个标记含 `schema-0019-verified`，没有新金融迁移标记；Study 174 个到 0176；Document 19 个到 0019。四仓分支待隔离迁移文件分别 H 8 条（0053–0060）、K 40 条（0020–0059）、Study 13 条（0180–0192）、Doc 7 条（0020–0026），共 68 条。2026-11-15T14:16:50Z 迁移标记集合 count+SHA-256 基线和 14:26:48Z 四库当前生产**聚合数据摘要**已记录在 H #306 的 `docs/four-app-release-acceptance-gates.md` §112；聚合摘要不披露私人账目、原始金额或账户信息，**不是备份，也不是历史数据恢复通过**。
+- 四库 Cloudflare D1 Time Travel **均可读取 bookmark**，没有输出到 GitHub、没有调用 restore；R2 GET 确认仅原有 `homeflow-family-media`、`kakeibo-receipts`、`jp-document-assistant-private` 三 Bucket，没有新建 Preview/资源。D1 所有查询 `changed_db=false`、`rows_written=0`。
+- **发布验收门禁文档实际更新**：H #306 `docs/four-app-release-acceptance-gates.md` 已追加 §112，记录生产 migration marker 指纹、隐私最小化聚合摘要、完整 68 项迁移文件、所有只读 G8 预检限制及真正尚未通过的安全门禁；最新提交 `87098791dff442a50e578378650e1b5554b29cf9`。**最终 HEAD Validate HomeFlow Run `43724469451` completed/success**；H #306 仍依赖 H #305 功能分支，未合并。其他四个功能 PR 未因本节改变，沿用其此前已通过的 CI。
+
+### 仍未解除的生产发布阻碍
+
+- **G1**：生产发布日四 D1 + 三 R2 的全量不可变加密备份/原字节核验、隔离环境物理恢复、行/资金/对象完整性复算均没有完成；当前数据库 schema 与备份未进入真实迁移 rehearsal。Time Travel bookmark 和只读数据指纹不能替代。缺少用户保管的备份加密密钥/私有备份执行环境，不得伪称已经备份。
+- **G3～G6**：虽然已有多组真实 SQLite/跨应用 CI，尚未拿到设计所有合法跨成员资产路径的完整无遗漏证据和上线前真实旧客户端写入排空、R2 全量引用冲突/恢复证据；不得把仅银行 member→owner 已有路径等同于全部资金与股份转移完成，更不得模拟真实银行/SBI/积分机构的交易结果。
+- **G8**：Cloudflare 正式生产 OAuth redirect allowlist、所有实际 Secrets 值、目标 Service Bindings、功能 Flags/读写权限仍缺配置/验证；预检器增强并不等于生产配置。**不得在缺密钥时合并触发自动部署**。
+- **G9**：隔离环境基于真实备份的还原和旧版回滚演练、正式停止写入阈值/发布窗口/执行签署尚未完成。用户已授权在安全门禁真正满足后生产合并/发布，此刻没有获得 PRE-DEPLOY GO。
+- **G2/G7**：按 §111 仅在完整四应用安全部署后执行两实体 iPhone 和新生产内部 journal 对官方可信账单的真正联合验证；它们本身不再先于部署被要求完成，但最终 FULL RELEASE PASS 仍须通过。
+
+**最终状态**：本节已提交代码、测试、Cloudflare 只读真实核查和完整 handoff；五 PR 均 Open/Draft，未执行生产 migration/Cloudflare 配置或部署，未改变现有 4 个正式应用，未创建 Preview；**PRE-DEPLOY NO-GO**。后续开发从 §112 继续，先把 G3～G6 剩余合法账户/金融路径和真实迁移/备份/回滚门禁填完，只有门禁证据满足后才合并 H #305→#306 与其他三个 PR，并部署四应用完整功能。
