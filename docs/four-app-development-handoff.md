@@ -1822,3 +1822,25 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 2. **P0-4C** 家庭共享资产转移、跨成员同意与双边确认、真实一笔 SQLite 转入转出和跨独立 D1 的 HomeFlow approval lease/reservation/idempotent receipt 与失败审计。已存在旧 cash finance.entry.create、专用 SBI cash、prepaid topup/points，但不可称已具备银行↔银行、现金↔银行、跨成员、储值卡所有合法转账。仍需共享条目修改/删除/恢复/回收箱/R2 附件一致性、批量审批及 Cron 周期金融授权，禁止跳过账本原始/反向不可变保护。
 3. **B～E** 请依设计书 R1～R9/T01～T14 逐项验收四 PWA 统一登录与双人 Safari/iOS PWA 重授权、账号切换/离线队列与端侧缓存清除、文书私人 Gmail/Drive 授权与家庭分享、知学所有用户进度/错题/词句隔离、跨应用撤权和真实回执一致性、浏览器 E2E/移动 WebKit/双台真实 iPhone 回归。GitHub WebKit Smoke 不是两台真实 iPhone 验收。
 4. A 阶段用户四个生产 D1/三个 R2 的加密备份+Mac SQLite 恢复及 Google Drive 验证早已 PASS，无需再次要求操作。五 PR 仍 Draft、不 merge、不创建 Preview、不修改生产 Workers/Pages/D1/R2/Secrets/Binding/Cron、不执行生产 SQL 迁移、不接入真实银行或 SBI 下单/退款。**F 阶段需另行明确授权**。
+
+
+## 90. 2026-11-15 P0-4C HomeFlow 家庭**批量审核**：20 笔全有或全无 SQLite、严格成员 CAS、不可变逐笔审计和 PWA UI（Draft，完整 CI PASS）
+
+### 本轮真实实现
+
+- 本节从已通过的 §89 SBI ポイント投資全额双边冲正接续；开始前确认交接和合同到 §89/§AC，新功能 PR 全部 Draft。**批量批准 ≠ 批量执行**：不调用目标家計簿/文书/知学的财务执行器，也不直接改变家庭资产、现金余额或旧条目。
+- HomeFlow #306 新**未部署** migration `0057_household_batch_reviews.sql` commit **fcf08cd04bd5a6ed096c6c98114a388f2d99de08**，建立不可 UPDATE/DELETE 的 `household_approval_review_batches`，原子 SQL BEFORE/AFTER triggers 检查真实 owner/household、原成员 role/disabled_at、各 request ID 唯一、pending/未过期/expected_version CAS/非自批准与 1～20 件精确清单；在**同一 SQLite INSERT** 内原子完成原申请的 status/version/reviewer 更新、每笔真实 owner 操作的 `household_approval_events` 记录。任何一笔失效、并发修改、数量不全、审计触发器失败，整批 rollback，绝无前半批批准成功后半批失败。旧 `0054` 审批和 `0055` 期限/租约不绕过。
+- 新后端 `worker/approval-batch-review.js` commit **4b186cf96037ded5b463a9aff6afcec4920acf88**，在旧 `worker/approvals.js` 中仅以原会话用户与同源 CSRF gate 接入 GET/POST `/api/approvals/batch-review[/<batch UUID>]`，需要 `APPROVALS_ENABLED=true` 且新增 `APPROVAL_BATCH_REVIEW_ENABLED=true`（默认 OFF），POST `{batch_id,decision,expected_user_id,items:[{request_id,expected_version}]}` exact keys；对 item 顺序/CAS/actor 冻结 manifest SHA256、同一 batch ID 严格幂等重放、冲突拒绝、GET 原 ID 确认。响应总是 `reviewed=true, applied=false`，不能把批准看作财务入账或跨 D1 全局事务。路由/feature discovery 集成 commit **e3434cc3d431212ef2aff02d384b05ecf9aec8fd**。
+- `src/components/ApprovalCenter.vue` 提供真实 owner 按当前 page 已请求的 pending 项勾选、选择性“批量批准/批量拒绝”，二次确认明确“审核不是入账”，同一 batch_id 的“核对原批次”可处理回执丢失。账号/页面/过滤器 epoch 改变后撤销选择，后端通知默认 OFF 不展示。已有单笔 approve/reject/cancel/execute、安全重试及老 UI 保持不变。原实现 UI commit **175dfa2f3cb3e7ecc32606dc6cef7f764a4701bc**、旧 VM 提取隔离调整 **85e1f0fbe8266616d92bba6fc23f05ee4326333c**，没有为了批量动作假冒已执行状态。
+- 新真实 SQLite 测试 `tests/approval-batch-review.test.mjs` commit **9f29f4c39907e2c9c55663773a2b8cadd9588fc1**：真实 0054/0055/0057 guard、3 个真实请求各独立 immutable event、批次同 ID 幂等、查询/跨 actor 拒绝、重复 request IDs、版本漂移、已通过、过期/缺失、当前 owner/member 撤权、注入 audit failure 和全部回滚，原单笔执行状态不被触发。
+- 运行完整 CI 后根据真实错误修复测试 fixture，而非跳过完整迁移或放宽审批：`scripts/check_migrations.py` 注册完整 0057 **c05cd1bc1ae2aea2defbd7c4ae2c9f9b021c5824**；`tests/household-approvals.test.mjs` 增加状态检查默认 `batch_review_enabled:false` **37480649c8413e863968de74d6daba6744a8e140**；新测试过期日期需遵守 DB CHECK `expires_at>created_at`、不可 UPDATE 已冻结家庭 ID，已修复 **9e633509416e9fb29c6d560b7bf2ba9216e0ef0c**；老 migration manifest 测试现需 59 migrations **a9a482e2763446489a402db1b4ffbc6348ae7a6c** 和 `tests/rewards-shop.test.mjs` **37c45cd33f568f00469390d52afcb362fc7153c5**；旧 action VM 测试需新增 selectedIds 假状态 **3d1ca77162396402e3786facbcd74cbe7e72799c**，保留全部既有成功/结果不明反馈测试。
+- GitHub Actions：真正功能 HEAD **37c45cd33f568f00469390d52afcb362fc7153c5**，**Validate HomeFlow 43676772681 completed/success**，包含真实 SQLite、UI regression、Vue typecheck/build、完整 migration manifest 和 Worker dry-run。不将中途失败（如 43676379651、43676496362、43676639980）当最终成功。无第二个独立财务 D1 介入这一**批量审核**的意义：批量只在 HomeFlow D1 修改 approval+audit，未来单笔执行仍使用原 §D lease + target receipt，跨独立 D1 不做虚假原子事务。
+- 新契约 **§AD/v1.0.24** 在 #306 文档提交 **e06143a179968e9feedb7d6fdf99df1a1a7867bb**；可安全仅同步 docs-only main，必须核实 deploy workflow `docs/**` paths-ignore 不触发 Cloudflare。生产旗标未改变。
+
+### 仍要实际开发：下一接手 §91 起
+
+1. **P0-4C 真正家庭共享资产转账未完成**：银行↔银行、现金↔银行、银行↔证券、储值卡及跨成员转入/转出，按真实账号 stable ID/当前 member owner/CAS/双方同意、真实发生的银行资金转移证据和双向 ledger，含跨独立 D1 reservation/幂等回执/异步执行时错误补偿与无重复资金。现有 §86 SBI 银行→证券仅具体买付，并非通用资产转账；§90 批量审核也不执行任何金融入账。禁止新操作直接冒充 income、expense、无实际现金转入的银行充值。
+2. **共享财务条目** 的修改/删除/回收/恢复/永久删除/R2 票据引用与不可变原审批、退款证据保护；批量申请后每一笔的独立 target execution、待执行/失败恢复 UI；**周期金融授权** 固定费用/定投 Cron、成员停用立即撤权、时钟过期/持久 reservation 清理等均尚未完整实现。
+3. **SBI 真实机构对账**：§89 是 owner 审批后的用户 attestation，不是连接 SBI/发行方 API 的独立核验，旧 investment_holdings/investment_plans/sbi_transfer_links、combined NISA 截图、真实 trade ID/适用日/NAV、复杂部分赎回尚不可自行推断“已对账”。所有未经证实新 lot 仍独立展示，不重复计家庭市值。
+4. **B～E 与 F**：四个 PWA 的双人独立 iPhone 登录/退出/OAuth/PKCE 回跳、离线缓存/后台返回清理、家計簿账户+迁移、HomeFlow Push/批量 execution UI、文书助手 Gmail/Drive 授权隔离/恢复、知学进度错题/生词/考试/收藏/离线队列隔离、跨应用撤权/回执一致性、浏览器 Safari 和**两台真实 iPhone**仍要按设计书 R1～R9/T01～T14 完整验收。CI WebKit Smoke 不是两台实机。
+5. A 阶段用户已通过生产加密备份与 Mac 本地恢复。五个功能 PR 仍应 Open/Draft，禁止合并、生产 migration/正式 Secrets/Cron/Service Binding/Workers/Pages/R2 变更、创建 Preview、真实银行和券商交易；F 阶段正式上线另获明确授权。
