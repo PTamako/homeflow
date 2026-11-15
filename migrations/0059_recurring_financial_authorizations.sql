@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS household_recurring_finance_policies(
  updated_at INTEGER NOT NULL CHECK(updated_at>0),
  expires_at INTEGER NOT NULL CHECK(expires_at>created_at),
  version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
- CHECK(start_month<=end_month),
+ CHECK(start_month<=end_month AND substr(start_month,6,2) BETWEEN '01' AND '12' AND substr(end_month,6,2) BETWEEN '01' AND '12'),
  CHECK((status IN ('pending_owner','cancelled') AND owner_user_id IS NULL AND owner_reviewed_at IS NULL)
    OR (status IN ('approved','rejected','revoked') AND owner_user_id IS NOT NULL AND owner_reviewed_at IS NOT NULL)),
  UNIQUE(household_id,member_user_id,plan_resource_id,plan_payload_sha256,source_account_version)
@@ -159,7 +159,7 @@ CREATE TRIGGER IF NOT EXISTS trg_recurring_reservation_preflight
    AND NEW.due_date>=date(NEW.reserved_at/1000,'unixepoch','+9 hours','-7 days')
    AND member.role='member' AND owner.role='owner'
    AND member_u.disabled_at IS NULL AND owner_u.disabled_at IS NULL
-   AND p.owner_reviewed_at IS NOT NULL AND p.owner_reviewed_at<NEW.reserved_at)
+   AND p.owner_reviewed_at IS NOT NULL AND p.owner_reviewed_at<=NEW.reserved_at)
  BEGIN SELECT RAISE(ABORT,'RECURRING_POLICY_NOT_AUTHORIZED_OR_DUE'); END;
 CREATE TRIGGER IF NOT EXISTS trg_recurring_reservation_audit
  AFTER INSERT ON household_recurring_finance_reservations
