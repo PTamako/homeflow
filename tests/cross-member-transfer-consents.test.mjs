@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {webcrypto} from 'node:crypto';
+import {webcrypto,createHmac} from 'node:crypto';
 import {crossMemberTransferConsentsRoute} from '../worker/cross-member-transfer-consents.js';
+import {crossMemberConsentProofRoute} from '../worker/cross-member-consent-proof.js';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source={household_id:'primary',user_id:'member',role:'member'};
 const recipient={household_id:'primary',user_id:'owner',role:'owner'};
@@ -190,5 +191,87 @@ test('audit fault rolls back consent transition and owner may not bypass recipie
    "last_actor_user_id='owner',version=2,updated_at=? WHERE consent_id=?");
   assert.throws(()=>forged.run(Date.now(),id),/CROSS_TRANSFER_CONSENT_STATE_OR_ACTOR_INVALID|CHECK constraint failed/);
   assert.equal(count(f.sql,'household_cross_member_transfer_events'),1);
+ }finally{f.close()}
+});
+
+
+test('signed backend-only read proof requires all 3 independent decisions and live identities; never grants ledger execution',async()=>{
+ const f=fixture();try{
+  f.env.CROSS_MEMBER_TRANSFER_PROOF_ENABLED='true';
+  f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET='a'.repeat(64);
+  const made=await f.create();assert.equal(made.status,201);
+  const id=made.data.consent.consent_id;
+  const input={
+   consent_id:id,resource_id:requestBody.resource_id,household_id:'primary',
+   source_user_id:'member',recipient_user_id:'owner',
+   payload_sha256:requestBody.payload_sha256,
+   source_account_version:1,recipient_account_version:2
+  };
+  async function proof(body=input,{badSignature=false,withOrigin=false,withCookie=false}={}){
+   const raw=JSON.stringify(body),stamp=String(Date.now());
+   const signature=createHmac('sha256',Buffer.from(f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET,'hex'))
+    .update('kakeibo-cross-member:consent-proof\\n'+stamp+'\\n'+raw).digest('hex');
+   const headers={'content-type':'application/json',
+    'x-approval-client':'kakeibo-cross-member',
+    'x-approval-timestamp':stamp,
+    'x-approval-signature':badSignature?'f'.repeat(64):signature};
+   if(withOrigin)headers.origin='https://homeflow.example.test';
+   if(withCookie)headers.cookie='__Host-hf_session=fake';
+   const response=await crossMemberConsentProofRoute(new Request(
+    'https://homeflow.example.test/api/internal/cross-member/consent-proof',
+    {method:'POST',headers,body:raw}),f.env);
+   return {status:response.status,data:await response.json()};
+  }
+  assert.equal((await proof()).status,409);
+  assert.equal((await proof(input,{badSignature:true})).status,403);
+  assert.equal((await proof(input,{withOrigin:true})).status,403);
+  assert.equal((await proof(input,{withCookie:true})).status,403);
+  assert.equal((await f.call(recipient,f.root+'/'+id+'/recipient',
+   {expected_user_id:'owner',expected_version:1,decision:'accept'})).status,200);
+  assert.equal((await proof()).status,409);
+  assert.equal((await f.call(recipient,f.root+'/'+id+'/authorize',
+   {expected_user_id:'owner',expected_version:2})).status,200);
+  const confirmed=await proof();
+  assert.equal(confirmed.status,200,JSON.stringify(confirmed));
+  assert.equal(confirmed.data.consent_verified,true);
+  assert.equal(confirmed.data.ledger_applied,false);
+  assert.equal(confirmed.data.bank_statements_verified,false);
+  assert.equal(confirmed.data.target_ledger_authorized,false);
+  assert.equal(confirmed.data.consent_version,3);
+  assert.equal((await proof({...input,payload_sha256:'b'.repeat(64)})).status,409);
+  assert.equal((await proof({...input,recipient_account_version:3})).status,409);
+  assert.equal((await proof({...input,source_user_id:'owner'})).status,409);
+  assert.equal((await proof({...input,household_id:'second'})).status,409);
+  assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
+  assert.equal((await f.call(source,f.root+'/'+id+'/revoke',
+   {expected_user_id:'member',expected_version:3})).status,200);
+  assert.equal((await proof()).status,409);
+  assert.equal(count(f.sql,'household_cross_member_transfer_events'),4);
+ }finally{f.close()}
+});
+test('signed cross-member proof rejects inactive recipient even after full authorization',async()=>{
+ const f=fixture();try{
+  f.env.CROSS_MEMBER_TRANSFER_PROOF_ENABLED='true';
+  f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET='b'.repeat(64);
+  const made=await f.create();const id=made.data.consent.consent_id;
+  assert.equal((await f.call(recipient,f.root+'/'+id+'/recipient',
+   {expected_user_id:'owner',expected_version:1,decision:'accept'})).status,200);
+  assert.equal((await f.call(recipient,f.root+'/'+id+'/authorize',
+   {expected_user_id:'owner',expected_version:2})).status,200);
+  f.sql.prepare('UPDATE users SET disabled_at=1 WHERE id=?').run('owner');
+  const body={consent_id:id,resource_id:requestBody.resource_id,household_id:'primary',
+   source_user_id:'member',recipient_user_id:'owner',payload_sha256:requestBody.payload_sha256,
+   source_account_version:1,recipient_account_version:2};
+  const raw=JSON.stringify(body),stamp=String(Date.now());
+  const mac=createHmac('sha256',Buffer.from(f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET,'hex'))
+   .update('kakeibo-cross-member:consent-proof\\n'+stamp+'\\n'+raw).digest('hex');
+  const result=await crossMemberConsentProofRoute(new Request(
+   'https://homeflow.example.test/api/internal/cross-member/consent-proof',
+   {method:'POST',headers:{'content-type':'application/json',
+    'x-approval-client':'kakeibo-cross-member','x-approval-timestamp':stamp,
+    'x-approval-signature':mac},body:raw}),f.env);
+  assert.equal(result.status,409);
+  assert.equal((await result.json()).consent_verified,false);
+  assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
  }finally{f.close()}
 });
