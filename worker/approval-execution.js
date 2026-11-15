@@ -308,7 +308,7 @@ export async function approvalExecutionRoute(request,env,path,session){
   }
   if(response.status===200&&response.ok&&!response.headers.has('location')){
    const text=await response.text()
-   if(text.length<=(points?2400:1800))result=JSON.parse(text)
+   if(text.length<=(points?3400:1800))result=JSON.parse(text)
   }
  }catch{/* A lost response does NOT prove the target failed to post. */}
  if(result?.ok===true&&result.applied===true&&
