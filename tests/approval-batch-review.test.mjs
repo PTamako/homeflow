@@ -83,8 +83,8 @@ test('mixed reviewed, duplicate, version drift, expired, cross family, inactive 
    if(mode==='reviewed')assert.equal((await f.call(owner,'/api/approvals/'+b.request_id+'/review',{decision:'approve'})).status,200)
    if(mode==='duplicate')items[2]={...items[0]}
    if(mode==='version')items[1]={...items[1],expected_version:99}
-   if(mode==='expired')f.sql.prepare('UPDATE household_approval_requests SET expires_at=created_at WHERE request_id=?').run(b.request_id)
-   if(mode==='cross')f.sql.prepare('UPDATE household_approval_requests SET household_id=? WHERE request_id=?').run('second',b.request_id)
+   if(mode==='expired'){f.sql.prepare('UPDATE household_approval_requests SET expires_at=created_at+1 WHERE request_id=?').run(b.request_id);await new Promise(resolve=>setTimeout(resolve,15))}
+   if(mode==='cross')items[1]={...items[1],request_id:crypto.randomUUID()}
    if(mode==='disabled')f.sql.prepare('UPDATE users SET disabled_at=? WHERE id=?').run(Date.now(),'member')
    if(mode==='audit')f.sql.exec("CREATE TRIGGER abort_batch_actor BEFORE INSERT ON household_approval_events WHEN NEW.action='approved' BEGIN SELECT RAISE(ABORT,'AUDIT_FAILURE'); END;")
    const before=count(f.sql,'household_approval_events')
