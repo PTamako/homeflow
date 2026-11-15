@@ -458,7 +458,22 @@ export async function approvalExecutionRoute(request,env,path,session){
     /^20\d{2}-\d{2}-\d{2}$/.test(result.effective_date||'')&&
     result.debit_date<=result.trade_date&&result.trade_date<=result.effective_date&&
     result.transfer_entry_id===result.entry_id&&
-    result.broker_reconciled===false&&result.included_in_tracked_assets_jpy===false))&&
+    result.broker_reconciled===false&&result.included_in_tracked_assets_jpy===false&&
+    (row.operation==='finance.sbi_cash.reversal'?(
+      uuid.test(result.original_request_id||'')&&
+      result.original_request_id!==row.request_id&&
+      hex.test(result.bank_refund_hash||'')&&
+      hex.test(result.broker_cancel_hash||'')&&
+      /^20\\d{2}-\\d{2}-\\d{2}$/.test(result.bank_refund_date||'')&&
+      /^20\\d{2}-\\d{2}-\\d{2}$/.test(result.broker_cancel_date||'')&&
+      result.broker_cancel_date>=result.trade_date&&
+      result.bank_refund_date>=result.broker_cancel_date&&
+      result.bank_refund_date>=result.effective_date&&
+      Number.isSafeInteger(result.original_transfer_entry_id)&&
+      result.original_transfer_entry_id>0&&
+      result.reversal_entry_id===result.entry_id&&
+      result.reversal_entry_id!==result.original_transfer_entry_id
+    ):result.original_request_id===undefined)))&&
    (!settlement||(result.approver_user_id===row.approver_user_id&&
    result.actor_user_id===row.approver_user_id&&
    result.card_version===row.expected_version&&
