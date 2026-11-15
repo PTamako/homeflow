@@ -108,10 +108,56 @@ def clone_readonly(source, dest):
         ro.close()
 
 
+def preexisting_additive_column_guard(db, name):
+    """Reconcile exactly TWO known historically pre-applied legacy columns.
+
+    A migration lacking its schema_migrations marker is NOT assumed absent.
+    Existing columns may only be skipped when every type, default and CHECK
+    matches the frozen original SQL. Partial schema never receives an unsafe
+    ALTER or is silently considered PASS.
+    """
+    expected = {
+        "0020_recurring_multi_schedule.sql": (
+            "recurring_plans",
+            {
+                "weekdays_json": ("TEXT", 1, "'[]'",
+                    "CHECK(json_valid(weekdays_json))"),
+                "month_days_json": ("TEXT", 1, "'[]'",
+                    "CHECK(json_valid(month_days_json))"),
+                "interval_months": ("INTEGER", 1, "1",
+                    "CHECK(interval_months BETWEEN 1 AND 24)"),
+            }),
+        "0021_sbi_transfer_purpose.sql": (
+            "sbi_transfer_links",
+            {"purpose": ("TEXT", 1, "'monthly'",
+                "CHECK(purpose IN ('monthly','purchase','funding'))")}),
+    }
+    if name not in expected:
+        return False
+    table, required = expected[name]
+    columns = {r[1]: r for r in db.execute(
+        'PRAGMA table_info("' + table + '")')}
+    present = set(required).intersection(columns)
+    if not present:
+        return False
+    schema_row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+        (table,)).fetchone()
+    ddl = "".join((schema_row[0] if schema_row else "").lower().split())
+    for col, (coltype, notnull, default, check) in required.items():
+        got = columns.get(col)
+        if (got is None or got[2].upper() != coltype
+                or got[3] != notnull or got[4] != default
+                or "".join(check.lower().split()) not in ddl):
+            raise RuntimeError("PREEXISTING_MIGRATION_SCHEMA_MISMATCH:" + name)
+    return True
+
+
 def replay_migrations(dbpath, migrations_dir, filenames):
     if not migrations_dir.is_dir():
         raise RuntimeError("PINNED_MIGRATION_DIRECTORY_MISSING")
     applied = []
+    verified_existing = []
     for name in filenames:
         if "/" in name or "\\" in name or not name.endswith(".sql"):
             raise RuntimeError("UNSAFE_MIGRATION_FILE")
@@ -124,12 +170,15 @@ def replay_migrations(dbpath, migrations_dir, filenames):
         try:
             with sqlite3.connect(str(dbpath)) as db:
                 db.execute("PRAGMA foreign_keys=ON")
+                if preexisting_additive_column_guard(db, name):
+                    verified_existing.append(name)
+                    continue
                 db.executescript(sql)
                 db.commit()
         except sqlite3.Error as exc:
             raise RuntimeError("ISOLATED_MIGRATION_FAILED:" + name + ":" + type(exc).__name__) from exc
         applied.append(name)
-    return applied
+    return applied, verified_existing
 
 
 def exercise_one(label, source, migration_dir, files, root):
@@ -144,9 +193,10 @@ def exercise_one(label, source, migration_dir, files, root):
     old = snapshot(original, PROTECTED[label], cols)
     shutil.copyfile(original, working)
     applied = []
+    preexisting = []
     caught = None
     try:
-        applied = replay_migrations(working, migration_dir, files)
+        applied, preexisting = replay_migrations(working, migration_dir, files)
         check_db(working)
         new = snapshot(working, PROTECTED[label], cols)
         if old != new:
@@ -169,13 +219,16 @@ def exercise_one(label, source, migration_dir, files, root):
             byte_identical = True
         if snapshot(original, PROTECTED[label], cols) != old:
             raise RuntimeError("ORIGINAL_BASELINE_MUTATED")
-    return {"database": label, "applied": len(applied), "planned": len(files),
+    return {"database": label, "applied": len(applied),
+            "verified_preexisting": preexisting, "completed": len(applied) + len(preexisting),
+            "planned": len(files),
             "protected_counts_sha256": hashlib.sha256(json.dumps(
                 old, sort_keys=True).encode()).hexdigest(),
             "isolated_restore_verified": True,
             "byte_identical": byte_identical,
             "migration_status": "FAILED" if caught else "PASS",
-            "blocker": caught and caught.split(":")[0]}
+            "blocker": caught and caught.split(":")[0],
+            "blocked_migration": caught.split(":")[1] if caught and ":" in caught else None}
 
 
 def load_manifest(repo_root):
@@ -216,7 +269,7 @@ def main():
                           "production_mutations": False,
                           "production_release_authorized": False}))
         return 2
-    ok = all(r["migration_status"] == "PASS" and r["applied"] == r["planned"]
+    ok = all(r["migration_status"] == "PASS" and r["completed"] == r["planned"]
              for r in results)
     print(json.dumps({"ok": ok, "results": results,
                       "production_mutations": False,
