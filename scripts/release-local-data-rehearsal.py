@@ -11,7 +11,6 @@ from its untouched baseline. It is NOT a real Cloudflare production rollback.
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import sqlite3
 import subprocess
@@ -38,14 +37,55 @@ def check_db(path):
             raise RuntimeError("SQLITE_FOREIGN_KEY_CHECK_FAILED")
 
 
-def snapshot(path, tables):
+def protected_columns(path, tables):
+    """Capture original columns so additive migrations can add new columns."""
     with sqlite3.connect(str(path)) as db:
-        present = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        counts = {}
+        present = {r[0] for r in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        result = {}
         for table in tables:
             if table not in present:
                 raise RuntimeError("PROTECTED_TABLE_MISSING:" + table)
-            counts[table] = int(db.execute('SELECT COUNT(*) FROM "' + table + '"').fetchone()[0])
+            cols = [r[1] for r in db.execute(
+                'PRAGMA table_info("' + table.replace('"', '""') + '")')]
+            if not cols:
+                raise RuntimeError("PROTECTED_COLUMNS_MISSING:" + table)
+            result[table] = cols
+        return result
+
+
+def snapshot(path, tables, original_columns):
+    """Hash EVERY original row without revealing personal information.
+
+    Counting rows or summing money is insufficient: offsetting changes to
+    different expenses can cancel while corrupting an individual's ledger.
+    The original-column projection permits only additive new schema columns.
+    """
+    with sqlite3.connect(str(path)) as db:
+        counts = {}
+        for table in tables:
+            cols = original_columns[table]
+            quoted = lambda x: '"' + x.replace('"', '""') + '"'
+            names = ",".join(quoted(c) for c in cols)
+            row_hashes = []
+            try:
+                for row in db.execute(
+                    "SELECT " + names + " FROM " + quoted(table)):
+                    values = [
+                        {"blob_sha256": hashlib.sha256(v).hexdigest(),
+                         "bytes": len(v)} if isinstance(v, bytes) else v
+                        for v in row
+                    ]
+                    payload = json.dumps(values, ensure_ascii=False,
+                                         separators=(",", ":"), allow_nan=False)
+                    row_hashes.append(hashlib.sha256(payload.encode()).hexdigest())
+            except (sqlite3.Error, ValueError, TypeError) as exc:
+                raise RuntimeError(
+                    "PROTECTED_ROW_FINGERPRINT_UNAVAILABLE:" + table) from exc
+            row_hashes.sort()
+            counts[table] = len(row_hashes)
+            counts[table + "_original_row_sha256"] = hashlib.sha256(
+                "\\n".join(row_hashes).encode()).hexdigest()
         if "entries" in counts:
             counts["entries_signed_amount"] = int(db.execute(
                 "SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0)"
@@ -100,14 +140,15 @@ def exercise_one(label, source, migration_dir, files, root):
     restored = folder / "restored.sqlite"
     clone_readonly(source, original)
     check_db(original)
-    old = snapshot(original, PROTECTED[label])
+    cols = protected_columns(original, PROTECTED[label])
+    old = snapshot(original, PROTECTED[label], cols)
     shutil.copyfile(original, working)
     applied = []
     caught = None
     try:
         applied = replay_migrations(working, migration_dir, files)
         check_db(working)
-        new = snapshot(working, PROTECTED[label])
+        new = snapshot(working, PROTECTED[label], cols)
         if old != new:
             raise RuntimeError("PROTECTED_DATA_TOTALS_CHANGED")
     except Exception as exc:
@@ -116,7 +157,7 @@ def exercise_one(label, source, migration_dir, files, root):
         # RESTORE ISOLATED COPY EVEN AFTER A FAILED MIGRATION. No remote writes.
         clone_readonly(original, restored)
         check_db(restored)
-        if snapshot(restored, PROTECTED[label]) != old:
+        if snapshot(restored, PROTECTED[label], cols) != old:
             raise RuntimeError("ISOLATED_ROLLBACK_FAILED")
         digest_original = hashlib.sha256(original.read_bytes()).hexdigest()
         digest_restored = hashlib.sha256(restored.read_bytes()).hexdigest()
@@ -126,7 +167,7 @@ def exercise_one(label, source, migration_dir, files, root):
             byte_identical = False
         else:
             byte_identical = True
-        if snapshot(original, PROTECTED[label]) != old:
+        if snapshot(original, PROTECTED[label], cols) != old:
             raise RuntimeError("ORIGINAL_BASELINE_MUTATED")
     return {"database": label, "applied": len(applied), "planned": len(files),
             "protected_counts_sha256": hashlib.sha256(json.dumps(
