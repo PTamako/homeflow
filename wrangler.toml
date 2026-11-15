@@ -22,6 +22,8 @@ crons = ["0 * * * *"] # One free-tier trigger: hourly; daily at 06:00 JST, quiet
 [vars]
 APP_ENV = "production"
 KAKEBO_LEDGER_API_URL = "https://kakeibo-f17.pages.dev/api/homeflow-ledger"
+# Exact production-only OAuth callback allowlist; no wildcard or Preview origins.
+OAUTH_CLIENT_REDIRECTS = '{"kakeibo":["https://kakeibo-f17.pages.dev/api/homeflow-sso/callback"],"it-study-platform":["https://it-study-platform.yupan6706.workers.dev/api/homeflow-sso/callback"],"jp-document-assistant":["https://jp-document-assistant.yupan6706.workers.dev/api/homeflow-sso/callback"]}'
 
 # Internal-only read-only ledger Worker; production only, not bound in Preview.
 # kakeibo D1 remains bound to the isolated target Worker, not HomeFlow.
