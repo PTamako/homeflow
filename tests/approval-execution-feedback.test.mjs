@@ -19,7 +19,7 @@ function fixture(reply){
  const ref=value=>({value})
  const state={
   props:{active:true,userId:'owner',isOwner:true},
-  available:ref(true),busyId:ref(''),loading:ref(false),
+  available:ref(true),busyId:ref(''),loading:ref(false),selectedIds:ref([]),
   error:ref(''),message:ref(''),expanded:ref(true),
   filter:ref('approved'),page:ref(0),hasMore:ref(false),items:ref([]),
   epoch:0,requestGeneration:0,inFlightQuery:'',
