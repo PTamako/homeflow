@@ -210,7 +210,7 @@ test('signed backend-only read proof requires all 3 independent decisions and li
   async function proof(body=input,{badSignature=false,withOrigin=false,withCookie=false}={}){
    const raw=JSON.stringify(body),stamp=String(Date.now());
    const signature=createHmac('sha256',Buffer.from(f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET,'hex'))
-    .update('kakeibo-cross-member:consent-proof\\n'+stamp+'\\n'+raw).digest('hex');
+    .update('kakeibo-cross-member:consent-proof\n'+stamp+'\n'+raw).digest('hex');
    const headers={'content-type':'application/json',
     'x-approval-client':'kakeibo-cross-member',
     'x-approval-timestamp':stamp,
@@ -264,7 +264,7 @@ test('signed cross-member proof rejects inactive recipient even after full autho
    source_account_version:1,recipient_account_version:2};
   const raw=JSON.stringify(body),stamp=String(Date.now());
   const mac=createHmac('sha256',Buffer.from(f.env.CROSS_MEMBER_TRANSFER_PROOF_SECRET,'hex'))
-   .update('kakeibo-cross-member:consent-proof\\n'+stamp+'\\n'+raw).digest('hex');
+   .update('kakeibo-cross-member:consent-proof\n'+stamp+'\n'+raw).digest('hex');
   const result=await crossMemberConsentProofRoute(new Request(
    'https://homeflow.example.test/api/internal/cross-member/consent-proof',
    {method:'POST',headers:{'content-type':'application/json',
