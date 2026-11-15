@@ -30,7 +30,7 @@ function name(id:string){
 const currency=(n:number)=>new Intl.NumberFormat('ja-JP',{style:'currency',
  currency:'JPY',maximumFractionDigits:0}).format(n)
 const status=(s:Policy['status'])=>({
- pending_owner:'等待管理员批准额度',approved:'授权有效 · 暂未自动记账',
+ pending_owner:'等待管理员批准额度',approved:'已批准 · 每月凭实际到账证据记账',
  rejected:'审批拒绝',cancelled:'成员撤回',revoked:'授权已撤销'
 }[s]||'尚未确认')
 function reset(){
@@ -79,7 +79,7 @@ async function act(p:Policy,kind:string){
  if(!await confirmAction({
   title:labels[kind],confirmLabel:'确认'+labels[kind],
   message:kind==='approve'
-   ?'仅批准这个计划的每月最高额度、扣款日、账户版本和起止月份。并未设置 Cron，不能立即入账。'
+   ?'仅批准该计划每月额度、日期、账户版本和起止月。不会自动扣款或发起 SBI 买单；实际已发生的银行／证券凭证仍需在家計簿逐月执行并核对回执。'
    :'此决定会记录不可变审计。已经实际入账的旧账不受撤权影响。',
   ...(kind==='reject'||kind==='revoke'?{danger:true}:{})
  }))return
@@ -98,7 +98,7 @@ async function act(p:Policy,kind:string){
   if(!res.ok||result.ok!==true||result.policy?.ledger_applied!==false||
    result.policy?.cron_enabled!==false||result.policy?.occurrence_execution_permitted!==false)
    throw new Error(result.code||'授权状态不确定，请核对原授权 ID')
-  message.value=labels[kind]+'已记录，但尚未生成自动财务流水。'
+  message.value=labels[kind]+'已记录，但不等于实际入账或外部机构核验。'
  }catch(e){
   if(n===epoch&&account===props.userId)error.value=(e as Error).message
  }finally{
@@ -121,7 +121,7 @@ onUnmounted(()=>{alive=false;reset();document.removeEventListener('visibilitycha
     @click="expanded=!expanded">{{expanded?'收起':'查看授权'}}</button>
   </header>
   <div v-if="expanded" class="recurring-body">
-   <p class="hint">仅展示本人固定费或 SBI 定投的授权申请。批准不代表执行；后续的每期账单必须独立核验才可记账。</p>
+   <p class="hint">仅查看固定费与 SBI 定投授权。管理员批准不代表扣款或成交；家計簿只可凭每月已发生证据单独记账，银行/SBI 官方核验仍待完成。</p>
    <p v-if="error" role="alert" class="error">{{error}}</p>
    <p v-if="message" role="status" class="hint">{{message}}</p>
    <button type="button" class="outline" :disabled="loading||!!busy"
@@ -134,7 +134,7 @@ onUnmounted(()=>{alive=false;reset();document.removeEventListener('visibilitycha
      <span>{{status(p.status)}}</span>
      <small>最高 {{currency(p.max_amount_jpy)}}／月 · 每月 {{p.due_day}} 日</small>
      <small>{{p.start_month}}～{{p.end_month}} · 账户版本 {{p.source_account_version}}</small>
-     <small>尚未设置自动记账，且仅能预留每期唯一凭证</small>
+     <small>未启用 Cron；每月唯一凭证须单独执行和读取 K 原始账本回执</small>
      <div class="recurring-actions">
       <button v-for="action in actions(p)" :key="action" type="button"
        class="outline" :disabled="loading||!!busy" @click="act(p,action)">
