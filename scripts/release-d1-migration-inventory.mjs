@@ -120,9 +120,9 @@ export const MIGRATION_PLANS=[
   }
 ];
 const digest=rows=>createHash('sha256').update(rows.join('\n')).digest('hex');
-export function verifyMigrationInventory(snapshot){
+export function verifyMigrationInventory(snapshot,plans=MIGRATION_PLANS){
  const results=[],errors=[];
- for(const plan of MIGRATION_PLANS){
+ for(const plan of plans){
   const rows=snapshot?.[plan.db]?.rows;
   const writeMeta=snapshot?.[plan.db]?.changed_db===false&&
    snapshot?.[plan.db]?.rows_written===0;
