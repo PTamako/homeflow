@@ -119,7 +119,7 @@ export const MIGRATION_PLANS=[
     ]
   }
 ];
-const digest=rows=>createHash('sha256').update(rows.join('\\n')).digest('hex');
+const digest=rows=>createHash('sha256').update(rows.join('\n')).digest('hex');
 export function verifyMigrationInventory(snapshot){
  const results=[],errors=[];
  for(const plan of MIGRATION_PLANS){
