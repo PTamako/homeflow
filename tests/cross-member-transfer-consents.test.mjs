@@ -240,7 +240,7 @@ test('signed backend-only read proof requires all 3 independent decisions and li
   assert.equal(confirmed.data.consent_version,3);
   assert.equal((await proof({...input,payload_sha256:'b'.repeat(64)})).status,409);
   assert.equal((await proof({...input,recipient_account_version:3})).status,409);
-  assert.equal((await proof({...input,source_user_id:'owner'})).status,409);
+  assert.equal((await proof({...input,source_user_id:'owner'})).status,400);
   assert.equal((await proof({...input,household_id:'second'})).status,409);
   assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
   assert.equal((await f.call(source,f.root+'/'+id+'/revoke',
