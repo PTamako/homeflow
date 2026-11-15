@@ -31,7 +31,7 @@ export async function sbiCashApprovalSubmissionRoute(req,env){
   !id.test(b.resource_id)||!hex.test(b.payload_sha256)||
   typeof b.household_id!=='string'||!b.household_id||b.household_id.length>128||
   typeof b.requester_user_id!=='string'||!b.requester_user_id||b.requester_user_id.length>128||
-  !['tsumitate','additional'].includes(b.kind)||!Number.isSafeInteger(b.expected_version)||b.expected_version<1)
+  !['tsumitate','additional','reversal'].includes(b.kind)||!Number.isSafeInteger(b.expected_version)||b.expected_version<1)
   return deny('invalid_body',400);
  const computed=await hmac(env.SBI_CASH_SUBMISSION_SECRET,'kakeibo-sbi-cash:submit',stamp,raw);
  if(!constantEqualHex(computed,signature))return deny('invalid_signature');
