@@ -21,6 +21,7 @@ const ALLOWED_OPS={
  'finance.points.redeem_asset':'kakebo',
   'finance.sbi_cash.tsumitate':'kakebo',
   'finance.sbi_cash.additional':'kakebo',
+  'finance.sbi_cash.reversal':'kakebo',
   'finance.entry.update':'kakebo',
   'finance.entry.delete':'kakebo',
   'finance.entry.restore':'kakebo',
