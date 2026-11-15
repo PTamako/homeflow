@@ -37,12 +37,13 @@ export const REQUIRED_WORKERS={
    'KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE','KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE',
    'KAKEIBO_CARD_EXECUTION_SERVICE','KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE',
    'KAKEIBO_POINTS_EXECUTION_SERVICE','KAKEIBO_PREPAID_EXECUTION_SERVICE',
-   'KAKEIBO_SBI_CASH_EXECUTION_SERVICE','DOCUMENT_EXECUTION_SERVICE',
+   'KAKEIBO_SBI_CASH_EXECUTION_SERVICE','KAKEIBO_RECURRING_RECEIPT_SERVICE',
+   'DOCUMENT_EXECUTION_SERVICE',
    'DOCUMENT_STUDY_EXECUTION_SERVICE'],
   services:['KAKEIBO_EXECUTION_SERVICE','KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE',
    'KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE','KAKEIBO_CARD_EXECUTION_SERVICE',
    'KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE','KAKEIBO_POINTS_EXECUTION_SERVICE',
-   'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE',
+   'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE','KAKEIBO_RECURRING_RECEIPT_SERVICE',
    'DOCUMENT_EXECUTION_SERVICE','DOCUMENT_STUDY_EXECUTION_SERVICE']
  },
  'it-study-platform':{
@@ -63,11 +64,56 @@ export const REQUIRED_WORKERS={
    'DOCUMENT_EXECUTION_ENABLED','HOMEFLOW_DOCUMENT_EXECUTION_SECRET',
    'KAKEIBO_DOCUMENT_FINANCE_SERVICE'],
   services:['HOMEFLOW_BRIDGE_SERVICE','KAKEIBO_DOCUMENT_FINANCE_SERVICE']
+ },
+ 'kakeibo-homeflow-bridge':{
+  names:['APP_ENV','DB','HOMEFLOW_OAUTH_ORIGIN','HOMEFLOW_IDENTITY_SERVICE',
+   'DOCUMENT_FINANCE_SOURCE_SERVICE','KAKEIBO_FAMILY_FINANCE_ENABLED',
+   'KAKEIBO_FAMILY_PENDING_KEY','KAKEIBO_FAMILY_EXECUTION_ENABLED',
+   'KAKEIBO_APPROVAL_PROOF_ENABLED','KAKEIBO_APPROVAL_VERIFICATION_SECRET',
+   'KAKEIBO_BANK_TRANSFER_ENABLED','KAKEIBO_BANK_TRANSFER_EXECUTION_SECRET',
+   'KAKEIBO_BANK_TRANSFER_PROOF_SECRET','KAKEIBO_CARD_PURCHASES_ENABLED',
+   'KAKEIBO_CARD_EXECUTION_SECRET','KAKEIBO_CARD_PROOF_SECRET',
+   'KAKEIBO_CARD_SETTLEMENTS_ENABLED','KAKEIBO_CARD_SETTLEMENT_EXECUTION_SECRET',
+   'KAKEIBO_CARD_SETTLEMENT_PROOF_SECRET','KAKEIBO_POINTS_ACTIONS_ENABLED',
+   'KAKEIBO_POINTS_EXECUTION_SECRET','KAKEIBO_POINTS_PROOF_SECRET',
+   'KAKEIBO_PREPAID_ACTIONS_ENABLED','KAKEIBO_PREPAID_EXECUTION_SECRET',
+   'KAKEIBO_PREPAID_PROOF_SECRET','KAKEIBO_SBI_CASH_ENABLED',
+   'KAKEIBO_SBI_CASH_EXECUTION_SECRET','KAKEIBO_SBI_CASH_PROOF_SECRET',
+   'KAKEIBO_SHARED_ENTRY_ENABLED','KAKEIBO_SHARED_MUTATION_APPROVAL_ENABLED',
+   'KAKEIBO_SHARED_MUTATION_EXECUTION_SECRET','KAKEIBO_SHARED_MUTATION_PROOF_SECRET',
+   'KAKEIBO_RECURRING_EXECUTION_ENABLED','KAKEIBO_RECURRING_RECEIPT_SECRET',
+   'KAKEIBO_DOCUMENT_FINANCE_EXECUTION_ENABLED',
+   'KAKEIBO_DOCUMENT_FINANCE_SECRET'],
+  services:['HOMEFLOW_IDENTITY_SERVICE','DOCUMENT_FINANCE_SOURCE_SERVICE']
  }
 };
+export const SERVICE_TARGETS={
+ homeflow:Object.fromEntries([
+  'KAKEIBO_EXECUTION_SERVICE','KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE',
+  'KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE','KAKEIBO_CARD_EXECUTION_SERVICE',
+  'KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE','KAKEIBO_POINTS_EXECUTION_SERVICE',
+  'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE',
+  'KAKEIBO_RECURRING_RECEIPT_SERVICE'].map(x=>[x,'kakeibo-homeflow-bridge'])),
+ 'it-study-platform':{
+  HOMEFLOW_STUDY_SERVICE:'homeflow',
+  DOCUMENT_STUDY_HOMEFLOW_SERVICE:'homeflow',
+  DOCUMENT_STUDY_SOURCE_SERVICE:'jp-document-assistant'
+ },
+ 'jp-document-assistant':{
+  HOMEFLOW_BRIDGE_SERVICE:'homeflow',
+  KAKEIBO_DOCUMENT_FINANCE_SERVICE:'kakeibo-homeflow-bridge'
+ },
+ 'kakeibo-homeflow-bridge':{
+  HOMEFLOW_IDENTITY_SERVICE:'homeflow',
+  DOCUMENT_FINANCE_SOURCE_SERVICE:'jp-document-assistant'
+ }
+};
+SERVICE_TARGETS.homeflow.DOCUMENT_EXECUTION_SERVICE='jp-document-assistant';
+SERVICE_TARGETS.homeflow.DOCUMENT_STUDY_EXECUTION_SERVICE='jp-document-assistant';
 export const REQUIRED_PAGES={
  kakeibo:{
   env:['KAKEIBO_HOMEFLOW_SSO_ENABLED','HOMEFLOW_OAUTH_ORIGIN',
+   'KAKEIBO_PUBLIC_ORIGIN','KAKEIBO_SSO_ENCRYPTION_KEY',
    'KAKEIBO_FAMILY_FINANCE_ENABLED','KAKEIBO_FAMILY_PENDING_KEY',
    'KAKEIBO_APPROVAL_SUBMISSION_ENABLED','KAKEIBO_APPROVAL_PROOF_ENABLED',
    'KAKEIBO_APPROVAL_VERIFICATION_SECRET','KAKEIBO_SHARED_ENTRY_ENABLED',
@@ -98,17 +144,21 @@ export function checkG8Bindings(snapshot){
  for(const [name,requirements] of Object.entries(REQUIRED_WORKERS)){
   const worker=snapshot.workers?.[name];
   if(!worker){missing.push('worker:'+name+':unavailable');continue}
-  const byName=new Map(normalized(worker.bindings).map(b=>[b.name,b.type]));
+  const byName=new Map(normalized(worker.bindings).map(b=>[b.name,b]));
   for(const key of requirements.names)if(!byName.has(key))
    missing.push('worker:'+name+':missing:'+key);
   for(const key of requirements.services)
-   if(byName.has(key)&&!['service','service_binding'].includes(byName.get(key)))
+   if(byName.has(key)&&!['service','service_binding'].includes(byName.get(key)?.type))
     missing.push('worker:'+name+':invalid_service_type:'+key);
+  for(const [key,target] of Object.entries(SERVICE_TARGETS[name]||{})){
+   if(byName.has(key)&&byName.get(key)?.service!==target)
+    missing.push('worker:'+name+':invalid_service_target:'+key);
+  }
   // An accidentally rebound D1/R2 identifier must never be treated as a
   // successful release: a KV/text secret with the right name is not a DB.
   for(const [key,expected] of Object.entries({DB:['d1'],MEDIA:['r2_bucket'],
    DOCUMENTS:['r2_bucket']})){
-   if(byName.has(key)&&!expected.includes(byName.get(key)))
+   if(byName.has(key)&&!expected.includes(byName.get(key)?.type))
     missing.push('worker:'+name+':invalid_resource_type:'+key);
   }
  }
@@ -118,6 +168,10 @@ export function checkG8Bindings(snapshot){
   const config=pages.production||{};
   const groups=[['env',config.env_vars],['d1',config.d1_databases],
    ['r2',config.r2_buckets],['services',config.services||config.service_bindings]];
+  for(const [key,target] of Object.entries({HOMEFLOW_IDENTITY_SERVICE:'homeflow'})){
+   if(Object.hasOwn(config.services||{},key)&&config.services[key]?.service!==target)
+    missing.push('pages:'+name+':invalid_service_target:'+key);
+  }
   for(const [category,items] of groups){
    for(const needed of requirements[category]){
     if(!Object.hasOwn(items||{},needed))
@@ -125,7 +179,7 @@ export function checkG8Bindings(snapshot){
    }
   }
  }
- return {ok:missing.length===0,verified:'binding-name-and-type-presence-only',
+ return {ok:missing.length===0,verified:'binding-name-type-and-service-target-presence-only',
   missing:sorted(missing),cannot_certify:[
    'secret_values','feature_flags_enabled','oauth_redirect_allowlist',
    'actual_d1_migration','production_backup_and_restore','financial_reconciliation',
@@ -144,7 +198,8 @@ export async function collectG8Bindings({accountId,token,fetcher=fetch}){
  const root='/accounts/'+encodeURIComponent(accountId),snap={workers:{},pages:{}};
  for(const name of Object.keys(REQUIRED_WORKERS)){
   const item=await get(root+'/workers/scripts/'+encodeURIComponent(name)+'/settings');
-  snap.workers[name]={bindings:normalized(item?.bindings).map(x=>({name:x.name,type:x.type}))};
+  snap.workers[name]={bindings:normalized(item?.bindings).map(x=>({
+   name:x.name,type:x.type,...(x.type==='service'?{service:x.service}:{})}))};
  }
  for(const name of Object.keys(REQUIRED_PAGES)){
   const project=await get(root+'/pages/projects/'+encodeURIComponent(name));
@@ -154,7 +209,8 @@ export async function collectG8Bindings({accountId,token,fetcher=fetch}){
    env_vars:Object.fromEntries(Object.keys(prod.env_vars||{}).map(k=>[k,true])),
    d1_databases:Object.fromEntries(Object.keys(prod.d1_databases||{}).map(k=>[k,true])),
    r2_buckets:Object.fromEntries(Object.keys(prod.r2_buckets||{}).map(k=>[k,true])),
-   services:Object.fromEntries(Object.keys(prod.services||prod.service_bindings||{}).map(k=>[k,true]))
+   services:Object.fromEntries(Object.entries(prod.services||prod.service_bindings||{}).
+    map(([k,x])=>[k,{service:x?.service||null}]))
   }};
  }
  return snap;
