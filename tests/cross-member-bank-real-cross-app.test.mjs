@@ -67,7 +67,7 @@ function financeSchema(sql){
   '0043_points_card_offset_refund.sql','0044_sbi_cash_purchases.sql',
   '0045_sbi_cash_reversals.sql','0046_sbi_legacy_holding_review.sql',
   '0047_sbi_point_full_refund.sql','0048_posted_bank_transfers.sql',
-  '0049_cross_member_bank_transfers.sql'])
+  '0049_cross_member_bank_transfers.sql','0050_cross_bank_statement_usage_guards.sql'])
   sql.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+name,import.meta.url),'utf8'))
  for(const [user,role] of [[owner,'owner'],[member,'member']])
   stmt(sql,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',

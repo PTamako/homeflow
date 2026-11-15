@@ -520,3 +520,11 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 5. 家計簿目标返回原冻结 §AE bank-transfer receipt 必需字段与 `cross_member=true, consent_id, recipient_user_id, source_owner_user_id, target_owner_user_id, owner_authorizer_user_id, bank_statements_verified_by_institution=false`。HomeFlow #306 `approval-execution` 在判断 applied 前从自身不可变 consent 表重新读取精确原申请/双方 ID/owner/账户版本/确认顺序核验，不因普通 `consent_verified` 预审就直接 applied。普通 §AE same-owner response 未新增字段，旧功能保持不变。错误/超时仍返回 unknown/failed_retryable，禁止伪写或替换审批 ID。
 6. 真实代码和隔离测试位于 Kakeibo Draft #309 和 HomeFlow Draft #306；HomeFlow `.github/workflows/ci.yml` pin Kakeibo 已验证功能 SHA `11c5b0a20d65b42ff114f76c77652ef509d81888`。Kakeibo 新 SQLite 测试和 HomeFlow 两个数据库真实 handler/模拟 Service Binding 测试覆盖 source/recipient SSO、两次 owner 逻辑动作、真实 approvals、双边入账、immutable journal、重放、目标回执丢失、撤权、CAS/balance drift、审计触发器原子 rollback。详细测试结果/CI 与未覆盖功能必须以唯一 handoff §95 为准。
 7. 安全限制：此阶段仅作本地独立 SQLite/CI，**没有实际外部银行的独立交易确认、真实机构核对、生产 Cloudflare D1/R2/Worker/Secrets/Cron/Binding、Preview、PR 合并与 F 阶段部署**。其他账户类型、owner→member、历史账目编辑与 R2 回收、周期计划实际执行、四 PWA 实机仍需继续完成。
+
+## AJ. v1.0.30：跨成员银行流水回执与既有 SBI/信用卡/同一人银行账务间的**双向不可重复使用**约束（仅 Draft）
+
+日期：2026-11-15。§AI 的双人真实 SSO 签名转账和已确认双边 `entries.type='transfer'` 不变；旧 §AE 及 SBI/信用卡双边 journal 的证据规范也不变。本节仅进一步冻结机构流水引用的**跨操作防重边界**，不扩大跨成员可转资产类型。
+
+1. 家計簿未部署新增 `0050_cross_bank_statement_usage_guards.sql`，补充 `family_cross_bank_journal` 的 INSERT 前重复引用拒绝：原跨成员 source `(source_account_id,source_reference_hash)`、目标 `(target_account_id,credit_reference_hash)` 与既有 `family_bank_transfer_posted_evidence` 双侧、`family_card_bank_debit_evidence`、`family_sbi_cash_bank_evidence`、`family_sbi_cash_refund_evidence` 任何相同 account_id/reference_hash 均不能重入；交叉方向重放也拒绝。保留 §AI 的同一 D1 batch 对 `entries`、不可变 journal、actor audit 事务回滚。
+2. 为了阻断先成功执行跨成员银行转账、再拿原提款参考做 SBI 投资/信用卡还款/同一人转账的重复记账，新增四个后续源表 BEFORE INSERT guard。**source debit 和 recipient credit 两侧**均受相同 reference 约束，不能只保护转出人。证据原文始终不在 HomeFlow D1，哈希跟稳定 `account_id` 绑定。目标可受原版本 CAS/已审批/真实接收用户确认保护，不会因新增此约束获得新权限。
+3. 家計簿 #309 目标 commit、HomeFlow #306 的精确 pin/test、每个目标 CI Run ID、失败原因与生产限制一律由唯一 handoff §96 给出。依旧没有银行 API 机构核验，也不支持 owner→member/cash/securities/预付卡的跨成员直接划拨。五个 PR 保持 Draft，所有生产与 F 阶段功能开关仍 OFF。
