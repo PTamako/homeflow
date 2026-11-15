@@ -188,7 +188,7 @@ test('two actual D1 handlers: target audit abort and live member revocation bloc
    if(kind==='audit')f.k.sql.exec("CREATE TRIGGER deny_bank_actor BEFORE INSERT ON family_bank_transfer_actor_audit BEGIN SELECT RAISE(ABORT,'AUDIT_FAILED'); END;")
    if(kind==='revoke'){
     stmt(f.h.sql,'UPDATE users SET disabled_at=? WHERE id=?',Date.now(),member)
-    stmt(f.k.sql,"UPDATE homeflow_identity_links SET state='inactive' WHERE user_id=?",member)
+    stmt(f.k.sql,"UPDATE homeflow_identity_links SET state='disabled' WHERE user_id=?",member)
    }
    const r=await f.execute(id);assert.notEqual(r.status,200,kind)
    assert.equal(count(f.k.sql,'entries'),0)
