@@ -111,3 +111,17 @@ test('G8 cannot call a text binding a D1 or a KV namespace an R2 bucket',()=>{
  assert.ok(result.missing.includes('worker:homeflow:invalid_resource_type:DB'));
  assert.ok(result.missing.includes('worker:jp-document-assistant:invalid_resource_type:DOCUMENTS'));
 });
+
+test('G8 requires cross-member consent proof, signed approval submission and recurring reservation flags',()=>{
+ const s=complete();
+ const checks=['CROSS_MEMBER_TRANSFER_CONSENTS_ENABLED',
+  'CROSS_MEMBER_TRANSFER_PROOF_ENABLED','CROSS_MEMBER_TRANSFER_PROOF_SECRET',
+  'RECURRING_FINANCE_AUTH_ENABLED','RECURRING_FINANCE_RESERVATIONS_ENABLED',
+  'RECURRING_FINANCE_RESERVATION_SECRET','BANK_TRANSFER_APPROVAL_SUBMISSION_ENABLED',
+  'BANK_TRANSFER_SUBMISSION_SECRET','APPROVAL_BATCH_REVIEW_ENABLED'];
+ s.workers.homeflow.bindings=s.workers.homeflow.bindings.filter(b=>!checks.includes(b.name));
+ const report=checkG8Bindings(s);
+ assert.equal(report.ok,false);
+ for(const name of checks)
+  assert.ok(report.missing.includes('worker:homeflow:missing:'+name),name);
+});
