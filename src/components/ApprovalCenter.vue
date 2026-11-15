@@ -11,7 +11,7 @@ type Approval={
  operation:string;resource_id:string|null;requester_user_id:string
  approver_user_id:string|null;status:State;created_at:number
  reviewed_at:number|null;executed_at:number|null;expires_at:number
- remote_id:string|null;applied:boolean
+ remote_id:string|null;applied:boolean;version:number
 }
 const props=defineProps<{
  active:boolean;userId:string;isOwner:boolean
@@ -22,6 +22,9 @@ const allowedFilters=['','pending','approved','applied','rejected',
  'failed_retryable','conflict','cancelled'] as const
 type Filter=typeof allowedFilters[number]
 const enabled=ref(false),executionEnabled=ref(false),documentExecutionEnabled=ref(false)
+const batchReviewEnabled=ref(false),selectedIds=ref<string[]>([])
+type BatchRequest={batch_id:string;decision:'approve'|'reject';expected_user_id:string;items:Array<{request_id:string;expected_version:number}>}
+const unconfirmedBatch=ref<BatchRequest|null>(null)
 const filter=ref<Filter>('pending')
 const items=ref<Approval[]>([]),page=ref(0),hasMore=ref(false)
 const expanded=ref(false),loading=ref(false),busyId=ref('')
@@ -74,7 +77,8 @@ async function discover(){
  inFlightQuery=''
  loading.value=false
  cancelConfirm()
- enabled.value=false;executionEnabled.value=false;documentExecutionEnabled.value=false;expanded.value=false
+ enabled.value=false;executionEnabled.value=false;batchReviewEnabled.value=false;expanded.value=false
+ selectedIds.value=[];unconfirmedBatch.value=null;documentExecutionEnabled.value=false
  items.value=[];page.value=0;hasMore.value=false
  error.value='';message.value='';busyId.value=''
  if(!props.active||!props.userId)return
@@ -83,6 +87,7 @@ async function discover(){
   if(ticket!==epoch||!props.active)return
   enabled.value=result.enabled===true
   executionEnabled.value=result.execution_enabled===true
+   batchReviewEnabled.value=result.batch_review_enabled===true
    documentExecutionEnabled.value=result.document_execution_enabled===true
   filter.value=props.isOwner?'pending':''
  }catch{/* Feature is deliberately hidden while migrations/flags are OFF. */}
@@ -106,6 +111,7 @@ async function load(reset=true,preserveFeedback=false){
   if(ticket!==epoch||generation!==requestGeneration||!props.active||
    account!==props.userId||kind!==filter.value)return
   items.value=Array.isArray(result.items)?result.items:[]
+  selectedIds.value=[]
   page.value=nextPage
   hasMore.value=result.has_more===true
  }catch(e){
@@ -228,6 +234,67 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
   if(account===props.userId){busyId.value='';await load(true,true)}
  }
 }
+
+const selectedApprovals=computed(()=>items.value.filter(x=>
+ selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
+function toggleBatchSelected(item:Approval){
+ if(!props.isOwner||!batchReviewEnabled.value||item.status!=='pending'||
+  unconfirmedBatch.value||busyId.value||loading.value)return
+ selectedIds.value=selectedIds.value.includes(item.request_id)
+  ?selectedIds.value.filter(id=>id!==item.request_id)
+  :selectedIds.value.length<20?[...selectedIds.value,item.request_id]:selectedIds.value
+}
+async function reconcileBatch(){
+ const saved=unconfirmedBatch.value
+ if(!saved||!available.value||!props.isOwner||!props.active||busyId.value)return
+ const current=props.userId,token=epoch
+ busyId.value='batch-reconcile';error.value=''
+ try{
+  const receipt=await getJson('/api/approvals/batch-review/'+saved.batch_id)
+  if(token!==epoch||props.userId!==current||!props.active)return
+  if(receipt.reviewed===true&&receipt.applied===false){
+   unconfirmedBatch.value=null;selectedIds.value=[]
+   message.value='批量审核已经记录，目标应用尚未执行。'
+  }else error.value='审核回执不一致，须人工核对同一批次 ID。'
+ }catch{
+  if(token===epoch&&props.userId===current)
+   error.value='批量审核结果尚未确认。保留原批次 ID，不要重复创建新批次。'
+ }finally{
+  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
+ }
+}
+async function reviewBatch(decision:'approve'|'reject'){
+ if(!batchReviewEnabled.value||!props.isOwner||!available.value||!props.active||
+  !!busyId.value||loading.value||unconfirmedBatch.value)return
+ const selected=selectedApprovals.value
+ if(selected.length===0||selected.length>20)return
+ const current=props.userId,token=epoch
+ const ids=selected.map(x=>({request_id:x.request_id,expected_version:x.version}))
+ const label=decision==='approve'?'批准':'拒绝'
+ if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
+  message:'本次审核'+selected.length+'笔申请，将全部成功或全部拒绝。批准仅代表通过审核，目标账务不会立即生效。',
+  ...(decision==='reject'?{danger:true}:{})}))return
+ if(token!==epoch||current!==props.userId||!props.active||
+  ids.some(p=>!items.value.some(item=>item.request_id===p.request_id&&
+    item.version===p.expected_version&&item.status==='pending')))return
+ const payload:BatchRequest={batch_id:crypto.randomUUID(),decision,expected_user_id:current,items:ids}
+ unconfirmedBatch.value=payload;busyId.value='batch-review';error.value='';message.value=''
+ try{
+  const result=await getJson('/api/approvals/batch-review',{
+   method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
+  if(token!==epoch||props.userId!==current||!props.active)return
+  if(result.reviewed!==true||result.applied!==false||result.count!==ids.length){
+   error.value='服务器回执不完整，请使用原批次 ID 核对。';return
+  }
+  unconfirmedBatch.value=null;selectedIds.value=[]
+  message.value='已批量'+label+' '+ids.length+' 笔，尚未执行入账。'
+ }catch{
+  if(token===epoch&&props.userId===current)
+   error.value='批量审核结果不确定。请使用“核对原批次”查看，不要新建另一批。'
+ }finally{
+  if(token===epoch&&props.userId===current){busyId.value='';await load(true,true)}
+ }
+}
 </script>
 
 <template>
@@ -259,6 +326,17 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
     <button class="outline" type="button" :disabled="loading||!!busyId"
       @click="load(true)">刷新</button>
    </div>
+   <div v-if="isOwner&&batchReviewEnabled" class="approval-batch-toolbar">
+    <span>已选 {{ selectedApprovals.length }} 笔 · 仅审核，暂不入账</span>
+    <button v-if="unconfirmedBatch" type="button" class="outline"
+     :disabled="!!busyId||loading" @click="reconcileBatch">核对原批次</button>
+    <template v-else>
+     <button type="button" class="outline" :disabled="!!busyId||loading||!selectedApprovals.length"
+      @click="reviewBatch('reject')">批量拒绝</button>
+     <button type="button" class="primary" :disabled="!!busyId||loading||!selectedApprovals.length"
+      @click="reviewBatch('approve')">批量批准</button>
+    </template>
+   </div>
    <p v-if="error" class="approval-error" role="alert">{{ error }}</p>
    <p v-if="message" class="approval-feedback" role="status">{{ message }}</p>
    <p v-if="loading" class="approval-empty" role="status">读取中…</p>
@@ -266,6 +344,12 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
    <ul v-else class="approval-list">
     <li v-for="item in items" :key="item.request_id" class="approval-item">
      <div class="approval-titleline">
+      <label v-if="isOwner&&batchReviewEnabled&&item.status==='pending'" class="approval-batch-check">
+       <input type="checkbox" :checked="selectedIds.includes(item.request_id)"
+        :disabled="!!busyId||loading||!!unconfirmedBatch"
+        @change="toggleBatchSelected(item)"/>
+       <span>选择</span>
+      </label>
       <b>{{ actionNames[item.operation]||'家庭操作申请' }}</b>
       <span class="approval-state" :data-status="item.status">
        {{ statusLabel(item) }}
@@ -315,6 +399,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
 </template>
 <style scoped>
 .approval-center{min-width:0}
+.approval-batch-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.approval-batch-toolbar span{font-size:12px;color:var(--ui-muted);margin-right:auto}
+.approval-batch-toolbar button{min-height:44px}
+.approval-batch-check{display:inline-flex;align-items:center;gap:5px;font-size:12px;flex:none}
+.approval-batch-check input{width:19px;height:19px}
 .approval-head,.approval-titleline,.approval-toolbar,.approval-pager{
  display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0
 }
