@@ -66,6 +66,38 @@ class OfflineReleaseRehearsalTests(unittest.TestCase):
         self.assertTrue(result["isolated_restore_verified"])
         self.assert_source_untouched()
 
+    def test_unchanged_count_but_private_data_modified_is_detected(self):
+        name = self.write_migration(
+            "UPDATE users SET sample='changed-private-profile' WHERE id=1;")
+        result = self.exercise(name)
+        self.assertEqual(result["migration_status"], "FAILED")
+        self.assertEqual(result["blocker"], "PROTECTED_DATA_TOTALS_CHANGED")
+        self.assertTrue(result["isolated_restore_verified"])
+        self.assert_source_untouched()
+
+    def test_equal_signed_and_absolute_financial_totals_cannot_hide_row_corruption(self):
+        bank = self.root / "local-kakebo.sqlite"
+        with sqlite3.connect(bank) as db:
+            db.execute("CREATE TABLE entries(id INTEGER PRIMARY KEY,type TEXT,amount INTEGER)")
+            db.executemany("INSERT INTO entries VALUES(?,?,?)", [
+                (1, "expense", 900), (2, "expense", 300)])
+            for table in rehearsal.PROTECTED["kakebo"]:
+                if table == "entries":
+                    continue
+                db.execute("CREATE TABLE " + table + "(id INTEGER PRIMARY KEY)")
+            db.commit()
+        old_hash = hashlib.sha256(bank.read_bytes()).hexdigest()
+        name = self.write_migration(
+            "UPDATE entries SET amount=950 WHERE id=1;"
+            "UPDATE entries SET amount=250 WHERE id=2;")
+        where = self.root / "kakebo-try"
+        where.mkdir()
+        result = rehearsal.exercise_one("kakebo", bank, self.sqls, [name], where)
+        self.assertEqual(result["migration_status"], "FAILED")
+        self.assertEqual(result["blocker"], "PROTECTED_DATA_TOTALS_CHANGED")
+        self.assertTrue(result["isolated_restore_verified"])
+        self.assertEqual(hashlib.sha256(bank.read_bytes()).hexdigest(), old_hash)
+
     def test_sql_failure_preserves_baseline_and_independent_recovery(self):
         name = self.write_migration("CREATE TABLE incomplete (")
         result = self.exercise(name)
