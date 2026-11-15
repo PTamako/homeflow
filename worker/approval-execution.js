@@ -328,6 +328,33 @@ export async function approvalExecutionRoute(request,env,path,session){
    if(text.length<=(points?3400:bankTransfer?2400:1800))result=JSON.parse(text)
   }
  }catch{/* A lost response does NOT prove the target failed to post. */}
+ // Independently bind the target's immutable cross-member journal receipt
+ // to the original two-member consent and the owner's separate authorization.
+ // A later revocation must not erase an already committed true receipt.
+ const crossConsent=bankTransfer&&result?.cross_member===true?
+  await db.prepare('SELECT consent_id,household_id,resource_id,payload_sha256,'+
+   'source_user_id,recipient_user_id,source_account_version,recipient_account_version,'+
+   'owner_authorizer_user_id,recipient_decided_at,owner_authorized_at FROM '+
+   'household_cross_member_transfer_consents WHERE consent_id=? LIMIT 1')
+   .bind(result.consent_id).first().catch(()=>null):null;
+ const crossReceiptValid=result?.cross_member===undefined||
+  (bankTransfer&&crossConsent&&uuid.test(result.consent_id||'')&&
+   crossConsent.consent_id===result.consent_id&&
+   crossConsent.household_id===row.household_id&&
+   crossConsent.resource_id===row.resource_id&&
+   crossConsent.payload_sha256===row.payload_sha256&&
+   crossConsent.source_user_id===row.requester_user_id&&
+   crossConsent.recipient_user_id===row.approver_user_id&&
+   crossConsent.owner_authorizer_user_id===row.approver_user_id&&
+   crossConsent.source_account_version===row.expected_version&&
+   crossConsent.recipient_account_version===result.target_version&&
+   crossConsent.recipient_decided_at!=null&&crossConsent.owner_authorized_at!=null&&
+   crossConsent.recipient_decided_at<=crossConsent.owner_authorized_at&&
+   result.recipient_user_id===row.approver_user_id&&
+   result.source_owner_user_id===row.requester_user_id&&
+   result.target_owner_user_id===row.approver_user_id&&
+   result.owner_authorizer_user_id===row.approver_user_id&&
+   result.bank_statements_verified_by_institution===false);
  if(result?.ok===true&&result.applied===true&&
   result.approval_id===row.request_id&&
   ((documentStudy||documentFinance)?result.candidate_id:result.proposal_id)===row.resource_id&&
@@ -549,6 +576,7 @@ export async function approvalExecutionRoute(request,env,path,session){
    result.account_id&&/^[a-f0-9]{32}$/.test(result.account_id)&&
    Number.isSafeInteger(result.amount_jpy)&&result.amount_jpy>0&&
    /^20\d{2}-\d{2}$/.test(result.bill_month)))&&
+  crossReceiptValid&&
   result.household_id===row.household_id&&
   result.requester_user_id===row.requester_user_id&&
   result.payload_sha256===row.payload_sha256&&
