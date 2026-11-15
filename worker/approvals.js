@@ -1,4 +1,5 @@
 import {json,nowMs,sameOrigin,readBody} from './security.js'
+import {batchReviewRoute} from './approval-batch-review.js'
 
 // D1-backed approval intent/review ONLY. This module deliberately has no
 // target-app execution privileges. "approved" must never mean "applied".
@@ -205,6 +206,7 @@ export async function approvalRoute(request,env,path,session){
   return json({enabled:env.APPROVALS_ENABLED==='true',
    execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true',
+   batch_review_enabled:env.APPROVALS_ENABLED==='true'&&env.APPROVAL_BATCH_REVIEW_ENABLED==='true',
    document_execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true'&&
     env.APPROVAL_VERIFICATION_ENABLED==='true'&&
@@ -219,6 +221,8 @@ export async function approvalRoute(request,env,path,session){
  const role=await currentRole(db,session)
  if(!['owner','member'].includes(role))return reject('not_authenticated',401)
  if(request.method==='GET'){
+   if(path.startsWith('/api/approvals/batch-review/'))
+    return batchReviewRoute(request,env,session,role,path)
    if(path==='/api/approvals'){
      const url=new URL(request.url)
      const status=url.searchParams.get('status')||''
@@ -247,6 +251,7 @@ export async function approvalRoute(request,env,path,session){
  }
  if(request.method!=='POST')return reject('method_not_allowed',405)
  if(!sameOrigin(request))return reject('origin_forbidden',403)
+ if(path==='/api/approvals/batch-review')return batchReviewRoute(request,env,session,role,path)
  if(path==='/api/approvals')return submit(request,db,session,role)
  const m=/^\/api\/approvals\/([0-9a-f-]{36})\/(review|cancel)$/.exec(path)
  return m?mutate(request,db,m[1],session,role,m[2]):reject('not_found',404)
