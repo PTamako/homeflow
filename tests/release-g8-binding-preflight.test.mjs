@@ -62,7 +62,7 @@ test('G8 collector only GETs production metadata and strips all returned values'
   const name=raw.split('/').at(-1),production=snapshot.pages[name].production;
   return {ok:true,json:async()=>({success:true,result:{deployment_configs:{
    production:{...production,env_vars:Object.fromEntries(Object.keys(production.env_vars)
-    .map(k=>[k,{type:'secret_text',value:'must-not-leak'}]))}}})};
+    .map(k=>[k,{type:'secret_text',value:'must-not-leak'}]))}}}})};
  };
  const got=await collectG8Bindings({accountId:'test-account',token:'fake-test-token',
   fetcher:responder});
