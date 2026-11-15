@@ -133,7 +133,7 @@ export async function approvalExecutionRoute(request,env,path,session){
   row.idempotency_key==='kakeibo:card:'+row.resource_id&&
   Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
  const sbiCash=row.target_app==='kakebo'&&row.source_app==='kakebo'&&
-   ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional'].includes(row.operation)&&
+   ['finance.sbi_cash.tsumitate','finance.sbi_cash.additional','finance.sbi_cash.reversal'].includes(row.operation)&&
    row.resource_type==='sbi_cash_action'&&
    row.idempotency_key==='kakeibo:sbi-cash:'+row.resource_id&&
    Number.isSafeInteger(row.expected_version)&&row.expected_version>=1;
