@@ -564,3 +564,15 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 5. H 不相信 K 单方面宣称 applied；K HMAC `/record` 发起回执登记时，H 必须通过另一独立 Service Binding `KAKEIBO_RECURRING_RECEIPT_SERVICE` 调用 K 签名只读 `/api/internal/recurring-finance/receipt`，真正查 original immutable journal + ledger entry + SBI lot + audit，严格匹配 `occurrence_id/policy_id/digest/account_version/amount/target_journal_sha256/entry_id/actor` 后才写 H `household_recurring_execution_receipts` 和独立不可变事件表（H `0060`）；跨 H/K D1 无全局 ACID，丢回执后仅使用原 occurrence ID 重试独立 READ，不得重复扣款。H 所有银行/券商机构核验标记均永久 `false`，正式对账前不能凭内部凭证解除。
 6. 功能 Flags 默认全部 OFF：K `KAKEIBO_RECURRING_FINANCE_PLANS_ENABLED`、`KAKEIBO_RECURRING_EXECUTION_ENABLED`、`KAKEIBO_RECURRING_POLICY_SUBMISSION_ENABLED`；K/H 各 HMAC key 与 Service Binding 独立；H `RECURRING_FINANCE_AUTH_ENABLED`、`RECURRING_FINANCE_RESERVATIONS_ENABLED`、`RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED`、`RECURRING_FINANCE_EXECUTION_PROOF_ENABLED`。所有实际生产 Cron 保持未创建/未启用；用户已提交实付证据后的**手动**月度执行已实现，不允许自动发起真实扣款或未来 SBI 交易。用户明确批准 F 阶段、机构对账与迁移验收后才可考虑生产上线。
 7. 本章在 H #306 的实际 **two separate SQLite D1** 跨应用模拟 Service Binding 集成测试中依次调用 H 真实政策审批与签名目标、K 真实 `entries`/lot 及 H 原始只读 journal，对拒批/撤权/重复执行/回执丢包、原 ID retry 均具验证。K #309 也以真实 SQLite batch 和 WebKit Smoke 校验 fixed_cost/SBI、审计故障及无重复扣账。具体 Commit/CI 见唯一 handoff §99。两台真实 iPhone 和银行/SBI/积分发行方 API 核验、其他现金/储值卡跨成员合法路径仍独立未完成。
+
+## AN. v1.0.34：B～E 登录隔离与逐项批量金融执行（Draft）
+
+日期：2026-11-15。继承 §AM 与既有冻结跨应用契约；本章不放宽真实机构核验、授权、旧账或生产发布边界。
+
+1. HomeFlow 离线 IndexedDB 任务的 POST/PATCH 必须传 x-homeflow-offline-actor（存储原操作人 ID），服务端首先与已登录 user_id 比对；切换 PWA Cookie 后旧 outbox 不得以新用户执行，403 拒绝；API 仍不得进入 Service Worker Cache。此为 API 和模拟回归，非双 iPhone 实测。
+2. 知学、家計簿发起 HomeFlow OAuth 必须逐字段验证 HTTPS、/authorize 路径、正确 client_id、state 原值、PKCE S256 + 43 字 challenge、nonce、恰好七个 URL 参数、无用户凭据、无 fragment、回调 URL 严格指向本应用原域 /api/homeflow-sso/callback；一切不匹配直接拒绝 Safari 跳转，原 PWA 仍持有一次性短时恢复证明。无任何 access token、code verifier 放入外部导航链接。
+3. 文书助手 iOS PWA 返回前使用隐私幕布隐藏原账号的文书、照片、Gmail、Drive 和金融状态，GET /api/me no-store 复核现有 HttpOnly 会话 user.id；账号不同、过期、离线、网络不明均先清理 account epoch、私有请求 AbortController 和 OAuth/附件/表单缓存，不泄露旧用户资料。
+4. HomeFlow 原有最多 20 笔 all-or-nothing 审核不变。新增最多 10 笔已批准且有安全执行器的 UI 顺序执行（单次用户确认）。每一笔必须使用原申请 ID 调用已存在的 /api/approvals/<uuid>/execute，并验证 applied/status/approval_id/remote_id 原始回执。每笔独立 target D1 commit；任一回执不明或会话切换立即中断，剩余不执行且无自动重试。绝不可向用户宣称跨 D1 批量全原子事务。
+5. 旧账的安全归属按既有 legacy-entry-links：仅 verified owner 对非转账普通 income/expense、旧 stable account 和所有源字段指纹进行逐项确认。它只建立原账账户关联元数据，不授予对历史行的新共享账修改、删除、恢复权限；必须有独立的迁移/审批/版本/附件保证后才可考虑推广。
+6. 官方金融机构核验仍未完成：银行、SBI 成交、积分发行方没有直接数据源/API 的经过授权证据，用户声明和内部 immutable journal 不能作为 institution reconciled；broker_reconciled、bank_verified 继续为 false。现有 member→owner 银行双边转账不等于 owner→member、现金/银行、储值卡、证券现金/基金份额所有合法路径都已落地。不可提现余额不可假装提现。完整双人 iPhone、正式 Cloudflare migration/Secrets/Binding、机构对账和 F 上线门禁均独立待验。
+7. 五个功能 PR 全部保持 Draft；不会合并、修改生产、创建 Preview、启用 Cron 或访问外部券商执行订单。A 生产备份验证通过不代表 B～E 或正式发布验收通过。
