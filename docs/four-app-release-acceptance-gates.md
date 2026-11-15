@@ -68,3 +68,16 @@
 5. 任一 G2/G7/生产财务一致性关键项失败时，**正式发布状态仍 NO-GO**，触发预先约定的停止写入、证据保存、修复或回滚程序，不对外宣布完成。全部 G0～G9 的部署前和部署后证据齐全、实际部署验证通过，用户最终签署后，才能报告 **FULL RELEASE PASS**。
 
 这只是调整“什么时候能够获得真实证据”的时序，不授权立即绕过 G1、G3～G6、G8、G9 的安全要求，也不声称已执行合并、迁移或真实双机测试。
+
+
+## §112 真实生产只读迁移基线与完整金融配置 G8 预检（2026-11-15）
+
+**没有执行 remote Migration、备份/恢复、R2 删除、Secret 修改或 PR 合并。持续 PRE-DEPLOY NO-GO。**
+
+- 通过已连接 Cloudflare 账户**只读** API，核对四个现有正式 D1：HomeFlow `d1_migrations` 54 项，最后 `0052_achievement_thresholds.sql`；家計簿 `schema_migrations` 16 项，包含 `schema-0019-verified`，没有新家庭金融 schema 标记；知学 `d1_migrations` 174 项，最后 `0176_fe_exemption_sample_duplicate.sql`；文书助手 `d1_migrations` 19 项，最后 `0019_document_translation_cache.sql`。元数据全部 `changed_db=false`，`rows_written=0`。功能分支中待隔离重放的 SQL 文件清单：H 0053～0060 共 8，K 0020～0059 共 40，Study 0180～0192 共 13，Document 0020～0026 共 7，总计 68 个**待隔离演练**文件。没有用“最大版本号”推断实际上已经执行迁移。
+- 生产 `d1_migrations`/ `schema_migrations` **全量名称排序 SHA-256 指纹**（2026-11-15T14:16:50Z）：HomeFlow `3a8aee4d57654c964f8317c23e4110e9cfe0ea69f3f26483f177115294740d0b`；家計簿 `f30117ea8ae1885c18ca61f6c82872f4ca9fecc33f72c029c59af2d33f0581b0`；知学 `30b91221e030a97b19499010a125f1a541303cc3ed3e18a85f565e0a956af0df`；文书 `62ebb0ec892ee64d29f58e498ccf0fccf94a811a62e0a3ae1f85deec3f0503ea`。这些是 **migration marker 名称指纹而不是 SQL 数据备份指纹**，严禁冒充 G1 的财务行 SHA 或完整 D1 备份。
+- HomeFlow #306 新只读脚本 `scripts/release-d1-migration-inventory.mjs`：仅 GET D1 数据库元数据、仅 POST **固定字面量 SELECT** 读各库 migration markers，不修改 D1、不打印账户/金额/完整 SQL/密钥、严格比对基线 count+SHA。基线变动、目标库缺失/重名、迁移文件重复、错误资源或数据库变更 meta 则拒绝；仅能宣告 `eligible_for_isolated_migration_rehearsal`，**永远不宣告 `production_migration_authorized`**。CI 对四仓库固定 HEAD 中全部 68 个 SQL 文件做了存在性验证。实际迁移还要求 G1 备份完整恢复、DDL/DML 单步预检及异常回滚。
+- 修正 HomeFlow #306 `scripts/release-g8-binding-preflight.mjs`：除了最初的 SSO/审批服务，纳入全部代码已发现的跨成员双人同意/签名、owner 审批、银行、SBI、积分、储值卡、信用卡、周期金融、文书各自 Secret/Flags/Service Bindings，以及 Worker D1/R2 正确绑定类型；新负向测试确保缺配置必须阻断。配置**名称存在不证明值正确**，必须独立测试服务目标、安全权限和实际 OAuth/SSO。
+- 已通过只读 Cloudflare GET 核查四生产 D1 均有 Time Travel bookmark（原始 bookmark 本文不记录），原有三个 R2 Bucket 仍为 `homeflow-family-media`、`kakeibo-receipts`、`jp-document-assistant-private`。**Time Travel bookmark 不能替代加密 SQL/R2 原字节备份或完整演练**。
+- 本节代码验证：HomeFlow #306 `a5c8eaa09902054593904e3fa6967731e861fc72` Validate `43723952017` success；加入固定 HEAD 全 68 文件存在性测试后的 HEAD `460409567c04b2cf48720b4cd99370a8f15a4c59` Validate HomeFlow **Run `43724109809` completed/success**。此前 K #309、知学 #179、文书 #97 CI 保持原已核验成功。**此处不是生产配置/数据迁移完成证据**。
+- 独立阻碍依旧：正式 G1 新加密备份/恢复及财务数据摘要；G3～G6 跨成员全部合法资金路径/生产旧客户端冻结/完整一致性；G8 真实 Secret 值、Service Binding 目标与 OAuth 允许列表配置；G9 隔离回滚演练、发布时间窗口。生产后 G2 两实体 iPhone 和 G7 官方真实对账按 §111 顺序进行。只有所有真正部署前门禁满足后才执行正式合并/生产迁移，且不可借绿色 CI 永久关闭设计金融能力。
