@@ -1,19 +1,18 @@
 name: Deploy HomeFlow
 on:
+  # The unified account release is cross-repository; a merge must not
+  # deploy an incomplete stage. Only a signed-off, explicitly dispatched
+  # production release may deploy. No Preview resources are introduced.
   workflow_dispatch:
-  push:
-    branches: [main]
-    # A docs-only commit must never redeploy production.
-    # GitHub paths-ignore skips this workflow when ALL changed files match.
-    # CI (ci.yml) still validates every push to main and every PR.
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      # Workflow policy edits alone must not redeploy the production Worker.
-      - '.github/workflows/deploy.yml'
+    inputs:
+      release_confirmation:
+        description: "After G0/G1/G3-G6/G8/G9, enter FOUR_APP_RELEASE_APPROVED"
+        required: true
+        type: string
 
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED' }}
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
