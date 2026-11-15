@@ -1,22 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {REQUIRED_WORKERS,REQUIRED_PAGES,checkG8Bindings,
+import {REQUIRED_WORKERS,REQUIRED_PAGES,SERVICE_TARGETS,checkG8Bindings,
  collectG8Bindings} from '../scripts/release-g8-binding-preflight.mjs';
 function complete(){
  return {workers:Object.fromEntries(Object.entries(REQUIRED_WORKERS).map(([name,r])=>[
   name,{bindings:r.names.map(key=>({name:key,
    type:r.services.includes(key)?'service':key==='DB'?'d1':
-    ['MEDIA','DOCUMENTS'].includes(key)?'r2_bucket':'secret_text'}))}])),
+    ['MEDIA','DOCUMENTS'].includes(key)?'r2_bucket':'secret_text',
+   ...(r.services.includes(key)?{service:SERVICE_TARGETS[name]?.[key]}:{})}))}])),
  pages:Object.fromEntries(Object.entries(REQUIRED_PAGES).map(([name,r])=>[
   name,{production:{env_vars:Object.fromEntries(r.env.map(k=>[k,true])),
    d1_databases:Object.fromEntries(r.d1.map(k=>[k,true])),
    r2_buckets:Object.fromEntries(r.r2.map(k=>[k,true])),
-   services:Object.fromEntries(r.services.map(k=>[k,true]))}}]))};
+   services:Object.fromEntries(r.services.map(k=>[k,{service:'homeflow'}]))}}]))};
 }
 test('G8 preflight checks required identity/approval bindings and never claims full release PASS',()=>{
  const result=checkG8Bindings(complete());
  assert.equal(result.ok,true,JSON.stringify(result));
- assert.equal(result.verified,'binding-name-and-type-presence-only');
+ assert.equal(result.verified,'binding-name-type-and-service-target-presence-only');
  assert.ok(result.cannot_certify.includes('actual_d1_migration'));
  assert.ok(result.cannot_certify.includes('two_iphone_pwa_acceptance'));
 });
@@ -67,7 +68,7 @@ test('G8 collector only GETs production metadata and strips all returned values'
  };
  const got=await collectG8Bindings({accountId:'test-account',token:'fake-test-token',
   fetcher:responder});
- assert.equal(calls.length,4);
+ assert.equal(calls.length,5);
  assert.equal(checkG8Bindings(got).ok,true);
  assert.equal(JSON.stringify(got).includes('must-not-leak'),false);
 });
@@ -124,4 +125,18 @@ test('G8 requires cross-member consent proof, signed approval submission and rec
  assert.equal(report.ok,false);
  for(const name of checks)
   assert.ok(report.missing.includes('worker:homeflow:missing:'+name),name);
+});
+
+test('G8 fails closed on a service bound to the wrong Worker and on a missing private finance executor',()=>{
+ const s=complete();
+ const wrong=s.workers.homeflow.bindings.find(x=>x.name==='KAKEIBO_EXECUTION_SERVICE');
+ wrong.service='jp-document-assistant';
+ s.pages.kakeibo.production.services.HOMEFLOW_IDENTITY_SERVICE.service='it-study-platform';
+ const bridge=s.workers['kakeibo-homeflow-bridge'];
+ bridge.bindings=bridge.bindings.filter(b=>b.name!=='HOMEFLOW_IDENTITY_SERVICE');
+ const r=checkG8Bindings(s);
+ assert.equal(r.ok,false);
+ assert.ok(r.missing.includes('worker:homeflow:invalid_service_target:KAKEIBO_EXECUTION_SERVICE'));
+ assert.ok(r.missing.includes('pages:kakeibo:invalid_service_target:HOMEFLOW_IDENTITY_SERVICE'));
+ assert.ok(r.missing.includes('worker:kakeibo-homeflow-bridge:missing:HOMEFLOW_IDENTITY_SERVICE'));
 });
