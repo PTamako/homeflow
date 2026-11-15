@@ -93,6 +93,13 @@ export function checkG8Bindings(snapshot){
   for(const key of requirements.services)
    if(byName.has(key)&&!['service','service_binding'].includes(byName.get(key)))
     missing.push('worker:'+name+':invalid_service_type:'+key);
+  // An accidentally rebound D1/R2 identifier must never be treated as a
+  // successful release: a KV/text secret with the right name is not a DB.
+  for(const [key,expected] of Object.entries({DB:['d1'],MEDIA:['r2_bucket'],
+   DOCUMENTS:['r2_bucket']})){
+   if(byName.has(key)&&!expected.includes(byName.get(key)))
+    missing.push('worker:'+name+':invalid_resource_type:'+key);
+  }
  }
  for(const [name,requirements] of Object.entries(REQUIRED_PAGES)){
   const pages=snapshot.pages?.[name];
