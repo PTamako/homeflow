@@ -79,7 +79,7 @@ test('no forged member identity, unsigned browser, changed immutable plan or dis
   assert.equal(original.status,201)
   assert.equal((await f.submit({...body(),max_amount_jpy:8000})).status,409)
   f.sql.prepare('UPDATE users SET disabled_at=1 WHERE id=?').run('member')
-  assert.equal((await f.submit({...body(),plan_resource_id:'f'.repeat(32)})).status,409)
+  assert.equal((await f.submit({...body(),plan_resource_id:'f'.repeat(32)})).status,403)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_recurring_finance_policies').get().n,1)
  }finally{f.close()}
 })
