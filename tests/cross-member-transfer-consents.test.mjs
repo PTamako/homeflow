@@ -88,7 +88,7 @@ test('real SQLite requires sender, recipient and admin to make three separate au
   assert.equal(authorize.data.consent.ledger_applied,false);
   assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
   assert.deepEqual(f.sql.prepare('SELECT action,actor_user_id FROM household_cross_member_transfer_events '+
-   'ORDER BY new_version').all(),[
+   'ORDER BY new_version').all().map(x=>({...x})),[
     {action:'source_consented',actor_user_id:'member'},
     {action:'recipient_accepted',actor_user_id:'owner'},
     {action:'owner_authorized',actor_user_id:'owner'}
