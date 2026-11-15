@@ -9,6 +9,7 @@ import {approvalVerificationRoute} from '../worker/approval-verification.js';
 import {approvalExecutionRoute} from '../worker/approval-execution.js';
 import {approvalRoute} from '../worker/approvals.js';
 import {familySbiCashActions} from '../.contract-kakeibo/functions/api/family-finance/sbi-cash-actions.js';
+import {familySbiCashReversals} from '../.contract-kakeibo/functions/api/family-finance/sbi-cash-reversals.js';
 import {approvedSbiCashRoute} from '../.contract-kakeibo/functions/api/internal/sbi-cash-actions/[[path]].js';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111';
@@ -57,7 +58,7 @@ function financeSchema(sql){
   '0038_points_earn_expiry_reversals.sql','0039_points_legacy_provenance.sql',
   '0040_points_sbi_lots.sql','0041_points_transfer_atomic_refund.sql',
   '0042_points_prepaid_refund.sql','0043_points_card_offset_refund.sql',
-  '0044_sbi_cash_purchases.sql'])
+  '0044_sbi_cash_purchases.sql','0045_sbi_cash_reversals.sql'])
   sql.exec(readFileSync(new URL('../.contract-kakeibo/migrations/'+x,import.meta.url),'utf8'));
  for(const [u,role] of [[owner,'owner'],[member,'member']])
   stmt(sql,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
@@ -76,7 +77,7 @@ async function fixture(kind='tsumitate'){
   SBI_CASH_APPROVAL_EXECUTION_ENABLED:'true',SBI_CASH_EXECUTION_SECRET:keys.execution,
   SBI_CASH_APPROVAL_PROOF_SECRET:keys.proof};
  const finance={APP_ENV:'production',DB:k.db,KAKEIBO_FAMILY_FINANCE_ENABLED:'true',
-  KAKEIBO_SBI_CASH_ENABLED:'true',KAKEIBO_FAMILY_PENDING_KEY:keys.pending,
+  KAKEIBO_SBI_CASH_ENABLED:'true',KAKEIBO_SBI_CASH_REVERSALS_ENABLED:'true',KAKEIBO_FAMILY_PENDING_KEY:keys.pending,
   KAKEIBO_SBI_CASH_SUBMISSION_SECRET:keys.submission,
   KAKEIBO_SBI_CASH_EXECUTION_SECRET:keys.execution,
   KAKEIBO_SBI_CASH_PROOF_SECRET:keys.proof,HOMEFLOW_OAUTH_ORIGIN:host};
@@ -126,7 +127,15 @@ async function fixture(kind='tsumitate'){
    home,path,{user_id:owner,household_id:hh,role:'owner'});
   return {status:res.status,data:await res.json()};
  };
- return {h,k,home,finance,calls,request,review,execute,
+ const refund=async(parts,body)=>{
+  const u=new URL('https://kakeibo.example.test/api/family-finance/sbi-cash-reversals');
+  const req=new Request(u,{method:'POST',headers:{origin:u.origin,'content-type':'application/json'},
+   body:JSON.stringify(body)});
+  const res=await familySbiCashReversals(req,finance,u,
+   {user_id:member,household_id:hh,role:'member'},parts);
+  return {status:res.status,data:await res.json()};
+ };
+ return {h,k,home,finance,calls,request,review,execute,refund,
   close(){h.sql.close();k.sql.close();}};
 }
 test('owner approves actual SBI cash trade: independent HomeFlow/Kakeibo D1, one immutable bank debit + lot',async()=>{
@@ -173,5 +182,76 @@ test('additional buy requires the same real owner approval and never becomes a r
   assert.equal(get(f.k.sql,"SELECT note FROM entries WHERE type='transfer'").note,'追加買付');
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_lots').n,1);
   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_point_lots').n,0);
+ }finally{f.close();}
+});
+
+test('original SBI purchase followed by HomeFlow-approved posted refund: two actual SQLite handlers, two immutable transfers',async()=>{
+ const f=await fixture();try{
+  const original=await f.request();
+  assert.equal((await f.review(original)).status,200);
+  assert.equal((await f.execute(original)).status,200);
+  const prepared=await f.refund(['sbi-cash-reversals'],{
+   expected_user_id:member,idempotency_key:'sbi-cash-cross-app-refund-20261115',
+   original_request_id:original,bank_version:1,securities_version:1,
+   bank_refund_reference:'posted-bank-refund-20261114',
+   broker_cancel_reference:'confirmed-trade-cancel-20261113',
+   bank_refund_date:'2026-11-14',broker_cancel_date:'2026-11-13',
+   bank_refund_confirmed:true,broker_cancel_confirmed:true});
+  assert.equal(prepared.status,201,JSON.stringify(prepared));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_reversals').n,0);
+  const submitted=await f.refund(['sbi-cash-reversals',prepared.data.prepared.request_id,'submit'],
+   {expected_user_id:member});
+  assert.equal(submitted.status,200,JSON.stringify(submitted));
+  const id=submitted.data.approval_id;
+  assert.notEqual(id,original);
+  assert.equal(get(f.h.sql,'SELECT operation FROM household_approval_requests WHERE request_id=?',id).operation,
+   'finance.sbi_cash.reversal');
+  assert.equal((await f.review(id)).status,200);
+  const result=await f.execute(id);
+  assert.equal(result.status,200,JSON.stringify(result));
+  assert.equal(result.data.applied,true);
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',id).status,'applied');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_reversals').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_reversal_audit').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_lots').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_audit').n,1);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='transfer'").n,2);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='income' OR type='expense'").n,0);
+  const retried=await f.execute(id);
+  assert.equal(retried.status,200,JSON.stringify(retried));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_reversals').n,1);
+ }finally{f.close();}
+});
+test('SBI refund target commits and its receipt is lost: same HomeFlow approval recovers without second refund',async()=>{
+ const f=await fixture();try{
+  const original=await f.request();assert.equal((await f.review(original)).status,200);
+  assert.equal((await f.execute(original)).status,200);
+  const prepared=await f.refund(['sbi-cash-reversals'],{
+   expected_user_id:member,idempotency_key:'sbi-cash-cross-refund-lost-20261115',
+   original_request_id:original,bank_version:1,securities_version:1,
+   bank_refund_reference:'bank-posted-refund-lost-20261114',
+   broker_cancel_reference:'broker-cancel-lost-20261113',
+   bank_refund_date:'2026-11-14',broker_cancel_date:'2026-11-13',
+   bank_refund_confirmed:true,broker_cancel_confirmed:true});
+  assert.equal(prepared.status,201,JSON.stringify(prepared));
+  const submitted=await f.refund(['sbi-cash-reversals',prepared.data.prepared.request_id,'submit'],
+   {expected_user_id:member});
+  assert.equal(submitted.status,200);
+  const id=submitted.data.approval_id;
+  assert.equal((await f.review(id)).status,200);
+  const service=f.home.KAKEIBO_SBI_CASH_EXECUTION_SERVICE;
+  let lose=true;
+  f.home.KAKEIBO_SBI_CASH_EXECUTION_SERVICE={async fetch(req){
+   const resp=await service.fetch(req);
+   if(lose){lose=false;throw Error('SBI_REFUND_RECEIPT_LOST_AFTER_COMMIT');}
+   return resp;
+  }};
+  const initial=await f.execute(id);assert.notEqual(initial.status,200);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_reversals').n,1);
+  const recovered=await f.execute(id);
+  assert.equal(recovered.status,200,JSON.stringify(recovered));
+  assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',id).status,'applied');
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_sbi_cash_refund_evidence').n,1);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='transfer'").n,2);
  }finally{f.close();}
 });
