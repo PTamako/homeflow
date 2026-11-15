@@ -2,6 +2,7 @@ import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
+import {crossMemberTransferConsentsRoute} from './cross-member-transfer-consents.js'
 import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
 import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
@@ -96,6 +97,8 @@ async function routeRequest(request,env,ctx,state){
           return approvalExecutionRoute(request,env,path,session)
         if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
           return approvalRoute(request,env,path,session)
+        if(path==='/api/finance-cross-member/consents'||path.startsWith('/api/finance-cross-member/consents/'))
+          return crossMemberTransferConsentsRoute(request,env,path,session)
         if(path==='/api/identity/me'||path==='/api/identity/household-members')
           return identityRoute(request,env.DB,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
