@@ -55,7 +55,7 @@ export async function approvalVerificationRoute(request,env){
  const client=request.headers.get('x-approval-client')
  const stamp=request.headers.get('x-approval-timestamp')
  const mac=request.headers.get('x-approval-signature')
- if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','kakeibo-prepaid','kakeibo-points','kakeibo-sbi-cash','kakeibo-bank-transfer','jp-document-assistant','it-study-platform'].includes(client)||
+ if(!['kakeibo','kakeibo-card','kakeibo-card-settlement','kakeibo-prepaid','kakeibo-points','kakeibo-sbi-cash','kakeibo-bank-transfer','kakeibo-shared-entry','jp-document-assistant','it-study-platform'].includes(client)||
   typeof stamp!=='string'||!/^\d{13}$/.test(stamp)||
   Math.abs(nowMs()-Number(stamp))>300000||
   typeof mac!=='string'||!hash.test(mac))
@@ -73,10 +73,14 @@ export async function approvalVerificationRoute(request,env){
  const pointsClient=client==='kakeibo-points';
   const sbiCashClient=client==='kakeibo-sbi-cash';
  const bankTransferClient=client==='kakeibo-bank-transfer';
+ const sharedEntryClient=client==='kakeibo-shared-entry';
  const studyClient=client==='it-study-platform';
  if(cardClient&&(env.CARD_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.CARD_APPROVAL_PROOF_SECRET||'')))
   return reject('card_verification_disabled',503);
+ if(sharedEntryClient&&(env.SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED!=='true'||
+   !hash.test(env.SHARED_ENTRY_APPROVAL_PROOF_SECRET||'')))
+   return reject('shared_entry_verification_disabled',503);
  if(bankTransferClient&&(env.BANK_TRANSFER_APPROVAL_EXECUTION_ENABLED!=='true'||
   !hash.test(env.BANK_TRANSFER_APPROVAL_PROOF_SECRET||'')))
   return reject('bank_transfer_verification_disabled',503);
@@ -99,7 +103,8 @@ export async function approvalVerificationRoute(request,env){
  if(studyClient&&(env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true'||
    !hash.test(env.STUDY_APPROVAL_VERIFICATION_SECRET||'')))
   return reject('study_verification_disabled',503);
- const computed=await signature(bankTransferClient?env.BANK_TRANSFER_APPROVAL_PROOF_SECRET:
+ const computed=await signature(sharedEntryClient?env.SHARED_ENTRY_APPROVAL_PROOF_SECRET:
+  bankTransferClient?env.BANK_TRANSFER_APPROVAL_PROOF_SECRET:
   sbiCashClient?env.SBI_CASH_APPROVAL_PROOF_SECRET:
   pointsClient?env.POINTS_APPROVAL_PROOF_SECRET:
   prepaidClient?env.PREPAID_APPROVAL_PROOF_SECRET:
@@ -110,6 +115,7 @@ export async function approvalVerificationRoute(request,env){
    env.APPROVAL_VERIFICATION_SECRET,
   documentClient?'jpda:execution-proof':
    studyClient?'it-study-platform:execution-proof':
+   sharedEntryClient?'kakeibo-shared-entry:execution-proof':
    bankTransferClient?'kakeibo-bank-transfer:execution-proof':
    sbiCashClient?'kakeibo-sbi-cash:execution-proof':
     pointsClient?'kakeibo-points:execution-proof':
@@ -150,6 +156,13 @@ export async function approvalVerificationRoute(request,env){
   row?.resource_type==='credit_card_settlement'&&
   row?.idempotency_key==='kakeibo:cardsettle:'+body.resource_id&&
   Number.isSafeInteger(row?.expected_version)&&row.expected_version>=1;
+ const sharedEntry=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
+  ['finance.entry.create','finance.entry.update','finance.entry.delete',
+   'finance.entry.restore'].includes(row?.operation)&&
+  row?.resource_type==='shared_entry_mutation'&&
+  row?.idempotency_key==='kakeibo:shared-entry:'+body.resource_id&&
+  Number.isSafeInteger(row?.expected_version)&&row.expected_version>=0&&
+  (row.operation==='finance.entry.create'?row.expected_version===0:row.expected_version>=1);
  const bankTransfer=row?.source_app==='kakebo'&&row?.target_app==='kakebo'&&
   row?.operation==='finance.asset_transfer.bank_to_bank'&&
   row?.resource_type==='bank_transfer_posted'&&
@@ -191,7 +204,7 @@ export async function approvalVerificationRoute(request,env){
   (docStudy&&env.DOCUMENT_STUDY_EXECUTION_ENABLED!=='true')))
   return reject('document_verification_disabled',503);
  if(!row||(forExecution?row.status!=='executing':row.status!=='approved')||
-  (bankTransferClient?!bankTransfer:sbiCashClient?!sbiCash:pointsClient?!points:prepaidClient?!prepaid:settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
+  (sharedEntryClient?!sharedEntry:bankTransferClient?!bankTransfer:sbiCashClient?!sbiCash:pointsClient?!points:prepaidClient?!prepaid:settlementClient?!settlement:cardClient?!card:studyClient?!docStudy:
    documentClient?!(doc||docTask||docStudy):!(cash||doc))||
   row.resource_id!==body.resource_id||row.household_id!==body.household_id||
   row.requester_user_id!==body.requester_user_id||
