@@ -98,6 +98,54 @@ class OfflineReleaseRehearsalTests(unittest.TestCase):
         self.assertTrue(result["isolated_restore_verified"])
         self.assertEqual(hashlib.sha256(bank.read_bytes()).hexdigest(), old_hash)
 
+    def test_historically_applied_0020_0021_are_verified_not_reapplied(self):
+        bank = self.root / "kakebo_existing_legacy.sqlite"
+        with sqlite3.connect(bank) as db:
+            db.execute("CREATE TABLE recurring_plans(id TEXT PRIMARY KEY)")
+            db.execute("CREATE TABLE sbi_transfer_links(entry_id INTEGER PRIMARY KEY)")
+            db.executescript(
+                "ALTER TABLE recurring_plans ADD COLUMN weekdays_json TEXT NOT NULL"
+                " DEFAULT '[]' CHECK(json_valid(weekdays_json));"
+                "ALTER TABLE recurring_plans ADD COLUMN month_days_json TEXT NOT NULL"
+                " DEFAULT '[]' CHECK(json_valid(month_days_json));"
+                "ALTER TABLE recurring_plans ADD COLUMN interval_months INTEGER NOT NULL"
+                " DEFAULT 1 CHECK(interval_months BETWEEN 1 AND 24);"
+                "ALTER TABLE sbi_transfer_links ADD COLUMN purpose TEXT NOT NULL"
+                " DEFAULT 'monthly' CHECK(purpose IN ('monthly','purchase','funding'));")
+            db.commit()
+        (self.sqls / "0020_recurring_multi_schedule.sql").write_text(
+            "ALTER TABLE recurring_plans ADD COLUMN weekdays_json TEXT;", encoding="utf-8")
+        (self.sqls / "0021_sbi_transfer_purpose.sql").write_text(
+            "ALTER TABLE sbi_transfer_links ADD COLUMN purpose TEXT;", encoding="utf-8")
+        applied, verified = rehearsal.replay_migrations(
+            bank, self.sqls, ["0020_recurring_multi_schedule.sql",
+                              "0021_sbi_transfer_purpose.sql"])
+        self.assertEqual(applied, [])
+        self.assertEqual(verified, ["0020_recurring_multi_schedule.sql",
+                                    "0021_sbi_transfer_purpose.sql"])
+        self.assertEqual(sqlite3.connect(bank).execute(
+            "SELECT COUNT(*) FROM pragma_table_info('recurring_plans') "
+            "WHERE name='weekdays_json'").fetchone()[0], 1)
+
+    def test_partial_prior_migration_is_blocked_no_silent_skip(self):
+        bank = self.root / "partial_legacy.sqlite"
+        with sqlite3.connect(bank) as db:
+            db.execute("CREATE TABLE recurring_plans(id TEXT PRIMARY KEY)")
+            db.execute("ALTER TABLE recurring_plans ADD COLUMN weekdays_json "
+                       "TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(weekdays_json))")
+            db.commit()
+        (self.sqls / "0020_recurring_multi_schedule.sql").write_text(
+            "ALTER TABLE recurring_plans ADD COLUMN weekdays_json TEXT;",
+            encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError,
+                                    "PREEXISTING_MIGRATION_SCHEMA_MISMATCH"):
+            rehearsal.replay_migrations(
+                bank, self.sqls, ["0020_recurring_multi_schedule.sql"])
+        with sqlite3.connect(bank) as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM pragma_table_info('recurring_plans') "
+                "WHERE name='month_days_json'").fetchone()[0], 0)
+
     def test_sql_failure_preserves_baseline_and_independent_recovery(self):
         name = self.write_migration("CREATE TABLE incomplete (")
         result = self.exercise(name)
