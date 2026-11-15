@@ -43,6 +43,7 @@ const statusNames:Record<State,string>={
 }
 const actionNames:Record<string,string>={
  'finance.entry.create':'新增家庭账务',
+ 'finance.asset_transfer.bank_to_bank':'已到账银行间资产转移',
  'finance.entry.update':'修改家庭账务',
  'finance.entry.delete':'删除家庭账务',
  'finance.entry.restore':'恢复家庭账务',
