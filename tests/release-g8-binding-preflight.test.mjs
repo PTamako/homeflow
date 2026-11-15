@@ -88,10 +88,12 @@ test('G8 detects missing cross-member banking, recurring, card, points and docum
   'KAKEIBO_LEGACY_SHARED_RECEIPT_REPAIR_ENABLED']){
   delete s.pages.kakeibo.production.env_vars[key];
  }
- delete s.workers['jp-document-assistant'].bindings.find(x=>
-  x.name==='DOCUMENT_INTENT_ENCRYPTION_KEY')?.value;
+ s.workers['jp-document-assistant'].bindings=
+  s.workers['jp-document-assistant'].bindings.filter(x=>
+   x.name!=='DOCUMENT_INTENT_ENCRYPTION_KEY');
  const result=checkG8Bindings(s);
  assert.equal(result.ok,false);
+ assert.ok(result.missing.includes('worker:jp-document-assistant:missing:DOCUMENT_INTENT_ENCRYPTION_KEY'));
  for(const key of ['KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE',
   'KAKEIBO_PREPAID_EXECUTION_SERVICE','KAKEIBO_SBI_CASH_EXECUTION_SERVICE'])
   assert.ok(result.missing.includes('worker:homeflow:missing:'+key));
