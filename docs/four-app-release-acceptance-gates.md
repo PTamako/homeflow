@@ -36,3 +36,11 @@
 ## §104 旧历史 R2 复制与采用证据（持续 NO-GO）
 
 家計簿 Draft #309 `03b6e487bb39ba0f6614a3ff978ca123ea75e003`，新增**未执行** migration 0056 和 0057、原 owner 三步明确确认、R2 原字节/etag/size/MIME/SHA-256 独立核验、来源证明绑定与可恢复 copy、家計簿单 D1 原子 registry+private attachment+legacy tombstone+claim immutable audit。旧 R2 原件仍保留，旧数字 endpoint 已拒绝已 adopted ID 和 bulk/cleanup 对应删除。真实 SQLite 故障注入验证 registry/attachment/tombstone/journal 同事务回滚；final Validate Run `43713936966` success，Mobile WebKit Run `43713936986` completed/success（WebKit 自动化，不是实体双机）。**这不是跨 D1/R2 ACID，不是生产迁移，也不等于正式 G6 通过**。禁止自动开启冻结/复制/采用 flags；需要 F 阶段单独授权、旧客户端在途请求 drain、R2 最终源清理前引用计数、两 iPhone 真实 OAuth/权限、正式回滚和全部 G0～G9 签署。SBI/银行/积分发行方官方级核对依然缺证据；整体持续 NO-GO。
+
+
+## §110 后新增的 G6/G7/G8 可验证实现（仍 NO-GO）
+
+- **G6 增量，不是全局通过**：家計簿 #309 未部署 migration `0059_legacy_shared_receipt_repair.sql` 及受控 `legacy/shared-receipt-repair` API。只有原 owner、原不可变采用/复制/claim、历史旧源墓碑、原 R2 对象的完整 SHA-256/ETag/大小/MIME 与引用关系同时验证后，才能使用已冻结旧写入且默认 OFF 的 `KAKEIBO_LEGACY_SHARED_RECEIPT_REPAIR_ENABLED` 明确按笔恢复**缺失**副本；对象已有冲突绝不覆盖，R2 PUT 前先有不可变 D1 pending request，同原 ID 掉包后可安全重试，源 R2 永不删除。针对性 SQLite 和 R2 故障测试由真实家計簿 Validate 覆盖，**但生产旧客户端 drain、最新备份、真正源永久清理、回滚与两实体 iPhone 仍未通过**。
+- **G7 增量，不是机构证据**：家計簿 `scripts/official-evidence-match.mjs` 及其测试提供银行/SBI/积分原始证据摘要绑定、不可变流水精确参考比对、金额/日期冲突、重复、缺失、冲正、SBI 份额与成本比较；没有直接银行/SBI/积分发行方官方授权连接，没有已验证真实交易来源，函数始终返回 `institution_reconciled=false`。已在私人 Google Drive 发现 `SBI.pdf`，核查后确认**它是包含初始登录/交易凭据的开户通知，并非买付/成交记录**，不能用于 G7；已提醒用户检查文件分享并更新仍有效凭据。不得写入文件中的任何密码、账号、交易口令或原始内容到 GitHub。
+- **G8 增量，不代表已配置**：HomeFlow #306 新 `scripts/release-g8-binding-preflight.mjs` 可在独立受控运行环境中通过 Cloudflare 只读 GET 比较正式 HomeFlow、知学、文书和家計簿 Pages 必需绑定的名称、类型；测试验证缺项、错误 Service Binding 类型、上游 403 和不复制 secret 明文。即使无缺项，也明确不可据此宣称 Secret 值、OAuth redirect allowlist、正式 Migration、两台 iPhone、金融机构或 G9 已验证。**实际生产目前缺必需新配置；不能提前启用。**
+- **验收状态**：本节软件/SQLite/WebKit/模拟 Service Binding 证据仅计相应自动测试；G1、G2、G3～G7 全量、G8 真正环境可用性与 G9 未签署；禁止错误将实现代码、源 PDF 或纯绿色 CI 当作正式上线批准。
