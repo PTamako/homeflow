@@ -1796,3 +1796,29 @@ A：完成四 D1 SQL 和三 R2 的真正加密持久备份（当前仅有 Export
 2. 按优先级推进 **P0-4C** 双账户及跨成员资金转移、真实双边 D1 补偿/reservation/回执、共享账目编辑删除恢复/票据 R2 一致性、批量审批/Cron 周期金融授权、撤权故障恢复。再按设计书 **R1～R9/T01～T14** 清完 B～E 端侧 PWA 账号隔离、OAuth 回跳、离线缓存、文书 Gmail/Drive 共享权限、知学学习资产、双人浏览器/移动回归，最后 F 另行授权实机/正式上线；**任何未执行的 UI/生产场景不得因为后端代码存在而打勾**。
 3. §87 功能基线家計簿 #309 HEAD `5139affefedd0ed917b3c4ce60ac5bfe233c7559` Validate **43673588232 success** / Mobile WebKit **43673588231 success**；HomeFlow #306 功能 HEAD `e59361f178b37a57994f735b0e7404fb91dcb707` Validate HomeFlow **43673710466 success**，经 §AA 和 §87 docs 更新后的 branch CI **43673865380 success**；main docs-only 两次更新 **`3ff6e548fd70816f6fe6480cf090bca5a8f9efd0`**、**`c8917e1e3d0acd459948871643ca2aa309ca5687`** 的 Validate **43673864948 success / 43673877361 success**。main 部署 workflow 明确忽略 `docs/**` 且没有更新任何非 Markdown 功能代码。
 4. A 阶段用户生产备份/隔离恢复验证已 PASS。本节全部 Draft，Cloudflare Workers/Pages/D1/R2/Secrets/Binding/Cron、真实银行/SBI 账户、生产旧资产均未操作；五 PR 无合并，未创建 Preview，未执行生产 SQL migration。只有用户授权 F 阶段后才能真正上线及完成两台 iPhone 实机验收。
+
+
+## 89. 2026-11-15 P0-4B SBI ポイント投資全额安全反冲：已完成券商取消+积分发行方退回、不可变双边账与真实跨仓 CI PASS（Draft）
+
+### 实际代码、迁移、回执
+
+- 起点实查五功能 PR Draft，唯一 handoff main/#306 为 §88、冻结契约到 §AB/v1.0.22，家計簿 #309 HEAD ebb94ba62bbecd4668dde23f0156b68ee53b1750、HomeFlow #306 HEAD fdd69ac727ec12e8c6ec0404bcca44f00bf108c1；未发现其他 Chat 的 §89 并行实现。没有重新编写 §82/§87 原积分买付/现金退款。
+- 家計簿 #309 新增尚未部署 migration **0047_sbi_point_full_refund.sql**，首功能 Commit **0dfcb3182e42805f68ec00f67763423334a0604c**：扩展原 points intent 的五个退款证据字段、更新源反冲与 SQLite 验证，允许对原 finance.points.redeem_asset 的一次**完整** finance.points.reversal；在新积分 journal INSERT 的同一数据库 trigger 中强制生成一笔 family_sbi_point_refunds，按原 immutable lot 份额、原取得成本、原扣点精确逆转。原基金 lot/源负积分 journal/全部 actor 审计不可 UPDATE/DELETE，新的退款及其原 approval 关系也不可 UPDATE/DELETE。一个原 lot 只能反冲一次、一次失败整个积分 credit 和目标 refund 一起 rollback，不能凭空创造银行收入。
+- 本次只接受显式且同时满足 **券商取消已完成** 与 **积分发行方点数已实际退回** 的用户确认。退款 reference 与 source_reference 严格相等，独立券商取消 hash/发行方退点 hash + 原执行的 trade hash 相互核对；要求原成交日 ≤ 取消日 ≤ 退点日 ≤ 反冲适用日、禁止未来日期。完整独立 securities account ID/version 与 points account ID/version、当前家庭成员/owner 身份、原 lot/成本/单位、原投資的确切 UUID、已存在的历史截图候选冲突都严格校验；已存在额外交易、真正退点未被提供证明时不得自动假设“已退”。
+- 家計簿 functions/api/family-finance/points-actions.js 的 prepare / submit 使用原 HomeFlow finance.points.reversal 和 kakeibo-points 专属 HMAC 签名；只对原 redeem_asset 另要求 sbi_reversal=true、发行方退款参考与券商取消参考/日期等，储值卡/信用卡/积分账户其他反冲完全兼容。目标 functions/api/internal/points-actions/points-execution.js 保持真实 HomeFlow 身份 proof + 租约/nonce、相同来源 ID 幂等，只返回经 SQLite 原 source journal + 原证券 lot + 新目标退款凭证重新读取后证实的 extra refunded_sbi_* 回执。关键补丁包括 source 变量作用域修复 **9bebfecda37a3ab6905331f53f742090a6a25ee9**，原 lot 单位字段修复 **24aef3821e335eabb56c5ebac8320e786d701bcc**，回执原 fund/trade 证据 **d8f357f8bc08c6d5e710380f701b1c17641bfe7c**。
+- 家計簿 sbi-point-lot-projection.js 净额严格 SUM(original units/cost - refunds)，新增 reversed_trade_count 和 all_trades_reversed，原 lot 及取得成本仍留证；净份额/成本归零不代表卖出成交可在真实证券账户验证。未动 investment_holdings、investment_plans、sbi_transfer_links、旧 screenshot、NAV 或家庭正式资产价值。broker_reconciled=false、included_in_tracked_assets_jpy=false，不能因为用户填写取消日期就宣称 SBI/积分运营商机构已经联网核验。
+- HomeFlow #306 worker/approval-execution.js 新增此种 reversal 的严格双边 receipt 检查，包括返还证券 stable ID、份额、成本、点数 delta、币值、券商原始交易/取消 hash、发行方退点 hash/两个日期、owner approver/actor/新旧 request ID/nonce 和 HMAC；任何不符不把审批标记 applied。因完整退款回执字段变多，只放宽 points **有界 response 长度 2400→3400**，保留字段的逐项安全验收、旧金融操作的严格限制与 owner review。新功能测试 CI 实测，没有在本轮新建或启用任何生产秘密/开关。
+- 跨 App K 精确 SHA pin **d8f357f8bc08c6d5e710380f701b1c17641bfe7c** 写入 HomeFlow #306 的 .github/workflows/ci.yml；新 tests/family-points-real-cross-app.test.mjs 实际构建两套独立 SQLite，补齐真实 K migration 0006、0025、0044～0047（不跳过数据库安全约束），原 points earn、SBI point buy、完整取消及发行方实际退点记录、HomeFlow owner 审批、双边真实执行、失效账号/账户 CAS、目标强制失败和 H 已签署结果丢失的同 UUID read-only receipt 恢复。功能提交例：HomeFlow **87cd13cfac9bb7e06f816db8c82a9554a1fff076** 跨仓测试，**fe9a397deb2c12042c476f0f504b059e63c293eb** CI 相容修复/真实成功。
+
+### GitHub Actions 的最终实测结果和中间错误
+
+- 家計簿 #309 最终功能 HEAD **d8f357f8bc08c6d5e710380f701b1c17641bfe7c**，Validate **43675660210 completed/success**，Mobile WebKit Smoke **43675660094 completed/success**。tests/family-points-execution.test.mjs 实际 SQLite 验证全额逆 lot、重复申请拒绝、original source/lot 不变、无新增现金记录、仅两确认有效、账号 CAS drift 拒绝、回执重复及目标触发器失败整体回滚。中间 Validate **43675496921 failure** 系 source 使用了未定义的 sbiReversal，已正确修正；**43675593443 failure** 中只有新持仓净额断言失败，后续加入确切 reversal 聚合与负值保护，未删减安全测试。
+- HomeFlow #306 经真实两个独立 SQLite 与模拟 Service Binding 的 Validate **43675812986 completed/success**（功能 HEAD **fe9a397deb2c12042c476f0f504b059e63c293eb**）。早先 **43675725187 failure** 为旧 cross-app fixture 不带新真实 0047 migration，**43675753611 failure** 为新回执字段长度超过旧有界读取上限/结果未知；均通过补齐真实 migration 和增加有界回执长度、保留安全字段校验，未跳过原权限、事务、审计断言。
+- 冻结跨应用契约追加 **§AC/v1.0.23**，提交 **53e85aea2308e416a4b9d91d4ddb26a4f76e96eb**；本节文档另行同步 main 只允许 Markdown，HomeFlow main 已配置 deploy 工作流对 docs/** 跳过，严禁功能 PR 合并或生产部署。
+
+### 仍未完成：下一节 §90 开始 P0-4C
+
+1. **真实券商/积分发行方独立证明**：本模块是用户在 app 中提交原 reference/日期并由 owner 审核的 attestation，不是凭真实券商 API/issuer API 或银行账务自动验证，仍需机构原始交易/返还凭证与旧 investment_holdings/sbi_transfer_links/NAV 的逐笔对账及不重复导入。复杂部分赎回、历史出售/分红/跨月拆分和已经进入 §AB 候选的旧 lot 暂拒绝自动冲正。绝不能因 §89 的内部反向 journal 就将正式资产已对账打勾。
+2. **P0-4C** 家庭共享资产转移、跨成员同意与双边确认、真实一笔 SQLite 转入转出和跨独立 D1 的 HomeFlow approval lease/reservation/idempotent receipt 与失败审计。已存在旧 cash finance.entry.create、专用 SBI cash、prepaid topup/points，但不可称已具备银行↔银行、现金↔银行、跨成员、储值卡所有合法转账。仍需共享条目修改/删除/恢复/回收箱/R2 附件一致性、批量审批及 Cron 周期金融授权，禁止跳过账本原始/反向不可变保护。
+3. **B～E** 请依设计书 R1～R9/T01～T14 逐项验收四 PWA 统一登录与双人 Safari/iOS PWA 重授权、账号切换/离线队列与端侧缓存清除、文书私人 Gmail/Drive 授权与家庭分享、知学所有用户进度/错题/词句隔离、跨应用撤权和真实回执一致性、浏览器 E2E/移动 WebKit/双台真实 iPhone 回归。GitHub WebKit Smoke 不是两台真实 iPhone 验收。
+4. A 阶段用户四个生产 D1/三个 R2 的加密备份+Mac SQLite 恢复及 Google Drive 验证早已 PASS，无需再次要求操作。五 PR 仍 Draft、不 merge、不创建 Preview、不修改生产 Workers/Pages/D1/R2/Secrets/Binding/Cron、不执行生产 SQL 迁移、不接入真实银行或 SBI 下单/退款。**F 阶段需另行明确授权**。
