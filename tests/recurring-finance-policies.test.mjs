@@ -65,7 +65,7 @@ function fixture(){
  async function reserve(b,mode='reserve',{badSign=false,withOrigin=false}={}){
   const raw=JSON.stringify(b),stamp=String(Date.now());
   const hmac=createHmac('sha256',Buffer.from(env.RECURRING_FINANCE_RESERVATION_SECRET,'hex'))
-   .update('kakeibo-recurring-finance:'+mode+'\\n'+stamp+'\\n'+raw).digest('hex');
+   .update('kakeibo-recurring-finance:'+mode+'\n'+stamp+'\n'+raw).digest('hex');
   const headers={'content-type':'application/json',
    'x-approval-client':'kakeibo-recurring-finance','x-approval-timestamp':stamp,
    'x-approval-signature':badSign?'0'.repeat(64):hmac};
