@@ -99,7 +99,7 @@ test('real SQLite requires sender, recipient and admin to make three separate au
   await f.call(source,f.root,null,'GET');
   assert.equal(count(f.sql,'household_cross_member_transfer_events'),noReadAudit);
   assert.throws(()=>f.sql.prepare("UPDATE household_cross_member_transfer_consents SET payload_sha256='d'").run(),
-   /CROSS_TRANSFER_TERMS_IMMUTABLE|CHECK constraint failed/);
+   /CROSS_TRANSFER_TERMS_IMMUTABLE|CROSS_TRANSFER_CONSENT_STATE_OR_ACTOR_INVALID|CHECK constraint failed/);
   assert.throws(()=>f.sql.prepare('DELETE FROM household_cross_member_transfer_events').run(),
    /CROSS_TRANSFER_EVENT_IMMUTABLE/);
  }finally{f.close()}
