@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {existsSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {MIGRATION_PLANS,verifyMigrationInventory,collectMigrationInventory}
  from '../scripts/release-d1-migration-inventory.mjs';
 
@@ -75,4 +77,19 @@ test('G1 refuses D1 query unexpected write metadata or ambiguous production data
   success:true,result:[{name:'homeflow',uuid:id(1)},{name:'homeflow',uuid:id(2)}]})});
  await assert.rejects(collectMigrationInventory({
   accountId:'fake',token:'fake',fetcher:ambiguous}),/D1_NAME_MISSING_OR_AMBIGUOUS/);
+});
+
+test('G0 cross-app CI can locate every Stage F migration in its pinned checkout',()=>{
+ if(process.env.GITHUB_ACTIONS!=='true')return;
+ const roots={homeflow:'migrations',kakebo:'.contract-kakeibo/migrations',
+  'it-study-platform':'.contract-study/migrations',
+  'jp-document-assistant':'.contract-document/migrations'};
+ for(const plan of MIGRATION_PLANS){
+  const root=roots[plan.db];
+  assert.ok(root,'unknown checkout for '+plan.db);
+  for(const filename of plan.files){
+   assert.equal(existsSync(resolve(process.cwd(),root,filename)),true,
+    plan.db+' missing reviewed migration '+filename);
+  }
+ }
 });
