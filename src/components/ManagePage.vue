@@ -5,6 +5,7 @@ import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
 import ApprovalCenter from './ApprovalCenter.vue'
 import CrossMemberTransferConsents from './CrossMemberTransferConsents.vue'
+import RecurringFinancePolicyCenter from './RecurringFinancePolicyCenter.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
 import StatusBadge from './StatusBadge.vue'
@@ -65,6 +66,8 @@ async function generateInvite(){
    <ApprovalCenter v-if="active" :active="active" :user-id="userId"
      :is-owner="isOwner" :members="members" :profiles="profiles"/>
    <CrossMemberTransferConsents v-if="active" :active="active" :user-id="userId"
+     :is-owner="isOwner" :members="members" :profiles="profiles"/>
+   <RecurringFinancePolicyCenter v-if="active" :active="active" :user-id="userId"
      :is-owner="isOwner" :members="members" :profiles="profiles"/>
    <section class="panel">
      <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
