@@ -60,7 +60,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run check
           (cd .contract-kakeibo && npm ci --no-audit --no-fund && npm run build)
-          (cd .contract-study && npm ci --no-audit --no-fund && npm test && npm run build)
+          (cd .contract-study && bash scripts/check-local.sh)
           (cd .contract-document && npm ci --no-audit --no-fund && npm test && npm run build)
           node scripts/release-g8-source-plan.mjs
           python3 scripts/check_migrations.py
