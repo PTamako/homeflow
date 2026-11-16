@@ -1,5 +1,9 @@
 name: Deploy HomeFlow
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy.yml'
   # The unified account release is cross-repository; a merge must not
   # deploy an incomplete stage. Only a signed-off, explicitly dispatched
   # production release may deploy. No Preview resources are introduced.
@@ -12,7 +16,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: once deploy HomeFlow approved ledger review') }}
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
