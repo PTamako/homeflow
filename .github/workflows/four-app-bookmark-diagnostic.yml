@@ -24,6 +24,25 @@ jobs:
            study:'ed4ca935-5d00-4f38-b3c5-c0d53c5aad63',
            document:'22a671c0-3f6c-4707-adf1-b24ac95330c6'
           };
+          const baseRoot='https://api.cloudflare.com/client/v4/accounts/'+
+            encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID);
+          const key={Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN};
+          // Reproduce release order: SELECT-only D1 marker scans, then bookmarks.
+          const before=await fetch(baseRoot+'/d1/database/'+ids.kakeibo+
+            '/time_travel/bookmark',{headers:key});
+          console.log(JSON.stringify({phase:'k_before_scans',http:before.status,
+            result_ok:(await before.json()).success===true}));
+          for(const [name,id] of Object.entries(ids)){
+            const table=name==='kakeibo'?'schema_migrations':'d1_migrations';
+            const col=name==='kakeibo'?'version':'name';
+            const q=await fetch(baseRoot+'/d1/database/'+id+'/query',{
+              method:'POST',headers:{...key,'Content-Type':'application/json'},
+              body:JSON.stringify({sql:'SELECT '+col+' FROM '+table+' ORDER BY '+col})});
+            const b=await q.json();
+            console.log(JSON.stringify({phase:'marker_scan',database:name,http:q.status,
+              changed_db:b.result?.[0]?.meta?.changed_db,
+              rows_written:b.result?.[0]?.meta?.rows_written}));
+          }
           for(const [name,id] of Object.entries(ids)){
            const base='https://api.cloudflare.com/client/v4/accounts/'+
             encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+
@@ -43,4 +62,14 @@ jobs:
              errors:failures,private_values_logged:false}));
            }catch{console.log(JSON.stringify({database:name,transport_failed:true}))}
           }
+          const kAt=baseRoot+'/d1/database/'+ids.kakeibo+'/time_travel/bookmark?timestamp='+
+            encodeURIComponent(new Date(Date.now()-10000).toISOString());
+          const at=await fetch(kAt,{headers:key});
+          const atJson=await at.json();
+          const safe=(atJson.errors||[]).map(e=>({
+           code:e.code,summary:String(e.message||'')
+            .replace(/[a-f0-9]{32}/gi,'[ID]').replace(/https?:\\/\\/\\S+/gi,'[URL]').slice(0,120)}));
+          console.log(JSON.stringify({phase:'k_timestamp_fallback',http:at.status,
+            result_ok:atJson.success===true,bookmark_present:!!atJson.result?.bookmark,
+            errors:safe}));
           NODE
