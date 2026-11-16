@@ -49,6 +49,7 @@ import {rewardsRoute,expireOldRewardPools} from './rewards.js'
 import {lotteryRoute} from './lottery.js'
 import {sendLotteryDrawNotification} from './webpush.js'
 import {scheduledRunPhase} from './schedule-policy.js'
+import {withFourAppFinanceEnv} from './four-app-release-env.js'
 
 async function routeRequest(request,env,ctx,state){
     const url=new URL(request.url),path=url.pathname
@@ -186,6 +187,8 @@ async function routeRequest(request,env,ctx,state){
 
 export default {
   async fetch(request,env,ctx){
+    try{env=withFourAppFinanceEnv(env)}
+    catch{return json({error:'finance_configuration_invalid'},503)}
     const state={session:null}
     const response=await routeRequest(request,env,ctx,state)
     // Include changes to every authenticated feature (not just Today): family,
@@ -208,6 +211,8 @@ export default {
     return response
   },
   async scheduled(controller,env,ctx){
+    try{env=withFourAppFinanceEnv(env)}
+    catch{console.error('homeflow_finance_configuration_invalid');return}
     // A single hourly Cron covers every member's own quiet-hour end.
     // No reminders are generated before 06:00 JST; from 07:00 onward only
     // unsent deliveries are retried. Settlements and cleanup remain once/day.
