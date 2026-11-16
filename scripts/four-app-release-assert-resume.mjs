@@ -10,7 +10,7 @@ export const PINNED_RELEASE={
   'it-study-platform':{new_version:'c82bb76e-f9eb-4488-a483-f7ced7b96bbe',old_version:'605ec3a7-ca3f-425e-b692-1039afc732c7'},
   'jp-document-assistant':{new_version:'90e23e83-1e9c-42b9-aa6b-df07cbb96dcc',old_version:'55963dbf-63f1-42b0-aaec-28113d3a23ca'}
  },
- pages_old_deployment:'5fac3a02-b4fc-45c0-a688-b2b7885e56c8'
+ pages_old_deployment:'a9075ac5-865c-47a4-b981-7ff97f6aced2'
 };
 export function assertPinnedRelease(actual){
  const err=[];
