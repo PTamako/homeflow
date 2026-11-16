@@ -1,4 +1,5 @@
 name: HomeFlow flat family approvals production UI one-shot
+# Reviewed source-diff baseline fixed; no database migrations or preview resources.
 on:
   push:
     branches: [main]
