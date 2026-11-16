@@ -26,7 +26,7 @@ test('one flat five-row owner-only approval list replaces nested tabs, duplicate
 })
 test('member confirmation remains in the private personal tab and cannot see admin approval list',()=>{
  const personal=manage.slice(manage.indexOf('id="management-personal-panel"'),manage.indexOf('id="management-family-panel"'))
- assert.match(personal,/v-if="!isOwner"/)
+ assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  assert.doesNotMatch(personal,/<RecurringFinancePolicyCenter|<CrossMemberTransferConsents|<ApprovalCenter/)
  assert.match(member,/if\(x.status==='awaiting_recipient'&&x.recipient_user_id===props.userId\)/)
