@@ -30,7 +30,7 @@ function name(id:string){
 const currency=(n:number)=>new Intl.NumberFormat('ja-JP',{style:'currency',
  currency:'JPY',maximumFractionDigits:0}).format(n)
 const status=(s:Policy['status'])=>({
- pending_owner:'等待管理员批准额度',approved:'已批准 · 每月凭实际到账证据记账',
+ pending_owner:'等待管理员首次批准',approved:'已批准本计划 · 有效期内无需逐月审批',
  rejected:'审批拒绝',cancelled:'成员撤回',revoked:'授权已撤销'
 }[s]||'尚未确认')
 function reset(){
@@ -71,7 +71,7 @@ function actions(p:Policy){
  return []
 }
 const labels:Record<string,string>={
- approve:'批准月度额度',reject:'拒绝计划',cancel:'撤回计划',revoke:'撤销周期授权'
+ approve:'批准整个计划',reject:'拒绝计划',cancel:'撤回计划',revoke:'撤销周期授权'
 }
 async function act(p:Policy,kind:string){
  if(!props.active||!alive||busy.value||loading.value||!actions(p).includes(kind))return
@@ -79,7 +79,7 @@ async function act(p:Policy,kind:string){
  if(!await confirmAction({
   title:labels[kind],confirmLabel:'确认'+labels[kind],
   message:kind==='approve'
-   ?'仅批准该计划每月额度、日期、账户版本和起止月。不会自动扣款或发起 SBI 买单；实际已发生的银行／证券凭证仍需在家計簿逐月执行并核对回执。'
+   ?'这次批准覆盖该计划约定的金额、扣款日期、账户版本及有效期间，期间无需每月重复批准。不会自动扣款或发起 SBI 买单；每月实际已发生的银行／证券凭证仍需在家計簿独立核对和记账。'
    :'此决定会记录不可变审计。已经实际入账的旧账不受撤权影响。',
   ...(kind==='reject'||kind==='revoke'?{danger:true}:{})
  }))return
@@ -121,7 +121,7 @@ onUnmounted(()=>{alive=false;reset();document.removeEventListener('visibilitycha
     @click="expanded=!expanded">{{expanded?'收起':'查看授权'}}</button>
   </header>
   <div v-if="expanded" class="recurring-body">
-   <p class="hint">仅查看固定费与 SBI 定投授权。管理员批准不代表扣款或成交；家計簿只可凭每月已发生证据单独记账，银行/SBI 官方核验仍待完成。</p>
+   <p class="hint">固定费与 SBI 定投计划只需首次审批。额度、日期、账户或有效期变更需新申请；每月必须使用真实已发生凭证独立记账。管理员批准不代表扣款或成交，银行/SBI 官方核验仍待完成。</p>
    <p v-if="error" role="alert" class="error">{{error}}</p>
    <p v-if="message" role="status" class="hint">{{message}}</p>
    <button type="button" class="outline" :disabled="loading||!!busy"
