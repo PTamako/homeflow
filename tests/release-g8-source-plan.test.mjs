@@ -21,8 +21,8 @@ test('G8 prevents wrong service target or missing bridge, rather than inventing 
  {skip:!reviewed},()=>{
  const raw=source();
  raw.homeflow=raw.homeflow.replace(
-  'service = "kakeibo-homeflow-bridge"',
-  'service = "jp-document-assistant"');
+  'binding = "KAKEIBO_EXECUTION_SERVICE"\nservice = "kakeibo-homeflow-bridge"',
+  'binding = "KAKEIBO_EXECUTION_SERVICE"\nservice = "jp-document-assistant"');
  raw['kakeibo-homeflow-bridge']=raw['kakeibo-homeflow-bridge'].replace(
   'service = "jp-document-assistant"',
   'service = "homeflow"');
