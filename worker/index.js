@@ -4,6 +4,7 @@ import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {crossMemberTransferConsentsRoute} from './cross-member-transfer-consents.js'
 import {crossMemberConsentProofRoute} from './cross-member-consent-proof.js'
+import {crossMemberConsentSubmissionRoute} from './cross-member-consent-submission.js'
 import {recurringFinancePoliciesRoute} from './recurring-finance-policies.js'
 import {recurringFinanceReservationRoute} from './recurring-finance-reservations.js'
 import {recurringFinanceExecutionRoute} from './recurring-finance-execution.js'
@@ -69,6 +70,8 @@ async function routeRequest(request,env,ctx,state){
         return approvalVerificationRoute(request,env)
       if(path==='/api/internal/cross-member/consent-proof')
         return crossMemberConsentProofRoute(request,env)
+      if(path==='/api/internal/cross-member/consent-submit')
+        return crossMemberConsentSubmissionRoute(request,env)
       if(path==='/api/internal/recurring-finance/reserve'||path==='/api/internal/recurring-finance/receipt')
         return recurringFinanceReservationRoute(request,env,path.split('/').at(-1))
       if(path==='/api/internal/recurring-finance/execution-proof'||path==='/api/internal/recurring-finance/record')
