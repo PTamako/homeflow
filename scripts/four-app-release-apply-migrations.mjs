@@ -39,14 +39,25 @@ async function scopedApply(name,database){
  run(paths[name],['d1','migrations','apply',database,'--remote','--yes','--config',config]);
 }
 async function bookmark(name){
- const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+
+ const url='https://api.cloudflare.com/client/v4/accounts/'+
   encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+'/d1/database/'+ids[name]+
-  '/time_travel/bookmark',{headers:{Authorization:'Bearer '+
-  process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(60000)});
- if(!r.ok)throw Error('TIME_TRAVEL_HTTP_'+r.status+':'+name);
- const body=await r.json();
- if(!body.success||!body.result?.bookmark)throw Error('TIME_TRAVEL_BOOKMARK_ABSENT:'+name);
- return body.result.bookmark;
+  '/time_travel/bookmark';
+ // 2026-11-16: one Kakeibo bookmark GET returned HTTP 400 transiently,
+ // then the identical GitHub token passed all 4 GETs in independent Actions
+ // Run 43788334197. Retry bounded reads; NEVER ignore a missing bookmark.
+ for(let attempt=0;attempt<5;attempt++){
+  const r=await fetch(url,{headers:{Authorization:'Bearer '+
+   process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(60000)});
+  if(r.ok){
+   const body=await r.json();
+   if(body.success&&body.result?.bookmark)return body.result.bookmark;
+  }else if(![400,429,500,502,503,504].includes(r.status))
+   throw Error('TIME_TRAVEL_HTTP_'+r.status+':'+name);
+  if(attempt===4)throw Error('TIME_TRAVEL_BOOKMARK_UNAVAILABLE:'+name);
+  console.log(JSON.stringify({database:name,temporary_bookmark_read_retry:attempt+1}));
+  await new Promise(resolve=>setTimeout(resolve,1500*(attempt+1)));
+ }
+ throw Error('TIME_TRAVEL_BOOKMARK_UNAVAILABLE:'+name);
 }
 export async function applyProductionMigrations(){
  if(process.env.GITHUB_ACTIONS!=='true'||!process.env.RUNNER_TEMP||
