@@ -5,7 +5,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 const name='it-study-platform';
 const expectedOld='c82bb76e-f9eb-4488-a483-f7ced7b96bbe';
-const expectedSha='9d92732f7618d011db1f1b0984dcd1085fa98f9e';
+const expectedSha='e4e8efd7be555e247500d9581c08e31b8a0d1be7';
 const flags=[
  'HOMEFLOW_STUDY_SSO_ENABLED','HOMEFLOW_STUDY_VOCAB_ENABLED',
  'HOMEFLOW_STUDY_DAILY_PROGRESS_ENABLED','HOMEFLOW_STUDY_DAILY_WORDS_ENABLED',
