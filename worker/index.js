@@ -1,5 +1,7 @@
 import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
+import {identityRoute} from './identity.js'
+import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
 import {lifeRoute} from './life.js'
@@ -42,12 +44,12 @@ async function routeRequest(request,env,ctx,state){
       if(!await verifiedDatabase(env,{quick:true}))return json({error:'environment_or_database_not_ready'},503)
       if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
       try{
-        const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover']
+        const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover','/api/oauth/token','/api/oauth/userinfo','/api/oauth/session-introspect']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
         state.session=session
-        const requiresLogin=!path.startsWith('/api/auth/')
+        const requiresLogin=!path.startsWith('/api/auth/')&&!['/api/oauth/token','/api/oauth/userinfo','/api/oauth/session-introspect'].includes(path)
         if(requiresLogin&&!session)return json({error:'not_authenticated'},401)
-        if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!sameOrigin(request))
+        if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!['/api/oauth/token','/api/oauth/session-introspect'].includes(path)&&!sameOrigin(request))
           return json({error:'origin_forbidden'},403)
         // Completion push is best-effort and cannot invalidate a committed task.
         const onComplete=typeof ctx?.waitUntil==='function'
@@ -55,6 +57,9 @@ async function routeRequest(request,env,ctx,state){
               .catch(()=>console.warn('homeflow_completion_feedback_failed')))
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
+        if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(path==='/api/identity/me'||path==='/api/identity/household-members')
+          return identityRoute(request,env.DB,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)
         if(path==='/api/family'||path.startsWith('/api/family/'))
           return familyRoute(request,env.DB,path,session)
