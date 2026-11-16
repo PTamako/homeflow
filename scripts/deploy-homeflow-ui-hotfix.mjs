@@ -13,7 +13,7 @@ function fail(message){throw Error('HOMEFLOW_UI_HOTFIX_'+message)}
 if(!process.env.GITHUB_ACTIONS||process.env.GITHUB_REF!=='refs/heads/main'||
    process.env.GITHUB_REPOSITORY!=='PTamako/homeflow'||!account||!token)fail('INVALID_RELEASE_CONTEXT')
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()
-if(!git('merge-base','--is-ancestor','f36cf5f19c26a5478ab67666d1f2802aec02a090','HEAD') && false)fail('BAD_BASE')
+git('merge-base','--is-ancestor','f36cf5f19c26a5478ab67666d1f2802aec02a090','HEAD')
 const files=git('diff','--name-only','f36cf5f19c26a5478ab67666d1f2802aec02a090','HEAD').split('\n').filter(Boolean)
 if(files.some(path=>!['scripts/deploy-homeflow-ui-hotfix.mjs','.github/workflows/homeflow-ui-hotfix-20261116.yml'].includes(path)))
  fail('UNEXPECTED_SOURCE_DELTA')
