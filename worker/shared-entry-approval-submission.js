@@ -1,6 +1,7 @@
 // Backend-only submission of encrypted, immutable Kakeibo shared-ledger mutation.
 // No web form or HomeFlow browser may assert a second user's permission.
 import {approvalRoute} from './approvals.js'
+import {deliverToHouseholdUser} from './webpush.js'
 import {json,nowMs,constantEqualHex} from './security.js'
 const enc=new TextEncoder(),hex=/^[a-f0-9]{64}$/i,id=/^[a-f0-9]{32}$/i
 const deny=(code,status=403)=>json({ok:false,code,applied:false},status)
@@ -58,6 +59,31 @@ export async function sharedEntryApprovalSubmissionRoute(req,e){
   saved.resource_id!==b.resource_id||saved.expected_version!==b.expected_version||
   saved.payload_sha256!==b.payload_sha256||saved.idempotency_key!==key)
   return deny('approval_not_confirmed',503)
+ // Financial approval remains committed even if the optional iOS push fails.
+ // The owner sees it in HomeFlow approvals; push/inbox is only a reminder.
+ if(saved.status==='pending'&&result.replayed!==true){
+  try{
+   const owner=await e.DB.prepare(`SELECT m.user_id FROM household_members m
+      JOIN users u ON u.id=m.user_id AND u.disabled_at IS NULL
+      WHERE m.household_id=? AND m.role='owner' LIMIT 1`)
+    .bind(saved.household_id).first();
+   if(owner?.user_id&&owner.user_id!==saved.requester_user_id){
+    const title='家計簿 · 家庭账本待审核'
+    const action=saved.operation==='finance.entry.create'?'新增':
+     saved.operation==='finance.entry.update'?'修改':
+     saved.operation==='finance.entry.delete'?'删除':'恢复'
+    const message='家庭成员申请'+action+'账本明细，请在 HomeFlow 家庭管理中审核。'
+    await deliverToHouseholdUser(e,saved.household_id,owner.user_id,{
+     title,body:message,url:'/',tag:'household-ledger-approval-'+saved.request_id,
+     priority:'normal',recordInInbox:true
+    },'household-ledger-approval:'+saved.request_id,Date.now(),{
+     id:saved.request_id,senderId:saved.requester_user_id,
+     kind:'family',sourceId:saved.request_id,title,message,
+     dedupeKey:'household-ledger-approval:'+saved.request_id
+    })
+   }
+  }catch{console.warn('homeflow_ledger_approval_notification_failed')}
+ }
  return json({ok:true,approval_id:saved.request_id,status:saved.status,
   household_id:saved.household_id,requester_user_id:saved.requester_user_id,
   resource_id:saved.resource_id,payload_sha256:saved.payload_sha256,
