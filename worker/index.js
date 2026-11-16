@@ -1,6 +1,25 @@
 import {documentAssistantBridge} from './document-assistant-bridge.js'
 import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
+import {approvalRoute} from './approvals.js'
+import {crossMemberTransferConsentsRoute} from './cross-member-transfer-consents.js'
+import {crossMemberConsentProofRoute} from './cross-member-consent-proof.js'
+import {recurringFinancePoliciesRoute} from './recurring-finance-policies.js'
+import {recurringFinanceReservationRoute} from './recurring-finance-reservations.js'
+import {recurringFinanceExecutionRoute} from './recurring-finance-execution.js'
+import {recurringFinancePolicySubmissionRoute} from './recurring-finance-policy-submission.js'
+import {approvalVerificationRoute} from './approval-verification.js'
+import {approvalSubmissionRoute} from './approval-submission.js'
+import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
+import {cardSettlementApprovalSubmissionRoute} from './card-settlement-approval-submission.js'
+import {sbiCashApprovalSubmissionRoute} from './sbi-cash-approval-submission.js'
+import {bankTransferApprovalSubmissionRoute} from './bank-transfer-approval-submission.js'
+import {sharedEntryApprovalSubmissionRoute} from './shared-entry-approval-submission.js'
+import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
+import {pointsApprovalSubmissionRoute} from './points-approval-submission.js'
+import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
+import {documentApprovalStatusRoute} from './document-approval-status.js'
+import {approvalExecutionRoute} from './approval-execution.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -43,6 +62,38 @@ async function routeRequest(request,env,ctx,state){
       // migration baseline; full structural checks run on /api/health and Cron.
       if(!await verifiedDatabase(env,{quick:true}))return json({error:'environment_or_database_not_ready'},503)
       if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
+      // Backchannel-only signed read verification: no browser session or
+      // same-origin cookie is accepted; never grants target write rights.
+      if(path==='/api/internal/approvals/verify')
+        return approvalVerificationRoute(request,env)
+      if(path==='/api/internal/cross-member/consent-proof')
+        return crossMemberConsentProofRoute(request,env)
+      if(path==='/api/internal/recurring-finance/reserve'||path==='/api/internal/recurring-finance/receipt')
+        return recurringFinanceReservationRoute(request,env,path.split('/').at(-1))
+      if(path==='/api/internal/recurring-finance/execution-proof'||path==='/api/internal/recurring-finance/record')
+        return recurringFinanceExecutionRoute(request,env,path.split('/').at(-1))
+      if(path==='/api/internal/recurring-finance/policy-submit')
+        return recurringFinancePolicySubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/submit')
+        return approvalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/points-submit')
+        return pointsApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/prepaid-submit')
+        return prepaidApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/sbi-cash-submit')
+         return sbiCashApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/bank-transfer-submit')
+         return bankTransferApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/shared-entry-submit')
+         return sharedEntryApprovalSubmissionRoute(request,env)
+       if(path==='/api/internal/approvals/card-settlement-submit')
+        return cardSettlementApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/card-submit')
+        return cardApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/document-submit')
+        return documentApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/document-status')
+        return documentApprovalStatusRoute(request,env)
       try{
         const anonymousPaths=['/api/auth/bootstrap','/api/auth/bootstrap-status','/api/auth/login','/api/auth/login-challenge','/api/auth/join','/api/auth/recover','/api/oauth/token','/api/oauth/userinfo','/api/oauth/session-introspect']
         const session=anonymousPaths.includes(path)?null:await sessionFor(request,env.DB)
@@ -58,6 +109,14 @@ async function routeRequest(request,env,ctx,state){
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(/^\/api\/approvals\/[0-9a-f-]{36}\/execute$/.test(path))
+          return approvalExecutionRoute(request,env,path,session)
+        if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
+          return approvalRoute(request,env,path,session)
+        if(path==='/api/finance-cross-member/consents'||path.startsWith('/api/finance-cross-member/consents/'))
+          return crossMemberTransferConsentsRoute(request,env,path,session)
+        if(path==='/api/recurring-finance/policies'||path.startsWith('/api/recurring-finance/policies/'))
+          return recurringFinancePoliciesRoute(request,env,path,session)
         if(path==='/api/identity/me'||path==='/api/identity/household-members')
           return identityRoute(request,env.DB,path,session)
         if(path.startsWith('/api/pets/'))return petsRoute(request,env.DB,path,session)

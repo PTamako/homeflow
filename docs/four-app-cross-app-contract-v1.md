@@ -398,6 +398,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 4. 签名目标请求 `homeflow:sbi-cash-execute` 与只读核验 `homeflow:sbi-cash-receipt` 独立于其他金融操作，所有审批前保护、租约、已核实 requester/approver、审批记录 ID/digest、丢回执只读重查及审计沿用既有 HomeFlow 核心。receipt 必须回传同源 HomeFlow UUID、proposal ID、银行/证券 stable IDs、双方版本、资金实际扣款/成交/适用日、`kind`、买付成本/份额、broker hash、不可变 transfer entry ID、`applied_at`、独立真实 actor、`broker_reconciled:false,included_in_tracked_assets_jpy:false`；只有实际同一 D1 五种凭证存在且 HomeFlow 验证签名和必要回执字段才可 applied。
 5. Cash lots 与原 §§V/§82 的 point-funded lots、旧基金持仓截图和市场 NAV **不直接累计**。`memberSbiCashPositions` 是所有家庭成员可读、但完全独立的 `unreconciled` 证券记录，成本和份额均不进入正式已计价家庭资产总额。原持仓重叠、未建交易 ID 的历史 SBI 买付、买付取消/卖出/退回资金、基金实时成交真实性、净现金余额跨历史所有银行 records 的无损调和，后续仍须专项 reconciliation 和双边不可变冲正，不能因为此 draft 内部记录存在就认为已核实。
 6. 所有新 flags、秘密、Service Binding 仅出现为**代码读取的默认 OFF**，未操作任何线上配置；不发券商买卖单、不移动真实银行资金。不执行生产 migration、旧资产重建、Preview、Cloudflare 部署和 Draft PR 合并。隔离 CI 有两库真实 SQLite 和模拟传输，但不等于真实 Service Binding、金融机构交易证明、双 iPhone 或 F 阶段验收。完成证据以 handoff §86 和 GitHub 最新提交/CI 为准。
+
 ## AA. v1.0.21：P0-4B SBI 现金买付全额撤销、已到账银行退款与不可变基金 lot 反向凭证（仅 Draft）
 
 日期：2026-11-15。对 §Z 的定投和追加买付采用**独立新审批** `finance.sbi_cash.reversal`，不是旧 approval 直接改状态，也不能当新收入或实际券商自动撤单。§§P～Z 原签名、lot 和 HomeFlow 申请保持完全不可变；仅 append 新协议及家計簿未部署迁移 `0045_sbi_cash_reversals.sql`。原操作仅通过原本的 `finance.sbi_cash.tsumitate|additional` 完成。
@@ -424,6 +425,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 6. 已编写真实 SQLite 回归：原 owner 与新 member 不同、旧截图缺少不可变 owner 证据、combined/NISA 归属模糊、错误/过期 SHA 指纹、显式审核+重复幂等、原凭证与截图不被修改、旧截图改动后的 stale flag、不可变候选及 audit 故障时整批 rollback。功能 Commit/CI 详见 handoff §88。仍未完成全部 `sbi_transfer_links` 的原真实银行扣款/券商对应，不能将“录入候选”描述为“交易已对账”。
 7. 本协议仅 Draft 代码及隔离 SQLite；生产 Worker/Pages/D1/R2/Secrets/Binding/Cron 未变，不创建 Preview、不合并五功能 PR、不执行旧持仓合并、金融机构交易、生产 migration 或自动导入。F 阶段必须取得用户批准及两台 iPhone 实机验收。
 
+
 ## AC. v1.0.23：SBI ポイント投資全额取消及发行方返积分的不可变双边冲正（仅 Draft）
 
 日期：2026-11-15。本节扩展既有 finance.points.reversal，仅为既有 finance.points.redeem_asset 的原始审批对应一笔完整反冲，继续复用 HomeFlow 的独立 HMAC 签名、owner 审核、lease、nonce、幂等回执和重试。原积分 journal、券商基金 lot、旧截图、NAV 和既有所有原始审计均不得 UPDATE/DELETE。
@@ -436,6 +438,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 6. 真实自动验收：Kakeibo #309 功能 SHA d8f357f8bc08c6d5e710380f701b1c17641bfe7c，Validate 43675660210 success、Mobile WebKit Smoke 43675660094 success；HomeFlow #306 功能 SHA fe9a397deb2c12042c476f0f504b059e63c293eb，Validate HomeFlow 43675812986 success。真实两套独立 SQLite、双方真实 handler、模拟 Service Binding，覆盖原买付、积分完整返还、账户版本漂移、target 故障全部回滚、同审批重复执行与丢回执恢复；本测试不是机构联网操作或双人 iPhone 实机验收。
 7. 一切新代码仅位于原五个 Draft PR，新增 KAKEIBO_SBI_POINT_REFUNDS_ENABLED 代码开关默认 OFF；未更改正式 Workers/Pages/D1/R2、Cron、Secrets、Service Binding、生产金融数据、真实银行与 SBI 账户。不合并、不开 Preview、不跑正式迁移、不自动部署。本节真实 Commit/CI 和剩余 P0-4C/B～E 清单以 handoff §89 为准。
 
+
 ## AD. v1.0.24：P0-4C 家庭审批中心批量审核的全有或全无 CAS / 审计与安全回执（仅 Draft）
 
 日期：2026-11-15。严格复用原 HomeFlow §D 审批状态机与已冻结的金融 execution、lease、nonce、HMAC 契约，不修改任何已批准银行/证券/积分/储值卡操作的目标执行器，也不把批量 review 当作批量执行入账。
@@ -447,6 +450,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 5. HomeFlow UI ApprovalCenter.vue 只在后端安全发现 batch_review_enabled=true 时为真实 owner 展示当前页（通常最多 5 个 pending）选择框与“批量批准/批量拒绝”，二次确认文案明确审核不入账。提交前后守住 account epoch、item.version 与当前筛选及身份，离线/网络丢回复时保留原 batch_id 并以 GET receipt 核验，不自动生成第二批。旧单笔批准/拒绝、撤回、执行、安全重试原路不变，特性默认 OFF 不影响当前正式 UI。
 6. 安全验收包括 tests/approval-batch-review.test.mjs 真 SQLite 测试：完整审批多项+真实独立审计、同批重试/冲突、过期/已批、CAS drift/重复 ID/外部 ID、当前成员停用/owner 停用、审计异常与原子回滚；原 tests/household-approvals、approval-execution-feedback、rewards-shop、迁移 manifest + Vue build/Worker dry-run 均不删除断言，随着新增真实 0057 迁移更新固定数目 fixture。最终功能 SHA 37c45cd33f568f00469390d52afcb362fc7153c5，Validate HomeFlow Run 43676772681 completed/success。完整证据与未完成的金融转账、恢复、周期授权详见 handoff §90。
 7. 五个功能 PR 始终 Open/Draft，本节绝不执行生产 D1 migration、修改生产 Worker/Secrets/Service Binding/Cron/R2/Pages、创建 Preview、合并功能 PR 或改变真实银行/证券账户。F 阶段上线和两台 iPhone 实机验收需要独立许可。
+
 
 ## AE. v1.0.25：P0-4C 本人双银行**实际扣款+实际到账**的资产转移与独立家庭审批（仅 Draft）
 
@@ -461,6 +465,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 7. Member PWA `FamilyFinanceBankTransfers.vue` 只在 family-finance SSO、后端新能力打开、本人成员权限及两个本人银行账户存在时展示可用流程；先录两边原始日期、参考及已确认勾选，仅加密 prepare，然后提交家庭审批，HomeFlow owner 之后单独执行。切换账号/页面前后台会清理临时参考号，服务返回的同一请求 ID 草稿可重新选取提交，防止同一笔交易因刷新重复记账。HomeFlow `ApprovalCenter.vue` 独立显示“已到账银行间资产转移”，不称为新收入或证券投资。
 8. 测试用 Kakeibo SQLite 真正加载 `0006,0025,0031～0048` 及真实 source/target handlers，验证分别确认/未确认的银行参考、身份/账户版本和归属、双边 balanced transfer、原资金负余额拒绝、参考号重复、SQL audit 故障 rollback、同一审批 receipt 幂等；HomeFlow 两套**独立**完整 SQLite + 新真实 K handlers/模拟 Service Binding，真实 owner review→execute→applied、目标入账后回复丢失同一 ID 恢复、撤权/故障不留单边资金。测试最终 SHAs/Run IDs 以唯一 handoff §91 及 GitHub Actions 最新结果为准，WebKit Smoke 不是双台真实 iPhone。
 9. 本节**不声称**已经完成银行↔现金、银行↔证券不伴随基金买付、储值卡之间或跨成员真实转账、双成员批准、旧银行数据匹配/恢复、批量金融目标执行和所有 PWA R1～R9/T01～T14。任何新增 flag/secret/binding 均只在隔离 Draft 源码被读取且生产默认 OFF；未操作生产 Workers/Pages/D1/R2、迁移、Cron、Secrets、Service Binding、真实银行或 SBI，未合并五 Draft PR、未建 Preview。正式上线和实机 F 阶段仍需用户另外批准。
+
 
 ## AF. v1.0.26：P0-4C 跨家庭成员资产转移的**双人真实同意＋管理员单独授权**、撤销与只读 HMAC 证明（Draft；**非资金执行闭环**）
 
@@ -479,6 +484,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 7. 本次 SQLite 单元测试 `tests/cross-member-transfer-consents.test.mjs` 实际使用新 migration 0058 与真实 Worker handlers，覆盖双方独立 session、owner 双身份场景、逐阶段动作、账户版本、乐观并发、CSRF、跨家庭/伪造 role、禁用/重复、audit failure 原子 rollback、immutable 事件、撤销后不可复用；专用证明还覆盖错误 HMAC、Cookie/Origin 冒用、pre-approval 拒绝、任意摘要/双方 ID/version 篡改、禁用账户、撤销、双边不触碰金融账本。GitHub CI 实际功能 SHA/Run ID 记录在 handoff §92。该 CI 是真实 SQLite / Vue build 和安全执行路径，**不是**两台 iPhone 真实登录验收。
 8. 全部新迁移、Vue 与 Worker 代码仍位于 HomeFlow #306 **Open/Draft**，所有新开关默认 OFF；无生产 Workers/D1/R2/Secret/Cron/Service Binding、无任何真实银行/SBI/积分商接口、无 Preview、无功能 PR 合并或 F 阶段上线。契约的增加不能被用来绕过 §90 单次审核与 §91 本人账本的保留安全约束。
 
+
 ## AG. v1.0.27：家庭成员固定费/SBI 定投**受限月度授权与每期防重复预留**（仅 Draft，**不自动执行 Cron / 财务记账**）
 
 日期：2026-11-15。正式设计书 R3/R4/R9、T05/T07/T08 为本新增合同的来源。严格区别“计划个人设定”“家庭管理员授权计划”“该月账务预留”“Kakeibo 实际正式记账”四个阶段；**本节仅实现前 3 项的 HomeFlow 权限和预留骨架**，但尚未实现与家計簿真实固定费/定投计划的签名绑定和最后一步 ledger execution。现有 §V～§AF 的审批/退款/SBI lot/银行资金和两人签名契约保持冻结。
@@ -491,6 +497,7 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 6. SQLite 测试 `tests/recurring-finance-policies.test.mjs` 使用实际 0059 triggers + 真实 handler 与 Node crypto HMAC，验证正常 owner approve/reject、成员越权/冒充 owner/cross household、固定 JPY 上限、due_day 日期、账户版本、成员/管理员失效、撤销、重复同月不同 ID 防双计、同 ID receipt 返回不重复写、新账务始终不存在、审核/预留审计故障 rollback。原始 migration manifest 61 个实际文件含 0059 全部回放，保留原业务安全测试、Vue typecheck 和 Cloudflare Worker dry-run；功能最终 GitHub SHA `1a20584172ef6d800a04344a84c01dcca12ab4da`，HomeFlow Validate Run `43680966561` completed/success。此 CI 是静态/模拟 SQLite 验证，非真实 Cron/Cloudflare D1，亦非双人 iPhone Safari 实机。
 7. 五个功能 PR 仍应 Open/Draft，未配置生产密钥/开关、Cron/Service Binding、未创建 Preview、未修改/导入生产金融数据、未合并/部署功能 PR，也绝不把授权预留统计为家庭账本已入账或真实 SBI 下单/对账。剩余 §AH 起待开发清单与真实 Commit/CI 见唯一交接文件 §93。
 
+
 ## AH. v1.0.28：文书助手 iPhone 主屏幕 PWA 的 HomeFlow OAuth 安全回跳与原会话恢复（仅 Draft）
 
 日期：2026-11-15。本节补充 B～E 各 PWA 的首次安装、iOS 主屏幕 PWA Safari 外部授权/重连和账户切换回归。**仅完成文书助手单应用的明确问题修复和源码/Node 测试**；不将这一项等同全部四应用 E2E 或两台物理 iPhone 的 F 阶段实机验收。
@@ -501,3 +508,71 @@ HomeFlow Draft #306：`worker/points-approval-submission.js`、`worker/approval-
 4. PWA 登录页面明确提示：如 iPhone 转去 Safari，需在 Safari 完成 HomeFlow 授权，然后回到**原主屏幕文书助手**单独点击“完成 HomeFlow 登录”。不能凭另一独立 Safari/新 PWA tab 的 sessionStorage 或无效 callback 假设已完成；过期需重启登录，成功后必须 clearPrivateWorkspace、清空原私有内存和 accountEpoch，并等待真实 boot()/api/me 的原账号/家庭隔离确认。退出登录清除 pending state/resume_secret 与旧文书/Gmail/Drive 缓存。
 5. 新测试 tests/homeflow-sso-pwa-return.test.js：模拟 iPhone 原主屏幕 WebView 在打开 Safari 后仍存活，验证原 pending 按钮不被 busy 锁死；跳转失败不误释放服务器状态；恶意非 HTTPS/URL credentials、篡改 client_id、state、PKCE method/challenge、nonce、redirect_uri 和附加的 resume_secret 字段全部拒绝；源代码继续只用 sessionStorage、账号退出清除 pending、HomeFlow 成功完成后先清私有数据再 boot。文书助手 #97 变更 web/src/homeflow-sso-pwa-return.js、web/src/App.vue 和测试，最终功能 SHA a337235de3a6c8e35db8aae63d454a37e34b9ace，GitHub Pre-merge CI 43681571778 completed/success。
 6. 此修复**没有**配置生产 OAuth/Cloudflare Secret、修改 callback whitelist、创建 Preview 或发起真实 iPhone 跳转；PWA 外部 Safari↔主屏幕不同 storage 容器、真实再认证故障、两部 iPhone、HomeFlow/家計簿/知学各自 PKCE、文书 Gmail/Drive 私人与共享授权撤回仍必须以后实际设备和 browser E2E 验证，不能由 Node 模拟数据测试冒充生产登录成功。五个功能 PR 仍 Draft，F 阶段上线需用户另行授权。
+
+## AI. v1.0.29：成员本人 → 家庭管理员银行账户的双独立同意、签名审批与不可变双边入账（仅 Draft）
+
+日期：2026-11-15。继承冻结的 §AF 双人真实 SSO 同意／owner 独立授权，及 §AE 同一人银行间不可变转账。两种旧协议及强制 SAME OWNER 规则不放松。新增能力**仅 member→owner 两个不同人的 bank member_created account**，不是两家真实银行转账服务；owner→member、现金、储值卡、基金份额与证券的直接转移仍不支持。
+
+1. 家計簿未部署 `0049_cross_member_bank_transfers.sql` 新增独立 `family_cross_bank_intents`（原成员 source 真实 SSO + AES-GCM SHA256 原文）、`family_cross_bank_recipient_evidence`（recipient 本人独立 Kakeibo SSO 确认已到账的参考/日期/金额）、`family_cross_bank_journal`（exact approval/consent/两边 stable account/version、唯一 transfer entry）、`family_cross_bank_actor_audit`（双方与 owner 授权、执行 actor）。所有不可变对象受 SQLite FK/CHECK/触发器保护。后端 `KAKEIBO_CROSS_MEMBER_BANK_ENABLED` 默认 OFF；实际启用必须另外进行生产授权和迁移。非真实银行卡发行方或银行 API 证据，依旧 `bank_statements_verified_by_institution=false`。
+2. 家計簿 source 个人 API `/api/family-finance/cross-member-bank-transfers`：仅本人有效 user_id+member 角色、真实 source bank / receiver owner bank、不同账户真实 owner、相同 household、CAS 版本、已发生 source debit reference 和日期创建准备，原 24h 到期。收款人本人以独立 session 提交 `/{request_id}/recipient`，确认 target bank credit_reference/credit_date/amount，与 source amount 严格相等且时间有效；浏览器不可替另一人发送确认。两份真实银行原文只在本人发送后立即 SHA256 压缩为带 account_id 的证据 hash，不传入 HomeFlow；source 原始操作 AES-GCM 加密，HomeFlow 仅持 32hex resource / 64hex digest / 2 account version 与 actor ID。
+3. 转出人须先使用 HomeFlow §AF 原 `/api/finance-cross-member/consents` 获得自己申请、收款人本人的 accept 及 owner **另一次**独立 authorize；原 `/api/internal/cross-member/consent-proof` backend-only HMAC 当前 verified 结果须包含 consent_id、resource/payload_sha256、两 owner/版本与 valid_until，不能由 `target_ledger_authorized=false` 假冒 target proof。随后转出人 Kakeibo `/{request_id}/submit` 通过原 `kakeibo-bank-transfer:submit` 后台 HMAC 创建原 HomeFlow `finance.asset_transfer.bank_to_bank` 审批。家庭 owner 再执行独立审批，最终 HomeFlow 原 nonce/lease/verify 路径签名调用 K `/api/internal/bank-transfers/execute`。
+4. 家計簿 cross internal 分支只有在 `KAKEIBO_CROSS_MEMBER_BANK_ENABLED` 打开、原执行 HMAC 验证完全成功，原 sealed SHA、original approval ID、当前 signer/nonce/owner 权限、§AF recipient+owner 双同意 HMAC 当前有效、source/recipient 的稳定账户 owner/CAS、两侧真实已入账用户证据、非重复 statement、金额和日期及余额充足同时成立，才在同一 K D1 SQL batch 中写一条 transfer entry（同时影响 source debit/target credit）+ 不可变 journal + actor audit；异常回滚不产生半边账。**不宣称 HomeFlow D1 与 K D1 具全局原子性**，目标 commit 丢回执后只对相同原 approval ID 只读查询 `/receipt`，不新建交易。
+5. 家計簿目标返回原冻结 §AE bank-transfer receipt 必需字段与 `cross_member=true, consent_id, recipient_user_id, source_owner_user_id, target_owner_user_id, owner_authorizer_user_id, bank_statements_verified_by_institution=false`。HomeFlow #306 `approval-execution` 在判断 applied 前从自身不可变 consent 表重新读取精确原申请/双方 ID/owner/账户版本/确认顺序核验，不因普通 `consent_verified` 预审就直接 applied。普通 §AE same-owner response 未新增字段，旧功能保持不变。错误/超时仍返回 unknown/failed_retryable，禁止伪写或替换审批 ID。
+6. 真实代码和隔离测试位于 Kakeibo Draft #309 和 HomeFlow Draft #306；HomeFlow `.github/workflows/ci.yml` pin Kakeibo 已验证功能 SHA `11c5b0a20d65b42ff114f76c77652ef509d81888`。Kakeibo 新 SQLite 测试和 HomeFlow 两个数据库真实 handler/模拟 Service Binding 测试覆盖 source/recipient SSO、两次 owner 逻辑动作、真实 approvals、双边入账、immutable journal、重放、目标回执丢失、撤权、CAS/balance drift、审计触发器原子 rollback。详细测试结果/CI 与未覆盖功能必须以唯一 handoff §95 为准。
+7. 安全限制：此阶段仅作本地独立 SQLite/CI，**没有实际外部银行的独立交易确认、真实机构核对、生产 Cloudflare D1/R2/Worker/Secrets/Cron/Binding、Preview、PR 合并与 F 阶段部署**。其他账户类型、owner→member、历史账目编辑与 R2 回收、周期计划实际执行、四 PWA 实机仍需继续完成。
+
+## AJ. v1.0.30：跨成员银行流水回执与既有 SBI/信用卡/同一人银行账务间的**双向不可重复使用**约束（仅 Draft）
+
+日期：2026-11-15。§AI 的双人真实 SSO 签名转账和已确认双边 `entries.type='transfer'` 不变；旧 §AE 及 SBI/信用卡双边 journal 的证据规范也不变。本节仅进一步冻结机构流水引用的**跨操作防重边界**，不扩大跨成员可转资产类型。
+
+1. 家計簿未部署新增 `0050_cross_bank_statement_usage_guards.sql`，补充 `family_cross_bank_journal` 的 INSERT 前重复引用拒绝：原跨成员 source `(source_account_id,source_reference_hash)`、目标 `(target_account_id,credit_reference_hash)` 与既有 `family_bank_transfer_posted_evidence` 双侧、`family_card_bank_debit_evidence`、`family_sbi_cash_bank_evidence`、`family_sbi_cash_refund_evidence` 任何相同 account_id/reference_hash 均不能重入；交叉方向重放也拒绝。保留 §AI 的同一 D1 batch 对 `entries`、不可变 journal、actor audit 事务回滚。
+2. 为了阻断先成功执行跨成员银行转账、再拿原提款参考做 SBI 投资/信用卡还款/同一人转账的重复记账，新增四个后续源表 BEFORE INSERT guard。**source debit 和 recipient credit 两侧**均受相同 reference 约束，不能只保护转出人。证据原文始终不在 HomeFlow D1，哈希跟稳定 `account_id` 绑定。目标可受原版本 CAS/已审批/真实接收用户确认保护，不会因新增此约束获得新权限。
+3. 家計簿 #309 目标 commit、HomeFlow #306 的精确 pin/test、每个目标 CI Run ID、失败原因与生产限制一律由唯一 handoff §96 给出。依旧没有银行 API 机构核验，也不支持 owner→member/cash/securities/预付卡的跨成员直接划拨。五个 PR 保持 Draft，所有生产与 F 阶段功能开关仍 OFF。
+
+## AK. v1.0.31：家計簿普通共享账目版本 CAS、回收/恢复、R2 附件墓碑与不可变修订审计（仅 Draft）
+
+日期：2026-11-15。继承 §AI～AJ 的跨成员真实金融账务与 §AF 的双方同意边界，不修改任何已执行金融 journal，不将本节误称为**所有家庭成员已可提出并由 HomeFlow 批量审批修改账目**。
+
+1. 家計簿 #309 新增**未部署** `0051_shared_entry_lifecycle.sql`，独立 `family_shared_entry_registry` 把**新创建的普通 income/expense** 映射至单条真实 `entries.id`，不创建第二套统计数据源；新增所有版本变化触发器自动产生 `family_shared_entry_audit` append-only 历史。原版 `family_shared_entry_write_context` 是同一个 SQLite D1 批量事务中的短暂 SQL 权限证明，`entries` BEFORE UPDATE/DELETE triggers 禁止其他旧账本 API 更改被管理的共享记录；改名/金额/分类被预先结构化验证并要求 `expected_version` CAS。源行仍只计入现有家庭收支一次，删除后计数归零、恢复时同一个稳定 `entry_id` 恢复，不会再生成第二笔支出。
+2. 新 PWA/API `/api/family-finance/shared-entries` 提供已登录双方同家庭**只读**列表/单条、家庭 owner 的普通账目新增/更新/移入回收箱/恢复/明确二次确认永久删除；任意家庭 `member` 不能调用直接写，旧网络请求/错误 household 与旧 session 被拒绝。所有写入要求后端二次查询 `homeflow_identity_links` 的当前 owner active 且服务端 SSO `user_id` 匹配，更新及删除/恢复必须使用原始 resource_id + current version CAS，数据库每一步用 1 批量事务确保真实 `entries`、version 和 trigger audit 同时成功，否则全部 rollback。普通 record 的稳定 ID 与已审批执行的 bank/card/SBI/points immutable journal 永不共享写入口。
+3. 新专用 `family_shared_entry_attachments`（`object_id` 32 hex + `resource_id`）与 R2 私有键 `shared/v1/{resource_id}/{object_id}`，绝不访问 `receipts/v1/{entry_id}` 旧数字 ID 目录。仅 authenticated owner 可预留/上传新图片，必须 WebP/JPEG、≤200KB、精确 SHA256 和 R2 只允许 `If-None-Match:*` 条件写入；服务器校验 R2 返回的长度/metadata 和 DB 标记后才成为 ready。家庭 active reader 可只读，回收箱后仅 owner 可查看。独立上传失败留下 pending，不能自动显示为有效图片。
+4. 删除普通共享账目是 D1 软删除，附件保留以便日后恢复；**永久删除**先以单库原子 CAS 标记 `purge_pending`、清除原账目 snapshot、把附件全部标记不再可读，然后调用 R2 batch delete；如果对象存储失败，D1 墓碑仍先存在并且无旧用户可以重新下载。原资源/原证据 ID 的重复清理只按同一个 ID 恢复，只有确认各附件已删除后才落 `purged` 与审计；不能凭 DB/R2 两边存在绝对全局原子事务。保留不含原文的审计摘要以供后续对账；任何 `purge_pending/purged` 不可 restore。
+5. PWA 新 `FamilySharedEntries.vue`：移动端普通收支新建、修改、回收/恢复、附件图片压缩和上限、回收箱与明确永久删除警告；session 切换/后台恢复时舍弃旧私有状态，切勿因旧请求回执切换家庭；功能后端 flag `KAKEIBO_SHARED_ENTRY_ENABLED` 默认 OFF。
+6. 本版范围**有意限制**：目前只有 owner 直接管理新普通共享收支；成员拟修改旧账目的 HomeFlow `finance.entry.update/delete/restore` 原审批与真实 Kakeibo target 执行、批量审批后逐笔入账、历史共享账目合法采用及跨老 R2 引用修复均未完成，不能以本 API 代替它们。资产转移/SBI lot/卡账单等原不可变记录必须使用相应原正反 journal，不在这里修改或删除。原私人/共享文书 R2 不受该新命名空间影响。
+7. 本次不触及任何生产 Worker、Pages、D1、R2、Cron、Secrets、Service Binding、Preview 或 F 阶段。实际 Commit/CI 与尚未完成项由唯一 handoff §97 记录。跨独立 D1 不存在全局 SQL 原子性。
+
+## AL. v1.0.32：家庭成员普通共享账目创建/修改/删除/恢复由原 HomeFlow 审批签名实际执行（仅 Draft）
+
+日期：2026-11-15。继承 §AK 的普通家庭共享收支 `family_shared_entry_registry`、版本 CAS、审核审计、R2 私有附件与 purge_pending 安全恢复，以及原 §54～§96 的唯一 HomeFlow 审批状态机。本节不是第二套审批系统；已执行的银行转账、信用卡负债、SBI lot、积分 journal 等 `entries` 继续原不可变金融限制，不能以 `finance.entry.update` 修改其历史。
+
+1. 家計簿 #309 新增未部署 `0052_shared_mutation_approved_execution.sql`，包括 `family_shared_mutation_intents`（真实成员 SSO 原请求 AES-GCM 加密、SHA256、CAS 及 14 日限制、个人/家庭隔离、稳定幂等）、`family_shared_mutation_applied`（一笔 HomeFlow 审批/原 K request 对应一个 immutable journal+真实普通 entry version+auto-trigger actor audit）。`finance.entry.create/update/delete/restore` 的新成员申请仅可作用于 §AK 的新普通 income/expense，共享成员必须是当下本人 SSO，无法只凭前端声明冒充管理员。原源资料在家計簿 D1，加密等待审核期间不进入 `entries`，HomeFlow 仅收 resource/digest/type/expected_version，不收原金额、账本原文、R2 图片或私人文书。
+2. Kakeibo member `/api/family-finance/shared-mutation-requests` 本人 session 创建 `prepared`、列表及原 ID 重试、取消未提交申请；后端 HMAC client `kakeibo-shared-entry` + 专用 submission secret，以不含私有内容的 original proposal SHA 通过 HomeFlow 新 `/api/internal/approvals/shared-entry-submit` 调用现有 `approvalRoute`，生成 `resource_type='shared_entry_mutation'`、operation `finance.entry.create/update/delete/restore`、idempotency `kakeibo:shared-entry:<proposal_id>` 的**现有审批**。HomeFlow owner 必须独立批准，approved 不等于账本已写；已签发原审批 ID 不能通过网络重试生成二次账目。
+3. 原 HomeFlow `/api/approvals/{id}/execute` owner/session/nonce lease 模块新增精确 `shared_entry_mutation` 分类，内部服务 `KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE` + 专用 HMAC `SHARED_ENTRY_EXECUTION_SECRET`（与 bank/card/SBI 分离），向 Kakeibo `/api/internal/shared-entries/execute|receipt` 发送 **同一个** request ID 与 payload digest，不能浏览器提交、不可 Origin/Cookie 冒用。家計簿再次独立向原 HomeFlow `/api/internal/approvals/verify` 以新 client `kakeibo-shared-entry`、`SHARED_ENTRY_APPROVAL_PROOF_SECRET` 和领域 `kakeibo-shared-entry:execution-proof` 核验当前 owner/member/真实审批状态、nonce、原文 SHA、operation、CAS、租约和 expiry。HomeFlow 只能在收到目标 original immutable receipt 并验证 actor/operation/receipt version/ID 后标记 `applied`。
+4. Kakeibo target 重新 AES-GCM 校验原 member 请求、原 `family_shared_entry_registry` 资源/版本/state/current actor，修改及删除、恢复必须在**同一个 Kakeibo D1 .batch** 内执行 `entries` UPDATE/DELETE/INSERT、短寿命 SQL `family_shared_entry_write_context`、registry version+state 更新、trigger `family_shared_entry_audit` 及 `family_shared_mutation_applied` immutable journal；任何中间触发器失败全部 rollback，禁止 half-applied。每个原 `approval_id` 唯一，不可变审计并保留 actor 的 member/requester 与 owner/approver；仅 `income/expense` 可执行，新金融账务及老 legacy shared adopted 数据尚不允许。撤权、老版 CAS、到期、跨 household 或错误授权都返回拒绝。
+5. 真实 K journal commit 后 HomeFlow 接收网络回执丢失，则原 `/receipt` 只按原审批 ID 读取 ledger+audit 的不可变匹配结果，不得再次创建/修改一笔或重发新的审批 ID。这里绝对不声称 H D1 与 K D1 具全局 SQL 事务；目标 journal 和租约/原 ID read-only 回执使分布式网络失败可恢复。
+6. 家計簿新增 `FamilySharedMutationRequests.vue` 的 mobile-first 成员提议 UI、原草稿 ID 恢复、历史状态标记，在账号切换和前后台时清空上个用户私有状态；与 owner 的 `FamilySharedEntries.vue` 使用同一个正式共享账目源。默认关闭 `KAKEIBO_SHARED_MUTATION_APPROVAL_ENABLED`，HomeFlow `SHARED_ENTRY_APPROVAL_SUBMISSION_ENABLED` / `SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED` 等开关亦默认关闭。
+7. 本次实测 CI/commit 与局限详见唯一 handoff §98。§90 仅原先 20 笔**全有或全无审核**；本章不能当作跨两库的原子批量财务执行，仍须对每一个原审批独立 target write+original receipt。R2 附件凭证仍按 §AK 的 tombstone 回收/恢复，并不随金融审计永久删除而误删；外部银行/SBI/积分机构对账与四 PWA 双 iPhone 真实验收仍未完成。所有生产 Flag、Cron、Secret、Service Binding 保持 OFF，五 PR Draft，不新增 Preview、不动生产、不合并。
+
+## AM. v1.0.33：成员固定费与 SBI 定投的计划冻结→管理员授权→月度实际内部账务→双 D1 只读回执（仅 Draft）
+
+日期：2026-11-15。继承原 §93、家計簿 0053～0054、HomeFlow 0059～0060 及 §AL 的权限边界。此流程**不会发起真实银行转账、自动扣款、SBI 证券买单或兑换积分**；每次用户输入银行已扣款、券商已成交的证据只能称为 `user_attested`，金融机构 API 未核验，因此不得显示为 `institution_reconciled`。**已经发生的资金与份额**在家計簿内部经签名授权可真实入账；生产仍 OFF，不能把内部模拟验收称为外部机构上线完成。
+
+1. K #309 新增未部署 `0053_member_recurring_finance_plans.sql`，会员只能为本人稳定 bank account + 可选本人 securities account 建立 **immutable** 逐月授权计划。新固定费落真实原 `recurring_plans` 的 `posting_mode=manual`，旧自动/手动重复 `recurring_<planId>` entry 被 trigger 阻断；新 SBI 定投 **不得**篡改旧全局 `investment_plans(fund_code,account_type)` 主键（不具备多成员归属），其独立 `family_member_recurring_plans` 保存 owner、基金代码/名称、扣款银行、证券账户、金额、每月 1～28 日、开始/结束月和 SHA。银行/证券账户 version 变化、撤权或计划字段改变都必须创建新版本/重新申请，不得修改既有计划。
+2. K 经新专用 HMAC client `kakeibo-recurring-policy` 与 secret `KAKEIBO_RECURRING_POLICY_SUBMISSION_SECRET`，通过 HomeFlow `/api/internal/recurring-finance/policy-submit` 仅提交 plan resource id、hash、冻结版本、额度和月份（不发送银行参考号、券商原始交易号），后者复用原 `recurringFinancePoliciesRoute` 真正建立 `pending_owner` policy，由 HomeFlow owner 独立 `approve/reject`。K PWA `FamilyRecurringFinance.vue` 显示固定/投资计划、原 ID 请求恢复、已批准或待批准，不依赖跨域 cookie；HomeFlow 原 `RecurringFinancePolicyCenter.vue` 为批准/撤权 UI。
+3. 每个月**只有实际已扣款/已成交**才允许准备 immutable occurrence：`family_recurring_execution_intents`（K `0054`）冻结 plan hash、账号 version、银行流水 reference hash、SBI 交易 reference hash/confirmed units/trade/effective date、`entry_intent_sha256` 与 AES-GCM 证据，只允许当期实际扣款日至当前日且不超过应到款日 7 天，禁止未来日期和未成交订单，`UNIQUE(plan_resource_id,period_key)`、`UNIQUE(bank_account_id,bank_reference_hash)`、`UNIQUE(securities_account_id,broker_reference_hash)` 阻重复。
+4. K 原 `occurrence_id` 发起 HomeFlow `/api/internal/recurring-finance/reserve` 独立 HMAC，H `0059` 要求原 policy owner 批准、current user/member/owner、金额上限、原 due day、plan sha 和 bank version；记录不可变 monthly `reserved_only`。随后 K 从 HomeFlow `/execution-proof` 收到同一 occurrence 的短时有效、当前未撤销权限，才允许向唯一 K 正式 `entries` 以 `hfrecurring:<occurrence_id>` 记账。固定费为实际 `expense`，SBI 定投为 bank→securities **transfer**，同一 K D1 batch 同时生成 immutable `family_recurring_execution_applied`、`family_recurring_sbi_lots`（SBI 单位、成本、reference hash，尚未计入 NAV/估值）、`family_recurring_execution_audit`；source bank 余额必须不负、跨既有 SBI/card/bank transfer evidence 不可复用。任何审计触发失败全 batch rollback。
+5. H 不相信 K 单方面宣称 applied；K HMAC `/record` 发起回执登记时，H 必须通过另一独立 Service Binding `KAKEIBO_RECURRING_RECEIPT_SERVICE` 调用 K 签名只读 `/api/internal/recurring-finance/receipt`，真正查 original immutable journal + ledger entry + SBI lot + audit，严格匹配 `occurrence_id/policy_id/digest/account_version/amount/target_journal_sha256/entry_id/actor` 后才写 H `household_recurring_execution_receipts` 和独立不可变事件表（H `0060`）；跨 H/K D1 无全局 ACID，丢回执后仅使用原 occurrence ID 重试独立 READ，不得重复扣款。H 所有银行/券商机构核验标记均永久 `false`，正式对账前不能凭内部凭证解除。
+6. 功能 Flags 默认全部 OFF：K `KAKEIBO_RECURRING_FINANCE_PLANS_ENABLED`、`KAKEIBO_RECURRING_EXECUTION_ENABLED`、`KAKEIBO_RECURRING_POLICY_SUBMISSION_ENABLED`；K/H 各 HMAC key 与 Service Binding 独立；H `RECURRING_FINANCE_AUTH_ENABLED`、`RECURRING_FINANCE_RESERVATIONS_ENABLED`、`RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED`、`RECURRING_FINANCE_EXECUTION_PROOF_ENABLED`。所有实际生产 Cron 保持未创建/未启用；用户已提交实付证据后的**手动**月度执行已实现，不允许自动发起真实扣款或未来 SBI 交易。用户明确批准 F 阶段、机构对账与迁移验收后才可考虑生产上线。
+7. 本章在 H #306 的实际 **two separate SQLite D1** 跨应用模拟 Service Binding 集成测试中依次调用 H 真实政策审批与签名目标、K 真实 `entries`/lot 及 H 原始只读 journal，对拒批/撤权/重复执行/回执丢包、原 ID retry 均具验证。K #309 也以真实 SQLite batch 和 WebKit Smoke 校验 fixed_cost/SBI、审计故障及无重复扣账。具体 Commit/CI 见唯一 handoff §99。两台真实 iPhone 和银行/SBI/积分发行方 API 核验、其他现金/储值卡跨成员合法路径仍独立未完成。
+
+## AN. v1.0.34：B～E 登录隔离与逐项批量金融执行（Draft）
+
+日期：2026-11-15。继承 §AM 与既有冻结跨应用契约；本章不放宽真实机构核验、授权、旧账或生产发布边界。
+
+1. HomeFlow 离线 IndexedDB 任务的 POST/PATCH 必须传 x-homeflow-offline-actor（存储原操作人 ID），服务端首先与已登录 user_id 比对；切换 PWA Cookie 后旧 outbox 不得以新用户执行，403 拒绝；API 仍不得进入 Service Worker Cache。此为 API 和模拟回归，非双 iPhone 实测。
+2. 知学、家計簿发起 HomeFlow OAuth 必须逐字段验证 HTTPS、/authorize 路径、正确 client_id、state 原值、PKCE S256 + 43 字 challenge、nonce、恰好七个 URL 参数、无用户凭据、无 fragment、回调 URL 严格指向本应用原域 /api/homeflow-sso/callback；一切不匹配直接拒绝 Safari 跳转，原 PWA 仍持有一次性短时恢复证明。无任何 access token、code verifier 放入外部导航链接。
+3. 文书助手 iOS PWA 返回前使用隐私幕布隐藏原账号的文书、照片、Gmail、Drive 和金融状态，GET /api/me no-store 复核现有 HttpOnly 会话 user.id；账号不同、过期、离线、网络不明均先清理 account epoch、私有请求 AbortController 和 OAuth/附件/表单缓存，不泄露旧用户资料。
+4. HomeFlow 原有最多 20 笔 all-or-nothing 审核不变。新增最多 10 笔已批准且有安全执行器的 UI 顺序执行（单次用户确认）。每一笔必须使用原申请 ID 调用已存在的 /api/approvals/<uuid>/execute，并验证 applied/status/approval_id/remote_id 原始回执。每笔独立 target D1 commit；任一回执不明或会话切换立即中断，剩余不执行且无自动重试。绝不可向用户宣称跨 D1 批量全原子事务。
+5. 旧账的安全归属按既有 legacy-entry-links：仅 verified owner 对非转账普通 income/expense、旧 stable account 和所有源字段指纹进行逐项确认。它只建立原账账户关联元数据，不授予对历史行的新共享账修改、删除、恢复权限；必须有独立的迁移/审批/版本/附件保证后才可考虑推广。
+6. 官方金融机构核验仍未完成：银行、SBI 成交、积分发行方没有直接数据源/API 的经过授权证据，用户声明和内部 immutable journal 不能作为 institution reconciled；broker_reconciled、bank_verified 继续为 false。现有 member→owner 银行双边转账不等于 owner→member、现金/银行、储值卡、证券现金/基金份额所有合法路径都已落地。不可提现余额不可假装提现。完整双人 iPhone、正式 Cloudflare migration/Secrets/Binding、机构对账和 F 上线门禁均独立待验。
+7. 五个功能 PR 全部保持 Draft；不会合并、修改生产、创建 Preview、启用 Cron 或访问外部券商执行订单。A 生产备份验证通过不代表 B～E 或正式发布验收通过。

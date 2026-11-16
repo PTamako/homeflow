@@ -28,6 +28,12 @@ jobs:
       - run: npm run check
       - name: Validate complete migration manifest without touching D1
         run: python3 scripts/check_migrations.py
+      # Fail before any production Worker deploy if OAuth, Service Bindings,
+      # identity, or financial Secrets are missing in the real Cloudflare account.
+      # This checks only names and target types; secret values require additional
+      # independently signed live verification.
+      - name: Require full live G8 production binding preflight
+        run: node scripts/release-g8-binding-preflight.mjs
       # Preview has been permanently decommissioned; deploy only the production Worker.
       - name: Deploy Production
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
