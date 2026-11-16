@@ -1,0 +1,62 @@
+name: Four-app resume reviewed staged production release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/four-app-resume-staged-release.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  resume-staged:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 6c6416bb3f6229c50ed9dbeff1e255fab65c722f
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: c43ca7e35f7fa116659a2f7cc13374b0810061e2
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: ac4fd4a3fb4088e5f4dec0448c98d65189130ca0
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Verify safe existing account and reviewed sources
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npm ci --no-audit --no-fund
+          python3 scripts/check_migrations.py
+          node scripts/release-g8-source-plan.mjs
+      - name: Build Kakeibo Pages production client and prepare Wrangler CLIs
+        run: |
+          (cd .contract-kakeibo && npm ci --no-audit --no-fund && npm run build)
+          (cd .contract-study && npm ci --no-audit --no-fund)
+          (cd .contract-document && npm ci --no-audit --no-fund)
+      - name: Confirm all four previously uploaded worker versions remain inactive with full G8
+        run: node scripts/four-app-release-check-staged.mjs
+      - name: Require exact verified version IDs and old rollback versions from Run 43787305799
+        run: node scripts/four-app-release-assert-resume.mjs
+      - name: Apply exact Stage F audited production migrations with live Time Travel bookmarks
+        run: node scripts/four-app-release-apply-migrations.mjs
+      - name: Activate reviewed four-worker release and Kakeibo Pages, rollback if failure
+        run: node scripts/four-app-release-activate.mjs
