@@ -7,14 +7,14 @@ import {writeFile,mkdir,copyFile,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {collectMigrationInventory,verifyMigrationInventory,MIGRATION_PLANS}
  from './release-d1-migration-inventory.mjs';
-const ids={
+export const ids={
  homeflow:'3e0205b0-77e2-4259-8ac2-4c56efc43f8a',
- kakeibo:'4d790915-fc06-4073-b660-bbb51dc74463',
+ kakebo:'4d790915-fc06-4073-b660-bbb51dc74463',
  'it-study-platform':'ed4ca935-5d00-4f38-b3c5-c0d53c5aad63',
  'jp-document-assistant':'22a671c0-3f6c-4707-adf1-b24ac95330c6'
 };
-const paths={
- homeflow:'.',kakeibo:'.contract-kakeibo',
+export const paths={
+ homeflow:'.',kakebo:'.contract-kakeibo',
  'it-study-platform':'.contract-study',
  'jp-document-assistant':'.contract-document'
 };
@@ -42,9 +42,10 @@ async function bookmark(name){
  const url='https://api.cloudflare.com/client/v4/accounts/'+
   encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+'/d1/database/'+ids[name]+
   '/time_travel/bookmark';
- // 2026-11-16: one Kakeibo bookmark GET returned HTTP 400 transiently,
- // then the identical GitHub token passed all 4 GETs in independent Actions
- // Run 43788334197. Retry bounded reads; NEVER ignore a missing bookmark.
+ // 2026-11-16: the earlier release used the wrong internal inventory key
+ // 'kakeibo' rather than 'kakebo' and therefore requested an undefined D1 ID.
+ // That mismatch is now guarded by tests. Keep bounded retries for real
+ // transient Cloudflare failures; NEVER ignore a missing bookmark.
  for(let attempt=0;attempt<5;attempt++){
   const r=await fetch(url,{headers:{Authorization:'Bearer '+
    process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(60000)});
@@ -81,14 +82,14 @@ export async function applyProductionMigrations(){
  // Kakeibo uses custom schema_migrations, not Wrangler's d1_migrations.
  // Historic 0020/0021 are physically already installed and were exactly
  // validated in real G9 (not duplicate ALTER). Begin ONLY at audited 0022.
- const kplan=MIGRATION_PLANS.find(x=>x.db==='kakeibo');
+ const kplan=MIGRATION_PLANS.find(x=>x.db==='kakebo');
  if(kplan.files[0]!=='0020_recurring_multi_schedule.sql'||
     kplan.files[1]!=='0021_sbi_transfer_purpose.sql')
   throw Error('KAKEIBO_HISTORIC_GUARD_CHANGED');
  for(const name of kplan.files.slice(2)){
   if(!/^00(?:[2-5][0-9])_[a-z0-9_-]+\.sql$/.test(name))
    throw Error('UNREVIEWED_KAKEIBO_MIGRATION');
-  run(paths.kakeibo,['d1','execute','kakeibo','--remote','--file','migrations/'+name]);
+  run(paths.kakebo,['d1','execute','kakeibo','--remote','--file','migrations/'+name]);
  }
  console.log(JSON.stringify({production_migration_execution_completed:true,
   homeflow:8,study:13,document:7,kakeibo:38,
