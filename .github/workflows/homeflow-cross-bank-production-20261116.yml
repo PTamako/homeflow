@@ -1,0 +1,70 @@
+name: HomeFlow and Kakeibo cross-bank UI code-only production release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/homeflow-cross-bank-production-20261116.yml]
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  cross-bank-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - name: Checkout immutable reviewed HomeFlow main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout reviewed Kakeibo Pages release
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 11ae6f4cfb7d827ec7d188587a98dde288c8a698
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant counterpart for HomeFlow tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study counterpart for HomeFlow tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: b7bb8755220b0b0b706f5f042520a7dae483aaa4
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify both reviewed sources and run full tests, builds and local migrations
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npm ci --no-audit --no-fund
+          npm run check
+          python3 scripts/check_migrations.py
+          (cd .contract-kakeibo && npm ci --no-audit --no-fund && npm run verify:release)
+      - name: Read-only check live four-app binding contract before changes
+        run: node scripts/release-g8-binding-preflight.mjs
+      - name: Capture actual HomeFlow + Kakeibo production rollback versions
+        run: node scripts/deploy-homeflow-cross-bank-release.mjs preflight
+      - name: Build production HomeFlow assets with a distinct PWA cache version
+        run: |
+          node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+          npm run build
+      - name: Stage HomeFlow reviewed version preserving every existing secret and variable
+        run: npx wrangler versions upload --keep-vars
+      - name: Activate HomeFlow, deploy pinned Kakeibo Pages and validate or roll back both
+        run: node scripts/deploy-homeflow-cross-bank-release.mjs activate
