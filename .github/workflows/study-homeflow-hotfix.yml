@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: PTamako/it-study-platform
-          ref: 9d92732f7618d011db1f1b0984dcd1085fa98f9e
+          ref: e4e8efd7be555e247500d9581c08e31b8a0d1be7
           path: .contract-study
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -34,7 +34,7 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test "$(git -C .contract-study rev-parse HEAD)" = "9d92732f7618d011db1f1b0984dcd1085fa98f9e"
+          test "$(git -C .contract-study rev-parse HEAD)" = "e4e8efd7be555e247500d9581c08e31b8a0d1be7"
       - name: Generate complete licensed study assets and pass all regression tests, typecheck and local D1
         run: |
           cd .contract-study
