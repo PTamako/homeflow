@@ -11,25 +11,24 @@ const approvals=`SELECT 'approval' AS kind,request_id AS id,
  NULL AS amount_jpy,NULL AS due_day,NULL AS start_month,NULL AS end_month,
  0 AS priority
  FROM household_approval_requests
- WHERE household_id=?1 AND requester_user_id=?2 AND status='pending'`
+ WHERE household_id=?1 AND requester_user_id=?2 AND status='pending' AND expires_at>?3`
 const policies=`SELECT 'recurring' AS kind,policy_id AS id,
  member_user_id AS actor_user_id,NULL AS recipient_user_id,
  status,created_at,expires_at,version,NULL AS operation,plan_type,
  max_amount_jpy AS amount_jpy,due_day,start_month,end_month,
- CASE WHEN status='pending_owner' THEN 0 ELSE 1 END AS priority
+ 0 AS priority
  FROM household_recurring_finance_policies
  WHERE household_id=?1 AND member_user_id=?2
- AND status IN ('pending_owner','approved')`
+ AND status='pending_owner' AND expires_at>?3`
 const consents=`SELECT 'consent' AS kind,consent_id AS id,
  source_user_id AS actor_user_id,recipient_user_id,status,
  created_at,expires_at,version,NULL AS operation,NULL AS plan_type,
  NULL AS amount_jpy,NULL AS due_day,NULL AS start_month,NULL AS end_month,
- CASE WHEN status='awaiting_recipient' THEN 0
- WHEN status='recipient_accepted' THEN 1 ELSE 2 END AS priority
+ CASE WHEN status='awaiting_recipient' THEN 0 ELSE 1 END AS priority
  FROM household_cross_member_transfer_consents
  WHERE household_id=?1 AND
- ((source_user_id=?2 AND status IN ('awaiting_recipient','recipient_accepted','owner_authorized'))
- OR (recipient_user_id=?2 AND status IN ('awaiting_recipient','owner_authorized')))`
+ ((source_user_id=?2 AND status IN ('awaiting_recipient','recipient_accepted'))
+ OR (recipient_user_id=?2 AND status='awaiting_recipient')) AND expires_at>?3`
 
 export async function memberConfirmationListRoute(request,env,path,session){
  if(path!=='/api/my-confirmations'||request.method!=='GET')
@@ -48,9 +47,9 @@ export async function memberConfirmationListRoute(request,env,path,session){
  if(env.CROSS_MEMBER_TRANSFER_CONSENTS_ENABLED==='true')sources.push(consents)
  try{
   const query='SELECT * FROM ('+sources.join(' UNION ALL ')+
-   ') ORDER BY priority ASC,created_at DESC,id DESC LIMIT ?3 OFFSET ?4'
+   ') ORDER BY priority ASC,created_at DESC,id DESC LIMIT ?4 OFFSET ?5'
   const values=(await env.DB.prepare(query).bind(
-   session.household_id,session.user_id,PAGE_SIZE+1,page*PAGE_SIZE).all()).results||[]
+   session.household_id,session.user_id,Date.now(),PAGE_SIZE+1,page*PAGE_SIZE).all()).results||[]
   return json({ok:true,items:values.slice(0,PAGE_SIZE).map(({priority,...item})=>item),
    page,page_size:PAGE_SIZE,has_more:values.length>PAGE_SIZE})
  }catch{return reject('personal_confirmations_unavailable',503)}
