@@ -74,7 +74,8 @@ test('G8 collector only GETs production metadata and strips all returned values'
 });
 test('G8 collector rejects partial Cloudflare responses and never uses POST/PUT',async()=>{
  await assert.rejects(()=>collectG8Bindings({accountId:'test-account',token:'fake',
-  fetcher:async()=>({ok:false,status:403})}),/Cloudflare read failed/);
+  fetcher:async()=>({ok:false,status:403})}),
+  /Cloudflare read denied for Worker homeflow settings: HTTP 403/);
 });
 
 test('G8 detects missing cross-member banking, recurring, card, points and document service prerequisites',()=>{
