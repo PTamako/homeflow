@@ -1,0 +1,28 @@
+name: Verify Kakeibo live household finance gate
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/kakeibo-live-gate-verify.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  status-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Check actual production Pages Functions finance status (no user login)
+        run: |
+          node --input-type=module <<'NODE'
+          const url='https://kakeibo-f17.pages.dev/api/family-finance/status';
+          const res=await fetch(url,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(30000)});
+          const ct=res.headers.get('content-type')||'';
+          if(!ct.includes('application/json'))throw Error('NOT_PAGES_FINANCE_JSON_HTTP_'+res.status);
+          const j=await res.json();
+          console.log(JSON.stringify({url,live_status:res.status,finance_enabled:j.enabled===true,
+            scoped_no_legacy_access:j.ledger_access===false,private_data_not_requested:true}));
+          if(res.status!==200||j.enabled!==true||j.ledger_access!==false)
+            throw Error('LIVE_PAGES_RUNTIME_FINANCE_GATE_NOT_OPEN');
+          NODE
