@@ -22,6 +22,8 @@ crons = ["0 * * * *"] # One free-tier trigger: hourly; daily at 06:00 JST, quiet
 [vars]
 APP_ENV = "production"
 KAKEBO_LEDGER_API_URL = "https://kakeibo-f17.pages.dev/api/homeflow-ledger"
+# Exact production-only OAuth callback allowlist; no wildcard or Preview origins.
+OAUTH_CLIENT_REDIRECTS = '{"kakeibo":["https://kakeibo-f17.pages.dev/api/homeflow-sso/callback"],"it-study-platform":["https://it-study-platform.yupan6706.workers.dev/api/homeflow-sso/callback"],"jp-document-assistant":["https://jp-document-assistant.yupan6706.workers.dev/api/homeflow-sso/callback"]}'
 
 # Internal-only read-only ledger Worker; production only, not bound in Preview.
 # kakeibo D1 remains bound to the isolated target Worker, not HomeFlow.
@@ -34,5 +36,53 @@ binding = "DB"
 database_name = "homeflow"
 database_id = "3e0205b0-77e2-4259-8ac2-4c56efc43f8a"
 migrations_dir = "migrations"
+
+# Signed financial executors all target the EXISTING internal-only Kakeibo
+# Worker (workers_dev=false; no public route). It delegates to existing
+# approved Pages handlers, using the SAME Kakeibo D1 and HomeFlow proof.
+[[services]]
+binding = "KAKEIBO_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_CARD_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_CARD_SETTLEMENT_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_POINTS_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_PREPAID_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_SBI_CASH_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+[[services]]
+binding = "KAKEIBO_RECURRING_RECEIPT_SERVICE"
+service = "kakeibo-homeflow-bridge"
+
+# Both actions and study sync execute in the EXISTING private document Worker.
+[[services]]
+binding = "DOCUMENT_EXECUTION_SERVICE"
+service = "jp-document-assistant"
+
+[[services]]
+binding = "DOCUMENT_STUDY_EXECUTION_SERVICE"
+service = "jp-document-assistant"
 
 # Preview Worker and D1 retired on 2026-11-12. Production is the only remote environment.

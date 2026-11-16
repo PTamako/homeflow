@@ -49,11 +49,12 @@ export async function sendOrQueueTask(userId:string,kind:'create'|'edit',
   payload:Record<string,unknown>,taskId:string|null=null):Promise<'synced'|'queued'>{
   const id=crypto.randomUUID()
   const envelope={...payload,...(kind==='create'?{clientRequestId:id}:{})}
+  if(!userId||typeof userId!=='string')throw new Error('offline_actor_missing')
   if(navigator.onLine){
     try{
       const response=await fetch('/api/tasks'+(kind==='edit'?'/'+encodeURIComponent(taskId||''):''),{
         method:kind==='create'?'POST':'PATCH',credentials:'same-origin',
-        headers:{'content-type':'application/json'},body:JSON.stringify(envelope)})
+        headers:{'content-type':'application/json','x-homeflow-offline-actor':userId},body:JSON.stringify(envelope)})
       if(response.ok)return 'synced'
       if(response.status<500){
         const error=await response.json().catch(()=>({error:'validation_failed'}))
@@ -74,11 +75,14 @@ export async function syncPending(userId:string){
   for(const op of items){
     if(op.status==='conflict'){conflicts++;continue}
     if(!navigator.onLine){remaining++;break}
+    if(op.userId!==userId||!op.id||!['create','edit'].includes(op.kind)){
+      remaining++;break
+    }
     let response:Response
     try{
       response=await fetch('/api/tasks'+(op.kind==='edit'?'/'+encodeURIComponent(op.targetId||''):''),{
         method:op.kind==='create'?'POST':'PATCH',credentials:'same-origin',
-        headers:{'content-type':'application/json'},body:JSON.stringify(op.payload)})
+        headers:{'content-type':'application/json','x-homeflow-offline-actor':op.userId},body:JSON.stringify(op.payload)})
     }catch{remaining++;break}
     if(response.ok){await removePending(op.id);synced++;continue}
     if(response.status===409){

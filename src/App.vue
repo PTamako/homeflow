@@ -1046,7 +1046,7 @@ onBeforeUnmount(()=>{
         @open-plans="openPlans" @back-to-today="returnToToday" @clear-plan-focus="clearPlanFocus"
         @plan-focus-settled="onPlanFocusSettled" />
       <ManagePage :key="user.id+':'+manageRevisionCounter" v-show="tab==='manage'" :active="tab==='manage'"
-        :user-id="user.id" :login-name="user.loginName" :members="members" :is-owner="user.role==='owner'"
+        :user-id="user.id" :login-name="user.loginName" :members="members" :profiles="profiles" :is-owner="user.role==='owner'"
         :today-date="currentJstDay" :today-entry-keys="todayEntryKeys"
         @logout="logout" />
     </main>

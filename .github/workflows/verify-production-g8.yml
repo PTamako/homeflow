@@ -1,0 +1,35 @@
+name: Stage F production G8 read-only binding acceptance
+on:
+  push:
+    branches: [feature/family-approval-state-machine-20261113]
+    paths:
+      - '.github/workflows/verify-production-g8.yml'
+      - 'scripts/release-g8-binding-preflight.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: four-app-g8-actual-production-readonly
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Confirm no credentials are printed
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Compare actual production bindings and service targets (GET only)
+        run: node scripts/release-g8-binding-preflight.mjs
+      # Failure is intentionally NO-GO, not a reason to skip G8.
+      # This workflow never writes Cloudflare configuration or deploys.
