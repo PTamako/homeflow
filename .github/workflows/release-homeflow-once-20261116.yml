@@ -1,0 +1,64 @@
+name: One-time HomeFlow approved household ledger release
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-homeflow-once-20261116.yml'
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: approved one-time HomeFlow 2026-11-16' }}
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      # Reviewed contract counterpart. Update the pinned commit with the
+      # cross-app contract whenever the target execution protocol changes.
+      - name: Checkout Kakeibo contract counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant execution counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study execution counterpart (immutable reviewed SHA)
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: b7bb8755220b0b0b706f5f042520a7dae483aaa4
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - name: Stamp PWA cache with the deployed commit SHA
+        run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+      - name: Run cross-app tests and typechecked build
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: npm run check
+      - name: Validate complete migration manifest without touching D1
+        run: python3 scripts/check_migrations.py
+      # Fail before any production Worker deploy if OAuth, Service Bindings,
+      # identity, or financial Secrets are missing in the real Cloudflare account.
+      # This checks only names and target types; secret values require additional
+      # independently signed live verification.
+      - name: Require full live G8 production binding preflight
+        run: node scripts/release-g8-binding-preflight.mjs
+      # Preview has been permanently decommissioned; deploy only the production Worker.
+      - name: Require Cloudflare deployment credentials
+        run: test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Deploy Production
+        run: npx wrangler deploy
+      - name: Verify Production API / health and database identity
+        run: |
+          curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
