@@ -18,7 +18,7 @@ test('management is split into personal and owner-only family tabs',()=>{
 
 test('member personal confirmation remains usable without family administration',()=>{
  const personal=view.slice(view.indexOf('id="management-personal-panel"'),view.indexOf('id="management-family-panel"'))
- assert.match(personal,/v-if="!isOwner"/)
+ assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  for(const component of ['ApprovalCenter','CrossMemberTransferConsents','RecurringFinancePolicyCenter'])
   assert.doesNotMatch(personal,new RegExp('<'+component))
