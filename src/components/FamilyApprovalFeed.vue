@@ -54,7 +54,7 @@ const states:Record<string,string>={
  owner_authorized:'已授权 · 未记账',recipient_rejected:'收款人已拒绝'
 }
 const actionLabels:Record<string,string>={
- approve:'批准',reject:'拒绝',accept:'确认接收',authorize:'授权',
+ approve:'批准',reject:'拒绝',execute:'执行入账',accept:'确认接收',authorize:'授权',
  revoke:'撤销授权'
 }
 function person(id:string|null){
@@ -79,11 +79,18 @@ function description(row:Item){
   timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit'
  }).format(new Date(row.created_at))
 }
+function isSharedLedger(row:Item){
+ return row.kind==='approval'&&row.source_app==='kakebo'&&
+  row.resource_type==='shared_entry_mutation'&&
+  ['finance.entry.create','finance.entry.update','finance.entry.delete',
+   'finance.entry.restore'].includes(row.operation||'')
+}
 function actions(row:Item){
  if(row.expires_at<=Date.now()&&
   ['pending','pending_owner','awaiting_recipient','recipient_accepted'].includes(row.status))return []
  if(row.kind==='approval')return row.status==='pending'&&row.actor_user_id!==props.userId?
-  ['reject','approve']:[]
+  ['reject','approve']:isSharedLedger(row)&&['approved','failed_retryable'].includes(row.status)?
+  ['execute']:[]
  if(row.kind==='recurring')return row.status==='pending_owner'?
   ['reject','approve']:row.status==='approved'?['revoke']:[]
  if(row.status==='awaiting_recipient'&&row.recipient_user_id===props.userId)
@@ -130,7 +137,11 @@ async function act(row:Item,decision:string){
   !actions(row).includes(decision))return
  const actor=props.userId,step=revision
  const phrase=actionLabels[decision]||decision
- const caution=row.kind==='recurring'&&decision==='approve'
+ const caution=isSharedLedger(row)&&decision==='approve'
+  ?'批准后系统会使用原审批编号安全入账；失败时仍保留待入账状态供重试。拒绝不会改动账本。'
+  :isSharedLedger(row)&&decision==='execute'
+  ?'仅对原已批准的账务执行或幂等重试，不会建立新记录。'
+  :row.kind==='recurring'&&decision==='approve'
   ?'仅批准这项计划一次，约定条件和有效期不变时无需逐月重新批准。每期仍须以真实交易凭证独立入账。'
   :row.kind==='consent'
    ?'该操作只记录独立同意或授权，不会自动向银行转账，也不会直接写入家計簿。'
@@ -142,8 +153,9 @@ async function act(row:Item,decision:string){
    item.version===row.version&&item.status===row.status))return
  let path='',body:Record<string,string|number>={}
  if(row.kind==='approval'){
-  path='/api/approvals/'+encodeURIComponent(row.id)+'/review'
-  body={decision}
+  path='/api/approvals/'+encodeURIComponent(row.id)+
+   (decision==='execute'?'/execute':'/review')
+  body=decision==='execute'?{}:{decision}
  }else if(row.kind==='recurring'){
   path='/api/recurring-finance/policies/'+encodeURIComponent(row.id)+
    (decision==='revoke'?'/revoke':'/review')
@@ -163,13 +175,32 @@ async function act(row:Item,decision:string){
   const result=await response.json().catch(()=>({}))
   if(actor!==props.userId||!props.active||!props.isOwner)return
   if(!response.ok||
-   (row.kind==='approval'?!result.request||result.request.request_id!==row.id:
+   (row.kind==='approval'?(decision==='execute'?
+     result.applied!==true||result.approval_id!==row.id:
+     !result.request||result.request.request_id!==row.id):
     row.kind==='recurring'?result.ok!==true||result.policy?.policy_id!==row.id||
      result.policy?.ledger_applied!==false:
      result.ok!==true||result.consent?.consent_id!==row.id||
      result.consent?.ledger_applied!==false||result.consent?.execution_permitted!==false))
    throw Error(String(result.error||result.code||'操作结果未确认，请核对原申请'))
-  message.value=phrase+'已登记'+(decision==='approve'?'，未自动入账':'')
+  if(isSharedLedger(row)&&decision==='approve'){
+   if(result.request?.status!=='approved')throw Error('批准结果尚未确认')
+   // Owner's one approval tap triggers the existing idempotent execution API.
+   // An unsuccessful execution leaves the request approved, never fabricates an entry.
+   try{
+    const applied=await fetch('/api/approvals/'+encodeURIComponent(row.id)+'/execute',{
+     method:'POST',cache:'no-store',credentials:'same-origin',
+     headers:{'content-type':'application/json'},body:'{}'})
+    const receipt=await applied.json().catch(()=>({}))
+    if(!applied.ok||receipt.applied!==true||receipt.approval_id!==row.id)
+     throw Error(String(receipt.code||receipt.error||'家計簿入账回执未确认'))
+    message.value='已批准并成功入账；明细不再显示灰色'
+   }catch(e){
+    message.value='已批准，尚未入账；请在原申请上重试执行'
+    error.value=(e as Error).message
+   }
+  }else message.value=decision==='execute'?'已执行入账':phrase+'已登记'+
+   (decision==='approve'?'，未自动入账':'')
  }catch(e){if(actor===props.userId)error.value=(e as Error).message}
  finally{if(actor===props.userId){busy.value='';await load(page.value,true)}}
 }
