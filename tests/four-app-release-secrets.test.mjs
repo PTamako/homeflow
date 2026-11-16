@@ -56,3 +56,7 @@ test('G8 accepts ONE sealed finance binding and rejects wrong type or missing bu
  workerRows.homeflow.bindings.pop();
  assert.ok(checkG8Bindings(snapshot).missing.includes('worker:homeflow:missing:BANK_TRANSFER_EXECUTION_SECRET'));
 });
+
+test('production household ID binding is mandatory for real Kakeibo finance activation',()=>{
+ assert.ok(REQUIRED_PAGES.kakeibo.env.includes('KAKEIBO_FAMILY_HOUSEHOLD_ID'));
+});
