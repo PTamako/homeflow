@@ -1,0 +1,44 @@
+name: Four-app finalize audited production release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/four-app-finalize-production.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: a7b4e5937ba1719e50b40cc19a8cc02f0ce59a5a
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Validate exact release account and latest production Pages source
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          grep -F 'KAKEIBO_LEGACY_R2_WRITES_FROZEN = "false"' .contract-kakeibo/wrangler.toml
+          (cd .contract-kakeibo && npm ci --no-audit --no-fund && npm run build)
+      - name: Recheck signed four Worker versions and production Pages G8
+        run: node scripts/four-app-release-check-staged.mjs
+      - name: Pin verified successful PRE-release Pages rollback and retain OAuth secrets
+        run: node scripts/four-app-release-prepare-final-switch.mjs
+      - name: Independently verify all 68 actual remote production migrations
+        run: node scripts/four-app-release-verify-prod-migrations.mjs
+      - name: Activate four reviewed Workers and newly compiled Kakeibo Pages with rollback
+        run: node scripts/four-app-release-activate.mjs
