@@ -187,22 +187,24 @@ export function checkG8Bindings(snapshot){
 }
 export async function collectG8Bindings({accountId,token,fetcher=fetch}){
  if(!accountId||!token)throw Error('Cloudflare credentials required in local environment');
- const get=async path=>{
+ const get=async (path,resource)=>{
+  // Do not print account IDs, tokens, signed URLs, response bodies or private data.
+  // Resource is a fixed known Worker/Pages name, never a user-provided URL.
   const response=await fetcher('https://api.cloudflare.com/client/v4'+path,{
    method:'GET',headers:{Authorization:'Bearer '+token}});
-  if(!response.ok)throw Error('Cloudflare read failed: '+response.status);
+  if(!response.ok)throw Error('Cloudflare read denied for '+resource+': HTTP '+response.status);
   const data=await response.json();
-  if(!data?.success)throw Error('Cloudflare returned unsuccessful response');
+  if(!data?.success)throw Error('Cloudflare returned unsuccessful response for '+resource);
   return data.result;
  };
  const root='/accounts/'+encodeURIComponent(accountId),snap={workers:{},pages:{}};
  for(const name of Object.keys(REQUIRED_WORKERS)){
-  const item=await get(root+'/workers/scripts/'+encodeURIComponent(name)+'/settings');
+  const item=await get(root+'/workers/scripts/'+encodeURIComponent(name)+'/settings','Worker '+name+' settings');
   snap.workers[name]={bindings:normalized(item?.bindings).map(x=>({
    name:x.name,type:x.type,...(x.type==='service'?{service:x.service}:{})}))};
  }
  for(const name of Object.keys(REQUIRED_PAGES)){
-  const project=await get(root+'/pages/projects/'+encodeURIComponent(name));
+  const project=await get(root+'/pages/projects/'+encodeURIComponent(name),'Pages '+name+' production');
   const prod=project?.deployment_configs?.production;
   if(!prod)throw Error('Production Pages config unavailable: '+name);
   snap.pages[name]={production:{
