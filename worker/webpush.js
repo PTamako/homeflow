@@ -228,7 +228,7 @@ async function sendFamilyPush(env,session,body){
   })
 }
 
-async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,now=Date.now(),meta=null){
+export async function deliverToHouseholdUser(env,householdId,userId,payload,keyPrefix,now=Date.now(),meta=null){
   const db=env.DB
   const {results:subscriptions=[]}=await db.prepare(`SELECT endpoint_hash,endpoint,p256dh,auth_secret
     FROM push_subscriptions WHERE household_id=?1 AND user_id=?2 LIMIT 10`)
