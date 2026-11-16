@@ -6,7 +6,7 @@ on:
       - '.github/workflows/release-homeflow-once-20261116.yml'
 jobs:
   deploy:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: approved one-time HomeFlow 2026-11-16' }}
+    if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: approved one-time HomeFlow 2026-11-16' }}"
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
