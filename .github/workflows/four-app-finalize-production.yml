@@ -40,5 +40,7 @@ jobs:
         run: node scripts/four-app-release-prepare-final-switch.mjs
       - name: Independently verify all 68 actual remote production migrations
         run: node scripts/four-app-release-verify-prod-migrations.mjs
+      - name: Capture four current POST-migration Time Travel bookmarks before traffic switch
+        run: node scripts/four-app-release-save-current-bookmarks.mjs
       - name: Activate four reviewed Workers and newly compiled Kakeibo Pages with rollback
         run: node scripts/four-app-release-activate.mjs
