@@ -3,6 +3,7 @@ import {authRoute} from './auth.js'
 import {identityRoute} from './identity.js'
 import {approvalRoute} from './approvals.js'
 import {householdApprovalListRoute} from './household-approval-list.js'
+import {memberConfirmationListRoute} from './member-confirmation-list.js'
 import {crossMemberTransferConsentsRoute} from './cross-member-transfer-consents.js'
 import {crossMemberConsentProofRoute} from './cross-member-consent-proof.js'
 import {crossMemberConsentSubmissionRoute} from './cross-member-consent-submission.js'
@@ -123,6 +124,8 @@ async function routeRequest(request,env,ctx,state){
           return approvalRoute(request,env,path,session)
         if(path==='/api/household-approvals')
           return householdApprovalListRoute(request,env,path,session)
+        if(path==='/api/my-confirmations')
+          return memberConfirmationListRoute(request,env,path,session)
         if(path==='/api/finance-cross-member/consents'||path.startsWith('/api/finance-cross-member/consents/'))
           return crossMemberTransferConsentsRoute(request,env,path,session)
         if(path==='/api/recurring-finance/policies'||path.startsWith('/api/recurring-finance/policies/'))
