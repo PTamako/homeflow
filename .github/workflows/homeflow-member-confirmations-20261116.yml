@@ -1,5 +1,5 @@
 name: HomeFlow member personal confirmations production UI one-shot
-# Reviewed source-diff baseline fixed; no database migrations or preview resources.
+# Version metadata propagation retry; read-only binding check remains mandatory. No migrations or Preview.
 on:
   push:
     branches: [main]
