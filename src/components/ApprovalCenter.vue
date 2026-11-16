@@ -23,7 +23,7 @@ const props=defineProps<{
 const allowedFilters=['','pending','approved','applied','rejected',
  'failed_retryable','conflict','cancelled'] as const
 type Filter=typeof allowedFilters[number]
-const enabled=ref(false),executionEnabled=ref(false),documentExecutionEnabled=ref(false)
+const enabled=ref(false),executionEnabled=ref(false),documentExecutionEnabled=ref(false),sharedEntryExecutionEnabled=ref(false)
 const batchReviewEnabled=ref(false),selectedIds=ref<string[]>([])
 const selectedExecutionIds=ref<string[]>([])
 type BatchRequest={batch_id:string;decision:'approve'|'reject';expected_user_id:string;items:Array<{request_id:string;expected_version:number}>}
@@ -81,7 +81,7 @@ async function discover(){
  inFlightQuery=''
  loading.value=false
  cancelConfirm()
- enabled.value=false;executionEnabled.value=false;batchReviewEnabled.value=false;expanded.value=false
+ enabled.value=false;executionEnabled.value=false;sharedEntryExecutionEnabled.value=false;batchReviewEnabled.value=false;expanded.value=false
  selectedIds.value=[];selectedExecutionIds.value=[];unconfirmedBatch.value=null;documentExecutionEnabled.value=false
  items.value=[];page.value=0;hasMore.value=false
  error.value='';message.value='';busyId.value=''
@@ -91,6 +91,7 @@ async function discover(){
   if(ticket!==epoch||!props.active)return
   enabled.value=result.enabled===true
   executionEnabled.value=result.execution_enabled===true
+   sharedEntryExecutionEnabled.value=result.shared_entry_execution_enabled===true
    batchReviewEnabled.value=result.batch_review_enabled===true
    documentExecutionEnabled.value=result.document_execution_enabled===true
   filter.value=props.isOwner?'pending':''
@@ -166,7 +167,11 @@ function isSupportedExecution(item:Approval){
   const documentFinance=item.source_app==='jp-document-assistant'&&
    item.target_app==='kakebo'&&item.operation==='document.sync.finance'&&
    item.resource_type==='document_sync_candidate'&&documentExecutionEnabled.value
-  return cash||documentFinance
+  const sharedEntry=item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+   item.resource_type==='shared_entry_mutation'&&
+   ['finance.entry.create','finance.entry.update','finance.entry.delete',
+    'finance.entry.restore'].includes(item.operation)&&sharedEntryExecutionEnabled.value
+  return cash||sharedEntry||documentFinance
  }
 function canExecute(item:Approval){
  return props.isOwner&&executionEnabled.value&&isSupportedExecution(item)&&
@@ -319,10 +324,30 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
    headers:{'content-type':'application/json'},
    body:JSON.stringify(payload)})
   if(account!==props.userId||!props.active)return
-  message.value=kind==='approve'?'已批准，尚未入账':
-   kind==='reject'?'已拒绝，不会入账':
-   kind==='cancel'?'已撤回，无法再批准':
-   result.applied===true?'已执行并入账':'执行结果待核对'
+  if(kind==='approve'&&item.resource_type==='shared_entry_mutation'&&
+    item.source_app==='kakebo'&&item.target_app==='kakebo'){
+    // Review first, execute only the SAME immutable approval. Rejections
+    // never call the ledger. A failed execute stays approved for safe retry.
+    if(result.request?.request_id!==id||result.request?.status!=='approved')
+     throw Error('承認状態を確認できません')
+    if(!executionEnabled.value||!sharedEntryExecutionEnabled.value){
+     message.value='已批准，执行服务暂不可用；明细仍是灰色待入账'
+    }else{
+     try{
+      const receipt=await getJson('/api/approvals/'+id+'/execute',{
+       method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+      if(receipt.applied!==true||receipt.approval_id!==id)
+       throw Error('入账回执尚未确认')
+      message.value='已批准并成功入账，家計簿明细恢复正常'
+     }catch(executionError){
+      message.value='已批准，但尚未入账；可在原申请上安全重试'
+      error.value=(executionError as Error).message
+     }
+    }
+   }else message.value=kind==='approve'?'已批准，尚未入账':
+    kind==='reject'?'已拒绝，不会入账':
+    kind==='cancel'?'已撤回，无法再批准':
+    result.applied===true?'已执行并入账':'执行结果待核对'
  }catch(e){
   if(account===props.userId){
    const reason=(e as Error).message

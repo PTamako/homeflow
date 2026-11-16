@@ -208,6 +208,11 @@ export async function approvalRoute(request,env,path,session){
    execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true',
    batch_review_enabled:env.APPROVALS_ENABLED==='true'&&env.APPROVAL_BATCH_REVIEW_ENABLED==='true',
+   shared_entry_execution_enabled:env.APPROVALS_ENABLED==='true'&&
+    env.APPROVAL_EXECUTION_ENABLED==='true'&&
+    env.SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED==='true'&&
+    /^[a-f0-9]{64}$/i.test(env.SHARED_ENTRY_EXECUTION_SECRET||'')&&
+    typeof env.KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE?.fetch==='function',
    document_execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true'&&
     env.APPROVAL_VERIFICATION_ENABLED==='true'&&

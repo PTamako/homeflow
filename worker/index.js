@@ -17,6 +17,7 @@ import {cardSettlementApprovalSubmissionRoute} from './card-settlement-approval-
 import {sbiCashApprovalSubmissionRoute} from './sbi-cash-approval-submission.js'
 import {bankTransferApprovalSubmissionRoute} from './bank-transfer-approval-submission.js'
 import {sharedEntryApprovalSubmissionRoute} from './shared-entry-approval-submission.js'
+import {sharedEntryApprovalStatusRoute} from './shared-entry-approval-status.js'
 import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
 import {pointsApprovalSubmissionRoute} from './points-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
@@ -91,6 +92,8 @@ async function routeRequest(request,env,ctx,state){
          return bankTransferApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/shared-entry-submit')
          return sharedEntryApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/shared-entry-status')
+         return sharedEntryApprovalStatusRoute(request,env)
        if(path==='/api/internal/approvals/card-settlement-submit')
         return cardSettlementApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/card-submit')
