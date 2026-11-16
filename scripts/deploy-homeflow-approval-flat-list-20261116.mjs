@@ -14,7 +14,7 @@ if(!process.env.GITHUB_ACTIONS||process.env.GITHUB_REF!=='refs/heads/main'||
    process.env.GITHUB_REPOSITORY!=='PTamako/homeflow'||!account||!token)fail('INVALID_RELEASE_CONTEXT')
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()
 git('merge-base','--is-ancestor','8b09408e6fb5bd31a41406c28a407007a78faa6b','HEAD')
-const files=git('diff','--name-only','f36cf5f19c26a5478ab67666d1f2802aec02a090','HEAD').split('\n').filter(Boolean)
+const files=git('diff','--name-only','8b09408e6fb5bd31a41406c28a407007a78faa6b','HEAD').split('\n').filter(Boolean)
 if(files.some(path=>!['scripts/deploy-homeflow-approval-flat-list-20261116.mjs','.github/workflows/homeflow-approval-flat-list-20261116.yml'].includes(path)))
  fail('UNEXPECTED_SOURCE_DELTA')
 async function api(method,path,body){
