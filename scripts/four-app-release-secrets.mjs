@@ -91,7 +91,12 @@ async function main(){
  const root=join(process.env.RUNNER_TEMP,'four-app-release-keys');
  await mkdir(root,{recursive:true,mode:0o700});
  const keys=buildReleaseSecrets();
- for(const group of ['H','B','D','S']){
+ // Workers Free permits 64 individual bindings. HomeFlow's 33 signed
+ // finance keys travel as ONE encrypted binding, hydrated server-side.
+ await writeFile(join(root,'H.json'),JSON.stringify({
+  FOUR_APP_FINANCE_SECRET_BUNDLE:JSON.stringify(keys.H)
+ }),{mode:0o600,flag:'wx'});
+ for(const group of ['B','D','S']){
   await writeFile(join(root,group+'.json'),JSON.stringify(keys[group]),{mode:0o600,flag:'wx'});
  }
  await writeFile(join(root,'P.json'),JSON.stringify(keys.P),{mode:0o600,flag:'wx'});
