@@ -23,13 +23,39 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+      # Reviewed contract counterpart. Update the pinned commit with the
+      # cross-app contract whenever the target execution protocol changes.
+      - name: Checkout Kakeibo contract counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant execution counterpart
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study execution counterpart (immutable reviewed SHA)
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: b7bb8755220b0b0b706f5f042520a7dae483aaa4
+          path: .contract-study
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
       - run: npm ci --no-audit --no-fund
       - name: Stamp PWA cache with the deployed commit SHA
         run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
-      - run: npm run check
+      - name: Run cross-app tests and typechecked build
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: npm run check
       - name: Validate complete migration manifest without touching D1
         run: python3 scripts/check_migrations.py
       # Fail before any production Worker deploy if OAuth, Service Bindings,
