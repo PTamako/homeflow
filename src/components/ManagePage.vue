@@ -3,10 +3,8 @@ import {ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
-import ApprovalCenter from './ApprovalCenter.vue'
+import MemberConfirmationInbox from './MemberConfirmationInbox.vue'
 import FamilyApprovalFeed from './FamilyApprovalFeed.vue'
-import CrossMemberTransferConsents from './CrossMemberTransferConsents.vue'
-import RecurringFinancePolicyCenter from './RecurringFinancePolicyCenter.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
 import StatusBadge from './StatusBadge.vue'
@@ -74,18 +72,8 @@ async function generateInvite(){
        <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
        <SecurityPanel v-if="active" :login-name="loginName"/>
      </section>
-     <template v-if="!isOwner">
-       <section class="panel">
-         <div class="management-section-heading"><AppIcon name="handshake" :size="20"/><h2>我的待确认</h2></div>
-         <p class="hint">仅处理需要你本人确认、拒绝或撤回的申请；家庭管理员的审批权限不在此开放。</p>
-       </section>
-       <ApprovalCenter v-if="active" :active="active" :user-id="userId"
-         :is-owner="isOwner" :members="members" :profiles="profiles"/>
-       <CrossMemberTransferConsents v-if="active" :active="active" :user-id="userId"
-         :is-owner="isOwner" :members="members" :profiles="profiles"/>
-       <RecurringFinancePolicyCenter v-if="active" :active="active" :user-id="userId"
-         :is-owner="isOwner" :members="members" :profiles="profiles"/>
-     </template>
+     <MemberConfirmationInbox v-if="active&&!isOwner" :active="active"
+       :user-id="userId" :is-owner="isOwner" :members="members" :profiles="profiles"/>
      <section class="panel">
        <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
        <PushPanel v-if="active" :user-id="userId" :members="members" @status="pushStatus=$event"/>
