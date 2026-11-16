@@ -1,0 +1,49 @@
+name: Deploy Study HomeFlow complete personal workspace
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/study-homeflow-hotfix.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  study-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: 9d92732f7618d011db1f1b0984dcd1085fa98f9e
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Verify production release credentials and exact study commit
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test "$(git -C .contract-study rev-parse HEAD)" = "9d92732f7618d011db1f1b0984dcd1085fa98f9e"
+      - name: Generate complete licensed study assets and pass all regression tests, typecheck and local D1
+        run: |
+          cd .contract-study
+          bash scripts/check-local.sh
+      - name: Read-only verify existing identity binding and encrypted secrets
+        run: node scripts/release-study-homeflow-hotfix.mjs preflight
+      - name: Upload reviewed Study Worker and assets as a non-deployed version, preserving existing secrets
+        run: |
+          cd .contract-study
+          GITHUB_SHA="$(git rev-parse HEAD)" npx wrangler versions upload
+      - name: Verify staged secrets and service targets, then activate 100% with secure health checks and rollback
+        run: node scripts/release-study-homeflow-hotfix.mjs activate
