@@ -3,7 +3,7 @@
 // restore; current live snapshots passed real 68/68 isolated migration drill.
 // We re-check real migration markers + Time Travel before first remote DDL.
 import {spawnSync} from 'node:child_process';
-import {writeFile} from 'node:fs/promises';
+import {writeFile,mkdir,copyFile,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {collectMigrationInventory,verifyMigrationInventory,MIGRATION_PLANS}
  from './release-d1-migration-inventory.mjs';
@@ -23,6 +23,21 @@ const run=(cwd,args)=>{
   cwd:resolve(cwd),stdio:'inherit',timeout:240000,env:process.env});
  if(x.status!==0)throw Error('WRANGLER_MIGRATION_FAILED:'+cwd+':'+args[1]);
 };
+async function scopedApply(name,database){
+ const plan=MIGRATION_PLANS.find(p=>p.db===name);
+ const root=resolve(paths[name]),staged=join(root,'.release-stage-f');
+ await mkdir(staged,{recursive:true});
+ for(const file of plan.files)await copyFile(join(root,'migrations',file),join(staged,file));
+ const doc=name==='jp-document-assistant';
+ const input=doc?'wrangler.jsonc':'wrangler.toml';
+ const raw=await readFile(join(root,input),'utf8');
+ const from=doc?'"migrations_dir":"migrations"':'migrations_dir = "migrations"';
+ const to=doc?'"migrations_dir":".release-stage-f"':'migrations_dir = ".release-stage-f"';
+ if(!raw.includes(from))throw Error('MIGRATION_SOURCE_CONFIG_CHANGED:'+name);
+ const config=doc?'.release-stage-f-wrangler.jsonc':'.release-stage-f-wrangler.toml';
+ await writeFile(join(root,config),raw.replace(from,to),{flag:'wx'});
+ run(paths[name],['d1','migrations','apply',database,'--remote','--yes','--config',config]);
+}
 async function bookmark(name){
  const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+
   encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+'/d1/database/'+ids[name]+
@@ -49,9 +64,9 @@ export async function applyProductionMigrations(){
   four_time_travel_bookmarks_saved_in_ephemeral_runner:true,
   migration_count_expected:68}));
  // First identity authority, then the downstream business databases.
- run(paths.homeflow,['d1','migrations','apply','homeflow','--remote','--yes']);
- run(paths['it-study-platform'],['d1','migrations','apply','it-study-platform-db','--remote','--yes']);
- run(paths['jp-document-assistant'],['d1','migrations','apply','jp-document-assistant','--remote','--yes']);
+ await scopedApply('homeflow','homeflow');
+ await scopedApply('it-study-platform','it-study-platform-db');
+ await scopedApply('jp-document-assistant','jp-document-assistant');
  // Kakeibo uses custom schema_migrations, not Wrangler's d1_migrations.
  // Historic 0020/0021 are physically already installed and were exactly
  // validated in real G9 (not duplicate ALTER). Begin ONLY at audited 0022.
