@@ -3,6 +3,7 @@
 // Passing this partial inventory does NOT pass G8 (requires final values,
 // migration, security, cost and rollback checks independently).
 import {fileURLToPath} from 'node:url';
+import {REQUIRED_FINANCE_SECRETS} from '../worker/four-app-release-env.js';
 
 export const REQUIRED_WORKERS={
  homeflow:{
@@ -156,8 +157,17 @@ export function checkG8Bindings(snapshot){
   const worker=snapshot.workers?.[name];
   if(!worker){missing.push('worker:'+name+':unavailable');continue}
   const byName=new Map(normalized(worker.bindings).map(b=>[b.name,b]));
-  for(const key of requirements.names)if(!byName.has(key))
-   missing.push('worker:'+name+':missing:'+key);
+  // Cloudflare Free: individual finance HMAC keys may be carried in ONE
+  // encrypted Worker secret instead of consuming 33 variable slots.
+  // This proves binding presence only. The ephemeral producer's contract
+  // tests independently enforce the complete bundled keyset and pairing.
+  const bundle=byName.get('FOUR_APP_FINANCE_SECRET_BUNDLE');
+  const hasValidBundle=name==='homeflow'&&bundle?.type==='secret_text';
+  if(bundle&&bundle.type!=='secret_text')
+   missing.push('worker:'+name+':invalid_finance_bundle_type');
+  for(const key of requirements.names)
+   if(!byName.has(key)&&!(hasValidBundle&&REQUIRED_FINANCE_SECRETS.includes(key)))
+    missing.push('worker:'+name+':missing:'+key);
   for(const key of requirements.services)
    if(byName.has(key)&&!['service','service_binding'].includes(byName.get(key)?.type))
     missing.push('worker:'+name+':invalid_service_type:'+key);
