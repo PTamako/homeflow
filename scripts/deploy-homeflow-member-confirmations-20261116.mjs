@@ -30,7 +30,16 @@ async function active(){
  const d=await deployments()
  return d.deployments?.[0]?.versions?.find(v=>v.percentage===100)?.version_id||''
 }
-const info=id=>api('GET','/workers/scripts/homeflow/versions/'+encodeURIComponent(id))
+async function info(id){
+ for(let attempt=0;attempt<12;attempt++){
+  try{return await api('GET','/workers/scripts/homeflow/versions/'+encodeURIComponent(id))}
+  catch(e){
+   if(!String(e).includes('CLOUDFLARE_HTTP_404')||attempt===11)throw e
+   await new Promise(resolve=>setTimeout(resolve,1500))
+  }
+ }
+ fail('VERSION_DETAILS_UNAVAILABLE')
+}
 const bindingSignature=version=>{
  const a=version?.resources?.bindings
  if(!Array.isArray(a)||!a.length)fail('MISSING_BINDING_METADATA')
