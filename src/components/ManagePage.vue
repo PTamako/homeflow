@@ -17,6 +17,7 @@ import {usePageToast} from '../page-toast'
 const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;profiles?:Array<{memberUserId:string|null;displayName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
 const emit=defineEmits<{logout:[]}>()
 const section=ref<'personal'|'family'>('personal')
+const approvalSection=ref<'requests'|'recurring'>('requests')
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminderRulesOpen=ref(false)
 const pushStatus=ref<'enabled'|'disabled'|'unavailable'|null>(null)
@@ -27,9 +28,11 @@ watch(()=>props.active,active=>{
  if(!active){invitation.value='';inviteError.value=''}
  if(!active)pushStatus.value=null
  if(!active)reminderRulesOpen.value=false
- if(!active)section.value='personal'
+ if(!active){section.value='personal';approvalSection.value='requests'}
 })
-watch(()=>props.isOwner,isOwner=>{if(!isOwner)section.value='personal'})
+watch(()=>props.isOwner,isOwner=>{
+ if(!isOwner){section.value='personal';approvalSection.value='requests'}
+})
 watch(section,value=>{
  if(value!=='family'){invitation.value='';inviteError.value=''}
 })
@@ -125,11 +128,35 @@ async function generateInvite(){
          </div>
        </div>
      </section>
-     <ApprovalCenter v-if="active&&isOwner" :active="active" :user-id="userId"
-       :is-owner="isOwner" :members="members" :profiles="profiles"/>
+     <section class="panel management-family-approval-hub" aria-label="家庭审批">
+       <div class="management-section-heading">
+         <AppIcon name="clipboard-check" :size="20"/><h2>家庭审批</h2>
+       </div>
+       <div class="management-approval-tabs" role="tablist" aria-label="家庭审批类型">
+         <button type="button" id="family-approval-requests-tab" role="tab"
+           :aria-selected="approvalSection==='requests'" aria-controls="family-approval-requests-panel"
+           :class="['management-approval-tab',{selected:approvalSection==='requests'}]"
+           @click="approvalSection='requests'">一般申请</button>
+         <button type="button" id="family-approval-recurring-tab" role="tab"
+           :aria-selected="approvalSection==='recurring'" aria-controls="family-approval-recurring-panel"
+           :class="['management-approval-tab',{selected:approvalSection==='recurring'}]"
+           @click="approvalSection='recurring'">周期计划</button>
+       </div>
+       <div v-if="approvalSection==='requests'" id="family-approval-requests-panel"
+         role="tabpanel" aria-labelledby="family-approval-requests-tab" class="management-approval-body">
+         <ApprovalCenter v-if="active&&isOwner" :active="active" :user-id="userId"
+           :is-owner="isOwner" :members="members" :profiles="profiles"/>
+       </div>
+       <div v-else id="family-approval-recurring-panel" role="tabpanel"
+         aria-labelledby="family-approval-recurring-tab" class="management-approval-body">
+         <p class="hint">丈夫建立固定费或 SBI 定投计划时，管理员只需批准一次。
+           在额度、日期、账户和有效期间不变的情况下，无需每月重复批准；
+           每期仍须凭实际发生凭证单独记账。修改条件须重新授权。</p>
+         <RecurringFinancePolicyCenter v-if="active&&isOwner" :active="active" :user-id="userId"
+           :is-owner="isOwner" :members="members" :profiles="profiles"/>
+       </div>
+     </section>
      <CrossMemberTransferConsents v-if="active&&isOwner" :active="active" :user-id="userId"
-       :is-owner="isOwner" :members="members" :profiles="profiles"/>
-     <RecurringFinancePolicyCenter v-if="active&&isOwner" :active="active" :user-id="userId"
        :is-owner="isOwner" :members="members" :profiles="profiles"/>
    </div>
    <PageToast :toast="toast"/>
@@ -144,6 +171,16 @@ async function generateInvite(){
 .management-tab:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .management-tab-content{display:grid;gap:16px;min-width:0}
 .management-tabs:has(.management-tab:only-child){grid-template-columns:minmax(0,1fr)}
+.management-approval-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;
+  margin:12px 0;padding:4px;border-radius:11px;background:#edf3ed}
+.management-approval-tab{min-width:0;min-height:44px;padding:9px 8px;border:0;border-radius:9px;
+  background:transparent;color:#72867a;font-size:13px;font-weight:700}
+.management-approval-tab.selected{background:#fff;color:#396f54;box-shadow:0 1px 5px #28443212}
+.management-approval-tab:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.management-approval-body{display:grid;gap:9px;min-width:0}
+.management-family-approval-hub :deep(.approval-center),
+.management-family-approval-hub :deep(.recurring-finance){border:0;box-shadow:none;
+  background:transparent;padding:0;margin:0;min-width:0}
 .management-app-actions{display:flex;align-items:center;gap:8px}
 .management-app-actions>button{flex:1 1 0;min-width:0;min-height:44px;font-size:12px}
 .management-family-invites{border-top:1px solid #edf0eb;margin-top:15px;padding-top:12px}
