@@ -70,6 +70,9 @@ jobs:
         run: node scripts/four-app-release-secrets.mjs
       - name: Set paired Pages production variables without deploying it
         run: node scripts/four-app-release-configure-pages.mjs
+      # Workers Free caps individual bindings at 64. H.json intentionally has
+      # ONE encrypted finance bundle for its 33 scoped signing keys; the H
+      # Worker hydrates and validates those keys inside its trusted runtime.
       - name: Stage HomeFlow Worker version with paired secrets (no traffic)
         run: npx wrangler versions upload --secrets-file "$RUNNER_TEMP/four-app-release-keys/H.json"
       - name: Stage private Kakeibo finance Worker version (no traffic)
