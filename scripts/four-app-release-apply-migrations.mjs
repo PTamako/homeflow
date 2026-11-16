@@ -36,7 +36,8 @@ async function scopedApply(name,database){
  if(!raw.includes(from))throw Error('MIGRATION_SOURCE_CONFIG_CHANGED:'+name);
  const config=doc?'.release-stage-f-wrangler.jsonc':'.release-stage-f-wrangler.toml';
  await writeFile(join(root,config),raw.replace(from,to),{flag:'wx'});
- run(paths[name],['d1','migrations','apply',database,'--remote','--yes','--config',config]);
+ // Wrangler 4 CI is non-interactive and does not accept --yes here.
+ run(paths[name],['d1','migrations','apply',database,'--remote','--config',config]);
 }
 async function bookmark(name){
  const url='https://api.cloudflare.com/client/v4/accounts/'+
