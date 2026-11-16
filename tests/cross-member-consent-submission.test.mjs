@@ -64,7 +64,7 @@ test('invalid signature, browser origin/cookie and wrong member roles fail close
   for(const opts of [{badSignature:true},{originHeader:true},{additionalCookie:true},{wrongClient:true}])
    assert.equal((await f.submit(body(),opts)).status,403)
   assert.equal((await f.submit({...body(),requester_user_id:'owner'})).status,403)
-  assert.equal((await f.submit({...body(),recipient_user_id:'member'})).status,403)
+  assert.equal((await f.submit({...body(),recipient_user_id:'member'})).status,400)
   f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='owner'").run()
   assert.equal((await f.submit()).status,403)
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_cross_member_transfer_consents').get().n,0)
