@@ -58,6 +58,7 @@ jobs:
         run: node scripts/four-app-release-assert-resume.mjs
       # Inventory key is kakebo (not Cloudflare project/name kakeibo).
       # Guarded by tests/four-app-release-migration-plan.test.mjs.
+      # Wrangler 4 noninteractive CI does not support --yes for migrations apply.
       - name: Apply exact Stage F audited production migrations with live Time Travel bookmarks
         run: node scripts/four-app-release-apply-migrations.mjs
       - name: Activate reviewed four-worker release and Kakeibo Pages, rollback if failure
