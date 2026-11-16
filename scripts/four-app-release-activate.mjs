@@ -23,10 +23,19 @@ async function current(name){
  const data=await api('GET','/workers/scripts/'+name+'/deployments');
  return data.deployments?.[0]?.versions?.find(x=>x.percentage===100)?.version_id||null;
 }
+export async function waitForVersion(name,id,{reads=15,delayMs=1200}={}){
+ for(let attempt=0;attempt<reads;attempt++){
+  if(await current(name)===id)return true;
+  if(attempt<reads-1)await new Promise(resolve=>setTimeout(resolve,delayMs));
+ }
+ throw Error('ACTIVATION_VERSION_NOT_CONFIRMED_AFTER_POLLING:'+name);
+}
 async function setVersion(name,id){
- await api('POST','/workers/scripts/'+name+'/deployments',{
+ // Cloudflare deployments are asynchronous. POST success does not mean
+ // the next immediate GET already reports 100% traffic for that version.
+ if(await current(name)!==id)await api('POST','/workers/scripts/'+name+'/deployments',{
   strategy:'percentage',versions:[{percentage:100,version_id:id}]});
- if(await current(name)!==id)throw Error('ACTIVATION_VERSION_NOT_CONFIRMED:'+name);
+ return waitForVersion(name,id);
 }
 async function liveG8(){
  const snap={workers:{},pages:{}};
@@ -56,15 +65,22 @@ export async function activate(){
  const oldPage=plan.pages_old_deployment;
  if(!oldPage||names.some(n=>!plan.workers?.[n]?.new_version||!plan.workers?.[n]?.old_version))
   throw Error('RELEASE_PLAN_INCOMPLETE');
- for(const name of names)if(await current(name)!==plan.workers[name].old_version)
-  throw Error('UNEXPECTED_PRODUCTION_VERSION_DRIFT:'+name);
+ // Wait for a previous 100% rollback's eventual consistency before
+ // starting a new coordinated cutover. Reject any truly unknown version.
+ for(const name of names){
+  await waitForVersion(name,plan.workers[name].old_version,{reads:15,delayMs:1000})
+   .catch(()=>{throw Error('UNEXPECTED_PRODUCTION_VERSION_DRIFT:'+name)});
+ }
  let pagesDeployed=false;
- const deployed=[];
+ const attempted=[];
  try{
   // Identity authority first; finance executors next; clients follow.
   for(const name of names){
+   // Track attempt BEFORE POST, because a successful POST can time out
+   // or return before the new version is visible to GET. We must roll
+   // back even the version whose confirmation failed.
+   attempted.push(name);
    await setVersion(name,plan.workers[name].new_version);
-   deployed.push(name);
   }
   const child=spawnSync('npx',['wrangler','pages','deploy','dist',
    '--project-name','kakeibo','--branch','main'],{
@@ -93,7 +109,7 @@ export async function activate(){
    await api('POST','/pages/projects/kakeibo/deployments/'+oldPage+'/rollback',{});
    console.error('PAGES_OLD_RELEASE_ROLLBACK_REQUESTED');
   }catch{console.error('PAGES_ROLLBACK_NEEDS_MANUAL_REVIEW')}
-  for(const name of deployed.reverse()){
+  for(const name of attempted.reverse()){
    try{await setVersion(name,plan.workers[name].old_version);
     console.error('WORKER_OLD_VERSION_RESTORED:'+name)}
    catch{console.error('WORKER_ROLLBACK_NEEDS_MANUAL_REVIEW:'+name)}
