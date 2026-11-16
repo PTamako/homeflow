@@ -64,7 +64,7 @@ test('Today notification hub combines pending reminders and delivery history wit
 test('management collects invitation, password, push, trash, backup, and logout',()=>{
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const manage=readFileSync(new URL('../src/components/ManagePage.vue',import.meta.url),'utf8')
- for(const word of ['账号与家庭','通知设置','数据管理','邀请家庭成员','退出登录']){
+ for(const word of ['个人账号','家庭成员管理','通知设置','数据管理','邀请家庭成员','退出登录']){
    assert.ok(manage.includes(word),word)
  }
  for(const component of ['SecurityPanel','PushPanel','TrashPanel','BackupPanel','ImportantReminders']){

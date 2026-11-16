@@ -16,6 +16,7 @@ import {usePageToast} from '../page-toast'
 
 const props=defineProps<{active:boolean;userId:string;loginName:string;members?:Array<{id:string;loginName:string}>;profiles?:Array<{memberUserId:string|null;displayName:string}>;isOwner:boolean;todayDate:string;todayEntryKeys:string[]}>()
 const emit=defineEmits<{logout:[]}>()
+const section=ref<'personal'|'family'>('personal')
 const invitation=ref(''),inviting=ref(false),inviteError=ref('')
 const reminderRulesOpen=ref(false)
 const pushStatus=ref<'enabled'|'disabled'|'unavailable'|null>(null)
@@ -26,6 +27,11 @@ watch(()=>props.active,active=>{
  if(!active){invitation.value='';inviteError.value=''}
  if(!active)pushStatus.value=null
  if(!active)reminderRulesOpen.value=false
+ if(!active)section.value='personal'
+})
+watch(()=>props.isOwner,isOwner=>{if(!isOwner)section.value='personal'})
+watch(section,value=>{
+ if(value!=='family'){invitation.value='';inviteError.value=''}
 })
 async function generateInvite(){
  if(!props.isOwner||inviting.value)return
@@ -47,55 +53,97 @@ async function generateInvite(){
 
 <template>
  <div class="management-page" aria-label="HomeFlow 管理">
-   <section class="panel">
-     <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>账号与家庭</h2></div>
-     <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
-     <SecurityPanel v-if="active" :login-name="loginName"/>
-     <div v-if="isOwner" class="management-family-invites">
-       <h3>邀请家庭成员</h3>
-       <p class="hint">邀请码 7 天有效，家庭最多 2 位成员。</p>
-       <button type="button" class="outline" :disabled="inviting" @click="generateInvite">
-         {{ inviting?'生成中…':'生成邀请码' }}
+   <nav class="management-tabs" role="tablist" aria-label="管理分类">
+     <button id="management-personal-tab" type="button" role="tab"
+       :class="['management-tab',{selected:section==='personal'}]"
+       :aria-selected="section==='personal'" aria-controls="management-personal-panel"
+       @click="section='personal'">个人</button>
+     <button v-if="isOwner" id="management-family-tab" type="button" role="tab"
+       :class="['management-tab',{selected:section==='family'}]"
+       :aria-selected="section==='family'" aria-controls="management-family-panel"
+       @click="section='family'">家庭</button>
+   </nav>
+
+   <div v-if="section==='personal'" id="management-personal-panel" role="tabpanel"
+     aria-labelledby="management-personal-tab" class="management-tab-content">
+     <section class="panel">
+       <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>个人账号</h2></div>
+       <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
+       <SecurityPanel v-if="active" :login-name="loginName"/>
+     </section>
+     <template v-if="!isOwner">
+       <section class="panel">
+         <div class="management-section-heading"><AppIcon name="handshake" :size="20"/><h2>我的待确认</h2></div>
+         <p class="hint">仅处理需要你本人确认、拒绝或撤回的申请；家庭管理员的审批权限不在此开放。</p>
+       </section>
+       <ApprovalCenter v-if="active" :active="active" :user-id="userId"
+         :is-owner="isOwner" :members="members" :profiles="profiles"/>
+       <CrossMemberTransferConsents v-if="active" :active="active" :user-id="userId"
+         :is-owner="isOwner" :members="members" :profiles="profiles"/>
+       <RecurringFinancePolicyCenter v-if="active" :active="active" :user-id="userId"
+         :is-owner="isOwner" :members="members" :profiles="profiles"/>
+     </template>
+     <section class="panel">
+       <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
+       <PushPanel v-if="active" :user-id="userId" :members="members" @status="pushStatus=$event"/>
+       <button type="button" class="reminder-rules-trigger"
+         :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
+         <span>分类提醒规则</span>
+         <span aria-hidden="true">设置</span>
        </button>
-       <p v-if="inviteError" role="alert" class="error">{{ inviteError }}</p>
-       <div v-if="invitation" class="management-invite-code">
-         <code>{{ invitation }}</code><small>请私下发送给家人</small>
+       <EditBottomSheet v-if="active&&reminderRulesOpen" title="分类提醒规则" @close="reminderRulesOpen=false">
+         <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys" compact mode="settings"/>
+       </EditBottomSheet>
+     </section>
+     <section class="panel">
+       <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>
+       <TrashPanel v-if="active"/>
+       <p class="hint">已删除的内容可从回收箱恢复。</p>
+     </section>
+     <BackupPanel v-if="active" :user-id="userId"/>
+     <section class="panel">
+       <div class="management-app-actions">
+         <button type="button" class="management-logout" @click="emit('logout')">退出登录</button>
        </div>
-     </div>
-   </section>
-   <ApprovalCenter v-if="active" :active="active" :user-id="userId"
-     :is-owner="isOwner" :members="members" :profiles="profiles"/>
-   <CrossMemberTransferConsents v-if="active" :active="active" :user-id="userId"
-     :is-owner="isOwner" :members="members" :profiles="profiles"/>
-   <RecurringFinancePolicyCenter v-if="active" :active="active" :user-id="userId"
-     :is-owner="isOwner" :members="members" :profiles="profiles"/>
-   <section class="panel">
-     <div class="management-section-heading"><AppIcon name="bell" :size="20"/><h2>通知设置</h2><StatusBadge v-if="pushStatus" :code="pushStatus"/></div>
-     <PushPanel v-if="active" :user-id="userId" :members="members" @status="pushStatus=$event"/>
-<button type="button" class="reminder-rules-trigger"
-       :aria-expanded="reminderRulesOpen" @click="reminderRulesOpen=!reminderRulesOpen">
-       <span>分类提醒规则</span>
-       <span aria-hidden="true">设置</span>
-     </button>
-     <EditBottomSheet v-if="active&&reminderRulesOpen" title="分类提醒规则" @close="reminderRulesOpen=false">
-      <ImportantReminders :today-date="todayDate" :today-entry-keys="todayEntryKeys" compact mode="settings"/>
-      </EditBottomSheet>
-   </section>
-   <section class="panel">
-     <div class="management-section-heading"><AppIcon name="archive" :size="20"/><h2>数据管理</h2></div>
-     <TrashPanel v-if="active"/>
-     <p class="hint">已删除的内容可从回收箱恢复。</p>
-   </section>
-   <BackupPanel v-if="active" :user-id="userId"/>
-   <section class="panel">
-     <div class="management-app-actions">
-       <button type="button" class="management-logout" @click="emit('logout')">退出登录</button>
-     </div>
-   </section>
+     </section>
+   </div>
+
+   <div v-else-if="isOwner" id="management-family-panel" role="tabpanel"
+     aria-labelledby="management-family-tab" class="management-tab-content">
+     <section class="panel">
+       <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>家庭成员管理</h2></div>
+       <p class="hint">仅家庭管理员可使用此页面；每位成员仍须亲自完成本人同意的步骤。</p>
+       <div v-if="isOwner" class="management-family-invites">
+         <h3>邀请家庭成员</h3>
+         <p class="hint">邀请码 7 天有效，家庭最多 2 位成员。</p>
+         <button type="button" class="outline" :disabled="inviting" @click="generateInvite">
+           {{ inviting?'生成中…':'生成邀请码' }}
+         </button>
+         <p v-if="inviteError" role="alert" class="error">{{ inviteError }}</p>
+         <div v-if="invitation" class="management-invite-code">
+           <code>{{ invitation }}</code><small>请私下发送给家人</small>
+         </div>
+       </div>
+     </section>
+     <ApprovalCenter v-if="active&&isOwner" :active="active" :user-id="userId"
+       :is-owner="isOwner" :members="members" :profiles="profiles"/>
+     <CrossMemberTransferConsents v-if="active&&isOwner" :active="active" :user-id="userId"
+       :is-owner="isOwner" :members="members" :profiles="profiles"/>
+     <RecurringFinancePolicyCenter v-if="active&&isOwner" :active="active" :user-id="userId"
+       :is-owner="isOwner" :members="members" :profiles="profiles"/>
+   </div>
    <PageToast :toast="toast"/>
  </div>
 </template>
 <style scoped>
+.management-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;
+  margin:0 0 16px;background:#e8f0e9;border-radius:14px}
+.management-tab{min-width:0;min-height:44px;padding:10px 12px;border:0;
+  background:transparent;border-radius:11px;color:#75877d;font-size:14px;font-weight:700}
+.management-tab.selected{background:#fff;color:#386f55;box-shadow:0 1px 5px rgba(41,69,50,.09)}
+.management-tab:focus-visible{outline:2px solid #43866a;outline-offset:2px}
+.management-tab-content{display:grid;gap:16px;min-width:0}
+.management-tabs:has(.management-tab:only-child){grid-template-columns:minmax(0,1fr)}
 .management-app-actions{display:flex;align-items:center;gap:8px}
 .management-app-actions>button{flex:1 1 0;min-width:0;min-height:44px;font-size:12px}
 .management-family-invites{border-top:1px solid #edf0eb;margin-top:15px;padding-top:12px}
