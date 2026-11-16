@@ -16,6 +16,7 @@ type Approval={
 }
 const props=defineProps<{
  active:boolean;userId:string;isOwner:boolean
+ autoOpen?:boolean;compact?:boolean
  members?:Array<{id:string;loginName:string}>
  profiles?:Array<{memberUserId:string|null;displayName:string}>
 }>()
@@ -93,6 +94,7 @@ async function discover(){
    batchReviewEnabled.value=result.batch_review_enabled===true
    documentExecutionEnabled.value=result.document_execution_enabled===true
   filter.value=props.isOwner?'pending':''
+  if(props.autoOpen){expanded.value=true;await load(true)}
  }catch{/* Feature is deliberately hidden while migrations/flags are OFF. */}
 }
 watch(()=>[props.active,props.userId,props.isOwner],()=>{void discover()},{immediate:true})
@@ -344,8 +346,8 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
 </script>
 
 <template>
- <section v-if="available" class="panel approval-center" aria-label="家庭审批中心">
-  <div class="approval-head">
+ <section v-if="available" class="panel approval-center" :class="{'approval-compact':compact}" aria-label="家庭审批中心">
+  <div v-if="!compact" class="approval-head">
    <div class="management-section-heading">
     <AppIcon name="shield" :size="20"/>
     <h2>家庭审批</h2>
@@ -455,6 +457,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
 </template>
 <style scoped>
 .approval-center{min-width:0}
+.approval-compact{border:0!important;box-shadow:none!important;padding:0!important;background:transparent!important}
 .approval-batch-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .approval-batch-toolbar span{font-size:12px;color:var(--ui-muted);margin-right:auto}
 .approval-batch-toolbar button{min-height:44px}

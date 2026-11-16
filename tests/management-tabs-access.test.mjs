@@ -12,8 +12,8 @@ test('management is split into personal and owner-only family tabs',()=>{
  assert.match(view,/v-if="isOwner" id="management-family-tab"/)
  assert.match(view,/v-if="section==='personal'" id="management-personal-panel"/)
  assert.match(view,/v-else-if="isOwner" id="management-family-panel"/)
- assert.match(view,/if\(!isOwner\)\{section\.value='personal';approvalSection\.value='requests'\}/)
- assert.match(view,/if\(!active\)\{section\.value='personal';approvalSection\.value='requests'\}/)
+ assert.match(view,/if\(!isOwner\)section\.value='personal'/)
+ assert.match(view,/if\(!active\)section\.value='personal'/)
 })
 
 test('member personal confirmation remains usable without family administration',()=>{
@@ -31,8 +31,7 @@ test('member personal confirmation remains usable without family administration'
 
 test('family-only components do not fetch when family management is not open',()=>{
  const family=view.slice(view.indexOf('id="management-family-panel"'))
- for(const component of ['ApprovalCenter','CrossMemberTransferConsents','RecurringFinancePolicyCenter'])
-  assert.match(family,new RegExp('<'+component+' v-if="active&&isOwner"'))
- assert.match(family,/role="tablist" aria-label="家庭审批类型"/)
- assert.match(family,/approvalSection==='recurring'/)
+ assert.match(family,/<FamilyApprovalFeed v-if="active&&isOwner"/)
+ assert.doesNotMatch(family,/approvalSection|family-approval-requests-tab/)
+ assert.doesNotMatch(family,/<ApprovalCenter v-if="active&&isOwner"/)
 })
