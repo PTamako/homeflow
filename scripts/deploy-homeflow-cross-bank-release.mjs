@@ -14,7 +14,7 @@ if(!process.env.GITHUB_ACTIONS||process.env.GITHUB_REF!=='refs/heads/main'||
    process.env.GITHUB_REPOSITORY!=='PTamako/homeflow'||!account||!token)fail('INVALID_RELEASE_CONTEXT')
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()
 git('merge-base','--is-ancestor','d4ceb85a63f485ec716faf64053f8781c59757f2','HEAD')
-const files=git('diff','--name-only','f36cf5f19c26a5478ab67666d1f2802aec02a090','HEAD').split('\n').filter(Boolean)
+const files=git('diff','--name-only','d4ceb85a63f485ec716faf64053f8781c59757f2','HEAD').split('\n').filter(Boolean)
 if(files.some(path=>!['scripts/deploy-homeflow-cross-bank-release.mjs','.github/workflows/homeflow-cross-bank-production-20261116.yml'].includes(path)))
  fail('UNEXPECTED_SOURCE_DELTA')
 async function api(method,path,body){
@@ -90,7 +90,7 @@ async function pagesHealthy(){
     cache:'no-store',signal:AbortSignal.timeout(12000)})
    const html=await page.text()
    if(!page.ok)throw Error('PAGES_HTTP_'+page.status)
-   const asset=html.match(/(?:src|href)="(\\/assets\\/[^"]+\\.js)"/)
+   const asset=html.match(/(?:src|href)="(\/assets\/[^"]+\.js)"/)
    if(!asset)throw Error('PAGES_ASSETS_MISSING')
    const script=await fetch(pagesOrigin+asset[1],{cache:'no-store',signal:AbortSignal.timeout(12000)})
    const body=await script.text()
