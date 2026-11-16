@@ -63,7 +63,7 @@ test('invalid signature, browser origin/cookie and wrong member roles fail close
  try{
   for(const opts of [{badSignature:true},{originHeader:true},{additionalCookie:true},{wrongClient:true}])
    assert.equal((await f.submit(body(),opts)).status,403)
-  assert.equal((await f.submit({...body(),requester_user_id:'owner'})).status,403)
+  assert.equal((await f.submit({...body(),requester_user_id:'owner',recipient_user_id:'member'})).status,403)
   assert.equal((await f.submit({...body(),recipient_user_id:'member'})).status,400)
   f.sql.prepare("UPDATE users SET disabled_at=1 WHERE id='owner'").run()
   assert.equal((await f.submit()).status,403)
