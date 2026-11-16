@@ -68,7 +68,7 @@ jobs:
           const atJson=await at.json();
           const safe=(atJson.errors||[]).map(e=>({
            code:e.code,summary:String(e.message||'')
-            .replace(/[a-f0-9]{32}/gi,'[ID]').replace(/https?:\\/\\/\\S+/gi,'[URL]').slice(0,120)}));
+            .replace(/[a-f0-9]{32}/gi,'[ID]').replace(/https?:[^ ]+/gi,'[URL]').slice(0,120)}));
           console.log(JSON.stringify({phase:'k_timestamp_fallback',http:at.status,
             result_ok:atJson.success===true,bookmark_present:!!atJson.result?.bookmark,
             errors:safe}));
