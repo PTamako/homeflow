@@ -13,13 +13,15 @@ export function validated(body,session) {
   const subject=body?.subjectProfileId||null
   const care=body?.healthRecordType
   const reminder=body?.remindEnabled===undefined?null:body.remindEnabled
+  const reminderOnly=body?.reminderOnly??false
+  if(typeof reminderOnly!=='boolean')return null
   const bonus=body?.bonusPoints??0
   if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000)return null
   const assignedOther=!!assignee&&assignee!==session.user_id||!!second&&second!==session.user_id
   // Joint tasks only split the standard completion points. Extra funded rewards
   // are reserved solely for a single assignee who is not the publisher.
   if(second?(visibility!=='household'||bonus!==0):
-    assignedOther?(visibility!=='household'||bonus<1):bonus!==0)return null
+    assignedOther?(visibility!=='household'||(!reminderOnly&&bonus<1)||(reminderOnly&&bonus!==0)):bonus!==0)return null
   if(reminder!==null&&typeof reminder!=='boolean')return null
   if(care!==undefined&&care!==null&&!['deworm','vaccination','vet','medication','grooming','other'].includes(care))return null
   if(!title||title.length>150||notes.length>1000||!['private','household'].includes(visibility) ||
@@ -28,7 +30,7 @@ export function validated(body,session) {
   if(second&&(!assignee||typeof second!=='string'||second.length>60||second===assignee||
      visibility!=='household'))return null
   if(subject && (typeof subject!=='string'||subject.length>60))return null
-  return {title,notes,visibility,dueOn:dueOn||null,assignee,second,subject,care,reminder,bonus}
+  return {title,notes,visibility,dueOn:dueOn||null,assignee,second,subject,care,reminder,reminderOnly,bonus}
 }
 export async function validateRefs(db,session,data) {
   if(data.second){
@@ -173,7 +175,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       const sql=`SELECT id,title,notes,visibility,due_on AS dueOn,
         creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
         second_assignee_user_id AS secondAssigneeUserId,
-        bonus_points AS bonusPoints,
+        bonus_points AS bonusPoints,reminder_only AS reminderOnly,
         subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
         completed_at AS completedAt,remind_enabled AS remindEnabled,
         created_at AS createdAt,updated_at AS updatedAt,
@@ -198,7 +200,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     const sourceSql=`SELECT id,title,notes,visibility,due_on AS dueOn,
       creator_user_id AS creatorUserId,assignee_user_id AS assigneeUserId,
         second_assignee_user_id AS secondAssigneeUserId,
-        bonus_points AS bonusPoints,
+        bonus_points AS bonusPoints,reminder_only AS reminderOnly,
       subject_profile_id AS subjectProfileId,health_record_type AS healthRecordType,
       completed_at AS completedAt,
       completed_by AS completedBy,remind_enabled AS remindEnabled,created_at AS createdAt,updated_at AS updatedAt
@@ -242,10 +244,10 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     if(reqId && (typeof reqId!=='string'||!/^[0-9a-f-]{36}$/.test(reqId)))return json({error:'invalid_request_id'},400)
     const id=crypto.randomUUID()
     const result=await db.prepare(`INSERT OR IGNORE INTO tasks
-      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type,remind_enabled,bonus_points,second_assignee_user_id)
-      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14
+      (id,household_id,creator_user_id,assignee_user_id,subject_profile_id,visibility,title,notes,due_on,client_request_id,health_record_type,remind_enabled,bonus_points,second_assignee_user_id,reminder_only)
+      SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15
       WHERE (?13=0 OR ?13<=${householdWalletSql('?2','?3')})`)
-      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care,data.reminder===false?0:1,data.bonus,data.second).run()
+      .bind(id,household,who,data.assignee,data.subject,data.visibility,data.title,data.notes,data.dueOn,reqId,data.care,data.reminder===false?0:1,data.bonus,data.second,data.reminderOnly?1:0).run()
     if(!result.meta?.changes && reqId){
       const found=await db.prepare('SELECT id FROM tasks WHERE household_id=?1 AND creator_user_id=?2 AND client_request_id=?3')
         .bind(household,who,reqId).first()
@@ -266,7 +268,7 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       creatorUserId:task.creator_user_id,assigneeUserId:task.assignee_user_id,
       secondAssigneeUserId:task.second_assignee_user_id,
       subjectProfileId:task.subject_profile_id,healthRecordType:task.health_record_type,
-      completedAt:task.completed_at,bonusPoints:task.bonus_points,remindEnabled:task.remind_enabled,
+      completedAt:task.completed_at,bonusPoints:task.bonus_points,remindEnabled:task.remind_enabled,reminderOnly:task.reminder_only===1,
       updatedAt:task.updated_at}})
   }
   if(request.method==='PATCH'){
@@ -331,8 +333,8 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       return json({ok:true})
     }
     if(task.creator_user_id!==who)return json({error:'forbidden'},403)
-    const data=validated({...b,bonusPoints:b.bonusPoints??task.bonus_points},session)
-    if(task.completed_at && (data?.bonus!==task.bonus_points||data?.assignee!==task.assignee_user_id||
+    const data=validated({...b,bonusPoints:b.bonusPoints??task.bonus_points,reminderOnly:b.reminderOnly??(task.reminder_only===1)},session)
+    if(task.completed_at && (data?.bonus!==task.bonus_points||data?.reminderOnly!==(task.reminder_only===1)||data?.assignee!==task.assignee_user_id||
       data?.second!==task.second_assignee_user_id||
       (task.bonus_points>0&&data?.visibility!==task.visibility)))
       return json({error:'completed_task_reward_locked'},409)
@@ -345,14 +347,14 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
       due_on=?4,assignee_user_id=?5,subject_profile_id=?6,
       second_assignee_user_id=?15,
       health_record_type=?7,remind_enabled=COALESCE(?8,remind_enabled),
-      bonus_points=?9,updated_at=?10
+      bonus_points=?9,reminder_only=?16,updated_at=?10
       WHERE id=?11 AND household_id=?12 AND creator_user_id=?13 AND deleted_at IS NULL
         AND updated_at=?14
         AND (?9=0 OR ?9<=${householdWalletSql('?12','?13')} +
           CASE WHEN completed_at IS NULL AND visibility='household'
               AND assignee_user_id IS NOT NULL AND (assignee_user_id<>creator_user_id OR second_assignee_user_id<>creator_user_id)
             THEN bonus_points ELSE 0 END)`)
-      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,data.reminder===null?null:data.reminder?1:0,data.bonus,iso(),task.id,household,who,task.updated_at,data.second).run()
+      .bind(data.title,data.notes,data.visibility,data.dueOn,data.assignee,data.subject,data.care,data.reminder===null?null:data.reminder?1:0,data.bonus,iso(),task.id,household,who,task.updated_at,data.second,data.reminderOnly?1:0).run()
     if(!result.meta?.changes)return json({error:'task_edit_conflict'},409)
     return json({ok:true})
   }
