@@ -20,6 +20,7 @@ import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
 import {documentApprovalStatusRoute} from './document-approval-status.js'
 import {approvalExecutionRoute} from './approval-execution.js'
+import {householdApprovalDetailRoute} from './approval-detail.js'
 import {reconcileApprovedSharedEntries} from './approval-auto-reconcile.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
@@ -111,6 +112,8 @@ async function routeRequest(request,env,ctx,state){
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(/^\/api\/approvals\/[0-9a-f-]{36}\/detail$/.test(path))
+          return householdApprovalDetailRoute(request,env,path,session)
         if(/^\/api\/approvals\/[0-9a-f-]{36}\/execute$/.test(path))
           return approvalExecutionRoute(request,env,path,session)
         if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
