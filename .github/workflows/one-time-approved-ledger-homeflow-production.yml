@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: 2a4374bea91865a984444fb95e05928399e1d0f8
+          ref: cbfa6212a421f62e014d4c955f9b94218e7dbff7
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout reviewed Document Assistant
@@ -52,7 +52,7 @@ jobs:
             latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
             test -n "$latest" && test "$latest" = "$pinned" || { echo "::error::stale reviewed contract: $repo"; exit 1; }
           done <<'REVIEWED_HEADS'
-          kakebo_jp 2a4374bea91865a984444fb95e05928399e1d0f8
+          kakebo_jp cbfa6212a421f62e014d4c955f9b94218e7dbff7
           jp-document-assistant 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
           it-study-platform dea0a9607a2cde2b66f328696954750748f67f42
           REVIEWED_HEADS
@@ -80,7 +80,7 @@ jobs:
       - name: Publish reviewed Kakeibo Pages production, no Preview
         working-directory: .contract-kakeibo
         run: |
-          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=2a4374bea91865a984444fb95e05928399e1d0f8 --commit-message="reviewed owner shared ledger edited payment and value persistence release"
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=cbfa6212a421f62e014d4c955f9b94218e7dbff7 --commit-message="reviewed owner shared ledger edited payment and value persistence release"
       - name: Confirm Kakeibo production Pages responds
         run: curl --retry 5 --retry-delay 3 --fail --silent --show-error https://kakeibo-f17.pages.dev/ >/dev/null
       - name: Deploy only existing HomeFlow production Worker
