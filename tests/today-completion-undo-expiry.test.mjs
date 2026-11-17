@@ -12,9 +12,9 @@ const id='00000000-0000-4000-8000-000000000001'
 test('completed Today checkboxes stay checked but cannot be toggled',()=>{
  assert.match(app,/:checked="row.done"\s+:disabled="row.done\|\|!canFinishEntry\(row\)/)
  assert.match(app,/:aria-label="\(row.done\?'已完成，请到查看计划撤销：':'完成 '\)\+row.title"/)
- assert.match(app,/async function toggleTask\(t:Task\)\{\s*\/\/[^\n]*\n  if\(t.completedAt\)return/)
- assert.match(app,/async function toggleRoutine\(r:Routine\)\{[\s\S]*?if\(routineBusy.value\|\|r.mark\?\.completed_at\)return/)
- assert.match(app, /row.done\?'查看计划':'去处理'/)
+ assert.match(app,/async function toggleTask\(t:Task\)\{\s*\/\/[^\n]*\n  if\(t.completedAt\|\|t.reminderOnly===true\|\|t.reminderOnly===1\)return/)
+ assert.match(app,/async function toggleRoutine\(r:Routine\)\{[\s\S]*?if\(routineBusy.value\|\|r.mark\?\.completed_at\|\|r.reminder_only===1\)return/)
+ assert.match(app, /row.done\|\|isReminderOnlyToday\(row\)\?'查看计划':'去处理'/)
  assert.match(app,/focusPlanScope.value=done&&\(kind==='task'\|\|kind==='routine'/)
 })
 
