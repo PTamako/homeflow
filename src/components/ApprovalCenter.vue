@@ -280,7 +280,7 @@ async function reviewBatch(decision:'approve'|'reject'){
  const label=decision==='approve'?'批准':'拒绝'
  let summaries:string[]=[]
  if(decision==='approve'){
-  try{summaries=await Promise.all(selected.map(reviewSummary))}
+  try{for(const item of selected)summaries.push(await reviewSummary(item))}
   catch{error.value='请先确认每一笔的金额、分类和商家；明细读取失败时不能批量批准。';return}
  }
  if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
@@ -350,7 +350,8 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       message:'只有待审批申请可以撤回，撤回后管理员不能再批准。'}
     :{title:'拒绝家庭申请',confirmLabel:'确认拒绝',
       message:'拒绝后不会修改家庭正式账本。',danger:true}
- if(!await confirmAction({...options,message:options.message+summary}))return
+ options.message+=summary
+ if(!await confirmAction(options))return
  if(account!==props.userId||!props.active)return
  // Never execute an item whose status moved while confirmation was open.
  if(item.status!==chosenStatus||
