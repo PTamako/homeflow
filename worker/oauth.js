@@ -6,7 +6,9 @@ import {oauthSessionCheck} from './oauth-session-check.js'
 // Opt-in only: production without OAUTH_ENABLED='true' always fails closed.
 const CODE_TTL_MS = 3 * 60_000
 const ACCESS_TTL_MS = 3 * 60_000
-const SESSION_ASSERTION_TTL_MS = 15 * 60_000
+// Backend-only proof mirrors the original HomeFlow session (maximum 14 days).
+// Introspection still joins the original session and rejects logout/revocation immediately.
+const SESSION_ASSERTION_TTL_MS = 14 * 86400000
 const CLIENT_ID = /^[a-z][a-z0-9-]{2,48}$/
 const B64URL = /^[A-Za-z0-9_-]{43}$/
 const STATE = /^[A-Za-z0-9._~:-]{16,256}$/
