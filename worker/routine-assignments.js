@@ -53,7 +53,8 @@ export async function routineAssignmentRoute(request,db,session,id,options={}){
  // With two assignees, only the ordinary completion points are split.
  // Extra funded bonuses apply to a single assignee outside the publisher.
  if(second&&bonus!==0)return json({error:'dual_assignee_bonus_not_allowed'},400)
- if(!second&&(other?bonus<1:bonus!==0))
+ if(rule.reminder_only===1&&bonus!==0)return json({error:'reminder_only_cannot_earn_points'},400)
+ if(!second&&(other&&!rule.reminder_only?bonus<1:bonus!==0))
    return json({error:'positive_integer_bonus_required'},400)
  if(second){
    const secondary=await db.prepare('SELECT 1 FROM household_members WHERE household_id=?1 AND user_id=?2')
