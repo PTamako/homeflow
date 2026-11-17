@@ -71,6 +71,18 @@ jobs:
         run: python3 scripts/check_migrations.py
       - name: Read-only live G8 binding and secret inventory
         run: node scripts/release-g8-binding-preflight.mjs
+      - name: Deploy reviewed Kakeibo private bridge before HomeFlow
+        working-directory: .contract-kakeibo
+        run: |
+          npm ci --no-audit --no-fund
+          npm run verify:release
+          npx wrangler deploy --config wrangler.homeflow-bridge.toml
+      - name: Publish reviewed Kakeibo Pages production, no Preview
+        working-directory: .contract-kakeibo
+        run: |
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=465a909abebf9a33ed256dd36b1cfe409ae759bf --commit-message="reviewed household ledger cash and approval release"
+      - name: Confirm Kakeibo production Pages responds
+        run: curl --retry 5 --retry-delay 3 --fail --silent --show-error https://kakeibo-f17.pages.dev/ >/dev/null
       - name: Deploy only existing HomeFlow production Worker
         run: npx wrangler deploy
       - name: Confirm production identity and database health
