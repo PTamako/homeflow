@@ -324,7 +324,7 @@ export async function approvalExecutionRoute(request,env,path,session){
     timestamp,raw,receiptOnly,documentFinance,documentStudy,card,settlement,prepaid,points,sbiCash,bankTransfer,sharedEntry)},
   body:raw
  })
- let result=null
+ let result=null,targetCode=null
  try{
   const response=await (sharedEntry?env.KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE:
     bankTransfer?env.KAKEIBO_BANK_TRANSFER_EXECUTION_SERVICE:
@@ -336,13 +336,21 @@ export async function approvalExecutionRoute(request,env,path,session){
    documentStudy?env.DOCUMENT_STUDY_EXECUTION_SERVICE:
    documentFinance?env.DOCUMENT_EXECUTION_SERVICE:
    env.KAKEIBO_EXECUTION_SERVICE).fetch(outgoing)
+  if(!response.ok){
+   // Preserve only a small machine-generated target code for operator diagnosis.
+   // No raw receipt, ledger payload, identifiers or secrets enter the approval log.
+   const rawError=await response.text().catch(()=>'')
+   let parsed=null
+   if(rawError.length<250)try{parsed=JSON.parse(rawError)}catch{}
+   if(typeof parsed?.code==='string'&&
+     /^(?:SHARED_MUTATION|SHARED_CARD)_[A-Z0-9_]{1,90}$/.test(parsed.code))
+    targetCode=parsed.code.toLowerCase()
+  }
   if(response.status===409){
-   // A target 409 does not prove whether an earlier attempt committed and
-   // lost its receipt (or whether HomeFlow's execution proof was momentarily
-   // unavailable). Never make this approval terminal on an unsigned error.
-   // The target's immutable request-ID journal makes the SAME-ID retry safe.
+   // A target conflict cannot prove that a prior execution did not commit.
+   // Leave the original ID retryable; never fabricate a second ledger request.
    const released=await statusChange(db,row,session,'failed_retryable',
-    'target_conflict_unconfirmed')
+    targetCode||'target_conflict_unconfirmed')
    return failure(released?'target_conflict_unconfirmed_safe_to_retry':
     'receipt_reconciliation_required',503)
   }
@@ -630,7 +638,7 @@ export async function approvalExecutionRoute(request,env,path,session){
    replayed:result.already_applied===true})
   return failure('applied_remote_receipt_pending_reconciliation',503)
  }
- const released=await statusChange(db,row,session,'failed_retryable',receiptOnly?'expired_receipt_unknown':'target_result_unknown')
+ const released=await statusChange(db,row,session,'failed_retryable',receiptOnly?'expired_receipt_unknown':(targetCode||'target_result_unknown'))
  return failure(released?(receiptOnly?'expired_receipt_unknown':'target_result_unknown_safe_to_retry'):
   'receipt_reconciliation_required',503)
 }
