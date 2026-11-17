@@ -213,7 +213,7 @@ test('server-only proof follows HomeFlow source session and has exact client aud
   assert.equal(exchanged.status,200)
   const proof=exchanged.body.session_assertion
   assert.match(proof,/^[a-f0-9]{64}$/)
-  assert.equal(exchanged.body.session_assertion_expires_in,900)
+  assert.equal(exchanged.body.session_assertion_expires_in,30*86400)
   assert.notEqual(proof,exchanged.body.access_token)
   const form=(client_id=client,session_assertion=proof)=>
     new URLSearchParams({client_id,session_assertion})
