@@ -1,0 +1,67 @@
+name: HomeFlow member management hide redundant tab production UI one-shot
+# Version metadata propagation retry; read-only binding check remains mandatory. No migrations or Preview.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/homeflow-hide-lone-tab-20261117.yml]
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  homeflow-ui-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Checkout Kakeibo audited contract
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/kakebo_jp
+          ref: d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant audited contract
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study audited contract
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: b7bb8755220b0b0b706f5f042520a7dae483aaa4
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify release source, tests and build
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          python3 scripts/check_migrations.py
+      - name: Read-only check cross-application production bindings
+        run: node scripts/release-g8-binding-preflight.mjs
+      - name: Capture active production version and bindings without modification
+        run: node scripts/deploy-homeflow-hide-lone-tab-20261117.mjs preflight
+      - name: Build assets and stamp installed PWA cache
+        run: |
+          node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+          npm run build
+      - name: Stage code and assets as inactive version preserving secrets and vars
+        run: npx wrangler versions upload --keep-vars
+      - name: Activate HomeFlow only, verify tab assets and private endpoint, roll back on failure
+        run: node scripts/deploy-homeflow-hide-lone-tab-20261117.mjs activate
