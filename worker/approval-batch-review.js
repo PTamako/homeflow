@@ -1,6 +1,7 @@
 // DRAFT P0-4C: atomic owner review ONLY, not execution of any target ledger.
 // A single SQLite INSERT invokes 0057 BEFORE/AFTER guards; no partial approvals.
 import {ledgerOnly,ownerReviewAllowed} from './approval-scope.js';
+import {previewVerifiedLedgerIntent} from './approval-detail.js';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const json=(x,status=200)=>Response.json(x,{status,headers:{'cache-control':'no-store'}});
 const reject=(code,status=409)=>json({ok:false,code,applied:false},status);
@@ -42,14 +43,17 @@ export async function batchReviewRoute(request,env,session,role,path){
    item.expected_version<1)||
   new Set(b.items.map(x=>x.request_id)).size!==b.items.length)
   return reject('batch_review_invalid_items',400);
+ let proposed=[];
  if(ledgerOnly(env)){
   const placeholders=b.items.map(()=>'?').join(',');
-  const records=await db.prepare('SELECT request_id,source_app,target_app,operation,resource_type '+
+  const records=await db.prepare('SELECT request_id,source_app,target_app,operation,resource_type,'+
+   'resource_id,household_id,requester_user_id,payload_sha256 '+
    'FROM household_approval_requests WHERE household_id=? AND request_id IN ('+placeholders+')')
    .bind(session.household_id,...b.items.map(x=>x.request_id)).all().catch(()=>null);
   if(!records||records.results?.length!==b.items.length||
     records.results.some(x=>!ownerReviewAllowed(x)))
     return reject('only_household_ledger_changes_require_owner_review',403);
+  proposed=records.results;
  }
  // Stable user-provided order and expected versions form the exact replay payload.
  const manifest=JSON.stringify(b.items);
@@ -61,6 +65,13 @@ export async function batchReviewRoute(request,env,session,role,path){
   r?.item_count===b.items.length;
  const existing=await read();
  if(existing)return matches(existing)?response(existing,true):reject('batch_review_idempotency_conflict',409);
+ // Every pending item must have a live, owner-readable source snapshot before
+ // atomic approval. Rejection never requires decrypting private details.
+ if(ledgerOnly(env)&&b.decision==='approve'){
+  for(const row of proposed)
+   if(!await previewVerifiedLedgerIntent(env,row,session.user_id))
+    return reject('approval_detail_unavailable',503);
+ }
  try{
   const r=await db.prepare('INSERT INTO household_approval_review_batches '+
    '(batch_id,household_id,reviewer_user_id,decision,item_manifest,item_count,manifest_sha256,reviewed_at) '+
