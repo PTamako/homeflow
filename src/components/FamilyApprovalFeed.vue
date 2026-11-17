@@ -80,11 +80,19 @@ function description(row:Item){
   timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit'
  }).format(new Date(row.created_at))
 }
+// All owner-reviewed household ledger mutations share the same source-detail,
+// signed execution and status-reconciliation workflow. No personal asset actions.
 function isSharedLedger(row:Item){
- return row.kind==='approval'&&row.source_app==='kakebo'&&
-  row.resource_type==='shared_entry_mutation'&&
-  ['finance.entry.create','finance.entry.update','finance.entry.delete',
-   'finance.entry.restore'].includes(row.operation||'')
+ if(row.kind!=='approval')return false
+ if(row.source_app==='kakebo')return (
+  (row.resource_type==='shared_entry_mutation'&&
+   ['finance.entry.create','finance.entry.update','finance.entry.delete',
+    'finance.entry.restore'].includes(row.operation||''))||
+  (row.resource_type==='finance_entry'&&row.operation==='finance.entry.create')||
+  (row.resource_type==='credit_card_purchase'&&row.operation==='finance.credit_card.purchase')||
+  (row.resource_type==='prepaid_action'&&row.operation==='finance.prepaid.spend'))
+ return row.source_app==='jp-document-assistant'&&
+  row.resource_type==='document_sync_candidate'&&row.operation==='document.sync.finance'
 }
 function canDismiss(row:Item){
  const applied=row.status==='applied'
