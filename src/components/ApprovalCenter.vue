@@ -198,6 +198,7 @@ async function reviewSummary(item:Approval){
  return String(x.date||'')+' · '+(x.type==='income'?'收入':x.type==='expense'?'支出':'资产转移')+
   ' · ¥'+Number(x.amount||0).toLocaleString('ja-JP')+
   ' · '+String(x.category||'')+' · '+String(x.merchant||'')+
+  (x.type==='expense'?' · 支付方式：'+String(x.payment_source||'現金'):'')+
   (x.note?' · 备注：'+String(x.note).slice(0,80):'')
 }
 const selectedApprovals=computed(()=>items.value.filter(x=>
