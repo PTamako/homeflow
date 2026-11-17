@@ -8,7 +8,9 @@ const consent=readFileSync(new URL('../worker/cross-member-transfer-consents.js'
 
 test('management is split into personal and owner-only family tabs',()=>{
  assert.match(view,/section=ref<'personal'\|'family'>\('personal'\)/)
+ assert.match(view,/<nav v-if="isOwner" class="management-tabs" role="tablist"/)
  assert.match(view,/id="management-personal-tab"[^>]*role="tab"/)
+ assert.match(view,/:aria-label="isOwner\?undefined:'个人管理'"/)
  assert.match(view,/v-if="isOwner" id="management-family-tab"/)
  assert.match(view,/v-if="section==='personal'" id="management-personal-panel"/)
  assert.match(view,/v-else-if="isOwner" id="management-family-panel"/)
@@ -18,7 +20,6 @@ test('management is split into personal and owner-only family tabs',()=>{
 
 test('member personal confirmation remains usable without family administration',()=>{
  const personal=view.slice(view.indexOf('id="management-personal-panel"'),view.indexOf('id="management-family-panel"'))
- assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
  for(const component of ['ApprovalCenter','CrossMemberTransferConsents','RecurringFinancePolicyCenter'])
   assert.doesNotMatch(personal,new RegExp('<'+component))
