@@ -805,7 +805,12 @@ test('production scoped owner approval rejects non-ledger operations at backend,
     resource_type:'shared_entry_mutation',resource_id:'1'.repeat(32),expected_version:1}),
    entry('scoped-document-ledger-001',{source_app:'jp-document-assistant',
     operation:'document.sync.finance',resource_type:'document_sync_candidate',
-    resource_id:'2'.repeat(32)})
+    resource_id:'2'.repeat(32)}),
+   entry('scoped-card-001',{operation:'finance.credit_card.purchase',resource_type:'credit_card_purchase'}),
+   entry('scoped-card-settle-001',{operation:'finance.credit_card.settlement',resource_type:'credit_card_settlement'}),
+   entry('scoped-prepaid-spend-001',{operation:'finance.prepaid.spend',resource_type:'prepaid_action'}),
+   entry('scoped-prepaid-topup-001',{operation:'finance.prepaid.topup',resource_type:'prepaid_action'}),
+   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'})
   ];
   for(const body of allowed){
    const r=await f.call(sessions.member,'/api/approvals','POST',body);
@@ -813,8 +818,8 @@ test('production scoped owner approval rejects non-ledger operations at backend,
   }
   const blocked=[
    entry('scoped-points-001',{operation:'finance.points.transfer_out',resource_type:'points_action'}),
-   entry('scoped-card-001',{operation:'finance.credit_card.purchase',resource_type:'credit_card_purchase'}),
-   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'}),
+   entry('scoped-private-001',{operation:'finance.account.public_rule.change',resource_type:'public_rule'}),
+   entry('scoped-points-balance-001',{operation:'finance.points.transfer_out',resource_type:'points_action'}),
    entry('scoped-study-001',{source_app:'jp-document-assistant',target_app:'it-study-platform',
     operation:'document.sync.study',resource_type:'document_sync_candidate'}),
    entry('scoped-task-001',{source_app:'homeflow',target_app:'homeflow',
@@ -829,3 +834,33 @@ test('production scoped owner approval rejects non-ledger operations at backend,
   assert.equal(status.body.enabled,true);
  }finally{f.sql.close()}
 });
+
+test('backend ledger-only predicate exactly matches SQL filter for posted entries',async()=>{
+ const {ownerReviewAllowed,ownerReviewSql}=await import('../worker/approval-scope.js')
+ const db=new DatabaseSync(':memory:')
+ try{
+  db.exec('CREATE TABLE review(source_app TEXT,target_app TEXT,resource_type TEXT,operation TEXT)')
+  const cases=[
+   ['kakebo','kakebo','credit_card_purchase','finance.credit_card.purchase',true],
+   ['kakebo','kakebo','credit_card_settlement','finance.credit_card.settlement',true],
+   ['kakebo','kakebo','prepaid_action','finance.prepaid.spend',true],
+   ['kakebo','kakebo','prepaid_action','finance.prepaid.topup',true],
+   ['kakebo','kakebo','bank_transfer_posted','finance.asset_transfer.bank_to_bank',true],
+   ['kakebo','kakebo','points_action','finance.points.transfer_out',false],
+   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.tsumitate',false],
+   ['jp-document-assistant','homeflow','document_sync_candidate','document.sync.homeflow',false],
+   ['jp-document-assistant','it-study-platform','document_sync_candidate','document.sync.study',false],
+   ['jp-document-assistant','kakebo','document_sync_candidate','document.sync.finance',true],
+   ['kakebo','kakebo','shared_entry_mutation','finance.entry.delete',true],
+   ['kakebo','kakebo','credit_card_purchase','finance.points.transfer_out',false]
+  ]
+  for(const [source_app,target_app,resource_type,operation,expected] of cases){
+   const input={source_app,target_app,resource_type,operation}
+   assert.equal(ownerReviewAllowed(input),expected)
+   db.prepare('INSERT INTO review VALUES (?,?,?,?)').run(source_app,target_app,resource_type,operation)
+   const found=db.prepare('SELECT COUNT(*) AS n FROM review WHERE 1=1'+ownerReviewSql).get().n
+   assert.equal(found,expected?1:0,JSON.stringify(input))
+   db.exec('DELETE FROM review')
+  }
+ }finally{db.close()}
+})
