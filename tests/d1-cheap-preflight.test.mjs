@@ -10,7 +10,7 @@ const envFor=({name='homeflow',baseline=1,throwError=false}={})=>{
    return {first:async()=>{
      if(throwError)throw Error('D1 unavailable')
      if(/sqlite_master|pragma_table_info/.test(sql))return null
-     return {database_name:name,baseline_ready:baseline}
+     return {database_name:name,baseline_ready:baseline,finance_migrations_ready:8}
    }}
  }}
  return {env:{APP_ENV:'production',DB:db},queries}
@@ -21,6 +21,7 @@ test('hot-path D1 guard uses only indexed identity and latest migration, then ca
  assert.equal(f.queries.length,1)
  assert.match(f.queries[0],/FROM environment_identity WHERE key='current'/)
  assert.match(f.queries[0],/0052_achievement_thresholds.sql/)
+ assert.match(f.queries[0],/0060_recurring_execution_receipts.sql/)
  assert.doesNotMatch(f.queries[0],/sqlite_master|pragma_table_info|PRAGMA/)
  assert.equal(await verifiedDatabase(f.env,{quick:true}),true)
  assert.equal(f.queries.length,1)
