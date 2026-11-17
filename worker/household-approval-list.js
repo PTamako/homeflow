@@ -10,7 +10,10 @@ const approval=`SELECT 'approval' AS kind,request_id AS id,requester_user_id AS 
  NULL AS plan_type,NULL AS amount_jpy,NULL AS due_day,NULL AS start_month,
  NULL AS end_month,NULL AS recipient_user_id,NULL AS owner_authorizer_user_id,
  CASE WHEN status='pending' AND expires_at>unixepoch('now')*1000 THEN 0 WHEN status IN ('approved','failed_retryable','executing') THEN 1 ELSE 2 END AS priority
- FROM household_approval_requests WHERE household_id=?1`
+ FROM household_approval_requests WHERE household_id=?1
+ AND NOT EXISTS (SELECT 1 FROM household_approval_hidden_history h
+ WHERE h.request_id=household_approval_requests.request_id
+ AND h.household_id=household_approval_requests.household_id)`
 const recurring=`SELECT 'recurring' AS kind,policy_id AS id,member_user_id AS actor_user_id,
  status,created_at,expires_at,version,NULL AS operation,NULL AS source_app,
  NULL AS resource_type,plan_type,max_amount_jpy AS amount_jpy,due_day,start_month,
