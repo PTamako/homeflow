@@ -8,19 +8,19 @@ const approval=`SELECT 'approval' AS kind,request_id AS id,requester_user_id AS 
  status,created_at,expires_at,version,operation,source_app,resource_type,
  NULL AS plan_type,NULL AS amount_jpy,NULL AS due_day,NULL AS start_month,
  NULL AS end_month,NULL AS recipient_user_id,NULL AS owner_authorizer_user_id,
- CASE WHEN status='pending' THEN 0 WHEN status IN ('approved','failed_retryable','executing') THEN 1 ELSE 2 END AS priority
+ CASE WHEN status='pending' AND expires_at>unixepoch('now')*1000 THEN 0 WHEN status IN ('approved','failed_retryable','executing') THEN 1 ELSE 2 END AS priority
  FROM household_approval_requests WHERE household_id=?1`
 const recurring=`SELECT 'recurring' AS kind,policy_id AS id,member_user_id AS actor_user_id,
  status,created_at,expires_at,version,NULL AS operation,NULL AS source_app,
  NULL AS resource_type,plan_type,max_amount_jpy AS amount_jpy,due_day,start_month,
  end_month,NULL AS recipient_user_id,NULL AS owner_authorizer_user_id,
- CASE WHEN status='pending_owner' THEN 0 WHEN status='approved' THEN 1 ELSE 2 END AS priority
+ CASE WHEN status='pending_owner' AND expires_at>unixepoch('now')*1000 THEN 0 WHEN status='approved' THEN 1 ELSE 2 END AS priority
  FROM household_recurring_finance_policies WHERE household_id=?1`
 const consent=`SELECT 'consent' AS kind,consent_id AS id,source_user_id AS actor_user_id,
  status,created_at,expires_at,version,NULL AS operation,NULL AS source_app,
  NULL AS resource_type,NULL AS plan_type,NULL AS amount_jpy,NULL AS due_day,
  NULL AS start_month,NULL AS end_month,recipient_user_id,owner_authorizer_user_id,
- CASE WHEN status IN ('awaiting_recipient','recipient_accepted') THEN 0
+ CASE WHEN status IN ('awaiting_recipient','recipient_accepted') AND expires_at>unixepoch('now')*1000 THEN 0
  WHEN status='owner_authorized' THEN 1 ELSE 2 END AS priority
  FROM household_cross_member_transfer_consents WHERE household_id=?1`
 

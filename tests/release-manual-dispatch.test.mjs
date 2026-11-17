@@ -14,3 +14,14 @@ test('HomeFlow release cannot be triggered by a main push or an unconfirmed manu
  assert.match(workflow,/wrangler deploy/);
  assert.doesNotMatch(workflow,/preview_urls\s*:\s*true/i);
 });
+
+test('production deployment fails rather than reporting success when Cloudflare credentials are missing',()=>{
+ const workflow=readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8')
+ const wrangler=readFileSync(new URL('../wrangler.toml',import.meta.url),'utf8')
+ assert.match(workflow,/Require production deployment credentials \(fail closed\)/)
+ assert.match(workflow,/Cloudflare production credentials missing; deployment aborted/)
+ assert.doesNotMatch(workflow,/Deployment skipped until Cloudflare repository secrets/)
+ assert.doesNotMatch(workflow,/if:.*env.CLOUDFLARE_API_TOKEN != ''/)
+ assert.match(workflow,/Reject stale cross-app main heads before production deploy/)
+ assert.match(wrangler,/^preview_urls = false$/m)
+})

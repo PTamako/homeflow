@@ -1,6 +1,8 @@
 name = "homeflow"
 main = "worker/index.js"
 compatibility_date = "2026-10-01"
+# Keep production workers.dev active, but never expose version/preview URLs.
+preview_urls = false
 # Cloudflare-to-Cloudflare HTTPS calls (HomeFlow -> Pages kakeibo API) use the
 # public route instead of the same-zone Worker routing restriction (1042).
 # Do not change the read-only ledger URL or expose the ledger token.

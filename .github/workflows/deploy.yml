@@ -19,29 +19,51 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - name: Require production deployment credentials (fail closed)
+        shell: bash
+        run: |
+          if [[ -z "${CLOUDFLARE_API_TOKEN}" || -z "${CLOUDFLARE_ACCOUNT_ID}" ]]; then
+            echo "::error::Cloudflare production credentials missing; deployment aborted"
+            exit 1
+          fi
       # Reviewed contract counterpart. Update the pinned commit with the
       # cross-app contract whenever the target execution protocol changes.
       - name: Checkout Kakeibo contract counterpart
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: d8081292a6b5d0228cc8cfdfa776c3ab3c92cdcc
+          ref: 0e84bbbbb5efddfd22bba7584d5ac1afe06c676a
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
         uses: actions/checkout@v4
         with:
           repository: PTamako/jp-document-assistant
-          ref: 1fa0f8b2d952f6c3fb09bb5a017cdcc6990cf57e
+          ref: d76ff2465e799874848c4d66d5c3a907d37978b3
           path: .contract-document
           persist-credentials: false
       - name: Checkout Study execution counterpart (immutable reviewed SHA)
         uses: actions/checkout@v4
         with:
           repository: PTamako/it-study-platform
-          ref: b7bb8755220b0b0b706f5f042520a7dae483aaa4
+          ref: 5644be87b895b0fd70ee2aee3a140420c3beadf2
           path: .contract-study
           persist-credentials: false
+      - name: Reject stale cross-app main heads before production deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r repo pinned; do
+            latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+            if [[ -z "${latest}" || "${latest}" != "${pinned}" ]]; then
+              echo "::error::PTamako/${repo} main no longer matches reviewed CI contract pin"
+              exit 1
+            fi
+          done <<'REVIEWED_HEADS'
+          kakebo_jp 0e84bbbbb5efddfd22bba7584d5ac1afe06c676a
+          jp-document-assistant d76ff2465e799874848c4d66d5c3a907d37978b3
+          it-study-platform 5644be87b895b0fd70ee2aee3a140420c3beadf2
+          REVIEWED_HEADS
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -62,12 +84,7 @@ jobs:
         run: node scripts/release-g8-binding-preflight.mjs
       # Preview has been permanently decommissioned; deploy only the production Worker.
       - name: Deploy Production
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         run: npx wrangler deploy
       - name: Verify Production API / health and database identity
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         run: |
           curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
-      - name: Note missing deployment authorization
-        if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
-        run: echo "Deployment skipped until Cloudflare repository secrets are configured."

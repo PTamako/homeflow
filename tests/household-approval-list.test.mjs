@@ -103,3 +103,21 @@ test('invalid page, feature disabled, and optional workflow flags fail closed wi
   assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_requests').get().n,10)
  }finally{f.close()}
 })
+
+test('expired pending family requests are retained for audit but never hide actionable approvals on page one',async()=>{
+ const f=fixture()
+ try{
+  const past=Date.now()-60000
+  f.sql.prepare("UPDATE household_approval_requests SET expires_at=? WHERE request_id='approval-0'").run(past)
+  f.sql.prepare("UPDATE household_recurring_finance_policies SET expires_at=? WHERE policy_id='policy-1'").run(past)
+  f.sql.prepare("UPDATE household_cross_member_transfer_consents SET expires_at=? WHERE consent_id='consent-1'").run(past)
+  const pages=await Promise.all([f.call('0'),f.call('1'),f.call('2')])
+  const first=pages[0].data.items
+  assert.equal(first.length,5)
+  assert.ok(first.every(x=>!(x.expires_at<=Date.now()&&['pending','pending_owner','awaiting_recipient','recipient_accepted'].includes(x.status))))
+  const all=pages.flatMap(x=>x.data.items)
+  assert.equal(all.length,15)
+  for(const id of ['approval-0','policy-1','consent-1'])assert.ok(all.some(x=>x.id===id))
+  assert.deepEqual(pages.map(x=>x.data.has_more),[true,true,false])
+ }finally{f.close()}
+})
