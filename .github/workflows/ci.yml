@@ -8,31 +8,31 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Reviewed contract counterpart. Update the pinned commit with the
       # cross-app contract whenever the target execution protocol changes.
       - name: Checkout Kakeibo contract counterpart
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: PTamako/kakebo_jp
           ref: ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
           ref: 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
           path: .contract-document
           persist-credentials: false
       - name: Checkout Study execution counterpart (immutable reviewed SHA)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: PTamako/it-study-platform
           ref: dea0a9607a2cde2b66f328696954750748f67f42
           path: .contract-study
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Install dependencies
