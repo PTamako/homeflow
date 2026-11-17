@@ -51,7 +51,7 @@ const planType=ref<PlanType>('all')
 type ReminderKind='task'|'routine'|'shopping'|'trip'
 const reminderTarget=ref<{kind:ReminderKind;id:string}|null>(null)
 const expandedTaskMenu=ref<string|null>(null)
-const routineAssignTarget=ref<{id:string;title:string;periodOn:string}|null>(null)
+const routineAssignTarget=ref<{id:string;title:string;periodOn:string;reminderOnly:boolean}|null>(null)
 const routineAssignMember=ref(''),routineAssignSecond=ref(''),routineAssignBonus=ref<string|number>(''),routineAssignBusy=ref(false),routineAssignError=ref('')
 function assignedMembers(a:Row|null|undefined,primary:string|null|undefined){
  const first=a?.assigneeUserId||primary||''
@@ -82,7 +82,7 @@ function routineAssignmentPeriod(r:Row){
 async function openRoutineAssignment(r:Row){
  const periodOn=routineAssignmentPeriod(r)
  if(!periodOn||r.visibility!=='household'||!canEdit(r))return
- routineAssignTarget.value={id:r.id,title:r.title,periodOn}
+ routineAssignTarget.value={id:r.id,title:r.title,periodOn,reminderOnly:r.reminder_only===1}
  routineAssignMember.value='';routineAssignSecond.value='';routineAssignBonus.value='';routineAssignError.value='';expandedTaskMenu.value=null
  try{
   const result=await api('/routines/'+r.id+'/assignment?on='+encodeURIComponent(periodOn))
@@ -106,7 +106,7 @@ async function saveRoutineAssignment(){
    (routineAssignSecond.value&&routineAssignSecond.value!==props.userId))
  // Vue v-model on an input[type=number] produces a number at runtime.
  // Calling .trim() on that number used to throw before the request began.
- const parsedBonus=parseRoutineAssignmentBonus(routineAssignBonus.value,other&&!routineAssignSecond.value)
+ const parsedBonus=item.reminderOnly?{valid:true,bonus:0}:parseRoutineAssignmentBonus(routineAssignBonus.value,other&&!routineAssignSecond.value)
  if(!parsedBonus.valid){
   routineAssignError.value='仅指定一名其他家人时，请填写 1～10000 的额外奖励积分';return
  }
@@ -222,7 +222,7 @@ const focusedItemId=computed(()=>props.focusPlanScope===planScope.value?(props.f
 const isFocused=(item:Row)=>!!focusedItemId.value&&item.id===focusedItemId.value&&
   (!item.periodOn||!props.focusPlanPeriodKey||item.periodOn===props.focusPlanPeriodKey)
 const onceEditing=ref<Row|null>(null)
-const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceAssignee=ref(''),onceSecondAssignee=ref(''),onceBonus=ref(0),onceVisibility=ref<'private'|'household'>('private')
+const onceTitle=ref(''),onceDate=ref(''),onceRemind=ref(true),onceReminderOnly=ref(false),onceAssignee=ref(''),onceSecondAssignee=ref(''),onceBonus=ref(0),onceVisibility=ref<'private'|'household'>('private')
 const eventTitle=ref(''),eventDate=ref(''),eventRepeat=ref('yearly')
 const showAnniversaryForm=ref(false)
 const showMemoryForm=ref(false)
@@ -363,7 +363,7 @@ async function planCreated(kind:PlanType,id:string,unscheduled=false){
 }
 function editOnce(t:Row){
   onceEditing.value=onceEditing.value?.id===t.id?null:t
-  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceAssignee.value=t.assigneeUserId||'';onceSecondAssignee.value=t.secondAssigneeUserId||'';onceBonus.value=t.secondAssigneeUserId?0:Number(t.bonusPoints||0);onceVisibility.value=t.visibility
+  onceTitle.value=t.title;onceDate.value=t.dueOn||'';onceRemind.value=t.remindEnabled!==0;onceReminderOnly.value=t.reminderOnly===true||t.reminderOnly===1;onceAssignee.value=t.assigneeUserId||'';onceSecondAssignee.value=t.secondAssigneeUserId||'';onceBonus.value=t.secondAssigneeUserId?0:Number(t.bonusPoints||0);onceVisibility.value=t.visibility
 }
 async function onceChange(t:Row,payload:Record<string,unknown>,method='PATCH'){
   await update(()=>api('/tasks/'+t.id,method,payload),method==='DELETE'?'已删除':'已保存')
@@ -375,15 +375,15 @@ async function saveOnce(){
   await onceChange(t,{title:onceTitle.value,notes:t.notes||'',visibility:onceVisibility.value,
     dueOn:onceDate.value||null,assigneeUserId:onceAssignee.value||null,
     secondAssigneeUserId:onceSecondAssignee.value||null,
-    bonusPoints:onceVisibility.value==='household'&&onceAssignee.value&&!onceSecondAssignee.value&&onceAssignee.value!==props.userId?onceBonus.value:0,
+    bonusPoints:!onceReminderOnly.value&&onceVisibility.value==='household'&&onceAssignee.value&&!onceSecondAssignee.value&&onceAssignee.value!==props.userId?onceBonus.value:0,
     subjectProfileId:t.subjectProfileId||null,healthRecordType:t.healthRecordType||null,
-    remindEnabled:onceRemind.value,expectedUpdatedAt:t.updatedAt})
+    remindEnabled:onceRemind.value,reminderOnly:onceReminderOnly.value,expectedUpdatedAt:t.updatedAt})
   if(!error.value)onceEditing.value=null
 }
 async function scheduleUnplanned(t:Row){
  await onceChange(t,{title:t.title,notes:t.notes||'',visibility:t.visibility,dueOn:today(),
    assigneeUserId:t.assigneeUserId||null,secondAssigneeUserId:t.secondAssigneeUserId||null,bonusPoints:t.secondAssigneeUserId?0:Number(t.bonusPoints||0),subjectProfileId:t.subjectProfileId||null,
-   healthRecordType:t.healthRecordType||null,remindEnabled:t.remindEnabled!==false,
+   healthRecordType:t.healthRecordType||null,remindEnabled:t.remindEnabled!==false,reminderOnly:t.reminderOnly===true||t.reminderOnly===1,
    expectedUpdatedAt:t.updatedAt})
 }
 async function deleteOnce(t:Row){
@@ -1628,15 +1628,15 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
                       <option v-for="member in (props.members||[])" :key="member.id" :value="member.id"
                         :disabled="member.id===routineAssignMember">{{ memberName(member.id) }}</option>
                     </select>
-                    <small v-if="routineAssignSecond">两人中任一人完成，双方平分基础积分，不设置额外奖励。</small>
+                    <small v-if="routineAssignSecond&&!r.reminder_only">两人中任一人完成，双方平分基础积分，不设置额外奖励。</small>
                   </label>
-                  <label v-if="routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">
+                  <label v-if="!routineAssignTarget?.reminderOnly&&routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">
                     额外奖励积分（由发布人支付）
                     <input v-model.trim="routineAssignBonus" type="number" inputmode="numeric"
                       min="1" max="10000" step="1" required aria-label="本期额外奖励正整数"
                       placeholder="1～10000" :aria-invalid="!!routineAssignError" @input="routineAssignError=''"/>
                   </label>
-                  <small v-if="routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
+                  <small v-if="!routineAssignTarget?.reminderOnly&&routineAssignMember&&!routineAssignSecond&&routineAssignMember!==props.userId">完成本期基础 +5 分，额外奖励从发布人的家庭积分中预留并转给处理人。</small>
                   <p v-if="routineAssignError" role="alert" class="routine-assignment-error">{{ routineAssignError }}</p>
                   <div class="task-push-actions routine-assignment-actions">
                     <button type="button" :disabled="routineAssignBusy" @click="routineAssignTarget=null">取消</button>
@@ -1736,10 +1736,10 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
                 <span>截止日期</span>
                 <DateField v-model="onceDate" />
               </label>
-              <label class="once-edit-remind">
-                <input v-model="onceRemind" type="checkbox" />
-                <span>开启提醒</span>
-              </label>
+              <div class="once-edit-remind-row">
+               <label class="once-edit-remind"><input v-model="onceRemind" type="checkbox" /><span>开启提醒</span></label>
+               <label class="once-edit-remind"><input v-model="onceReminderOnly" type="checkbox" @change="onceReminderOnly?(onceBonus=0,onceRemind=true):null"/><span>仅提醒</span></label>
+              </div>
               <label class="once-edit-field">
                 <span>处理人</span>
                 <select v-model="onceAssignee" aria-label="修改任务处理人"
@@ -1759,7 +1759,7 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
                     :disabled="member.id===onceAssignee">{{ memberName(member.id) }}</option>
                 </select>
               </label>
-              <label v-if="onceAssignee&&!onceSecondAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
+              <label v-if="!onceReminderOnly&&onceAssignee&&!onceSecondAssignee&&onceAssignee!==props.userId&&onceVisibility==='household'" class="once-edit-field">
                 <span>额外奖励（由发布人积分预留）</span>
                 <input v-model.number="onceBonus" type="number" inputmode="numeric" min="1" max="10000" step="1" required aria-label="额外奖励积分"/>
               </label>
@@ -2787,6 +2787,7 @@ watch(draftMemoryYear,value=>{if(!value)draftMemoryMonth.value=''})
 .once-task-editor .once-edit-field :deep(.date-field){
   inline-size:100%;min-inline-size:0;max-inline-size:100%
 }
+.once-edit-remind-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;min-width:0}
 .once-task-editor .once-edit-remind{
   display:flex;align-items:center;gap:10px;min-width:0;
   padding:2px 0;font-size:13px;font-weight:500;color:#344a3a
