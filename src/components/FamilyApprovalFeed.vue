@@ -5,6 +5,7 @@ import ApprovalCenter from './ApprovalCenter.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import ConfirmActionSheet from './ConfirmActionSheet.vue'
 import {useConfirmAction} from '../use-confirm-action'
+import {createConditionalApprovalPoller,needsApprovalReconciliation} from '../approval-reconciliation-polling.mjs'
 
 type Kind='approval'|'recurring'|'consent'
 type Item={
@@ -265,23 +266,35 @@ async function act(row:Item,decision:string){
    row.kind==='approval'?'操作结果尚未确认，请刷新查看原申请；不要重复提交。':(e as Error).message}
  finally{if(actor===props.userId){busy.value='';await load(page.value,true)}}
 }
-let refreshTimer:ReturnType<typeof setInterval>|null=null
+// Do not poll an idle family approval feed. A new status replaces the last
+// response and automatically cancels the timer once every ledger entry settles.
+const statusPoller=createConditionalApprovalPoller({
+ shouldPoll:()=>props.active&&props.isOwner&&!!props.userId&&
+  document.visibilityState==='visible'&&!loading.value&&!busy.value&&
+  needsApprovalReconciliation(rows.value,row=>row.kind==='approval'&&isSharedLedger(row)),
+ onRefresh:()=>load(page.value,true)
+})
 function foreground(){
- if(document.visibilityState==='visible'&&props.active&&props.isOwner&&!loading.value&&!busy.value)
+ if(document.visibilityState!=='visible'){statusPoller.stop();return}
+ if(props.active&&props.isOwner&&!loading.value&&!busy.value)
   void load(page.value,true)
+ else statusPoller.sync()
 }
 watch(()=>[props.active,props.isOwner,props.userId],()=>{
- reset()
+ statusPoller.stop();reset()
  if(props.active&&props.isOwner)void load(0)
 },{immediate:true})
+watch([rows,loading,busy,()=>props.active,()=>props.isOwner,()=>props.userId],
+ ()=>statusPoller.sync(),{flush:'post'})
 onMounted(()=>{
  document.addEventListener('visibilitychange',foreground)
- refreshTimer=setInterval(()=>{
-  if(document.visibilityState==='visible'&&props.active&&props.isOwner&&!busy.value&&!loading.value)
-   void load(page.value,true)
- },25000)
+ window.addEventListener('pageshow',foreground)
 })
-onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.removeEventListener('visibilitychange',foreground)})
+onUnmounted(()=>{
+ statusPoller.dispose();reset()
+ document.removeEventListener('visibilitychange',foreground)
+ window.removeEventListener('pageshow',foreground)
+})
 </script>
 <template>
  <section class="panel family-approval-feed" aria-label="家庭审批列表">
