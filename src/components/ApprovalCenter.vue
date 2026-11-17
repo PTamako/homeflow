@@ -195,7 +195,7 @@ function changePage(delta:number){
  void load(false)
 }
 // A review is not an execution: only wired, journal-backed operations get a button.
-// Non-cash finance and document homeflow/study remain non-executable.
+// Personal assets and document homeflow/study remain non-executable.
 function isSupportedExecution(item:Approval){
   const cash=item.source_app==='kakebo'&&item.target_app==='kakebo'&&
    item.operation==='finance.entry.create'&&item.resource_type==='finance_entry'
@@ -206,7 +206,11 @@ function isSupportedExecution(item:Approval){
    item.resource_type==='shared_entry_mutation'&&
    ['finance.entry.create','finance.entry.update','finance.entry.delete',
     'finance.entry.restore'].includes(item.operation)&&sharedEntryExecutionEnabled.value
-  return cash||sharedEntry||documentFinance
+  const card=item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+   item.resource_type==='credit_card_purchase'&&item.operation==='finance.credit_card.purchase'
+  const prepaid=item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+   item.resource_type==='prepaid_action'&&item.operation==='finance.prepaid.spend'
+  return cash||sharedEntry||documentFinance||card||prepaid
  }
 function canExecute(item:Approval){
  return props.isOwner&&executionEnabled.value&&isSupportedExecution(item)&&
@@ -219,10 +223,16 @@ function statusLabel(item:Approval){
 }
 
 function isSharedReview(item:Approval){
- return item.source_app==='kakebo'&&item.target_app==='kakebo'&&
- item.resource_type==='shared_entry_mutation'&&
- ['finance.entry.create','finance.entry.update','finance.entry.delete',
-  'finance.entry.restore'].includes(item.operation)
+ if(item.target_app!=='kakebo')return false
+ if(item.source_app==='kakebo')return (
+  (item.resource_type==='shared_entry_mutation'&&
+   ['finance.entry.create','finance.entry.update','finance.entry.delete',
+    'finance.entry.restore'].includes(item.operation))||
+  (item.resource_type==='finance_entry'&&item.operation==='finance.entry.create')||
+  (item.resource_type==='credit_card_purchase'&&item.operation==='finance.credit_card.purchase')||
+  (item.resource_type==='prepaid_action'&&item.operation==='finance.prepaid.spend'))
+ return item.source_app==='jp-document-assistant'&&
+  item.resource_type==='document_sync_candidate'&&item.operation==='document.sync.finance'
 }
 async function reviewSummary(item:Approval){
  if(!isSharedReview(item))throw Error('该申请缺少安全的明细核对通道，请逐笔审核')
@@ -407,14 +417,13 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
    headers:{'content-type':'application/json'},
    body:JSON.stringify(payload)})
   if(account!==props.userId||!props.active)return
-  if(kind==='approve'&&item.resource_type==='shared_entry_mutation'&&
-    item.source_app==='kakebo'&&item.target_app==='kakebo'){
+  if(kind==='approve'&&isSharedReview(item)){
     // Review first, execute only the SAME immutable approval. Rejections
     // never call the ledger. A failed execute stays approved for safe retry.
     if(result.request?.request_id!==id||result.request?.status!=='approved')
      throw Error('承認状態を確認できません')
     watchedApprovalIds.value=[...new Set([...watchedApprovalIds.value,id])]
-    if(!executionEnabled.value||!sharedEntryExecutionEnabled.value){
+    if(!executionEnabled.value||!isSupportedExecution(item)){
      message.value='已批准，执行服务暂不可用；明细仍是灰色待入账'
     }else{
      try{
