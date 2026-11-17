@@ -183,6 +183,23 @@ function statusLabel(item:Approval){
  return statusNames[item.status]||'处理中'
 }
 
+function isSharedReview(item:Approval){
+ return item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+ item.resource_type==='shared_entry_mutation'&&
+ ['finance.entry.create','finance.entry.update','finance.entry.delete',
+  'finance.entry.restore'].includes(item.operation)
+}
+async function reviewSummary(item:Approval){
+ if(!isSharedReview(item))throw Error('该申请缺少安全的明细核对通道，请逐笔审核')
+ const detail=await getJson('/api/approvals/'+encodeURIComponent(item.request_id)+'/detail')
+ if(detail.ok!==true||detail.approval_id!==item.request_id||
+  !detail.entry&&!detail.before)throw Error('明细核对失败，不能批准')
+ const x=detail.entry||detail.before
+ return String(x.date||'')+' · '+(x.type==='income'?'收入':x.type==='expense'?'支出':'资产转移')+
+  ' · ¥'+Number(x.amount||0).toLocaleString('ja-JP')+
+  ' · '+String(x.category||'')+' · '+String(x.merchant||'')+
+  (x.note?' · 备注：'+String(x.note).slice(0,80):'')
+}
 const selectedApprovals=computed(()=>items.value.filter(x=>
  selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
 const selectedExecutions=computed(()=>items.value.filter(x=>
@@ -261,8 +278,15 @@ async function reviewBatch(decision:'approve'|'reject'){
  const current=props.userId,token=epoch
  const ids=selected.map(x=>({request_id:x.request_id,expected_version:x.version}))
  const label=decision==='approve'?'批准':'拒绝'
+ let summaries:string[]=[]
+ if(decision==='approve'){
+  try{summaries=await Promise.all(selected.map(reviewSummary))}
+  catch{error.value='请先确认每一笔的金额、分类和商家；明细读取失败时不能批量批准。';return}
+ }
  if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
-  message:'本次审核'+selected.length+'笔申请，将全部成功或全部拒绝。批准仅代表通过审核，目标账务不会立即生效。',
+  message:'本次审核'+selected.length+'笔申请。'+
+   (decision==='approve'?'审核通过后立即尝试逐笔入账；结果不明时保留原申请自动核对。':'拒绝后不会入账。')+
+   (summaries.length?'\n'+summaries.map((x,i)=>(i+1)+'. '+x).join('\n'):''),
   ...(decision==='reject'?{danger:true}:{})}))return
  if(token!==epoch||current!==props.userId||!props.active||
   ids.some(p=>!items.value.some(item=>item.request_id===p.request_id&&
@@ -277,7 +301,20 @@ async function reviewBatch(decision:'approve'|'reject'){
    error.value='服务器回执不完整，请使用原批次 ID 核对。';return
   }
   unconfirmedBatch.value=null;selectedIds.value=[]
-  message.value='已批量'+label+' '+ids.length+' 笔，尚未执行入账。'
+  message.value='已批量'+label+' '+ids.length+' 笔'+
+   (decision==='approve'?'，正使用原审批编号逐笔核对入账':'，不会入账')
+  if(decision==='approve'){
+   const execution=await executeApprovedBatch(ids.map(x=>x.request_id),async approvalId=>{
+    const receipt=await getJson('/api/approvals/'+approvalId+'/execute',{
+     method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+    return {ok:receipt.ok,applied:receipt.applied,status:receipt.status,
+     approval_id:receipt.approval_id,remote_id:receipt.remote_id}
+   },()=>token===epoch&&current===props.userId&&props.active,20)
+   if(!execution.ok)
+    message.value='审批已通过，已入账 '+execution.applied.length+
+     ' 笔。其余将按原审批编号自动核对，不需要再次批准。'
+   else message.value='已批准并入账 '+execution.applied.length+' 笔'
+  }
  }catch{
   if(token===epoch&&props.userId===current)
    error.value='批量审核结果不确定。请使用“核对原批次”查看，不要新建另一批。'
@@ -294,6 +331,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  if(busyId.value||loading.value||!available.value||!allowed)return
  const id=item.request_id,account=props.userId
  const chosenStatus=item.status
+ let summary=''
+ if(['approve','reject'].includes(kind)&&isSharedReview(item)){
+  try{summary='\n申请明细：'+await reviewSummary(item)}
+  catch{error.value='该家庭账务的金额、分类和商家暂不能核对，不能盲目审批。';return}
+ }
  const options=kind==='execute'
   ?item.status==='failed_retryable'
    ?{title:'核对后重试原审批',confirmLabel:'确认安全重试',
@@ -308,7 +350,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       message:'只有待审批申请可以撤回，撤回后管理员不能再批准。'}
     :{title:'拒绝家庭申请',confirmLabel:'确认拒绝',
       message:'拒绝后不会修改家庭正式账本。',danger:true}
- if(!await confirmAction(options))return
+ if(!await confirmAction({...options,message:options.message+summary}))return
  if(account!==props.userId||!props.active)return
  // Never execute an item whose status moved while confirmation was open.
  if(item.status!==chosenStatus||
