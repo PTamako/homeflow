@@ -80,7 +80,7 @@ jobs:
       - name: Publish reviewed Kakeibo Pages production, no Preview
         working-directory: .contract-kakeibo
         run: |
-          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=cbfa6212a421f62e014d4c955f9b94218e7dbff7 --commit-message="reviewed owner shared ledger edited payment and value persistence release"
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=cbfa6212a421f62e014d4c955f9b94218e7dbff7 --commit-message="reviewed two-entry approval deduplication and safe history cleanup"
       - name: Confirm Kakeibo production Pages responds
         run: curl --retry 5 --retry-delay 3 --fail --silent --show-error https://kakeibo-f17.pages.dev/ >/dev/null
       - name: Deploy only existing HomeFlow production Worker
