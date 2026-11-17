@@ -97,6 +97,8 @@ export function checkG8SourcePlans(raw){
   if(plan.dbs.find(d=>d.binding==='DB')?.database_id!==EXPECTED_D1_IDS[expectedDb])
    errors.push('source:'+name+':wrong_production_D1');
  }
+ if(!/^preview_urls\s*=\s*false\s*$/m.test(raw?.homeflow||''))
+  errors.push('source:homeflow:preview_urls_must_be_false');
  const h=parsed.homeflow?.vars||{};
  try{
   if(JSON.stringify(JSON.parse(h.OAUTH_CLIENT_REDIRECTS))!==JSON.stringify(EXPECTED_OAUTH_REDIRECTS))

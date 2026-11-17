@@ -102,14 +102,19 @@ export async function verifiedDatabase(env,{quick=false}={}) {
     if(quick){
       const identity=await env.DB.prepare(`SELECT database_name,
         EXISTS(SELECT 1 FROM d1_migrations
-          WHERE name='0052_achievement_thresholds.sql') AS baseline_ready
+          WHERE name='0052_achievement_thresholds.sql') AS baseline_ready,
+        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready
         FROM environment_identity WHERE key='current' LIMIT 1`).first()
-      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1
+      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1 && Number(identity.finance_migrations_ready)===8
       if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS,deep:false})
       else dbIdentityCache.delete(env.DB)
       return valid
     }
     const identity=await env.DB.prepare(`SELECT database_name,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('oauth_authorization_codes','oauth_access_tokens','oauth_security_events','oauth_session_assertions','household_approval_requests','household_approval_events','document_task_applied_actions','household_approval_review_batches','household_cross_member_transfer_consents','household_cross_member_transfer_events','household_recurring_finance_policies','household_recurring_finance_events','household_recurring_finance_reservations','household_recurring_execution_receipts','household_recurring_execution_events')) AS finance_tables_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_oauth_access_tokens_expiry','idx_household_approvals_pending','idx_household_approval_exec_leases','idx_document_task_applied_household','idx_review_batch_owner','idx_cross_transfer_consent_status','idx_recurring_policy_status','idx_recurring_execution_applied_household')) AS finance_indexes_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('trg_household_approval_owner_review','trg_approval_execution_claim_requires_nonce','trg_document_task_record_applied','trg_review_batch_full_preflight','trg_cross_transfer_consent_status_guard','trg_recurring_policy_transition','trg_recurring_execution_receipt_guard','trg_recurring_execution_auto_audit')) AS finance_triggers_ready,
       (SELECT COUNT(*) FROM d1_migrations
        WHERE name='0046_reward_wish_savings_credit.sql') AS required_migration_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name='0047_anniversary_archive.sql') AS anniversary_migration_ready,
@@ -177,6 +182,10 @@ export async function verifiedDatabase(env,{quick=false}={}) {
         'rewards_seed_new_household','rewards_group_funded')) AS rewards_triggers_ready
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
+      Number(identity.finance_migrations_ready)===8 &&
+      Number(identity.finance_tables_ready)===15 &&
+      Number(identity.finance_indexes_ready)===8 &&
+      Number(identity.finance_triggers_ready)===8 &&
       Number(identity.required_migration_ready)===1 &&
        Number(identity.anniversary_migration_ready)===1 &&
        Number(identity.oneoff_migration_ready)===1 &&
