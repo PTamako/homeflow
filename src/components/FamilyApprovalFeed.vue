@@ -93,7 +93,7 @@ function previewValues(data:Record<string,unknown>|null){
   ['类型',prettyType(data.type)],['金额',formatMoney(data.amount)],
   ['分类',String(data.category||'—')],['商家',String(data.merchant||'—')],
   ['备注',String(data.note||'无')],
-  ...(data.payment_source?[['支付方式',String(data.payment_source)]]:[])
+  ...(data.type==='expense'?[['支付方式',String(data.payment_source||'現金')]]:[])
  ]
 }
 async function ensureDetail(row:Item){
@@ -205,6 +205,7 @@ async function act(row:Item,decision:string){
  const summary=isSharedLedger(row)&&data?
   '\n核对明细：'+String(data.date||'')+' · '+prettyType(data.type)+' · '+
   formatMoney(data.amount)+' · '+String(data.category||'')+' · '+String(data.merchant||'')+
+  (data.type==='expense'?' · 支付：'+String(data.payment_source||'現金'):'')+
   (data.note?'\n备注：'+String(data.note).slice(0,200):''):''
  if(!await confirmAction({title:phrase+title(row),confirmLabel:'确认'+phrase,
   message:caution+summary,...(decision==='reject'||decision==='revoke'?{danger:true}:{})}))return
