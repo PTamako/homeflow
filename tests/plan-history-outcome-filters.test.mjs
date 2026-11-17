@@ -40,7 +40,7 @@ test('completed and missed one-off tasks are filtered by SQL before page limit',
    id TEXT PRIMARY KEY,household_id TEXT,creator_user_id TEXT,deleted_at TEXT,
    visibility TEXT,notes TEXT,due_on TEXT,completed_at TEXT,created_at TEXT,updated_at TEXT,
    title TEXT,assignee_user_id TEXT,second_assignee_user_id TEXT,bonus_points INTEGER,
-   subject_profile_id TEXT,health_record_type TEXT,remind_enabled INTEGER)`)
+   subject_profile_id TEXT,health_record_type TEXT,remind_enabled INTEGER,reminder_only INTEGER DEFAULT 0)`)
   const inserts=[
    ['00000000-0000-4000-8000-000000000001','finished','2026-11-01','2026-11-05T07:00:00Z','alice'],
    ['00000000-0000-4000-8000-000000000002','missed','2026-11-01',null,'alice'],

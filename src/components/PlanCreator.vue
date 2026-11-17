@@ -38,7 +38,7 @@ const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10)
 const defaultForm=()=>({
  title:'',visibility:'household',date:today(),repeatType:'once',monthlyMode:'day',
  monthWeekday:2,monthWeekNumbers:[2,4] as number[],monthDays:[Number(today().slice(-2))] as number[],leaveUnscheduled:false,
- intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,
+ intervalDays:7,intervalAnchor:'fixed',weekdays:[new Date(today()+'T00:00:00Z').getUTCDay()] as number[],remindEnabled:true,reminderOnly:false,
  subjectProfileId:'',assignedTo:props.userId||'',shoppingSecond:'',healthRecordType:'other',quantity:1,dueOn:'',
  goalMode:'once',goalStartOn:today(),startOn:today(),
  wishType:'purchase',estimatedAmount:0,targetOn:'',wishRemindEnabled:false,wishRemindAdvanceDays:0,createSavingsGoal:false,
@@ -96,7 +96,7 @@ async function submit(){
     const details={
       ...common,assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
       healthRecordType:isPet.value?form.healthRecordType||null:null,
-      remindEnabled:form.remindEnabled
+      remindEnabled:form.remindEnabled,reminderOnly:form.reminderOnly
     }
     if(form.repeatType==='once'){
       result=await send('/tasks',oneTimeTaskPayload(onceDraft.value,oncePet.value))
@@ -231,8 +231,10 @@ async function submit(){
         <option value="fixed">按原定日期</option><option value="completion">按上次完成日期</option>
        </select></label>
       </template>
-      <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/>
-       <span>开启提醒</span></label>
+      <div class="plan-checks-row">
+       <label class="plan-checkbox"><input v-model="form.remindEnabled" type="checkbox"/><span>开启提醒</span></label>
+       <label class="plan-checkbox"><input v-model="form.reminderOnly" type="checkbox" @change="form.reminderOnly?form.remindEnabled=true:null"/><span>仅提醒</span></label>
+      </div>
       <label>关联家人或宠物（可选）<select v-model="form.subjectProfileId">
        <option value="">不关联</option>
        <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.displayName }}</option>
@@ -347,6 +349,7 @@ async function submit(){
 .plan-fields{display:grid;gap:12px;padding-top:0;border-top:0}
 .plan-fields label{display:grid;gap:5px;min-width:0;color:#5d7769;font-size:12px}
 .plan-fields input:not([type="checkbox"]),.plan-fields select{width:100%;max-width:100%;min-width:0;min-height:41px;border-radius:9px;padding:8px 10px;border:1px solid #d9e4db;background:#fff;box-sizing:border-box;color:#304838}
+.plan-checks-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;min-width:0}
 .plan-fields .plan-checkbox{display:flex;align-items:center;gap:10px}.plan-checkbox input{width:19px;height:19px;flex:none;accent-color:#43866a}
 .plan-checkbox span{min-width:0;color:#314d3e}.plan-checkbox small{display:block;color:#8a9b8e;font-size:11px;line-height:1.45;margin-top:3px}
 .monthly-week-select{display:flex;flex-wrap:wrap;gap:7px;min-width:0;margin:0;padding:10px;border:1px solid #d9e4db;border-radius:10px}

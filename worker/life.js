@@ -12,7 +12,7 @@ import {householdWalletSql,pointYearStartSql} from './points-wallet.js'
 
 const catalog={
   anniversaries:{columns:['title','event_date','repeat_mode','advance_days_json','note','subject_profile_id']},
-  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled']},
+  routines:{columns:['title','repeat_type','repeat_config','anchor_date','assigned_to','subject_profile_id','health_record_type','remind_enabled','reminder_only']},
   wishes:{columns:['title','wish_type','status','estimated_amount','currency','note','target_on','remind_enabled','remind_advance_days']},
   goals:{columns:['title','target_amount','reserved_amount','currency','target_on','wish_id','goal_mode','start_on']},
   shopping_items:{columns:['title','quantity','due_on','assigned_to','second_assignee_user_id']},
@@ -53,7 +53,8 @@ function normalized(table,b,s){
       if(b.subjectProfileId && !hexId(b.subjectProfileId))return null
       const careType=b.healthRecordType||null
       if(careType&&!['deworm','vaccination','vet','medication','grooming','other'].includes(careType))return null
-      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType,b.remindEnabled===false?0:1]
+      if(b.reminderOnly!==undefined&&typeof b.reminderOnly!=='boolean')return null
+      return [title,repeatType,JSON.stringify(config),b.anchorDate,b.assignedTo||null,b.subjectProfileId||null,careType,b.remindEnabled===false?0:1,b.reminderOnly===true?1:0]
     }
     case 'wishes':
       if(!['trip','purchase','activity','other'].includes(b.wishType)||!validMoney(b.estimatedAmount??0)||!JPY(b.currency||'JPY'))return null
@@ -533,8 +534,17 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
       b.remindEnabled??=current.remind_enabled===1
       b.remindAdvanceDays??=current.remind_advance_days??0
     }
+    if(table==='routines'&&b)b.reminderOnly??=current.reminder_only===1
     const vals=normalized(table,b,session)
     if(!vals||!await validLinks(db,table,vals,session,visibilityOf(b,session)))return bad()
+    if(table==='routines'&&vals[8]===1&&current.reminder_only!==1){
+      const bounty=await db.prepare(`SELECT 1 FROM routine_occurrence_assignments a
+        LEFT JOIN routine_marks m ON m.routine_id=a.routine_id AND m.occurrence_on=a.occurrence_on
+        WHERE a.household_id=?1 AND a.routine_id=?2 AND a.bonus_points>0
+        AND m.completed_at IS NULL AND m.skipped_at IS NULL LIMIT 1`)
+        .bind(session.household_id,id).first()
+      if(bounty)return json({error:'reminder_only_clear_bounties_first'},409)
+    }
     if(table==='shopping_items'&&current.completed_at&&
        (vals[3]!==current.assigned_to||vals[4]!==current.second_assignee_user_id))
       return json({error:'completed_assignment_locked'},409)
