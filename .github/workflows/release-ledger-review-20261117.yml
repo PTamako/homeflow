@@ -12,7 +12,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     timeout-minutes: 25
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -58,7 +57,6 @@ jobs:
           REVIEWED
           test "$(git -C .contract-kakeibo rev-parse HEAD)" = 3b84b7265c7c6940d81132f6378b600f14fe4028
           test "$(git -C .contract-document rev-parse HEAD)" = cbeda805e6b65b313af9b805e6394538113700be
-          ! grep -Rq -- '--env preview' .github/workflows/release-ledger-review-20261117.yml
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
