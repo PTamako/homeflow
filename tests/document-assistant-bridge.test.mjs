@@ -73,3 +73,26 @@ test('signed household assignee picker is read-only and scoped to current househ
   assert.equal((await documentAssistantBridge(await signed({...payload,actor_user_id:'unapproved_actor'}),
     env({DB:db}))).status,403);
 });
+
+test('signed HomeFlow SSO member can read own task picker without administrator approval',async()=>{
+  const member='linked_member_12345'
+  let writes=0
+  const DB={prepare(sql){return {bind(...args){return {
+    async first(){assert.match(sql,/household_members/);assert.equal(args[0],member)
+      return {household_id:'h1',user_id:member}},
+    async all(){assert.ok(sql.includes('WHERE hm.household_id=?1'));
+      return {results:[{id:member,label:'本人'},{id:actor,label:'家人'}]}},
+    async run(){writes++;throw Error('no writes for member picker')}
+  }}}}}
+  const payload={source:'jp-document-assistant',actor_user_id:member,
+    identity_source:'homeflow_sso',idempotency_key:id,payload:{operation:'members'}}
+  const reply=await documentAssistantBridge(await signed(payload),env({
+    JPDA_BRIDGE_ALLOWED_USERS:actor,DB}))
+  assert.equal(reply.status,200,await reply.clone().text())
+  assert.deepEqual(await reply.json(),{ok:true,members:[
+    {id:member,label:'本人',self:true},{id:actor,label:'家人',self:false}]})
+  assert.equal(writes,0)
+  const unsigned=new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)})
+  assert.equal((await documentAssistantBridge(unsigned,env({DB}))).status,401)
+})
