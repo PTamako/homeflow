@@ -2,6 +2,7 @@
 import {onMounted,onUnmounted,ref,watch} from 'vue'
 import AppIcon from './AppIcon.vue'
 import ApprovalCenter from './ApprovalCenter.vue'
+import SwipeActions from './SwipeActions.vue'
 import EditBottomSheet from './EditBottomSheet.vue'
 import ConfirmActionSheet from './ConfirmActionSheet.vue'
 import {useConfirmAction} from '../use-confirm-action'
@@ -85,6 +86,7 @@ function isSharedLedger(row:Item){
   ['finance.entry.create','finance.entry.update','finance.entry.delete',
    'finance.entry.restore'].includes(row.operation||'')
 }
+function canDismiss(row:Item){return props.isOwner&&isSharedLedger(row)&&row.status==='applied'}
 function formatMoney(amount:unknown){return Number.isFinite(Number(amount))?'¥'+Number(amount).toLocaleString('ja-JP'):'—'}
 function prettyType(type:unknown){return type==='income'?'收入':type==='expense'?'支出':type==='transfer'?'资产转移':'—'}
 function previewValues(data:Record<string,unknown>|null){
@@ -268,6 +270,36 @@ async function act(row:Item,decision:string){
 }
 // Do not poll an idle family approval feed. A new status replaces the last
 // response and automatically cancels the timer once every ledger entry settles.
+async function dismissHistory(row:Item){
+ if(!props.active||!props.isOwner||!canDismiss(row)||loading.value||busy.value)return
+ const actor=props.userId,step=revision
+ if(!await confirmAction({title:'删除审批记录',confirmLabel:'删除记录',danger:true,
+  message:'仅从家庭审批列表隐藏这条已入账记录。记账本里的正式明细不会删除，后台审核与入账记录也会保留。'}))return
+ if(step!==revision||actor!==props.userId||!props.active||!props.isOwner||
+  !rows.value.some(x=>x.kind===row.kind&&x.id===row.id&&x.status==='applied'))return
+ busy.value='dismiss:'+row.id;error.value='';message.value=''
+ let dismissed=false
+ try{
+  const response=await fetch('/api/approvals/'+encodeURIComponent(row.id)+'/history',
+   {method:'DELETE',credentials:'same-origin',cache:'no-store'})
+  const result=await response.json().catch(()=>({}))
+  if(actor!==props.userId||!props.active||!props.isOwner)return
+  if(!response.ok||result.ok!==true||result.request_id!==row.id||result.dismissed!==true)
+   throw Error(String(result.error||'删除审批记录失败'))
+  dismissed=true
+  message.value='已从审批列表移除，记账本明细不变'
+  if(detailSheetRow.value?.id===row.id)detailSheetRow.value=null
+ }catch(e){if(actor===props.userId)error.value=(e as Error).message}
+ finally{
+  if(actor===props.userId){
+   busy.value=''
+   if(dismissed){
+    await load(page.value,true)
+    if(!rows.value.length&&page.value>0&&!error.value)await load(page.value-1,true)
+   }
+  }
+ }
+}
 const statusPoller=createConditionalApprovalPoller({
  shouldPoll:()=>props.active&&props.isOwner&&!!props.userId&&
   document.visibilityState==='visible'&&!loading.value&&!busy.value&&
@@ -314,6 +346,9 @@ onUnmounted(()=>{
   <p v-else-if="!rows.length&&!error" class="feed-empty">暂无申请</p>
   <ul v-else-if="rows.length" class="feed-list">
    <li v-for="row in rows" :key="row.kind+':'+row.id" class="feed-item">
+    <SwipeActions :id="row.id" scope="family-approval-history" :allow-edit="false"
+     :allow-delete="canDismiss(row)" :show-trigger="canDismiss(row)"
+     delete-label="删除记录" @delete="dismissHistory(row)">
     <div class="feed-top">
      <b>{{title(row)}}</b>
      <span class="feed-state">{{row.expires_at<=Date.now()&&
@@ -340,6 +375,7 @@ onUnmounted(()=>{
       :disabled="!!busy||loading||(isSharedLedger(row)&&['approve','reject'].includes(decision)&&!details[row.id])" :class="{primary:decision==='approve'||decision==='accept'||decision==='authorize'}"
       @click="act(row,decision)">{{actionLabels[decision]}}</button>
     </div>
+    </SwipeActions>
    </li>
   </ul>
   <nav v-if="rows.length&&(page>0||hasMore)" class="feed-pages" aria-label="家庭审批分页">

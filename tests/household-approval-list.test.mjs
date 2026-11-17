@@ -7,6 +7,7 @@ function fixture(){
  sql.exec(`CREATE TABLE users(id TEXT PRIMARY KEY,disabled_at INTEGER);
  CREATE TABLE household_members(household_id TEXT,user_id TEXT,role TEXT);
  CREATE TABLE household_approval_hidden_history(request_id TEXT PRIMARY KEY,household_id TEXT);
+ CREATE TABLE household_approval_dismissed_history(request_id TEXT PRIMARY KEY,household_id TEXT);
  CREATE TABLE household_approval_requests(
   request_id TEXT,household_id TEXT,requester_user_id TEXT,status TEXT,
   created_at INTEGER,expires_at INTEGER,version INTEGER,
