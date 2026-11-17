@@ -12,6 +12,7 @@ import {approvalRoute} from '../worker/approvals.js';
 import {familyPrepaidActions} from '../.contract-kakeibo/functions/api/family-finance/prepaid-actions.js';
 import {familyMemberPrepaidTopups} from '../.contract-kakeibo/functions/api/family-finance/member-prepaid-topups.js';
 import {approvedPrepaidActionRoute} from '../.contract-kakeibo/functions/api/internal/prepaid-actions/[[path]].js';
+import {approvalPreviewRoute} from '../.contract-kakeibo/workers/approval-preview.js';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
  member='22222222-2222-4222-8222-222222222222',
@@ -84,13 +85,16 @@ async function fixture(){
   APPROVAL_VERIFICATION_SECRET:'6'.repeat(64),
   PREPAID_APPROVAL_SUBMISSION_ENABLED:'true',PREPAID_SUBMISSION_SECRET:secrets.submit,
   PREPAID_APPROVAL_EXECUTION_ENABLED:'true',PREPAID_EXECUTION_SECRET:secrets.execution,
-  PREPAID_APPROVAL_PROOF_SECRET:secrets.proof};
+  PREPAID_APPROVAL_PROOF_SECRET:secrets.proof,
+  SHARED_ENTRY_EXECUTION_SECRET:'7'.repeat(64)};
  const fin={APP_ENV:'production',DB:k.db,KAKEIBO_FAMILY_FINANCE_ENABLED:'true',
   KAKEIBO_PREPAID_ACTIONS_ENABLED:'true',KAKEIBO_PERSONAL_PREPAID_TOPUPS_ENABLED:'true',KAKEIBO_FAMILY_PENDING_KEY:secrets.pending,
   KAKEIBO_PREPAID_SUBMISSION_SECRET:secrets.submit,
   KAKEIBO_PREPAID_EXECUTION_SECRET:secrets.execution,
   KAKEIBO_PREPAID_PROOF_SECRET:secrets.proof,
-  HOMEFLOW_OAUTH_ORIGIN:'https://homeflow.example.test'};
+  HOMEFLOW_OAUTH_ORIGIN:'https://homeflow.example.test',
+  KAKEIBO_HOUSEHOLD_LEDGER_ONLY:'true',
+  KAKEIBO_SHARED_MUTATION_EXECUTION_SECRET:'7'.repeat(64)};
  const calls={submit:0,proof:0,execute:0,receipt:0};
  fin.HOMEFLOW_IDENTITY_SERVICE={async fetch(req){
   if(new URL(req.url).pathname.endsWith('/prepaid-submit')){
@@ -98,6 +102,7 @@ async function fixture(){
   }
   calls.proof++;return approvalVerificationRoute(req,home);
  }};
+ home.KAKEIBO_SHARED_ENTRY_EXECUTION_SERVICE={fetch:req=>approvalPreviewRoute(req,fin)};
  home.KAKEIBO_PREPAID_EXECUTION_SERVICE={async fetch(req){
   const mode=new URL(req.url).pathname.split('/').at(-1);
   calls[mode]++;return approvedPrepaidActionRoute(req,fin,[mode]);
