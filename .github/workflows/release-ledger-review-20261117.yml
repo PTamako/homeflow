@@ -1,0 +1,101 @@
+name: One-time production household-ledger review release
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-ledger-review-20261117.yml'
+permissions:
+  contents: read
+concurrency:
+  group: homeflow-ledger-reviewed-production-20261117
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout HomeFlow reviewed main
+        uses: actions/checkout@v5
+      - name: Checkout merged Kakeibo production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 3b84b7265c7c6940d81132f6378b600f14fe4028
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout merged Document Assistant production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: cbeda805e6b65b313af9b805e6394538113700be
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout original Study source (read-only contract)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          path: .contract-study
+          persist-credentials: false
+      - name: Fail closed on missing credentials or concurrent source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          while read -r repo expected; do
+            actual="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+            test -n "${actual}" && test "${actual}" = "${expected}" || {
+              echo "::error::${repo} main drifted since cross-app review"; exit 1;
+            }
+          done <<'REVIEWED'
+          kakebo_jp 3b84b7265c7c6940d81132f6378b600f14fe4028
+          jp-document-assistant cbeda805e6b65b313af9b805e6394538113700be
+          REVIEWED
+          test "$(git -C .contract-kakeibo rev-parse HEAD)" = 3b84b7265c7c6940d81132f6378b600f14fe4028
+          test "$(git -C .contract-document rev-parse HEAD)" = cbeda805e6b65b313af9b805e6394538113700be
+          ! grep -Rq -- '--env preview' .github/workflows/release-ledger-review-20261117.yml
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install and test HomeFlow cross-app source
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          python3 scripts/check_migrations.py
+          node scripts/release-g8-source-plan.mjs
+      - name: Verify existing Cloudflare production resource bindings
+        run: node scripts/release-g8-binding-preflight.mjs
+      - name: Build and test Kakeibo private Worker source
+        working-directory: .contract-kakeibo
+        run: |
+          npm ci --no-audit --no-fund
+          npm run verify:release
+      - name: Build and test Document Assistant production Worker source
+        working-directory: .contract-document
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check:syntax
+          npm run build
+      - name: Publish existing Kakeibo private Worker (no D1 or Pages writes)
+        working-directory: .contract-kakeibo
+        run: npx wrangler deploy --config wrangler.homeflow-bridge.toml
+      - name: Publish existing Document Assistant production Worker (no migrations)
+        working-directory: .contract-document
+        run: npx wrangler deploy --config wrangler.jsonc
+      - name: Publish existing HomeFlow production Worker and PWA (no Preview)
+        run: |
+          node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+          npm run build
+          npx wrangler deploy
+      - name: Confirm both live production health endpoints
+        run: |
+          set -euo pipefail
+          curl --retry 5 --retry-delay 3 -fsS https://homeflow.yupan6706.workers.dev/api/health |
+            python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
+          curl --retry 5 --retry-delay 3 -fsS https://jp-document-assistant.yupan6706.workers.dev/api/health |
+            python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') and d.get('service')=='document-assistant',d"
