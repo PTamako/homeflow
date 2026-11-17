@@ -37,9 +37,10 @@ export async function householdApprovalListRoute(request,env,path,session){
  if(!/^(0|[1-9][0-9]{0,2})$/.test(raw)||Number(raw)>200)
   return invalid('invalid_page',400)
  const page=Number(raw)
+ // Only changes to the shared household ledger require owner approval.
+ // Personal recurring plans and cross-member asset consent have independent
+ // ownership/confirmation flows and must never appear in this review inbox.
  const sources=[approval]
- if(env.RECURRING_FINANCE_AUTH_ENABLED==='true')sources.push(recurring)
- if(env.CROSS_MEMBER_TRANSFER_CONSENTS_ENABLED==='true')sources.push(consent)
  try{
   const query='SELECT * FROM ('+sources.join(' UNION ALL ')+
    ') ORDER BY priority ASC,created_at DESC,id DESC LIMIT ?2 OFFSET ?3'

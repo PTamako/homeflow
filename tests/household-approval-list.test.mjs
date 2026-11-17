@@ -60,18 +60,20 @@ function fixture(){
  }
  return {sql,env,call,close:()=>sql.close()}
 }
-test('one owner-only timeline combines three approval sources and returns exactly five per page',async()=>{
+test('owner approval timeline contains only household ledger mutations (not recurring plans or personal consents)',async()=>{
  const f=fixture()
  try{
   const pages=await Promise.all([f.call('0'),f.call('1'),f.call('2')])
   for(const row of pages)assert.equal(row.status,200,JSON.stringify(row.data))
-  assert.deepEqual(pages.map(x=>x.data.items.length),[5,5,5])
-  assert.deepEqual(pages.map(x=>x.data.has_more),[true,true,false])
+  assert.deepEqual(pages.map(x=>x.data.items.length),[5,4,0])
+  assert.deepEqual(pages.map(x=>x.data.has_more),[true,false,false])
   assert.deepEqual(pages.map(x=>x.data.page_size),[5,5,5])
   const all=pages.flatMap(x=>x.data.items)
-  assert.equal(new Set(all.map(x=>x.kind+':'+x.id)).size,15)
-  assert.deepEqual(new Set(all.map(x=>x.kind)),new Set(['approval','recurring','consent']))
-  assert.ok(all.slice(0,7).every(x=>['pending','pending_owner','recipient_accepted','awaiting_recipient'].includes(x.status)))
+  assert.equal(new Set(all.map(x=>x.kind+':'+x.id)).size,9)
+  assert.deepEqual(new Set(all.map(x=>x.kind)),new Set(['approval']))
+  assert.ok(all.every(x=>x.operation.startsWith('finance.entry.')))
+  assert.ok(!all.some(x=>x.id.startsWith('policy-')||x.id.startsWith('consent-')))
+  assert.ok(all.slice(0,3).every(x=>x.status==='pending'))
   assert.ok(all.every(x=>!('payload_sha256' in x)&&!('source_reference_hash' in x)&&
    !('bank_account_number' in x)&&!('priority' in x)))
  }finally{f.close()}
@@ -116,8 +118,9 @@ test('expired pending family requests are retained for audit but never hide acti
   assert.equal(first.length,5)
   assert.ok(first.every(x=>!(x.expires_at<=Date.now()&&['pending','pending_owner','awaiting_recipient','recipient_accepted'].includes(x.status))))
   const all=pages.flatMap(x=>x.data.items)
-  assert.equal(all.length,15)
-  for(const id of ['approval-0','policy-1','consent-1'])assert.ok(all.some(x=>x.id===id))
-  assert.deepEqual(pages.map(x=>x.data.has_more),[true,true,false])
+  assert.equal(all.length,9)
+  assert.ok(all.some(x=>x.id==='approval-0'))
+  assert.ok(!all.some(x=>x.id==='policy-1'||x.id==='consent-1'))
+  assert.deepEqual(pages.map(x=>x.data.has_more),[true,false,false])
  }finally{f.close()}
 })

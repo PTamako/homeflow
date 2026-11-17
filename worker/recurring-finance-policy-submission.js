@@ -19,6 +19,7 @@ export async function recurringFinancePolicySubmissionRoute(request,e){
  if(e.APP_ENV!=='production'||e.APPROVALS_ENABLED!=='true'||
   e.RECURRING_FINANCE_AUTH_ENABLED!=='true'||
   e.RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED!=='true'||
+  e.RECURRING_LEGACY_OWNER_REVIEW_ENABLED!=='true'||
   !hex.test(e.RECURRING_FINANCE_POLICY_SUBMISSION_SECRET||'')||!e.DB?.prepare)
   return fail('recurring_policy_submission_disabled',503)
  if(request.method!=='POST'||request.headers.has('origin')||

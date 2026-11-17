@@ -65,7 +65,8 @@ function fixture(){
   k.sql.prepare('INSERT INTO family_financial_accounts(account_id,household_id,owner_user_id,label,account_kind,origin,opening_balance,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?,?,?,?,?,?)')
    .run(a,hh,member,kind,kind,'member_created',100000,member,member)
  const he={APP_ENV:'production',APPROVALS_ENABLED:'true',DB:h.binding,
-  RECURRING_FINANCE_AUTH_ENABLED:'true',RECURRING_FINANCE_RESERVATIONS_ENABLED:'true',
+  RECURRING_FINANCE_AUTH_ENABLED:'true',RECURRING_LEGACY_OWNER_REVIEW_ENABLED:'true',
+ RECURRING_FINANCE_RESERVATIONS_ENABLED:'true',
   RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED:'true',
   RECURRING_FINANCE_POLICY_SUBMISSION_SECRET:s.policy,
   RECURRING_FINANCE_RESERVATION_SECRET:s.reserve,
