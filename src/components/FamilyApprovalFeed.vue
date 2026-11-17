@@ -22,6 +22,10 @@ const props=defineProps<{
 const rows=ref<Item[]>([]),page=ref(0),hasMore=ref(false)
 const loading=ref(false),busy=ref(''),error=ref(''),message=ref('')
 const batchOpen=ref(false)
+const details=ref<Record<string,{entry:Record<string,unknown>|null;before:Record<string,unknown>|null}>>({})
+const detailBusy=ref<Record<string,boolean>>({}),detailError=ref<Record<string,boolean>>({})
+const detailExpanded=ref<string[]>([])
+const detailRequests=new Map<string,Promise<boolean>>()
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 let revision=0
 const pageSize=5
@@ -80,6 +84,52 @@ function isSharedLedger(row:Item){
   ['finance.entry.create','finance.entry.update','finance.entry.delete',
    'finance.entry.restore'].includes(row.operation||'')
 }
+function formatMoney(amount:unknown){return Number.isFinite(Number(amount))?'¥'+Number(amount).toLocaleString('ja-JP'):'—'}
+function prettyType(type:unknown){return type==='income'?'收入':type==='expense'?'支出':type==='transfer'?'资产转移':'—'}
+function previewValues(data:Record<string,unknown>|null){
+ if(!data)return []
+ return [
+  ['日期',String(data.date||'—')+(data.time?' '+data.time:'')],
+  ['类型',prettyType(data.type)],['金额',formatMoney(data.amount)],
+  ['分类',String(data.category||'—')],['商家',String(data.merchant||'—')],
+  ['备注',String(data.note||'无')],
+  ...(data.payment_source?[['支付方式',String(data.payment_source)]]:[])
+ ]
+}
+async function ensureDetail(row:Item){
+ if(!isSharedLedger(row))return true
+ if(details.value[row.id])return true
+ if(detailRequests.has(row.id))return detailRequests.get(row.id)!
+ const actor=props.userId,householdRevision=revision
+ const task=(async()=>{
+  detailBusy.value={...detailBusy.value,[row.id]:true}
+  try{
+   const response=await fetch('/api/approvals/'+encodeURIComponent(row.id)+'/detail',{
+    credentials:'same-origin',cache:'no-store'})
+   const body=await response.json().catch(()=>({}))
+   if(!response.ok||body.ok!==true||body.approval_id!==row.id||
+      !body.entry&&!body.before)throw Error('detail_unavailable')
+   if(actor!==props.userId||!props.active||!props.isOwner)return false
+   details.value={...details.value,[row.id]:{entry:body.entry||null,before:body.before||null}}
+   const remaining={...detailError.value};delete remaining[row.id];detailError.value=remaining
+   return true
+  }catch{
+   if(actor===props.userId)detailError.value={...detailError.value,[row.id]:true}
+   return false
+  }finally{
+   if(actor===props.userId)detailBusy.value={...detailBusy.value,[row.id]:false}
+  }
+ })()
+ detailRequests.set(row.id,task)
+ try{return await task}finally{detailRequests.delete(row.id)}
+}
+async function toggleDetail(row:Item){
+ if(detailExpanded.value.includes(row.id)){
+  detailExpanded.value=detailExpanded.value.filter(id=>id!==row.id);return
+ }
+ detailExpanded.value=[...detailExpanded.value,row.id]
+ if(isSharedLedger(row))await ensureDetail(row)
+}
 function actions(row:Item){
  if(row.expires_at<=Date.now()&&
   ['pending','pending_owner','awaiting_recipient','recipient_accepted'].includes(row.status))return []
@@ -99,7 +149,8 @@ function actions(row:Item){
 function reset(){
  revision++;rows.value=[];page.value=0;hasMore.value=false
  loading.value=false;busy.value='';error.value='';message.value=''
- batchOpen.value=false;cancelConfirm()
+ batchOpen.value=false;details.value={};detailBusy.value={};detailError.value={};
+ detailExpanded.value=[];detailRequests.clear();cancelConfirm()
 }
 async function load(n=page.value,preserveMessage=false){
  if(!props.active||!props.isOwner||!props.userId||busy.value)return
@@ -116,6 +167,10 @@ async function load(n=page.value,preserveMessage=false){
    throw Error(String(data.error||'家庭审批列表读取失败'))
   rows.value=data.items
   page.value=n;hasMore.value=data.has_more===true
+  // Five rows at most. Preview is read-only and owner-scoped; never block
+  // rendering the whole list while the target sealed intent is fetched.
+  for(const row of data.items)if(isSharedLedger(row)&&row.status==='pending')
+   void ensureDetail(row)
  }catch(e){
   if(current===revision&&identity===props.userId){
    error.value=(e as Error).message;rows.value=[];hasMore.value=false
@@ -131,6 +186,11 @@ async function act(row:Item,decision:string){
  if(!props.active||!props.isOwner||busy.value||loading.value||
   !actions(row).includes(decision))return
  const actor=props.userId,step=revision
+ // Do not approve blind: the original sealed entry must be readable first.
+ if(isSharedLedger(row)&&['approve','reject'].includes(decision)){
+  const ready=await ensureDetail(row)
+  if(!ready){error.value='账务明细暂时无法核对，为安全起见不能批准或拒绝。';return}
+ }
  const phrase=actionLabels[decision]||decision
  const caution=isSharedLedger(row)&&decision==='approve'
   ?'批准后系统会使用原审批编号安全入账；失败时仍保留待入账状态供重试。拒绝不会改动账本。'
@@ -141,8 +201,13 @@ async function act(row:Item,decision:string){
   :row.kind==='consent'
    ?'该操作只记录独立同意或授权，不会自动向银行转账，也不会直接写入家計簿。'
    :'审核决定与实际入账是两步；批准后仍需通过原审批的安全执行流程核对入账。'
+ const data=details.value[row.id]?.entry||details.value[row.id]?.before
+ const summary=isSharedLedger(row)&&data?
+  '\n核对明细：'+String(data.date||'')+' · '+prettyType(data.type)+' · '+
+  formatMoney(data.amount)+' · '+String(data.category||'')+' · '+String(data.merchant||'')+
+  (data.note?'\n备注：'+String(data.note).slice(0,200):''):''
  if(!await confirmAction({title:phrase+title(row),confirmLabel:'确认'+phrase,
-  message:caution,...(decision==='reject'||decision==='revoke'?{danger:true}:{})}))return
+  message:caution+summary,...(decision==='reject'||decision==='revoke'?{danger:true}:{})}))return
  if(step!==revision||actor!==props.userId||!props.active||!props.isOwner||
   !rows.value.some(item=>item.kind===row.kind&&item.id===row.id&&
    item.version===row.version&&item.status===row.status))return
@@ -200,6 +265,7 @@ async function act(row:Item,decision:string){
    row.kind==='approval'?'操作结果尚未确认，请刷新查看原申请；不要重复提交。':(e as Error).message}
  finally{if(actor===props.userId){busy.value='';await load(page.value,true)}}
 }
+let refreshTimer:ReturnType<typeof setInterval>|null=null
 function foreground(){
  if(document.visibilityState==='visible'&&props.active&&props.isOwner&&!loading.value&&!busy.value)
   void load(page.value,true)
@@ -208,8 +274,14 @@ watch(()=>[props.active,props.isOwner,props.userId],()=>{
  reset()
  if(props.active&&props.isOwner)void load(0)
 },{immediate:true})
-onMounted(()=>{document.addEventListener('visibilitychange',foreground)})
-onUnmounted(()=>{reset();document.removeEventListener('visibilitychange',foreground)})
+onMounted(()=>{
+ document.addEventListener('visibilitychange',foreground)
+ refreshTimer=setInterval(()=>{
+  if(document.visibilityState==='visible'&&props.active&&props.isOwner&&!busy.value&&!loading.value)
+   void load(page.value,true)
+ },25000)
+})
+onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.removeEventListener('visibilitychange',foreground)})
 </script>
 <template>
  <section class="panel family-approval-feed" aria-label="家庭审批列表">
@@ -236,9 +308,33 @@ onUnmounted(()=>{reset();document.removeEventListener('visibilitychange',foregro
       ?'已过期':states[row.status]||row.status}}</span>
     </div>
     <p>{{description(row)}}</p>
+    <template v-if="isSharedLedger(row)">
+     <p v-if="details[row.id]?.entry||details[row.id]?.before" class="ledger-summary">
+      {{String((details[row.id].entry||details[row.id].before)?.date||'')}} ·
+      {{prettyType((details[row.id].entry||details[row.id].before)?.type)}} ·
+      {{formatMoney((details[row.id].entry||details[row.id].before)?.amount)}} ·
+      {{String((details[row.id].entry||details[row.id].before)?.merchant||'')}}
+     </p>
+     <button type="button" class="feed-text-button" :disabled="detailBusy[row.id]"
+      @click="toggleDetail(row)">{{detailBusy[row.id]?'明细读取中…':
+      detailExpanded.includes(row.id)?'收起明细':'查看完整明细'}}</button>
+     <p v-if="detailError[row.id]" class="feed-error">明细暂不可用，无法安全批准。请稍后刷新。</p>
+     <div v-if="detailExpanded.includes(row.id)&&details[row.id]" class="approval-detail">
+      <div v-if="details[row.id].before&&row.operation!=='finance.entry.create'">
+       <strong>原始明细</strong>
+       <dl><template v-for="([key,value],i) in previewValues(details[row.id].before)" :key="'old'+i">
+        <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
+      </div>
+      <div v-if="details[row.id].entry">
+       <strong>{{row.operation==='finance.entry.update'?'拟修改为':'申请明细'}}</strong>
+       <dl><template v-for="([key,value],i) in previewValues(details[row.id].entry)" :key="i">
+        <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
+      </div>
+     </div>
+    </template>
     <div v-if="actions(row).length" class="feed-actions">
      <button v-for="decision in actions(row)" :key="decision" type="button"
-      :disabled="!!busy||loading" :class="{primary:decision==='approve'||decision==='accept'||decision==='authorize'}"
+      :disabled="!!busy||loading||(isSharedLedger(row)&&['approve','reject'].includes(decision)&&!details[row.id])" :class="{primary:decision==='approve'||decision==='accept'||decision==='authorize'}"
       @click="act(row,decision)">{{actionLabels[decision]}}</button>
     </div>
    </li>
@@ -276,6 +372,11 @@ onUnmounted(()=>{reset();document.removeEventListener('visibilitychange',foregro
 .feed-empty{padding:18px 0;margin:0;text-align:center;color:#829389;font-size:13px}
 .feed-error,.feed-success{font-size:12px;overflow-wrap:anywhere}
 .feed-error{color:#b34f45}
+.ledger-summary{font-weight:700;color:var(--ui-text,#2f4740)!important}
+.approval-detail{padding:10px;border:1px solid #e1eae3;border-radius:10px;background:#f8fbf8;display:grid;gap:10px}
+.approval-detail strong{font-size:12px}
+.approval-detail dl{display:grid;grid-template-columns:64px minmax(0,1fr);gap:4px 8px;margin:7px 0 0;font-size:12px}
+.approval-detail dt{color:#74847a}.approval-detail dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .feed-success{color:#317855}
 .feed-pages{padding-top:10px;border-top:1px solid #edf1ed}
 .feed-pages span{font-size:12px;color:#7a8f80;white-space:nowrap}
