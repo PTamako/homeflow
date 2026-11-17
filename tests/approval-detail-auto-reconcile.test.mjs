@@ -13,7 +13,8 @@ const entry={date:'2026-11-17',time:'13:20',amount:1200,type:'expense',
 function detailsEnv(bridge){
  const approval={request_id:requestId,resource_id:proposalId,
   household_id:'house',requester_user_id:'member',
-  payload_sha256:'b'.repeat(64),operation:'finance.entry.create'}
+  payload_sha256:'b'.repeat(64),operation:'finance.entry.create',
+  resource_type:'shared_entry_mutation',source_app:'kakebo',target_app:'kakebo'}
  const seen=[]
  return {seen,env:{APPROVALS_ENABLED:'true',DB:{
   prepare(sql){return {bind(...params){seen.push({sql,params})
