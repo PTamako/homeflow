@@ -371,7 +371,7 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
 .feed-header .management-section-heading{min-width:0}
 .feed-header-actions{gap:4px}
 .feed-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.feed-meta p{min-width:0;flex:1;margin:0}
+.feed-item .feed-meta p{min-width:0;flex:1;margin:0}
 .feed-detail-trigger{flex:none;white-space:nowrap;text-align:right;padding-inline:6px}
 .feed-text-button{min-height:44px;border:none;background:transparent;padding:8px;color:#42775c;font-size:12px;font-weight:700}
 .feed-list{list-style:none;padding:0;margin:0;display:grid;gap:0}
