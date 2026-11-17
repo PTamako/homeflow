@@ -1,5 +1,6 @@
 // DRAFT P0-4C: atomic owner review ONLY, not execution of any target ledger.
 // A single SQLite INSERT invokes 0057 BEFORE/AFTER guards; no partial approvals.
+import {ledgerOnly,ownerReviewAllowed} from './approval-scope.js';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const json=(x,status=200)=>Response.json(x,{status,headers:{'cache-control':'no-store'}});
 const reject=(code,status=409)=>json({ok:false,code,applied:false},status);
@@ -41,6 +42,15 @@ export async function batchReviewRoute(request,env,session,role,path){
    item.expected_version<1)||
   new Set(b.items.map(x=>x.request_id)).size!==b.items.length)
   return reject('batch_review_invalid_items',400);
+ if(ledgerOnly(env)){
+  const placeholders=b.items.map(()=>'?').join(',');
+  const records=await db.prepare('SELECT request_id,source_app,target_app,operation,resource_type '+
+   'FROM household_approval_requests WHERE household_id=? AND request_id IN ('+placeholders+')')
+   .bind(session.household_id,...b.items.map(x=>x.request_id)).all().catch(()=>null);
+  if(!records||records.results?.length!==b.items.length||
+    records.results.some(x=>!ownerReviewAllowed(x)))
+    return reject('only_household_ledger_changes_require_owner_review',403);
+ }
  // Stable user-provided order and expected versions form the exact replay payload.
  const manifest=JSON.stringify(b.items);
  const hash=await digest(session.household_id+'\0'+session.user_id+'\0'+b.decision+'\0'+manifest);

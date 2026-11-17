@@ -1,5 +1,6 @@
 import {json,nowMs,sameOrigin,readBody} from './security.js'
 import {batchReviewRoute} from './approval-batch-review.js'
+import {ledgerOnly,ownerReviewAllowed,ownerReviewSql} from './approval-scope.js'
 
 // D1-backed approval intent/review ONLY. This module deliberately has no
 // target-app execution privileges. "approved" must never mean "applied".
@@ -115,6 +116,8 @@ async function submit(request,db,session,role){
  if(role!=='member')return reject('only_member_can_request',403)
  const body=await readBody(request)
  if(!validSubmission(body))return reject('invalid_request',400)
+ if(ledgerOnly(env)&&!ownerReviewAllowed(body))
+  return reject('only_household_ledger_changes_require_owner_review',403)
  const stamp=nowMs()
  const requestId=crypto.randomUUID()
  const existing=await db.prepare(`SELECT * FROM household_approval_requests
@@ -154,7 +157,7 @@ async function submit(request,db,session,role){
    .bind(requestId).first()
  return json({request:publicShape(row),replayed:false},201)
 }
-async function mutate(request,db,id,session,role,action){
+async function mutate(request,env,db,id,session,role,action){
  if(!uuid.test(id))return reject('not_found',404)
  if(action==='review'&&role!=='owner')return reject('only_owner_can_review')
  if(action==='cancel'&&role!=='member')return reject('only_requester_can_cancel')
@@ -168,6 +171,8 @@ async function mutate(request,db,id,session,role,action){
  const row=await readOne(db,id,session,role)
  if(!row)return reject('not_found',404)
  if(row.status!=='pending')return reject('already_reviewed',409)
+ if(action==='review'&&ledgerOnly(env)&&!ownerReviewAllowed(row))
+  return reject('only_household_ledger_changes_require_owner_review',403)
  const stamp=nowMs()
  if(row.expires_at<=stamp)return reject('approval_expired',409)
  if(action==='review'&&row.requester_user_id===session.user_id)
@@ -208,6 +213,7 @@ export async function approvalRoute(request,env,path,session){
    execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true',
    batch_review_enabled:env.APPROVALS_ENABLED==='true'&&env.APPROVAL_BATCH_REVIEW_ENABLED==='true',
+   owner_review_scope:ledgerOnly(env)?'household_ledger_only':'legacy',
    shared_entry_execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true'&&
     env.SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED==='true'&&
@@ -239,7 +245,7 @@ export async function approvalRoute(request,env,path,session){
      if(!Number.isInteger(page)||page<0||page>1000)return reject('invalid_page',400)
      const rows=await db.prepare(`SELECT * FROM household_approval_requests
        WHERE household_id=?1 AND (?2='owner' OR requester_user_id=?3)
-         AND (?4='' OR status=?4)
+         AND (?4='' OR status=?4) ${ledgerOnly(env)?ownerReviewSql:''}
        ORDER BY created_at DESC,request_id DESC LIMIT 6 OFFSET ?5`)
        .bind(session.household_id,role,session.user_id,status,page*ENTRY_LIMIT).all()
      const items=rows.results||[]
@@ -260,5 +266,5 @@ export async function approvalRoute(request,env,path,session){
  if(path==='/api/approvals/batch-review')return batchReviewRoute(request,env,session,role,path)
  if(path==='/api/approvals')return submit(request,db,session,role)
  const m=/^\/api\/approvals\/([0-9a-f-]{36})\/(review|cancel)$/.exec(path)
- return m?mutate(request,db,m[1],session,role,m[2]):reject('not_found',404)
+ return m?mutate(request,env,db,m[1],session,role,m[2]):reject('not_found',404)
 }

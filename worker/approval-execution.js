@@ -3,6 +3,7 @@
 // Remote success is the sole basis for 'applied'; timeout is retryable and
 // retries reuse the SAME immutable approval ID, never a new debit.
 import {json,nowMs,randomToken,sha256,sameOrigin} from './security.js'
+import {ledgerOnly,ownerReviewAllowed} from './approval-scope.js'
 import {runDocumentTaskExecution,reconcileDocumentTaskReceipt} from './document-task-orchestrator.js'
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -127,6 +128,8 @@ export async function approvalExecutionRoute(request,env,path,session){
  const db=env.DB
  let row=await ownerApproval(db,m[1],session)
  if(!row)return failure('not_found',404)
+ if(ledgerOnly(env)&&!ownerReviewAllowed(row))
+  return failure('only_household_ledger_changes_require_owner_review',403)
  if(row.owner_role!=='owner'||row.owner_disabled!=null||
   row.member_role!=='member'||row.member_disabled!=null||
   row.requester_user_id===session.user_id)
