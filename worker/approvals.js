@@ -1,6 +1,7 @@
 import {json,nowMs,sameOrigin,readBody} from './security.js'
 import {batchReviewRoute} from './approval-batch-review.js'
 import {ledgerOnly,ownerReviewAllowed,ownerReviewSql} from './approval-scope.js'
+import {previewVerifiedLedgerIntent} from './approval-detail.js'
 
 // D1-backed approval intent/review ONLY. This module deliberately has no
 // target-app execution privileges. "approved" must never mean "applied".
@@ -179,6 +180,11 @@ async function mutate(request,env,db,id,session,role,action){
    return reject('self_approval_forbidden')
  if(action==='cancel'&&row.requester_user_id!==session.user_id)
    return reject('only_requester_can_cancel')
+ // Do not accept a direct API approval merely because the owner clicked a
+ // generic confirmation. Verify the current encrypted source independently.
+ if(action==='review'&&decision==='approved'&&ledgerOnly(env)&&
+    !await previewVerifiedLedgerIntent(env,row,session.user_id))
+   return reject('approval_detail_unavailable',503)
  const newStatus=decision||'cancelled'
  const isReview=action==='review'
  let result
