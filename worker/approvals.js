@@ -205,6 +205,23 @@ async function mutate(request,env,db,id,session,role,action){
  const changed=await readOne(db,id,session,role)
  return json({request:publicShape(changed)})
 }
+async function dismissAppliedHistory(db,id,session,role){
+ if(role!=='owner')return reject('only_owner_can_dismiss_history',403)
+ if(!uuid.test(id))return reject('not_found',404)
+ const row=await readOne(db,id,session,role)
+ if(!row)return reject('not_found',404)
+ if(row.status!=='applied'||row.approver_user_id!==session.user_id||
+  row.source_app!=='kakebo'||row.target_app!=='kakebo'||
+  row.resource_type!=='shared_entry_mutation'||
+  !['finance.entry.create','finance.entry.update','finance.entry.delete','finance.entry.restore'].includes(row.operation))
+  return reject('only_applied_shared_ledger_history_can_be_dismissed',409)
+ try{
+  await db.prepare(`INSERT OR IGNORE INTO household_approval_dismissed_history
+   (request_id,household_id,dismissed_by_user_id,dismissed_at) VALUES (?1,?2,?3,?4)`)
+   .bind(id,session.household_id,session.user_id,nowMs()).run()
+ }catch{return reject('history_dismiss_unavailable',503)}
+ return json({ok:true,request_id:id,dismissed:true})
+}
 export async function approvalRoute(request,env,path,session){
  // Authenticated client feature discovery needs no approval migration or
  // extra D1 rows. Outer /api session guard applies before this handler.
@@ -249,6 +266,9 @@ export async function approvalRoute(request,env,path,session){
          AND NOT EXISTS (SELECT 1 FROM household_approval_hidden_history h
           WHERE h.request_id=household_approval_requests.request_id
           AND h.household_id=household_approval_requests.household_id)
+  AND NOT EXISTS (SELECT 1 FROM household_approval_dismissed_history d
+   WHERE d.request_id=household_approval_requests.request_id
+   AND d.household_id=household_approval_requests.household_id)
          ${ledgerOnly(env)?ownerReviewSql:''}
        ORDER BY created_at DESC,request_id DESC LIMIT 6 OFFSET ?5`)
        .bind(session.household_id,role,session.user_id,status,page*ENTRY_LIMIT).all()
@@ -264,6 +284,11 @@ export async function approvalRoute(request,env,path,session){
        FROM household_approval_events WHERE request_id=?1
        ORDER BY created_at ASC,event_id ASC LIMIT 100`).bind(row.request_id).all()
    return json({request:publicShape(row),events:events.results||[]})
+ }
+ if(request.method==='DELETE'){
+  if(!sameOrigin(request))return reject('origin_forbidden',403)
+  const match=path.match(new RegExp('^/api/approvals/([0-9a-f-]{36})/history$'))
+  return match?dismissAppliedHistory(db,match[1],session,role):reject('not_found',404)
  }
  if(request.method!=='POST')return reject('method_not_allowed',405)
  if(!sameOrigin(request))return reject('origin_forbidden',403)

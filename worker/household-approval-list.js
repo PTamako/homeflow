@@ -14,7 +14,10 @@ const approval=`SELECT 'approval' AS kind,request_id AS id,requester_user_id AS 
  AND NOT (status='cancelled' AND last_error_code='duplicate_retest_superseded')
  AND NOT EXISTS (SELECT 1 FROM household_approval_hidden_history h
  WHERE h.request_id=household_approval_requests.request_id
- AND h.household_id=household_approval_requests.household_id)`
+ AND h.household_id=household_approval_requests.household_id)
+  AND NOT EXISTS (SELECT 1 FROM household_approval_dismissed_history d
+   WHERE d.request_id=household_approval_requests.request_id
+   AND d.household_id=household_approval_requests.household_id)`
 const recurring=`SELECT 'recurring' AS kind,policy_id AS id,member_user_id AS actor_user_id,
  status,created_at,expires_at,version,NULL AS operation,NULL AS source_app,
  NULL AS resource_type,plan_type,max_amount_jpy AS amount_jpy,due_day,start_month,
