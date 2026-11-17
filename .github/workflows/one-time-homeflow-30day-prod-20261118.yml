@@ -68,13 +68,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test and build HomeFlow with original production PWA assets
+      - name: Recheck HomeFlow 30-day authentication and build production PWA
         working-directory: homeflow-src
         shell: bash
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
-          npm run check
+          # Full GitHub PR and merged-main CI already passed on this exact SHA.
+          # Here run focused auth and revocation tests without the unrelated
+          # cross-app contract fixtures, then typecheck/build the entire PWA.
+          node --test tests/auth-session-30day.test.mjs tests/oauth-code-exchange.test.mjs
           python3 scripts/check_migrations.py
           node scripts/stamp-pwa.mjs 84c12c683fe9eb135f935e69cd11a3cd3323b993
           npm run build
