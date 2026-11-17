@@ -17,7 +17,7 @@ const config=(()=>{try{return typeof data.repeat_config==='string'?JSON.parse(da
 const mode=data.repeat_type==='weekly'&&config.excludeJapaneseHolidays?'workday':data.repeat_type
 const form=reactive({
  title:String(data.title||''),visibility:String(data.visibility||'household'),
- quantity:Number(data.quantity||1),dueOn:String(data.due_on||''),remindEnabled:data.remind_enabled!==0,
+ quantity:Number(data.quantity||1),dueOn:String(data.due_on||''),remindEnabled:data.remind_enabled!==0,reminderOnly:data.reminder_only===1,
  eventDate:String(data.event_date||''),
  repeatMode:String(data.repeat_mode||'yearly'),note:String(data.note||''),
  repeatType:String(mode||'daily'),repeatDays:Number(config.days||7),
@@ -70,7 +70,7 @@ function values(){
        {mode:'day',days:[...form.monthDays].sort((a,b)=>a-b)}):{}
    return {...common,repeatType:type,repeatConfig:configNext,anchorDate:form.anchorDate,
      assignedTo:form.assignedTo||null,subjectProfileId:form.subjectProfileId||null,
-     remindEnabled:form.remindEnabled,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
+     remindEnabled:form.remindEnabled,reminderOnly:form.reminderOnly,healthRecordType:routineSubjectIsPet.value?form.healthRecordType||null:null}
   }
   case 'wishes':
    return {...common,wishType:form.wishType,status:form.status,
@@ -227,7 +227,10 @@ async function save(){
      <option :value="form.assignedTo">{{ members?.find(m=>m.id===form.assignedTo)?.loginName||'原处理人' }}</option>
      <option value="">取消长期指派</option>
    </select></label>
-   <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启提醒</label>
+   <div class="edit-remind-row">
+    <label class="edit-remind"><input v-model="form.remindEnabled" type="checkbox"/> 开启提醒</label>
+    <label class="edit-remind"><input v-model="form.reminderOnly" type="checkbox" @change="form.reminderOnly?form.remindEnabled=true:null"/> 仅提醒</label>
+   </div>
    <label>关联对象（可选）
     <select v-model="form.subjectProfileId" aria-label="选择关联的家庭成员或宠物">
      <option value="">不关联任何人或宠物</option>
@@ -302,6 +305,7 @@ async function save(){
 .detail-editor{margin:0;padding:0;border:0;background:transparent;display:grid;gap:12px;min-width:0}
 .trip-participants-field{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:10px;border:1px solid #d4e0d6;border-radius:10px;min-width:0;max-width:100%}
 .trip-participants-field legend{font-size:12px;color:#65796e;padding:0 5px}
+.edit-remind-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;min-width:0}
 .detail-editor .trip-participant-option{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:9px;min-width:0;max-width:100%;width:100%;min-height:42px;margin:0;padding:9px 10px;border:1px solid #dce7df;border-radius:10px;background:#fff;cursor:pointer}
 .detail-editor .trip-participant-option:has(input:checked){background:#edf6ef;border-color:#91c5a6}
 .detail-editor .trip-participant-option:focus-within{outline:2px solid #43866a;outline-offset:2px}
