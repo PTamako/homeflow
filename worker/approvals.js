@@ -112,7 +112,7 @@ async function readOne(db,id,session,role){
    .bind(id,session.household_id,role,session.user_id).first()
  return row
 }
-async function submit(request,db,session,role){
+async function submit(request,env,db,session,role){
  if(role!=='member')return reject('only_member_can_request',403)
  const body=await readBody(request)
  if(!validSubmission(body))return reject('invalid_request',400)
@@ -264,7 +264,7 @@ export async function approvalRoute(request,env,path,session){
  if(request.method!=='POST')return reject('method_not_allowed',405)
  if(!sameOrigin(request))return reject('origin_forbidden',403)
  if(path==='/api/approvals/batch-review')return batchReviewRoute(request,env,session,role,path)
- if(path==='/api/approvals')return submit(request,db,session,role)
+ if(path==='/api/approvals')return submit(request,env,db,session,role)
  const m=/^\/api\/approvals\/([0-9a-f-]{36})\/(review|cancel)$/.exec(path)
  return m?mutate(request,env,db,m[1],session,role,m[2]):reject('not_found',404)
 }
