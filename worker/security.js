@@ -70,7 +70,7 @@ export function cookieFrom(request) {
   return found?.[1]||null
 }
 export const cookieValue = token =>
-  SESSION_COOKIE+'='+token+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=1209600'
+  SESSION_COOKIE+'='+token+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=2592000'
 export const eraseCookie = () =>
   SESSION_COOKIE+'=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'
 export async function sessionFor(request, db) {

@@ -4,7 +4,10 @@ import {
   readBody, sha256, shortText,
 } from './security.js'
 
-const MAX_SESSIONS_MS=14*86400000
+// User-requested absolute login lifetime: maximum 30 days.
+// OAuth proofs are independently bound to THIS original session, so
+// removing it instantly revokes all linked app permissions.
+const MAX_SESSIONS_MS=30*86400000
 const ALLOWED_BOOTSTRAP_NAME=/^[\p{L}\p{N} ._-]{1,60}$/u
 
 const createSession=async(db, userId) => {

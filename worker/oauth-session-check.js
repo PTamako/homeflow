@@ -1,6 +1,6 @@
 import {json,sha256,nowMs} from './security.js'
 
-// Read-only, backend-only liveness check for a 15-minute opaque assertion.
+// Read-only, backend-only liveness check for an opaque proof bounded by the original HomeFlow session.
 // Always join the ORIGINAL HomeFlow login session so logout, disabling the
 // account, or removing household membership invalidates the linked app now.
 // The proof does not grant access to HomeFlow or any business App data.
