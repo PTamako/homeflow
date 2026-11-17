@@ -41,15 +41,15 @@ const operationLabels:Record<string,string>={
  'homeflow.shared_task.create':'创建家庭待办'
 }
 const states:Record<string,string>={
- pending:'待审批',approved:'已批准 · 待执行',rejected:'已拒绝',cancelled:'已撤回',
- executing:'执行中',applied:'已入账',failed_retryable:'待核对重试',
+ pending:'待审批',approved:'已批准 · 自动入账中',rejected:'已拒绝',cancelled:'已撤回',
+ executing:'入账处理中',applied:'已入账',failed_retryable:'自动核对中',
  failed_final:'执行失败',expired:'已过期',conflict:'状态冲突',
  pending_owner:'待首次批准',revoked:'授权已撤销',
  awaiting_recipient:'待收款人确认',recipient_accepted:'待管理员授权',
  owner_authorized:'已授权 · 未记账',recipient_rejected:'收款人已拒绝'
 }
 const actionLabels:Record<string,string>={
- approve:'批准',reject:'拒绝',execute:'执行入账',accept:'确认接收',authorize:'授权',
+ approve:'批准',reject:'拒绝',execute:'核对并补入账',accept:'确认接收',authorize:'授权',
  revoke:'撤销授权'
 }
 function person(id:string|null){
@@ -191,12 +191,13 @@ async function act(row:Item,decision:string){
      throw Error(String(receipt.code||receipt.error||'家計簿入账回执未确认'))
     message.value='已批准并成功入账；明细不再显示灰色'
    }catch(e){
-    message.value='已批准，尚未入账；请在原申请上重试执行'
-    error.value=(e as Error).message
+    message.value='已批准，系统会自动核对并补入账，无需再次批准'
+    error.value='家計簿尚未确认入账结果。请勿重复记账，系统会自动核对原申请。'
    }
-  }else message.value=decision==='execute'?'已执行入账':phrase+'已登记'+
-   (decision==='approve'?'，未自动入账':'')
- }catch(e){if(actor===props.userId)error.value=(e as Error).message}
+  }else message.value=decision==='execute'?'原申请已确认入账':phrase+'已登记'+
+   (decision==='approve'&&isSharedLedger(row)?'，正在自动核对入账':'')
+ }catch(e){if(actor===props.userId)error.value=
+   row.kind==='approval'?'操作结果尚未确认，请刷新查看原申请；不要重复提交。':(e as Error).message}
  finally{if(actor===props.userId){busy.value='';await load(page.value,true)}}
 }
 function foreground(){
