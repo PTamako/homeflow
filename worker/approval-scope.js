@@ -9,6 +9,9 @@ const postedFinancial=new Map([
  ['finance.credit_card.purchase','credit_card_purchase'],
  ['finance.credit_card.settlement','credit_card_settlement'],
  ['finance.asset_transfer.bank_to_bank','bank_transfer_posted'],
+ ['finance.sbi_cash.tsumitate','sbi_cash_action'],
+ ['finance.sbi_cash.additional','sbi_cash_action'],
+ ['finance.sbi_cash.reversal','sbi_cash_action'],
  ['finance.prepaid.topup','prepaid_action'],
  ['finance.prepaid.spend','prepaid_action']
 ]);
@@ -31,6 +34,7 @@ export const ownerReviewSql=` AND ((source_app='kakebo' AND target_app='kakebo' 
  OR (resource_type='credit_card_purchase' AND operation='finance.credit_card.purchase')
  OR (resource_type='credit_card_settlement' AND operation='finance.credit_card.settlement')
  OR (resource_type='bank_transfer_posted' AND operation='finance.asset_transfer.bank_to_bank')
+ OR (resource_type='sbi_cash_action' AND operation IN ('finance.sbi_cash.tsumitate','finance.sbi_cash.additional','finance.sbi_cash.reversal'))
  OR (resource_type='prepaid_action' AND operation IN ('finance.prepaid.topup','finance.prepaid.spend'))))
  OR (source_app='jp-document-assistant' AND target_app='kakebo' AND
  resource_type='document_sync_candidate' AND operation='document.sync.finance'))`;
