@@ -15,6 +15,8 @@ const jstStamp=stamp=>{
  const t=Date.parse(stamp?.includes('T')?stamp:stamp?.replace(' ','T')+'Z')
  return Number.isFinite(t)?new Date(t+9*3600000).toISOString().slice(0,10):''
 }
+const reminderOnly=row=>row.task?.reminderOnly===1||row.task?.reminderOnly===true||
+ row.routine?.reminder_only===1||row.routine?.reminder_only===true
 const due=row=>row.task?.dueOn||row.routine?.currentPeriodOn||
  row.routine?.occurrenceOn||row.plan?.dueOn||'9999-12-31'
 export const compareTodayRows=(a,b)=>Number(a.done)-Number(b.done)||
@@ -70,10 +72,14 @@ export async function todayPageRoute(request,db,session){
  rows=[]
  for(const task of tasks.tasks||[]){
   const done=!!task.completedAt
-  if(done?jstStamp(task.completedAt)!==date:!task.dueOn||task.dueOn>date)continue
+  if(reminderOnly({task})?(done||task.dueOn!==date):
+     done?jstStamp(task.completedAt)!==date:!task.dueOn||task.dueOn>date)continue
   rows.push({key:'task:'+task.id,kind:'task',title:task.title,done,task})
  }
  for(const routine of routines.items||[]){
+   // A reminder-only occurrence is shown only on its scheduled JST day.
+   if(reminderOnly({routine})&&
+     (routine.occurrenceOn!==date||!!routine.mark?.completed_at))continue
   rows.push({key:'routine:'+routine.id+':'+(routine.occurrenceOn||''),
     kind:'routine',title:routine.title,done:!!routine.mark?.completed_at,routine})
  }
@@ -91,7 +97,8 @@ export async function todayPageRoute(request,db,session){
  }
  }
  const filtered=category==='all'?rows:rows.filter(row=>row.kind===category)
- const total=filtered.length,completed=filtered.filter(row=>row.done).length
+ const total=filtered.length,completionTotal=filtered.filter(row=>!reminderOnly(row)).length,
+  completed=filtered.filter(row=>row.done&&!reminderOnly(row)).length
  const pointer=parts?{key:parts[5],done:parts[3]==='1',
   task:{dueOn:parts[4]}}:null
  // The cursor is an exclusive global sort boundary across all six kinds.
@@ -99,7 +106,7 @@ export async function todayPageRoute(request,db,session){
  const items=candidates.slice(0,limit)
  const last=items.at(-1)
  const nextCursor=candidates.length>limit&&last?cursorKey(date,category,revision,last):null
- return json({date,category,revision,items,nextCursor,total,completed,
+ return json({date,category,revision,items,nextCursor,total,completionTotal,completed,
   categories:[...new Set(rows.map(row=>row.kind))],
   ...(!cursor?{entryKeys:rows.map(row=>row.key)}:{})})
 }
