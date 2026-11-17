@@ -21,8 +21,10 @@ test('management is split into personal and owner-only family tabs',()=>{
 test('member personal confirmation remains usable without family administration',()=>{
  const personal=view.slice(view.indexOf('id="management-personal-panel"'),view.indexOf('id="management-family-panel"'))
  assert.match(personal,/<MemberConfirmationInbox v-if="active&&!isOwner"/)
- for(const component of ['ApprovalCenter','CrossMemberTransferConsents','RecurringFinancePolicyCenter'])
+ for(const component of ['ApprovalCenter','RecurringFinancePolicyCenter'])
   assert.doesNotMatch(personal,new RegExp('<'+component))
+ assert.match(personal,/<CrossMemberTransferConsents v-if="active&&isOwner"/)
+ assert.doesNotMatch(personal,/<CrossMemberTransferConsents v-if="active&&!isOwner"/)
  assert.doesNotMatch(personal,/家庭审批.*查看授权/)
  assert.doesNotMatch(personal,/generateInvite/)
  const family=view.slice(view.indexOf('id="management-family-panel"'))
