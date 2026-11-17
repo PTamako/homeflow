@@ -13,9 +13,9 @@ function fail(message){throw Error('HOMEFLOW_AUDIT_RELEASE_'+message)}
 if(!process.env.GITHUB_ACTIONS||process.env.GITHUB_REF!=='refs/heads/main'||
    process.env.GITHUB_REPOSITORY!=='PTamako/homeflow'||!account||!token)fail('INVALID_RELEASE_CONTEXT')
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()
-git('merge-base','--is-ancestor','ee8f97702fa3485cfd1a3fd4ed33d231c7482df0','HEAD')
-const files=git('diff','--name-only','ee8f97702fa3485cfd1a3fd4ed33d231c7482df0','HEAD').split('\n').filter(Boolean)
-if(files.some(path=>!['scripts/deploy-homeflow-ledger-scope-20261117.mjs','.github/workflows/homeflow-ledger-scope-20261117.yml'].includes(path)))
+git('merge-base','--is-ancestor','742a63af8d6ee945ce5c3626159f87052d8d0f3e','HEAD')
+const files=git('diff','--name-only','742a63af8d6ee945ce5c3626159f87052d8d0f3e','HEAD').split('\n').filter(Boolean)
+if(files.some(path=>!['scripts/deploy-homeflow-ledger-scope-20261117.mjs','.github/workflows/homeflow-ledger-scope-20261117.yml','tests/recurring-finance-real-cross-app.test.mjs'].includes(path)))
  fail('UNEXPECTED_SOURCE_DELTA')
 async function api(method,path,body){
  const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+token,...(body?{'content-type':'application/json'}:{})},

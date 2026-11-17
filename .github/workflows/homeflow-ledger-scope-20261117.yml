@@ -1,5 +1,5 @@
 name: HomeFlow ledger-only owner review production one-shot
-# Audited approval-scope deployment. No D1 migration, Preview URL, Preview Worker, or financial write.
+# Audited approval-scope deployment; historical recurring tests use isolated legacy fixture only. No D1 migration, Preview URL, Preview Worker, or financial write.
 on:
   push:
     branches: [main]
