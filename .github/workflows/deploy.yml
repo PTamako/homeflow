@@ -32,14 +32,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: 0e84bbbbb5efddfd22bba7584d5ac1afe06c676a
+          ref: 9a454ba30668595400832ee25cdda015a3e6b504
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
         uses: actions/checkout@v4
         with:
           repository: PTamako/jp-document-assistant
-          ref: d76ff2465e799874848c4d66d5c3a907d37978b3
+          ref: e1f62a82e25f3b77dcb2898fdaaee38f8f780418
           path: .contract-document
           persist-credentials: false
       - name: Checkout Study execution counterpart (immutable reviewed SHA)
@@ -60,8 +60,8 @@ jobs:
               exit 1
             fi
           done <<'REVIEWED_HEADS'
-          kakebo_jp 0e84bbbbb5efddfd22bba7584d5ac1afe06c676a
-          jp-document-assistant d76ff2465e799874848c4d66d5c3a907d37978b3
+          kakebo_jp 9a454ba30668595400832ee25cdda015a3e6b504
+          jp-document-assistant e1f62a82e25f3b77dcb2898fdaaee38f8f780418
           it-study-platform 5644be87b895b0fd70ee2aee3a140420c3beadf2
           REVIEWED_HEADS
       - uses: actions/setup-node@v4

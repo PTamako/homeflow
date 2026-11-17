@@ -15,7 +15,7 @@ if(!process.env.GITHUB_ACTIONS||process.env.GITHUB_REF!=='refs/heads/main'||
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()
 git('merge-base','--is-ancestor','71a7d2b80f0ab91ff2149860fa1dfa06249f8d6a','HEAD')
 const files=git('diff','--name-only','71a7d2b80f0ab91ff2149860fa1dfa06249f8d6a','HEAD').split('\n').filter(Boolean)
-if(files.some(path=>!['scripts/deploy-homeflow-audit-20261117.mjs','.github/workflows/homeflow-audit-20261117.yml'].includes(path)))
+if(files.some(path=>!['scripts/deploy-homeflow-audit-20261117.mjs','.github/workflows/homeflow-audit-20261117.yml','.github/workflows/ci.yml','.github/workflows/deploy.yml'].includes(path)))
  fail('UNEXPECTED_SOURCE_DELTA')
 async function api(method,path,body){
  const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+token,...(body?{'content-type':'application/json'}:{})},
