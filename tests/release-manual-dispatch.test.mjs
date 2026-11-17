@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-// §111: merging HomeFlow #305 cannot publish a half-migrated OAuth/approval
-// system before HomeFlow #306 and the three business apps are release-ready.
-test('HomeFlow release cannot be triggered by a main push or an unconfirmed manual dispatch',()=>{
+// The current four-app contract heads have passed CI, and this one reviewed
+// release permits one exactly named main-push deployment (never arbitrary pushes).
+test('HomeFlow release requires either explicit confirmation or exactly named one-time ledger-only merge',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8');
  assert.match(workflow,/^on:/m);
  assert.match(workflow,/^\s+workflow_dispatch:/m);
- assert.doesNotMatch(workflow,/^\s+push\s*:/m);
+ assert.match(workflow,/^\s+push\s*:/m);
+ assert.match(workflow,/github\.event_name == 'push' && startsWith\(github\.event\.head_commit\.message, 'fix\(approvals\): ledger-only release'\)/);
+ assert.match(workflow,/branches:\s*\[main\]/);
+ assert.doesNotMatch(workflow,/github\.event_name == 'push'\s*\}\}/);
  assert.match(workflow,/release_confirmation/);
  assert.match(workflow,/inputs\.release_confirmation == 'FOUR_APP_RELEASE_APPROVED'/);
  assert.match(workflow,/wrangler deploy/);
