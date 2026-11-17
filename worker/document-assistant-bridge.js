@@ -41,7 +41,13 @@ export async function documentAssistantBridge(request,env){
     request.headers.get('Idempotency-Key')!==msg.idempotency_key)
     return json({ok:false,error:'invalid_source'},400)
   const actor=msg.actor_user_id
-  if(typeof actor!=='string'||!USER.test(actor)||!allowed(env.JPDA_BRIDGE_ALLOWED_USERS,actor))
+  // A request signed by the document Worker may carry a HomeFlow identity
+  // that it just verified live. The legacy static allowlist remains required
+  // for requests without that explicit identity source. The actor must still
+  // exist in this HomeFlow household database, checked below.
+  const verifiedSsoActor=msg.identity_source==='homeflow_sso';
+  if(typeof actor!=='string'||!USER.test(actor)||
+    !(verifiedSsoActor||allowed(env.JPDA_BRIDGE_ALLOWED_USERS,actor)))
     return json({ok:false,error:'actor_not_authorized'},403)
   const member=await env.DB.prepare('SELECT household_id,user_id FROM household_members WHERE user_id=?1 LIMIT 1').bind(actor).first()
   if(!member)return json({ok:false,error:'member_not_found'},403)
