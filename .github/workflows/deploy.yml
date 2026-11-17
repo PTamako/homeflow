@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/it-study-platform
-          ref: e0255236a10b3dd5a8bdc10b9114d581a7198122
+          ref: 549dc75181cf8c2ffc04b11535f34b908630913b
           path: .contract-study
           persist-credentials: false
       - name: Reject stale cross-app main heads before production deploy
@@ -69,7 +69,7 @@ jobs:
           done <<'REVIEWED_HEADS'
           kakebo_jp 314c6ce370fe3bf77952c91f9015417165ca92ec
           jp-document-assistant 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
-          it-study-platform e0255236a10b3dd5a8bdc10b9114d581a7198122
+          it-study-platform 549dc75181cf8c2ffc04b11535f34b908630913b
           REVIEWED_HEADS
       - uses: actions/setup-node@v4
         with:
@@ -89,6 +89,16 @@ jobs:
       # independently signed live verification.
       - name: Require full live G8 production binding preflight
         run: node scripts/release-g8-binding-preflight.mjs
+      # The Kakeibo repository does not hold a Cloudflare API token. Publish its
+      # exact reviewed main commit using THIS production workflow's existing
+      # scoped Cloudflare credentials, to the already-existing Pages project.
+      # Explicit --branch=main is production: never create any Preview resources.
+      - name: Publish Kakeibo Pages production using reviewed main contract
+        working-directory: .contract-kakeibo
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=314c6ce370fe3bf77952c91f9015417165ca92ec --commit-message="reviewed ledger-only release"
       # Preview has been permanently decommissioned; deploy only the production Worker.
       - name: Deploy Production
         run: npx wrangler deploy
