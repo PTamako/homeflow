@@ -191,3 +191,4 @@ except sqlite3.IntegrityError:
 else:
     raise AssertionError("Foreign key isolation not enforced")
 print("Migration SQL verified:",", ".join(MIGRATIONS),"—",len(tables),"tables")
+db.close()
