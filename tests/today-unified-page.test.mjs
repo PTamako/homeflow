@@ -175,3 +175,47 @@ test('a household edit invalidates an old cursor rather than mixing two snapshot
   assert.ok(fresh.nextCursor)
  }finally{sqlite.close()}
 })
+
+test('reminder-only tasks are visible only on their own JST day and excluded from completion totals',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  const add=sqlite.prepare(`INSERT INTO tasks
+   (id,household_id,creator_user_id,visibility,title,due_on,reminder_only)
+   VALUES(?1,'family','owner','household',?2,?3,1)`)
+  add.run(id(810),'Yesterday bell','2026-11-05')
+  add.run(id(811),'Today bell',date)
+  add.run(id(812),'Tomorrow bell','2026-11-07')
+  const today=await page(db,owner,{category:'task'})
+  assert.equal(today.total,1)
+  assert.equal(today.completionTotal,0)
+  assert.equal(today.completed,0)
+  assert.equal(today.items[0].task.reminderOnly,1)
+  assert.equal(today.items[0].title,'Today bell')
+  const tomorrow=await page(db,owner,{date:'2026-11-07',category:'task'})
+  assert.equal(tomorrow.total,1,'yesterday bell must be absent on next day')
+  assert.equal(tomorrow.completionTotal,0)
+  assert.equal(tomorrow.items[0].title,'Tomorrow bell')
+  const yesterday=await page(db,owner,{date:'2026-11-05',category:'task'})
+  assert.deepEqual(yesterday.items.map(row=>row.title),['Yesterday bell'])
+ }finally{sqlite.close()}
+})
+
+test('reminder-only recurring occurrences roll over without carrying the prior day into Today',async()=>{
+ const {db,sqlite}=fixture()
+ try{
+  sqlite.prepare(`INSERT INTO routines
+   (id,household_id,created_by,visibility,title,repeat_type,anchor_date,reminder_only)
+   VALUES(?1,'family','owner','household','Daily bell','daily','2026-11-05',1)`).run(id(830))
+  const today=await page(db,owner,{category:'routine'})
+  assert.equal(today.total,1)
+  assert.equal(today.completionTotal,0)
+  assert.equal(today.completed,0)
+  assert.equal(today.items[0].routine.reminder_only,1)
+  assert.equal(today.items[0].routine.occurrenceOn,date)
+  const tomorrow=await page(db,owner,{category:'routine',date:'2026-11-07'})
+  assert.equal(tomorrow.total,1,'daily recurrence stays scheduled for the new date')
+  assert.equal(tomorrow.completionTotal,0)
+  assert.equal(tomorrow.items[0].routine.occurrenceOn,'2026-11-07')
+  assert.notEqual(today.items[0].key,tomorrow.items[0].key,'previous day key disappears at midnight')
+ }finally{sqlite.close()}
+})
