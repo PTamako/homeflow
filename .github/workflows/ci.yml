@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/jp-document-assistant
-          ref: e1f62a82e25f3b77dcb2898fdaaee38f8f780418
+          ref: 3a5f2e739c8a412eeabe40c1041485823a04fe4c
           path: .contract-document
           persist-credentials: false
       - name: Checkout Study execution counterpart (immutable reviewed SHA)
