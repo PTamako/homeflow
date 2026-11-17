@@ -10,6 +10,7 @@ import {approvalVerificationRoute} from '../worker/approval-verification.js';
 import {approvalExecutionRoute} from '../worker/approval-execution.js';
 import {approvalRoute} from '../worker/approvals.js';
 import {familyPrepaidActions} from '../.contract-kakeibo/functions/api/family-finance/prepaid-actions.js';
+import {familyMemberPrepaidTopups} from '../.contract-kakeibo/functions/api/family-finance/member-prepaid-topups.js';
 import {approvedPrepaidActionRoute} from '../.contract-kakeibo/functions/api/internal/prepaid-actions/[[path]].js';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const hh='primary',owner='11111111-1111-4111-8111-111111111111',
@@ -66,6 +67,7 @@ function financeSchema(s){
   s.exec(sql);
   if(name==='0033_member_prepaid_actions.sql')s.exec(sql);
  }
+ s.exec(readFileSync(new URL('../.contract-kakeibo/migrations/0072_member_personal_prepaid_topups.sql',import.meta.url),'utf8'));
  for(const [user,role] of [[owner,'owner'],[member,'member']])
   stmt(s,'INSERT INTO homeflow_identity_links(user_id,household_id,role,display_name,state,linked_at) VALUES(?,?,?,?,?,?)',
    user,hh,role,role,'active',Date.now());
@@ -76,6 +78,7 @@ function financeSchema(s){
 async function fixture(){
  const h=data(),k=data();homeSchema(h.sql);financeSchema(k.sql);
  const home={APP_ENV:'production',DB:h.db,APPROVALS_ENABLED:'true',
+  OWNER_REVIEW_SCOPE_MODE:'household_ledger_only',
   APPROVAL_SUBMISSION_ENABLED:'true',APPROVAL_EXECUTION_ENABLED:'true',
   APPROVAL_VERIFICATION_ENABLED:'true',
   APPROVAL_VERIFICATION_SECRET:'6'.repeat(64),
@@ -83,7 +86,7 @@ async function fixture(){
   PREPAID_APPROVAL_EXECUTION_ENABLED:'true',PREPAID_EXECUTION_SECRET:secrets.execution,
   PREPAID_APPROVAL_PROOF_SECRET:secrets.proof};
  const fin={APP_ENV:'production',DB:k.db,KAKEIBO_FAMILY_FINANCE_ENABLED:'true',
-  KAKEIBO_PREPAID_ACTIONS_ENABLED:'true',KAKEIBO_FAMILY_PENDING_KEY:secrets.pending,
+  KAKEIBO_PREPAID_ACTIONS_ENABLED:'true',KAKEIBO_PERSONAL_PREPAID_TOPUPS_ENABLED:'true',KAKEIBO_FAMILY_PENDING_KEY:secrets.pending,
   KAKEIBO_PREPAID_SUBMISSION_SECRET:secrets.submit,
   KAKEIBO_PREPAID_EXECUTION_SECRET:secrets.execution,
   KAKEIBO_PREPAID_PROOF_SECRET:secrets.proof,
@@ -120,6 +123,20 @@ async function fixture(){
   prepaid_account_id:prepaid,prepaid_version:1,action:'spend',
   date:'2026-11-14',amount_jpy:sum,merchant:'セブン-イレブン',category:'食費',note:''
  });
+ const personalTopup=async(amount=1000)=>{
+  const p={expected_user_id:member,idempotency_key:'direct-prepaid-topup-'+(++seq)+'-20261117',
+   prepaid_account_id:prepaid,prepaid_version:1,amount_jpy:amount,
+   effective_date:'2026-11-14',confirmed:true};
+  const url=new URL('https://kakeibo.example.test/api/family-finance/member-prepaid-topups');
+  const req=new Request(url,{method:'POST',headers:{origin:url.origin,'content-type':'application/json'},
+   body:JSON.stringify(p)});
+  const r=await familyMemberPrepaidTopups(req,fin,url,actor,['member-prepaid-topups']);
+  const data=await r.json();assert.equal(r.status,201,JSON.stringify(data));
+  assert.equal(data.ok,true);assert.equal(data.ledger_changed,false);
+  assert.equal(get(k.sql,'SELECT COUNT(*) AS n FROM entries').n,0);
+  assert.equal(get(h.sql,'SELECT COUNT(*) AS n FROM household_approval_requests').n,0);
+  return data.topup;
+ };
  const request=async data=>{
   const r=await source(['prepaid-actions'],data);
   assert.equal(r.status,201,JSON.stringify(r));
@@ -141,34 +158,33 @@ async function fixture(){
    body:'{}'}),home,path,{user_id:owner,household_id:hh,role:'owner'});
   return {status:r.status,data:await r.json()};
  };
- return {h,k,home,fin,calls,topup,spend,request,review,execute,
+ return {h,k,home,fin,calls,topup,personalTopup,spend,source,request,review,execute,
   close(){h.sql.close();k.sql.close()}};
 }
-test('real HomeFlow approval creates one bank→prepaid transfer then one prepaid expense, never two expenses',async()=>{
+test('personal prepaid topup is immediate asset credit; only expense enters family approval',async()=>{
  const f=await fixture();try{
-  const topup=await f.request(f.topup());
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM entries').n,0);
-  assert.equal((await f.review(topup)).status,200);
-  const funded=await f.execute(topup);
-  assert.equal(funded.status,200,JSON.stringify(funded));
-  assert.equal(funded.data.applied,true);
-  assert.equal(get(f.k.sql,"SELECT SUM(amount) v FROM entries WHERE type='transfer'").v,1000);
-  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='expense'").n,0);
+  await f.personalTopup();
+  assert.equal(get(f.k.sql,'SELECT SUM(amount_jpy) AS n FROM family_member_prepaid_topups').n,1000);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) AS n FROM entries WHERE type='transfer'").n,0);
   const spend=await f.request(f.spend(400));
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM entries').n,0);
   assert.equal((await f.review(spend)).status,200);
   const purchase=await f.execute(spend);
   assert.equal(purchase.status,200,JSON.stringify(purchase));
-  assert.equal(get(f.k.sql,"SELECT SUM(amount) v FROM entries WHERE type='expense'").v,400);
-  assert.equal(get(f.k.sql,'SELECT SUM(delta_jpy) v FROM family_prepaid_balance_journal').v,600);
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_prepaid_action_audit').n,2);
-  const repeated=await f.execute(spend);
-  assert.equal(repeated.status,200);assert.equal(repeated.data.replayed,true);
-  assert.equal(f.calls.execute,2);assert.equal(f.calls.proof,2);
+  assert.equal(purchase.data.applied,true);
+  assert.equal(get(f.k.sql,"SELECT SUM(amount) AS n FROM entries WHERE type='expense'").n,400);
+  assert.equal(get(f.k.sql,'SELECT SUM(delta_jpy) AS n FROM family_prepaid_balance_journal').n,-400);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM family_prepaid_action_audit').n,1);
+  assert.equal(get(f.k.sql,'SELECT SUM(amount_jpy) AS n FROM family_member_prepaid_topups').n,1000);
+  const replay=await f.execute(spend);
+  assert.equal(replay.status,200);assert.equal(replay.data.replayed,true);
+  assert.equal(f.calls.execute,1);assert.equal(f.calls.proof,1);
  }finally{f.close()}
 });
-test('real prepaid target commits, response vanishes; HomeFlow reconciles by original approval ID with no second debit',async()=>{
+test('replayed prepaid expense after lost response reconciles by original approval, not a second debit',async()=>{
  const f=await fixture();try{
-  const approved=await f.request(f.topup());
+  await f.personalTopup();
+  const approved=await f.request(f.spend(400));
   assert.equal((await f.review(approved)).status,200);
   const original=f.home.KAKEIBO_PREPAID_EXECUTION_SERVICE;
   f.home.KAKEIBO_PREPAID_EXECUTION_SERVICE={async fetch(req){
@@ -179,29 +195,41 @@ test('real prepaid target commits, response vanishes; HomeFlow reconciles by ori
   const lost=await f.execute(approved);assert.notEqual(lost.status,200);
   assert.equal(get(f.h.sql,'SELECT status FROM household_approval_requests WHERE request_id=?',approved).status,
    'failed_retryable');
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_prepaid_balance_journal').n,1);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM family_prepaid_balance_journal').n,1);
   f.home.KAKEIBO_PREPAID_EXECUTION_SERVICE=original;
   const recovered=await f.execute(approved);
   assert.equal(recovered.status,200,JSON.stringify(recovered));
   assert.equal(recovered.data.applied,true);
-  assert.equal(get(f.k.sql,"SELECT COUNT(*) n FROM entries WHERE type='transfer'").n,1);
-  assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_prepaid_action_audit').n,1);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) AS n FROM entries WHERE type='expense'").n,1);
+  assert.equal(get(f.k.sql,"SELECT COUNT(*) AS n FROM entries WHERE type='transfer'").n,0);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM family_prepaid_action_audit').n,1);
   assert.equal(f.calls.proof,1);
  }finally{f.close()}
 });
-test('prepaid execution cannot bypass owner review, revoked actor or stale bank version',async()=>{
- for(const mode of ['not_reviewed','revoked','bank_version','prepaid_version','owner_disabled']){
+test('personal prepaid credit needs no owner, but expense cannot bypass its ledger approval or actor checks',async()=>{
+ for(const mode of ['not_reviewed','revoked','prepaid_version','owner_disabled']){
   const f=await fixture();try{
-   const approved=await f.request(f.topup());
-   if(mode!=='not_reviewed')assert.equal((await f.review(approved)).status,200);
+   await f.personalTopup();
+   const approval=await f.request(f.spend(400));
+   if(mode!=='not_reviewed')assert.equal((await f.review(approval)).status,200);
    if(mode==='revoked')stmt(f.k.sql,"UPDATE homeflow_identity_links SET state='disabled' WHERE user_id=?",member);
-   if(mode==='bank_version')stmt(f.k.sql,'UPDATE family_financial_accounts SET version=2 WHERE account_id=?',bank);
    if(mode==='prepaid_version')stmt(f.k.sql,'UPDATE family_financial_accounts SET version=2 WHERE account_id=?',prepaid);
    if(mode==='owner_disabled')stmt(f.h.sql,'UPDATE users SET disabled_at=? WHERE id=?',Date.now(),owner);
-   const denied=await f.execute(approved);
+   const denied=await f.execute(approval);
    assert.notEqual(denied.status,200,JSON.stringify({mode,denied}));
-   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_prepaid_balance_journal').n,0);
-   assert.equal(get(f.k.sql,'SELECT COUNT(*) n FROM family_prepaid_actions_applied').n,0);
+   assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM family_prepaid_balance_journal').n,0);
+   assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM family_prepaid_actions_applied').n,0);
   }finally{f.close()}
  }
+});
+test('legacy bank topup cannot submit a household approval under ledger-only mode',async()=>{
+ const f=await fixture();try{
+  const prepared=await f.source(['prepaid-actions'],f.topup());
+  assert.equal(prepared.status,201,JSON.stringify(prepared));
+  const attempt=await f.source(['prepaid-actions',prepared.data.prepared.request_id,'submit'],
+    {expected_user_id:member});
+  assert.notEqual(attempt.status,200);
+  assert.equal(get(f.h.sql,'SELECT COUNT(*) AS n FROM household_approval_requests').n,0);
+  assert.equal(get(f.k.sql,'SELECT COUNT(*) AS n FROM entries').n,0);
+ }finally{f.close()}
 });
