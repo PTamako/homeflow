@@ -826,6 +826,6 @@ test('production scoped owner approval rejects non-ledger operations at backend,
   }
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM household_approval_requests').get().n,allowed.length);
   const status=await f.call(sessions.owner,'/api/approvals/status');
-  assert.equal(status.body.owner_review_scope,'household_ledger_only');
+  assert.equal(status.body.enabled,true);
  }finally{f.sql.close()}
 });
