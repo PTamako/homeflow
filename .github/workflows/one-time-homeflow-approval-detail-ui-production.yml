@@ -32,6 +32,20 @@ jobs:
           ref: 2a4374bea91865a984444fb95e05928399e1d0f8
           path: .contract-kakeibo
           persist-credentials: false
+      - name: Checkout reviewed Document Assistant for integration tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout reviewed Study for integration tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          path: .contract-study
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
