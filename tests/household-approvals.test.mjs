@@ -810,7 +810,10 @@ test('production scoped owner approval rejects non-ledger operations at backend,
    entry('scoped-card-settle-001',{operation:'finance.credit_card.settlement',resource_type:'credit_card_settlement'}),
    entry('scoped-prepaid-spend-001',{operation:'finance.prepaid.spend',resource_type:'prepaid_action'}),
    entry('scoped-prepaid-topup-001',{operation:'finance.prepaid.topup',resource_type:'prepaid_action'}),
-   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'})
+   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'}),
+   entry('scoped-sbi-month-001',{operation:'finance.sbi_cash.tsumitate',resource_type:'sbi_cash_action'}),
+   entry('scoped-sbi-extra-001',{operation:'finance.sbi_cash.additional',resource_type:'sbi_cash_action'}),
+   entry('scoped-sbi-reverse-001',{operation:'finance.sbi_cash.reversal',resource_type:'sbi_cash_action'})
   ];
   for(const body of allowed){
    const r=await f.call(sessions.member,'/api/approvals','POST',body);
@@ -846,8 +849,11 @@ test('backend ledger-only predicate exactly matches SQL filter for posted entrie
    ['kakebo','kakebo','prepaid_action','finance.prepaid.spend',true],
    ['kakebo','kakebo','prepaid_action','finance.prepaid.topup',true],
    ['kakebo','kakebo','bank_transfer_posted','finance.asset_transfer.bank_to_bank',true],
+   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.tsumitate',true],
+   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.additional',true],
+   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.reversal',true],
    ['kakebo','kakebo','points_action','finance.points.transfer_out',false],
-   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.tsumitate',false],
+   ['kakebo','kakebo','sbi_cash_action','finance.sbi_cash.unknown',false],
    ['jp-document-assistant','homeflow','document_sync_candidate','document.sync.homeflow',false],
    ['jp-document-assistant','it-study-platform','document_sync_candidate','document.sync.study',false],
    ['jp-document-assistant','kakebo','document_sync_candidate','document.sync.finance',true],
