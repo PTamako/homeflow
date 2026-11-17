@@ -1,5 +1,5 @@
 name: HomeFlow member management hide redundant tab production UI one-shot
-# Version metadata propagation retry; read-only binding check remains mandatory. No migrations or Preview.
+# Syntax-checked deployment annotation; keep binding verification, no migrations or Preview.
 on:
   push:
     branches: [main]
@@ -55,6 +55,8 @@ jobs:
           python3 scripts/check_migrations.py
       - name: Read-only check cross-application production bindings
         run: node scripts/release-g8-binding-preflight.mjs
+      - name: Validate one-time deploy helper syntax
+        run: node --check scripts/deploy-homeflow-hide-lone-tab-20261117.mjs
       - name: Capture active production version and bindings without modification
         run: node scripts/deploy-homeflow-hide-lone-tab-20261117.mjs preflight
       - name: Build assets and stamp installed PWA cache
