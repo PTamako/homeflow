@@ -26,6 +26,27 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Checkout pinned Kakeibo cross-app test fixtures (read-only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 3b84b7265c7c6940d81132f6378b600f14fe4028
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout pinned Document Assistant cross-app test fixtures (read-only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: cbeda805e6b65b313af9b805e6394538113700be
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout pinned Study cross-app test fixtures (read-only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          path: .contract-study
+          persist-credentials: false
       - name: Require exact audited feature commit and production credentials
         shell: bash
         run: |
