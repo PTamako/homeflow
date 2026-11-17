@@ -48,7 +48,7 @@ const bindingSignature=version=>{
 async function deploy(id){
  return api('POST','/workers/scripts/homeflow/deployments',{
   strategy:'percentage',versions:[{version_id:id,percentage:100}],
-  annotations:{'workers/message':'HomeFlow shared management page hide nonowner's single tab, UI-only'}
+  annotations:{'workers/message':'HomeFlow shared management page owner-only tab strip UI'}
  })
 }
 async function visible(id){
