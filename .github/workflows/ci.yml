@@ -15,14 +15,14 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: PTamako/kakebo_jp
-          ref: ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
+          ref: 14fcbe38900a7250326f999047f7a09dc725e963
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
-          ref: 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
+          ref: 9e5468b9d171c5d9fec3ac4ab96cac2cdd09872e
           path: .contract-document
           persist-credentials: false
       - name: Checkout Study execution counterpart (immutable reviewed SHA)
