@@ -20,6 +20,8 @@ import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
 import {documentApprovalStatusRoute} from './document-approval-status.js'
 import {approvalExecutionRoute} from './approval-execution.js'
+import {householdApprovalDetailRoute} from './approval-detail.js'
+import {reconcileApprovedSharedEntries} from './approval-auto-reconcile.js'
 import {oauthRoute} from './oauth.js'
 import {familyRoute} from './family.js'
 import {tasksRoute} from './tasks.js'
@@ -110,6 +112,8 @@ async function routeRequest(request,env,ctx,state){
           : null
         if(path.startsWith('/api/auth/'))return authRoute(request,env,path,session)
         if(path.startsWith('/api/oauth/'))return oauthRoute(request,env,path,session)
+        if(/^\/api\/approvals\/[0-9a-f-]{36}\/detail$/.test(path))
+          return householdApprovalDetailRoute(request,env,path,session)
         if(/^\/api\/approvals\/[0-9a-f-]{36}\/execute$/.test(path))
           return approvalExecutionRoute(request,env,path,session)
         if(path==='/api/approvals'||path.startsWith('/api/approvals/'))
@@ -229,8 +233,10 @@ export default {
         [runPushSchedule(env)]:
         [runPushSchedule(env),runGoalSettlementSchedule(env),expireOldRewardPools(env.DB)])
       // These automated writes bypass fetch(); only touched households advance.
-      const changed=new Set(jobs.flatMap(job=>job.status==='fulfilled'?
-        (job.value?.changedHouseholds||[]):[]))
+      const reconciliation=await reconcileApprovedSharedEntries(env).catch(()=>
+        ({attempted:0,applied:0,changedHouseholds:[],failed:1}))
+      const changed=new Set([...jobs.flatMap(job=>job.status==='fulfilled'?
+        (job.value?.changedHouseholds||[]):[]),...reconciliation.changedHouseholds])
       for(const household_id of changed){
         try{await bumpHouseholdRevision(env.DB,{household_id})}
         catch{console.warn('homeflow_scheduled_sync_failed')}
@@ -243,7 +249,10 @@ export default {
       const summary=jobs.map((job,index)=>job.status==='fulfilled'?
         {job:jobNames[index],...Object.fromEntries(Object.entries(job.value||{}).filter(([key])=>key!=='changedHouseholds'))}:
         {job:jobNames[index],failed:1,reason:'unexpected'})
-      console.info('homeflow_daily_jobs',JSON.stringify(summary))
+      console.info('homeflow_daily_jobs',JSON.stringify([...summary,{
+        job:'approved-ledger-reconciliation',attempted:reconciliation.attempted,
+        applied:reconciliation.applied,failed:reconciliation.failed||0
+      }]))
     })())
   }
 }

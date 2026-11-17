@@ -21,7 +21,7 @@ test('one flat five-row owner-only approval list replaces nested tabs, duplicate
  assert.match(feed,/上一页/)
  assert.match(feed,/下一页/)
  assert.doesNotMatch(feed,/role="tablist"/)
- assert.doesNotMatch(feed,/按钮.*展开|收起|查看授权/)
+ assert.doesNotMatch(feed,/按钮.*展开|查看授权/)
  assert.match(feed,/batchOpen/)
 })
 test('member confirmation remains in the private personal tab and cannot see admin approval list',()=>{

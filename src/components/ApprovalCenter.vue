@@ -39,9 +39,9 @@ let epoch=0
 let requestGeneration=0
 let inFlightQuery=''
 const statusNames:Record<State,string>={
- pending:'待审批',approved:'已批准 · 待执行',
+ pending:'待审批',approved:'已批准 · 自动入账中',
  rejected:'已拒绝',cancelled:'已取消',executing:'执行中',
- applied:'已生效',failed_retryable:'等待重试',
+ applied:'已生效',failed_retryable:'自动核对中',
  failed_final:'执行失败',expired:'已过期',conflict:'处理冲突'
 }
 const actionNames:Record<string,string>={
@@ -179,10 +179,28 @@ function canExecute(item:Approval){
 }
 function statusLabel(item:Approval){
  if(item.status==='approved')return isSupportedExecution(item)
-  ?'已批准 · 未入账':'已批准 · 待目标处理'
+  ?'已批准 · 自动核对中':'已批准 · 待目标处理'
  return statusNames[item.status]||'处理中'
 }
 
+function isSharedReview(item:Approval){
+ return item.source_app==='kakebo'&&item.target_app==='kakebo'&&
+ item.resource_type==='shared_entry_mutation'&&
+ ['finance.entry.create','finance.entry.update','finance.entry.delete',
+  'finance.entry.restore'].includes(item.operation)
+}
+async function reviewSummary(item:Approval){
+ if(!isSharedReview(item))throw Error('该申请缺少安全的明细核对通道，请逐笔审核')
+ const detail=await getJson('/api/approvals/'+encodeURIComponent(item.request_id)+'/detail')
+ if(detail.ok!==true||detail.approval_id!==item.request_id||
+  !detail.entry&&!detail.before)throw Error('明细核对失败，不能批准')
+ const x=detail.entry||detail.before
+ return String(x.date||'')+' · '+(x.type==='income'?'收入':x.type==='expense'?'支出':'资产转移')+
+  ' · ¥'+Number(x.amount||0).toLocaleString('ja-JP')+
+  ' · '+String(x.category||'')+' · '+String(x.merchant||'')+
+  (x.type==='expense'?' · 支付方式：'+String(x.payment_source||'現金'):'')+
+  (x.note?' · 备注：'+String(x.note).slice(0,80):'')
+}
 const selectedApprovals=computed(()=>items.value.filter(x=>
  selectedIds.value.includes(x.request_id)&&x.status==='pending'&&Number.isSafeInteger(x.version)))
 const selectedExecutions=computed(()=>items.value.filter(x=>
@@ -261,8 +279,15 @@ async function reviewBatch(decision:'approve'|'reject'){
  const current=props.userId,token=epoch
  const ids=selected.map(x=>({request_id:x.request_id,expected_version:x.version}))
  const label=decision==='approve'?'批准':'拒绝'
+ let summaries:string[]=[]
+ if(decision==='approve'){
+  try{for(const item of selected)summaries.push(await reviewSummary(item))}
+  catch{error.value='请先确认每一笔的金额、分类和商家；明细读取失败时不能批量批准。';return}
+ }
  if(!await confirmAction({title:'批量'+label+'家庭申请',confirmLabel:'确认'+label,
-  message:'本次审核'+selected.length+'笔申请，将全部成功或全部拒绝。批准仅代表通过审核，目标账务不会立即生效。',
+  message:'本次审核'+selected.length+'笔申请。'+
+   (decision==='approve'?'审核通过后立即尝试逐笔入账；结果不明时保留原申请自动核对。':'拒绝后不会入账。')+
+   (summaries.length?'\n'+summaries.map((x,i)=>(i+1)+'. '+x).join('\n'):''),
   ...(decision==='reject'?{danger:true}:{})}))return
  if(token!==epoch||current!==props.userId||!props.active||
   ids.some(p=>!items.value.some(item=>item.request_id===p.request_id&&
@@ -277,7 +302,20 @@ async function reviewBatch(decision:'approve'|'reject'){
    error.value='服务器回执不完整，请使用原批次 ID 核对。';return
   }
   unconfirmedBatch.value=null;selectedIds.value=[]
-  message.value='已批量'+label+' '+ids.length+' 笔，尚未执行入账。'
+  message.value='已批量'+label+' '+ids.length+' 笔'+
+   (decision==='approve'?'，正使用原审批编号逐笔核对入账':'，不会入账')
+  if(decision==='approve'){
+   const execution=await executeApprovedBatch(ids.map(x=>x.request_id),async approvalId=>{
+    const receipt=await getJson('/api/approvals/'+approvalId+'/execute',{
+     method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+    return {ok:receipt.ok,applied:receipt.applied,status:receipt.status,
+     approval_id:receipt.approval_id,remote_id:receipt.remote_id}
+   },()=>token===epoch&&current===props.userId&&props.active,20)
+   if(!execution.ok)
+    message.value='审批已通过，已入账 '+execution.applied.length+
+     ' 笔。其余将按原审批编号自动核对，不需要再次批准。'
+   else message.value='已批准并入账 '+execution.applied.length+' 笔'
+  }
  }catch{
   if(token===epoch&&props.userId===current)
    error.value='批量审核结果不确定。请使用“核对原批次”查看，不要新建另一批。'
@@ -294,6 +332,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
  if(busyId.value||loading.value||!available.value||!allowed)return
  const id=item.request_id,account=props.userId
  const chosenStatus=item.status
+ let summary=''
+ if(['approve','reject'].includes(kind)&&isSharedReview(item)){
+  try{summary='\n申请明细：'+await reviewSummary(item)}
+  catch{error.value='该家庭账务的金额、分类和商家暂不能核对，不能盲目审批。';return}
+ }
  const options=kind==='execute'
   ?item.status==='failed_retryable'
    ?{title:'核对后重试原审批',confirmLabel:'确认安全重试',
@@ -302,12 +345,13 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      message:'系统会再次核实批准记录，并由家計簿实际入账。同一审批只能入账一次。'}
   :kind==='approve'
    ?{title:'批准家庭申请',confirmLabel:'确认批准',
-     message:'批准后还需要单独执行，账本此时不会立即改变。'}
+     message:'批准后会自动尝试入账，失败时系统会使用原审批 ID 核对，无需再次批准。'}
    :kind==='cancel'
     ?{title:'撤回家庭申请',confirmLabel:'确认撤回',
       message:'只有待审批申请可以撤回，撤回后管理员不能再批准。'}
     :{title:'拒绝家庭申请',confirmLabel:'确认拒绝',
       message:'拒绝后不会修改家庭正式账本。',danger:true}
+ options.message+=summary
  if(!await confirmAction(options))return
  if(account!==props.userId||!props.active)return
  // Never execute an item whose status moved while confirmation was open.
@@ -340,11 +384,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
        throw Error('入账回执尚未确认')
       message.value='已批准并成功入账，家計簿明细恢复正常'
      }catch(executionError){
-      message.value='已批准，但尚未入账；可在原申请上安全重试'
-      error.value=(executionError as Error).message
+      message.value='已批准，系统将自动核对原申请，无需重复批准'
+      error.value='家計簿入账结果尚未确认；系统会安全核对，不要新建重复账单。'
      }
     }
-   }else message.value=kind==='approve'?'已批准，尚未入账':
+   }else message.value=kind==='approve'?'已批准，正在核对入账':
     kind==='reject'?'已拒绝，不会入账':
     kind==='cancel'?'已撤回，无法再批准':
     result.applied===true?'已执行并入账':'执行结果待核对'
@@ -444,11 +488,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      </div>
      <p v-if="item.status==='approved'" class="approval-note">
       {{ isSupportedExecution(item)
-       ?'已批准，账本尚未生效；仍需执行入账。'
+       ?'已批准，系统会自动核对入账；目前尚未确认正式入账。'
        :'已批准，但当前尚无此操作的安全执行器；目标应用未发生更改。' }}
      </p>
      <p v-else-if="item.status==='failed_retryable'" class="approval-note">
-      上次执行结果未确认；请仅通过原审批安全重试，不要再次创建账单。
+      入账结果尚未确认，系统会自动核对原审批 ID；请勿重复记账。
      </p>
      <div v-if="!isOwner&&item.requester_user_id===userId&&item.status==='pending'"
        class="approval-actions">
