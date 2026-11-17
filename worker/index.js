@@ -14,13 +14,9 @@ import {recurringFinancePolicySubmissionRoute} from './recurring-finance-policy-
 import {approvalVerificationRoute} from './approval-verification.js'
 import {approvalSubmissionRoute} from './approval-submission.js'
 import {cardApprovalSubmissionRoute} from './card-approval-submission.js'
-import {cardSettlementApprovalSubmissionRoute} from './card-settlement-approval-submission.js'
-import {sbiCashApprovalSubmissionRoute} from './sbi-cash-approval-submission.js'
-import {bankTransferApprovalSubmissionRoute} from './bank-transfer-approval-submission.js'
 import {sharedEntryApprovalSubmissionRoute} from './shared-entry-approval-submission.js'
 import {sharedEntryApprovalStatusRoute} from './shared-entry-approval-status.js'
 import {prepaidApprovalSubmissionRoute} from './prepaid-approval-submission.js'
-import {pointsApprovalSubmissionRoute} from './points-approval-submission.js'
 import {documentApprovalSubmissionRoute} from './document-approval-submission.js'
 import {documentApprovalStatusRoute} from './document-approval-status.js'
 import {approvalExecutionRoute} from './approval-execution.js'
@@ -83,20 +79,16 @@ async function routeRequest(request,env,ctx,state){
         return recurringFinancePolicySubmissionRoute(request,env)
       if(path==='/api/internal/approvals/submit')
         return approvalSubmissionRoute(request,env)
-      if(path==='/api/internal/approvals/points-submit')
-        return pointsApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/points-submit') return json({error:'personal_points_require_no_owner_approval'},410)
       if(path==='/api/internal/approvals/prepaid-submit')
         return prepaidApprovalSubmissionRoute(request,env)
-      if(path==='/api/internal/approvals/sbi-cash-submit')
-         return sbiCashApprovalSubmissionRoute(request,env)
-      if(path==='/api/internal/approvals/bank-transfer-submit')
-         return bankTransferApprovalSubmissionRoute(request,env)
+      if(path==='/api/internal/approvals/sbi-cash-submit') return json({error:'personal_sbi_requires_no_owner_approval'},410)
+      if(path==='/api/internal/approvals/bank-transfer-submit') return json({error:'bank_transfers_retired'},410)
       if(path==='/api/internal/approvals/shared-entry-submit')
          return sharedEntryApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/shared-entry-status')
          return sharedEntryApprovalStatusRoute(request,env)
-       if(path==='/api/internal/approvals/card-settlement-submit')
-        return cardSettlementApprovalSubmissionRoute(request,env)
+       if(path==='/api/internal/approvals/card-settlement-submit') return json({error:'card_settlements_retired'},410)
       if(path==='/api/internal/approvals/card-submit')
         return cardApprovalSubmissionRoute(request,env)
       if(path==='/api/internal/approvals/document-submit')
