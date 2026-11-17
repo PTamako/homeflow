@@ -245,6 +245,7 @@ export async function approvalRoute(request,env,path,session){
      const rows=await db.prepare(`SELECT * FROM household_approval_requests
        WHERE household_id=?1 AND (?2='owner' OR requester_user_id=?3)
          AND (?4='' OR status=?4)
+         AND NOT (status='cancelled' AND last_error_code='duplicate_retest_superseded')
          AND NOT EXISTS (SELECT 1 FROM household_approval_hidden_history h
           WHERE h.request_id=household_approval_requests.request_id
           AND h.household_id=household_approval_requests.household_id)
