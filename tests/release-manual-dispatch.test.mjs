@@ -2,16 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-// The current four-app contract heads have passed CI, and this one reviewed
-// release permits one exactly named main-push deployment (never arbitrary pushes).
-test('HomeFlow release requires either explicit confirmation or exactly named one-time ledger-only merge',()=>{
+// Production releases are explicit only; no automatic Preview or main push deploys.
+test('HomeFlow production release requires explicit confirmation; main push is forbidden',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8');
  assert.match(workflow,/^on:/m);
  assert.match(workflow,/^\s+workflow_dispatch:/m);
- assert.match(workflow,/^\s+push\s*:/m);
- assert.match(workflow,/github\.event_name == 'push' && startsWith\(github\.event\.head_commit\.message, 'fix\(approvals\): ledger-only release'\)/);
- assert.match(workflow,/branches:\s*\[main\]/);
- assert.doesNotMatch(workflow,/github\.event_name == 'push'\s*\}\}/);
+ assert.doesNotMatch(workflow,/^\s+push\s*:/m);
  assert.match(workflow,/release_confirmation/);
  assert.match(workflow,/inputs\.release_confirmation == 'FOUR_APP_RELEASE_APPROVED'/);
  assert.match(workflow,/wrangler deploy/);

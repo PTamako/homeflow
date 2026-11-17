@@ -1,15 +1,7 @@
 name: Deploy HomeFlow
 on:
-  # One-time release: only this reviewed ledger-only merge message can
-  # trigger production automatically. All later merges remain manual.
+  # Explicit dispatch only; a regular main push must never publish production.
   # No Preview resources are ever created.
-  push:
-    branches: [main]
-    paths:
-      - 'worker/**'
-      - 'src/**'
-      - 'wrangler.toml'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
       release_confirmation:
@@ -19,7 +11,7 @@ on:
 
 jobs:
   deploy:
-    if: "${{ (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'fix(approvals): ledger-only release')) || (github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED') }}"
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED' }}
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -39,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: 314c6ce370fe3bf77952c91f9015417165ca92ec
+          ref: ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
@@ -68,7 +60,7 @@ jobs:
               exit 1
             fi
           done <<'REVIEWED_HEADS'
-          kakebo_jp 314c6ce370fe3bf77952c91f9015417165ca92ec
+          kakebo_jp ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
           jp-document-assistant 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
           it-study-platform dea0a9607a2cde2b66f328696954750748f67f42
           REVIEWED_HEADS
@@ -99,7 +91,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
-          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=314c6ce370fe3bf77952c91f9015417165ca92ec --commit-message="reviewed ledger-only release"
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=ee713c85c4912cc7d8b5180bf37c34fc90fd12f7 --commit-message="reviewed ledger-only release"
       # Preview has been permanently decommissioned; deploy only the production Worker.
       - name: Deploy Production
         run: npx wrangler deploy
