@@ -794,3 +794,38 @@ test('Study document execution proof uses its own signing key and only live exec
   assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM household_approval_events").get().n,0)
  }finally{f.sql.close()}
 })
+
+
+test('production scoped owner approval rejects non-ledger operations at backend, not only in UI',async()=>{
+ const f=fixture();f.env.OWNER_REVIEW_SCOPE_MODE='household_ledger_only';
+ try{
+  const allowed=[
+   entry('scoped-ledger-create-001'),
+   entry('scoped-ledger-delete-001',{operation:'finance.entry.delete',
+    resource_type:'shared_entry_mutation',resource_id:'1'.repeat(32),expected_version:1}),
+   entry('scoped-document-ledger-001',{source_app:'jp-document-assistant',
+    operation:'document.sync.finance',resource_type:'document_sync_candidate',
+    resource_id:'2'.repeat(32)})
+  ];
+  for(const body of allowed){
+   const r=await f.call(sessions.member,'/api/approvals','POST',body);
+   assert.equal(r.status,201,JSON.stringify(r.body));
+  }
+  const blocked=[
+   entry('scoped-points-001',{operation:'finance.points.transfer_out',resource_type:'points_action'}),
+   entry('scoped-card-001',{operation:'finance.credit_card.purchase',resource_type:'credit_card_purchase'}),
+   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'}),
+   entry('scoped-study-001',{source_app:'jp-document-assistant',target_app:'it-study-platform',
+    operation:'document.sync.study',resource_type:'document_sync_candidate'}),
+   entry('scoped-task-001',{source_app:'homeflow',target_app:'homeflow',
+    operation:'homeflow.shared_task.create',resource_type:'task'})
+  ];
+  for(const body of blocked){
+   const r=await f.call(sessions.member,'/api/approvals','POST',body);
+   assert.equal(r.status,403,JSON.stringify(r.body));
+  }
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM household_approval_requests').get().n,allowed.length);
+  const status=await f.call(sessions.owner,'/api/approvals/status');
+  assert.equal(status.body.enabled,true);
+ }finally{f.sql.close()}
+});

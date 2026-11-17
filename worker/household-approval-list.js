@@ -1,6 +1,7 @@
 // Unified, owner-only family approval list. One scoped D1 read per five rows.
 // Read-only: mutations keep using the original, audited resource endpoints.
 import {json} from './security.js'
+import {ledgerOnly,ownerReviewSql} from './approval-scope.js'
 
 const PAGE_SIZE=5
 const invalid=(error,status=403)=>json({ok:false,error},status)
@@ -40,7 +41,7 @@ export async function householdApprovalListRoute(request,env,path,session){
  // Only changes to the shared household ledger require owner approval.
  // Personal recurring plans and cross-member asset consent have independent
  // ownership/confirmation flows and must never appear in this review inbox.
- const sources=[approval]
+ const sources=[ledgerOnly(env)?approval+ownerReviewSql:approval]
  try{
   const query='SELECT * FROM ('+sources.join(' UNION ALL ')+
    ') ORDER BY priority ASC,created_at DESC,id DESC LIMIT ?2 OFFSET ?3'

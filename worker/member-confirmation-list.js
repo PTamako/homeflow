@@ -2,6 +2,7 @@
 // This cannot read the owner's household approval feed and cannot modify records.
 // Each row is restricted to the authenticated member's own involvement.
 import {json} from './security.js'
+import {ledgerOnly,ownerReviewSql} from './approval-scope.js'
 
 const PAGE_SIZE=5
 const reject=(code,status=403)=>json({ok:false,code},status)
@@ -42,8 +43,8 @@ export async function memberConfirmationListRoute(request,env,path,session){
  const raw=new URL(request.url).searchParams.get('page')??'0'
  if(!/^(0|[1-9][0-9]{0,2})$/.test(raw)||Number(raw)>200)
   return reject('invalid_page',400)
- const page=Number(raw),sources=[approvals]
- if(env.RECURRING_FINANCE_AUTH_ENABLED==='true')sources.push(policies)
+ const page=Number(raw),sources=[ledgerOnly(env)?approvals+ownerReviewSql:approvals]
+ if(env.RECURRING_FINANCE_AUTH_ENABLED==='true'&&!ledgerOnly(env))sources.push(policies)
  if(env.CROSS_MEMBER_TRANSFER_CONSENTS_ENABLED==='true')sources.push(consents)
  try{
   const query='SELECT * FROM ('+sources.join(' UNION ALL ')+

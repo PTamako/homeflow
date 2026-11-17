@@ -24,6 +24,8 @@ crons = ["0 * * * *"] # One free-tier trigger: hourly; daily at 06:00 JST, quiet
 [vars]
 OAUTH_ENABLED = "true"
 APPROVALS_ENABLED = "true"
+# Enforced at submission, review, batch review, feeds and execution.
+OWNER_REVIEW_SCOPE_MODE = "household_ledger_only"
 APPROVAL_EXECUTION_ENABLED = "true"
 APPROVAL_VERIFICATION_ENABLED = "true"
 SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED = "true"
