@@ -364,10 +364,10 @@ async function restore(){
   </section>
 </template>
 <style scoped>
-.backup{display:grid;gap:0;min-width:0;max-width:100%;margin:12px 0;padding:18px;
+.backup{display:grid;gap:0;min-width:0;max-width:100%;margin:0;padding:12px 14px;
   background:#fff;border:1px solid #e2ebe4;border-radius:16px;box-sizing:border-box}
 .backup-heading{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:5px;
-  margin:0 0 6px;min-width:0;width:100%;box-sizing:border-box}
+  margin:0 0 2px;min-width:0;width:100%;box-sizing:border-box}
 .backup-title{display:flex;align-items:center;gap:9px;margin:0;
   font-size:17px;line-height:1.4;color:#26392f}
 .backup-help{position:static;display:inline-flex;align-items:center;flex:none}
@@ -389,12 +389,17 @@ async function restore(){
 .backup-help-popover strong{display:block;margin-bottom:8px;font-size:13px}
 .backup-help-popover p{margin:0 0 9px}
 .backup-help-popover p:last-child{margin-bottom:0}
-.backup-section{min-width:0;padding:14px 0 16px}
+.backup-section{min-width:0;padding:8px 0}
+.backup-heading + .backup-section{display:grid;grid-template-columns:minmax(0,1fr) auto;
+ align-items:center;gap:8px}
+.backup-heading + .backup-section .backup-section-head{min-width:0}
+.backup-heading + .backup-section .backup-download{width:auto;min-width:116px}
+.backup-section + .backup-section{padding-bottom:2px}
 .backup-section+.backup-section{border-top:1px solid #e8eee9}
-.backup-restore-entry{width:100%;border:1px solid #cdded2;border-radius:11px;background:#f7fbf7;color:#39785c;padding:12px;font-size:13px;font-weight:700;text-align:left}
+.backup-restore-entry{width:100%;min-height:44px;border:1px solid #cdded2;border-radius:11px;background:#f7fbf7;color:#39785c;padding:9px 12px;font-size:13px;font-weight:700;text-align:center}
 .backup-restore-content{display:grid;gap:10px;min-width:0}
 .backup-section h3{margin:0;font-size:14px;line-height:1.5;color:#26392f}
-.backup-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.backup-section-head{display:flex;align-items:flex-start;justify-content:center;gap:2px;flex-direction:column}
 .backup-section-head small{color:#829187;font-size:11px}
 .backup .backup-caption{margin:3px 0 11px;font-size:12px;line-height:1.5;color:#76867b}
 .backup-download,.backup-restore{display:flex;align-items:center;justify-content:center;
@@ -422,5 +427,5 @@ async function restore(){
 .backup-preview p{margin:0;font-size:12px;line-height:1.5;color:#446851}
 .backup .error,.backup .success{margin:8px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .backup .error{color:#a94d37}.backup .success{color:#3c8566}
-@media(max-width:380px){.backup{padding:14px}.backup-file-picker{min-width:104px}}
+@media(max-width:380px){.backup{padding:11px 12px}.backup-file-picker{min-width:104px}.backup-heading + .backup-section .backup-download{min-width:104px}}
 </style>
