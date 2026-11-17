@@ -39,10 +39,11 @@ defineExpose({focusTitle})
    <DateField v-model="model.dueOn" aria-labelledby="one-time-task-date-label"/>
    <small v-if="!model.dueOn" class="once-hint">不选日期将存入「待安排」。</small>
   </div>
-  <label class="once-check">
-   <input v-model="model.remindEnabled" type="checkbox" :disabled="!model.dueOn"/>
-   <span>开启提醒<small v-if="!model.dueOn">安排日期后才能提醒</small></span>
-  </label>
+  <div class="once-checks">
+   <label class="once-check"><input v-model="model.remindEnabled" type="checkbox" :disabled="!model.dueOn"/>
+    <span>开启提醒<small v-if="!model.dueOn">安排日期后才能提醒</small></span></label>
+   <label class="once-check"><input v-model="model.reminderOnly" type="checkbox" @change="model.reminderOnly?(model.bonusPoints=0,model.remindEnabled=true):null"/><span>仅提醒</span></label>
+  </div>
   <label>关联家人或宠物（可选）
    <select v-model="model.subjectProfileId" aria-label="关联对象" @change="subjectChanged">
     <option value="">不关联</option>
@@ -76,7 +77,7 @@ defineExpose({focusTitle})
    </select>
    <small v-if="model.secondAssigneeUserId">两人任意一人完成即可，仅平分基础积分，无额外奖励。</small>
   </label>
-  <label v-if="model.assigneeUserId&&!model.secondAssigneeUserId&&model.assigneeUserId!==userId&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
+  <label v-if="!model.reminderOnly&&model.assigneeUserId&&!model.secondAssigneeUserId&&model.assigneeUserId!==userId&&model.visibility==='household'">额外任务奖励（从我的家庭积分预留）
    <input v-model.number="model.bonusPoints" type="number" inputmode="numeric" min="1" max="10000" step="1" required placeholder="必须填写正整数" aria-label="一次性任务额外奖励积分"/>
    <small>完成后转给指定处理人；撤销完成退回预留状态，删除任务解除预留。基础完成奖励另有 5 分。</small>
   </label>
@@ -90,6 +91,8 @@ defineExpose({focusTitle})
 </template>
 <style scoped>
 .once-fields{display:grid;gap:12px;min-width:0}
+.once-checks{display:flex;align-items:center;gap:16px;flex-wrap:wrap;min-width:0}
+.once-checks .once-check{display:flex;align-items:center;gap:8px}
 .once-fields label{display:grid;gap:5px;min-width:0;color:#5d7769;font-size:12px;line-height:1.45}
 .once-fields input:not([type=checkbox]),.once-fields select{
   display:block;box-sizing:border-box;min-inline-size:0;max-inline-size:100%;inline-size:100%;
