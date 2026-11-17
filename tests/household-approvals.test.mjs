@@ -807,19 +807,19 @@ test('production scoped owner approval rejects non-ledger operations at backend,
     operation:'document.sync.finance',resource_type:'document_sync_candidate',
     resource_id:'2'.repeat(32)}),
    entry('scoped-card-001',{operation:'finance.credit_card.purchase',resource_type:'credit_card_purchase'}),
-   entry('scoped-card-settle-001',{operation:'finance.credit_card.settlement',resource_type:'credit_card_settlement'}),
    entry('scoped-prepaid-spend-001',{operation:'finance.prepaid.spend',resource_type:'prepaid_action'}),
-   entry('scoped-prepaid-topup-001',{operation:'finance.prepaid.topup',resource_type:'prepaid_action'}),
-   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'}),
-   entry('scoped-sbi-month-001',{operation:'finance.sbi_cash.tsumitate',resource_type:'sbi_cash_action'}),
-   entry('scoped-sbi-extra-001',{operation:'finance.sbi_cash.additional',resource_type:'sbi_cash_action'}),
-   entry('scoped-sbi-reverse-001',{operation:'finance.sbi_cash.reversal',resource_type:'sbi_cash_action'})
   ];
   for(const body of allowed){
    const r=await f.call(sessions.member,'/api/approvals','POST',body);
    assert.equal(r.status,201,JSON.stringify(r.body));
   }
   const blocked=[
+   entry('scoped-card-settle-001',{operation:'finance.credit_card.settlement',resource_type:'credit_card_settlement'}),
+   entry('scoped-prepaid-topup-001',{operation:'finance.prepaid.topup',resource_type:'prepaid_action'}),
+   entry('scoped-bank-001',{operation:'finance.asset_transfer.bank_to_bank',resource_type:'bank_transfer_posted'}),
+   entry('scoped-sbi-month-001',{operation:'finance.sbi_cash.tsumitate',resource_type:'sbi_cash_action'}),
+   entry('scoped-sbi-extra-001',{operation:'finance.sbi_cash.additional',resource_type:'sbi_cash_action'}),
+   entry('scoped-sbi-reverse-001',{operation:'finance.sbi_cash.reversal',resource_type:'sbi_cash_action'}),
    entry('scoped-points-001',{operation:'finance.points.transfer_out',resource_type:'points_action'}),
    entry('scoped-private-001',{operation:'finance.account.public_rule.change',resource_type:'public_rule'}),
    entry('scoped-points-balance-001',{operation:'finance.points.transfer_out',resource_type:'points_action'}),
