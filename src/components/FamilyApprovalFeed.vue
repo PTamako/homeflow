@@ -24,7 +24,7 @@ const loading=ref(false),busy=ref(''),error=ref(''),message=ref('')
 const batchOpen=ref(false)
 const details=ref<Record<string,{entry:Record<string,unknown>|null;before:Record<string,unknown>|null}>>({})
 const detailBusy=ref<Record<string,boolean>>({}),detailError=ref<Record<string,boolean>>({})
-const detailExpanded=ref<string[]>([])
+const detailSheetRow=ref<Item|null>(null)
 const detailRequests=new Map<string,Promise<boolean>>()
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 let revision=0
@@ -123,12 +123,10 @@ async function ensureDetail(row:Item){
  detailRequests.set(row.id,task)
  try{return await task}finally{detailRequests.delete(row.id)}
 }
-async function toggleDetail(row:Item){
- if(detailExpanded.value.includes(row.id)){
-  detailExpanded.value=detailExpanded.value.filter(id=>id!==row.id);return
- }
- detailExpanded.value=[...detailExpanded.value,row.id]
- if(isSharedLedger(row))await ensureDetail(row)
+async function openDetail(row:Item){
+ if(!props.active||!props.isOwner||!isSharedLedger(row))return
+ detailSheetRow.value=row
+ await ensureDetail(row)
 }
 function actions(row:Item){
  if(row.expires_at<=Date.now()&&
@@ -150,7 +148,7 @@ function reset(){
  revision++;rows.value=[];page.value=0;hasMore.value=false
  loading.value=false;busy.value='';error.value='';message.value=''
  batchOpen.value=false;details.value={};detailBusy.value={};detailError.value={};
- detailExpanded.value=[];detailRequests.clear();cancelConfirm()
+ detailSheetRow.value=null;detailRequests.clear();cancelConfirm()
 }
 async function load(n=page.value,preserveMessage=false){
  if(!props.active||!props.isOwner||!props.userId||busy.value)return
@@ -180,6 +178,7 @@ async function load(n=page.value,preserveMessage=false){
 function changePage(delta:number){
  if(loading.value||busy.value||(delta>0&&!hasMore.value)||
   (delta<0&&page.value===0))return
+ detailSheetRow.value=null
  void load(page.value+delta)
 }
 async function act(row:Item,decision:string){
@@ -308,7 +307,12 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
       ['pending','pending_owner','awaiting_recipient','recipient_accepted'].includes(row.status)
       ?'已过期':states[row.status]||row.status}}</span>
     </div>
-    <p>{{description(row)}}</p>
+    <div class="feed-meta">
+     <p>{{description(row)}}</p>
+     <button v-if="isSharedLedger(row)" type="button" class="feed-text-button feed-detail-trigger"
+      :aria-label="'查看'+title(row)+'完整明细'"
+      @click="openDetail(row)">查看完整明细</button>
+    </div>
     <template v-if="isSharedLedger(row)">
      <p v-if="details[row.id]?.entry||details[row.id]?.before" class="ledger-summary">
       {{String((details[row.id].entry||details[row.id].before)?.date||'')}} ·
@@ -316,22 +320,7 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
       {{formatMoney((details[row.id].entry||details[row.id].before)?.amount)}} ·
       {{String((details[row.id].entry||details[row.id].before)?.merchant||'')}}
      </p>
-     <button type="button" class="feed-text-button" :disabled="detailBusy[row.id]"
-      @click="toggleDetail(row)">{{detailBusy[row.id]?'明细读取中…':
-      detailExpanded.includes(row.id)?'收起明细':'查看完整明细'}}</button>
      <p v-if="detailError[row.id]" class="feed-error">明细暂不可用，无法安全批准。请稍后刷新。</p>
-     <div v-if="detailExpanded.includes(row.id)&&details[row.id]" class="approval-detail">
-      <div v-if="details[row.id].before&&row.operation!=='finance.entry.create'">
-       <strong>原始明细</strong>
-       <dl><template v-for="([key,value],i) in previewValues(details[row.id].before)" :key="'old'+i">
-        <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
-      </div>
-      <div v-if="details[row.id].entry">
-       <strong>{{row.operation==='finance.entry.update'?'拟修改为':'申请明细'}}</strong>
-       <dl><template v-for="([key,value],i) in previewValues(details[row.id].entry)" :key="i">
-        <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
-      </div>
-     </div>
     </template>
     <div v-if="actions(row).length" class="feed-actions">
      <button v-for="decision in actions(row)" :key="decision" type="button"
@@ -345,6 +334,28 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
    <span>第 {{page+1}} 页 · 每页 5 条</span>
    <button type="button" :disabled="!hasMore||loading||!!busy" @click="changePage(1)">下一页</button>
   </nav>
+  <EditBottomSheet v-if="detailSheetRow" :title="title(detailSheetRow)+' · 完整明细'"
+   @close="detailSheetRow=null">
+   <p v-if="detailBusy[detailSheetRow.id]" class="feed-empty" role="status">正在读取明细…</p>
+   <div v-else-if="detailError[detailSheetRow.id]" class="feed-detail-error" role="alert">
+    <p>明细暂时无法读取，请重试。无法核对的账务不会允许批准。</p>
+    <button type="button" class="feed-detail-retry"
+     @click="ensureDetail(detailSheetRow)">重新读取</button>
+   </div>
+   <div v-else-if="details[detailSheetRow.id]" class="approval-detail">
+    <div v-if="details[detailSheetRow.id].before&&detailSheetRow.operation!=='finance.entry.create'">
+     <strong>原始明细</strong>
+     <dl><template v-for="([key,value],i) in previewValues(details[detailSheetRow.id].before)" :key="'old'+i">
+      <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
+    </div>
+    <div v-if="details[detailSheetRow.id].entry">
+     <strong>{{detailSheetRow.operation==='finance.entry.update'?'拟修改为':'申请明细'}}</strong>
+     <dl><template v-for="([key,value],i) in previewValues(details[detailSheetRow.id].entry)" :key="i">
+      <dt>{{key}}</dt><dd>{{value}}</dd></template></dl>
+    </div>
+   </div>
+   <p v-else class="feed-empty">暂无可查看的明细</p>
+  </EditBottomSheet>
   <EditBottomSheet v-if="batchOpen" title="批量审批与安全执行" @close="batchOpen=false">
    <ApprovalCenter :active="active&&isOwner" :user-id="userId" :is-owner="isOwner"
     :members="members" :profiles="profiles" auto-open compact/>
@@ -359,6 +370,9 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
 .feed-header{margin-bottom:8px}
 .feed-header .management-section-heading{min-width:0}
 .feed-header-actions{gap:4px}
+.feed-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.feed-meta p{min-width:0;flex:1;margin:0}
+.feed-detail-trigger{flex:none;white-space:nowrap;text-align:right;padding-inline:6px}
 .feed-text-button{min-height:44px;border:none;background:transparent;padding:8px;color:#42775c;font-size:12px;font-weight:700}
 .feed-list{list-style:none;padding:0;margin:0;display:grid;gap:0}
 .feed-item{padding:13px 0;border-top:1px solid #edf1ed;min-width:0;overflow-wrap:anywhere}
@@ -374,7 +388,9 @@ onUnmounted(()=>{if(refreshTimer)clearInterval(refreshTimer);reset();document.re
 .feed-error,.feed-success{font-size:12px;overflow-wrap:anywhere}
 .feed-error{color:#b34f45}
 .ledger-summary{font-weight:700;color:var(--ui-text,#2f4740)!important}
-.approval-detail{padding:10px;border:1px solid #e1eae3;border-radius:10px;background:#f8fbf8;display:grid;gap:10px}
+.approval-detail{padding:12px;border:1px solid #e1eae3;border-radius:10px;background:#f8fbf8;display:grid;gap:14px}
+.feed-detail-error{font-size:13px;color:#a44c42}
+.feed-detail-retry{min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid #cadaD0;background:#fff;color:#386f53;font-weight:700}
 .approval-detail strong{font-size:12px}
 .approval-detail dl{display:grid;grid-template-columns:64px minmax(0,1fr);gap:4px 8px;margin:7px 0 0;font-size:12px}
 .approval-detail dt{color:#74847a}.approval-detail dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
