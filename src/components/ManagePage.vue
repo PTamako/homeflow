@@ -54,7 +54,7 @@ async function generateInvite(){
 
 <template>
  <div class="management-page" aria-label="HomeFlow 管理">
-   <nav class="management-tabs" role="tablist" aria-label="管理分类">
+   <nav v-if="isOwner" class="management-tabs" role="tablist" aria-label="管理分类">
      <button id="management-personal-tab" type="button" role="tab"
        :class="['management-tab',{selected:section==='personal'}]"
        :aria-selected="section==='personal'" aria-controls="management-personal-panel"
@@ -66,7 +66,8 @@ async function generateInvite(){
    </nav>
 
    <div v-if="section==='personal'" id="management-personal-panel" role="tabpanel"
-     aria-labelledby="management-personal-tab" class="management-tab-content">
+     :aria-labelledby="isOwner?'management-personal-tab':undefined"
+     :aria-label="isOwner?undefined:'个人管理'" class="management-tab-content">
      <section class="panel">
        <div class="management-section-heading"><AppIcon name="users" :size="20"/><h2>个人账号</h2></div>
        <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
@@ -130,7 +131,6 @@ async function generateInvite(){
 .management-tab.selected{background:#fff;color:#386f55;box-shadow:0 1px 5px rgba(41,69,50,.09)}
 .management-tab:focus-visible{outline:2px solid #43866a;outline-offset:2px}
 .management-tab-content{display:grid;gap:16px;min-width:0}
-.management-tabs:has(.management-tab:only-child){grid-template-columns:minmax(0,1fr)}
 .management-app-actions{display:flex;align-items:center;gap:8px}
 .management-app-actions>button{flex:1 1 0;min-width:0;min-height:44px;font-size:12px}
 .management-family-invites{border-top:1px solid #edf0eb;margin-top:15px;padding-top:12px}
