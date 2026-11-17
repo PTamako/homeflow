@@ -5,6 +5,7 @@ export type OneTimeTaskDraft={
   visibility:'private'|'household'
   dueOn:string
   remindEnabled:boolean
+  reminderOnly:boolean
   subjectProfileId:string
   assigneeUserId:string
   secondAssigneeUserId:string
@@ -12,16 +13,16 @@ export type OneTimeTaskDraft={
   bonusPoints:number
 }
 export function newOneTimeTaskDraft(today:string,userId=''):OneTimeTaskDraft{
-  return {title:'',visibility:'private',dueOn:today,remindEnabled:true,
+  return {title:'',visibility:'private',dueOn:today,remindEnabled:true,reminderOnly:false,
     subjectProfileId:'',assigneeUserId:userId,secondAssigneeUserId:'',healthRecordType:'other',bonusPoints:0}
 }
 export function oneTimeTaskPayload(draft:OneTimeTaskDraft,isPet:boolean){
   return {
     title:draft.title.trim(),notes:'',visibility:draft.visibility,
-    dueOn:draft.dueOn||null,remindEnabled:!!draft.dueOn&&draft.remindEnabled,
+    dueOn:draft.dueOn||null,remindEnabled:!!draft.dueOn&&draft.remindEnabled,reminderOnly:draft.reminderOnly,
     assigneeUserId:draft.assigneeUserId||null,
     secondAssigneeUserId:draft.secondAssigneeUserId||null,
-    bonusPoints:draft.assigneeUserId&&!draft.secondAssigneeUserId?draft.bonusPoints||0:0,
+    bonusPoints:!draft.reminderOnly&&draft.assigneeUserId&&!draft.secondAssigneeUserId?draft.bonusPoints||0:0,
     subjectProfileId:draft.subjectProfileId||null,
     healthRecordType:isPet?(draft.healthRecordType||null):null
   }
