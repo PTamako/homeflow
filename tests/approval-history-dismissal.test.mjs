@@ -16,6 +16,7 @@ function fixture(){
  INSERT INTO users VALUES('owner',NULL),('member',NULL),('other',NULL);
  INSERT INTO household_members VALUES('house','owner','owner'),('house','member','member'),('elsewhere','other','owner');`)
  sql.exec(read('migrations/0062_dismissed_applied_approval_history.sql'))
+ sql.exec(read('migrations/0063_expand_applied_ledger_approval_dismissal.sql'))
  const insert=(id,status,operation='finance.entry.create')=>sql.prepare('INSERT INTO household_approval_requests VALUES(?,?,?,?,?,?,?,?,?)')
   .run(id,'house','member','kakebo','kakebo','shared_entry_mutation',operation,status,status==='applied'?'owner':null)
  insert(ids[0],'applied');insert(ids[1],'pending');insert(ids[2],'applied','finance.sbi_cash.tsumitate')
@@ -71,4 +72,42 @@ test('backup remains accessible with a compact download row and 44px touch targe
  assert.match(src,/\.backup-restore-entry\{width:100%;min-height:44px/)
  assert.match(src,/\.backup-download,\.backup-restore\{display:flex[\s\S]*min-height:44px/)
  assert.match(src,/EditBottomSheet v-if="restoreSheetOpen"/)
+})
+
+test('all applied household-ledger review types can be hidden without affecting the ledger',async()=>{
+ const f=fixture()
+ try{
+  const variants=[
+   ['kakebo','finance_entry','finance.entry.create'],
+   ['kakebo','credit_card_purchase','finance.credit_card.purchase'],
+   ['kakebo','prepaid_action','finance.prepaid.spend'],
+   ['jp-document-assistant','document_sync_candidate','document.sync.finance'],
+   ['kakebo','shared_entry_mutation','finance.entry.restore']
+  ]
+  const insert=f.sql.prepare('INSERT INTO household_approval_requests VALUES(?,?,?,?,?,?,?,?,?)')
+  for(const [source,resource,operation] of variants){
+   const id=crypto.randomUUID()
+   insert.run(id,'house','member',source,'kakebo',resource,operation,'applied','owner')
+   assert.equal(await f.remove(id),200,source+':'+operation)
+   assert.equal(await f.remove(id),200,'idempotent '+operation)
+   assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests WHERE request_id=?').get(id).status,'applied')
+  }
+  const id=crypto.randomUUID()
+  insert.run(id,'house','member','kakebo','kakebo','credit_card_settlement','finance.credit_card.settlement','applied','owner')
+  assert.equal(await f.remove(id),409)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM household_approval_dismissed_history').get().n,variants.length)
+  assert.throws(()=>f.sql.exec('DELETE FROM household_approval_dismissed_history'),/IMMUTABLE/)
+ }finally{f.sql.close()}
+})
+test('legacy owner-review entrypoints are retired; legitimate recurring receipts remain routed',()=>{
+ const index=read('worker/index.js'),ui=read('src/components/FamilyApprovalFeed.vue')
+ for(const path of ['/api/internal/cross-member/consent-submit','/api/internal/recurring-finance/policy-submit',
+  '/api/finance-cross-member/consents','/api/recurring-finance/policies'])
+  assert.ok(index.includes(path),'legacy path '+path)
+ assert.ok(index.includes("error:'legacy_financial_approval_retired'"))
+ assert.ok(index.includes('/api/internal/recurring-finance/reserve'))
+ assert.ok(index.includes('/api/internal/recurring-finance/receipt'))
+ for(const kind of ['finance_entry','credit_card_purchase','prepaid_action','document_sync_candidate'])
+  assert.ok(ui.includes("row.resource_type==='"+kind+"'"))
+ assert.ok(ui.includes("execute:'核对原申请'"))
 })

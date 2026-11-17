@@ -55,7 +55,7 @@ const states:Record<string,string>={
  owner_authorized:'已授权 · 未记账',recipient_rejected:'收款人已拒绝'
 }
 const actionLabels:Record<string,string>={
- approve:'批准',reject:'拒绝',execute:'核对并补入账',accept:'确认接收',authorize:'授权',
+ approve:'批准',reject:'拒绝',execute:'核对原申请',accept:'确认接收',authorize:'授权',
  revoke:'撤销授权'
 }
 function person(id:string|null){
@@ -86,7 +86,17 @@ function isSharedLedger(row:Item){
   ['finance.entry.create','finance.entry.update','finance.entry.delete',
    'finance.entry.restore'].includes(row.operation||'')
 }
-function canDismiss(row:Item){return props.isOwner&&isSharedLedger(row)&&row.status==='applied'}
+function canDismiss(row:Item){
+ const applied=row.status==='applied'
+ if(!props.isOwner||row.kind!=='approval'||!applied)return false
+ // Keep in sync with ownerReviewAllowed and the D1 dismissal trigger.
+ if(row.source_app==='kakebo')return isSharedLedger(row)||
+  (row.resource_type==='finance_entry'&&row.operation==='finance.entry.create')||
+  (row.resource_type==='credit_card_purchase'&&row.operation==='finance.credit_card.purchase')||
+  (row.resource_type==='prepaid_action'&&row.operation==='finance.prepaid.spend')
+ return row.source_app==='jp-document-assistant'&&
+  row.resource_type==='document_sync_candidate'&&row.operation==='document.sync.finance'
+}
 function formatMoney(amount:unknown){return Number.isFinite(Number(amount))?'¥'+Number(amount).toLocaleString('ja-JP'):'—'}
 function prettyType(type:unknown){return type==='income'?'收入':type==='expense'?'支出':type==='transfer'?'资产转移':'—'}
 function previewValues(data:Record<string,unknown>|null){
@@ -197,7 +207,7 @@ async function act(row:Item,decision:string){
  const caution=isSharedLedger(row)&&decision==='approve'
   ?'批准后系统会使用原审批编号安全入账；失败时仍保留待入账状态供重试。拒绝不会改动账本。'
   :isSharedLedger(row)&&decision==='execute'
-  ?'仅对原已批准的账务执行或幂等重试，不会建立新记录。'
+  ?'先查询原申请入账回执；仅在确实未执行时使用同一个审批编号安全重试，不会生成重复账目。'
   :row.kind==='recurring'&&decision==='approve'
   ?'仅批准这项计划一次，约定条件和有效期不变时无需逐月重新批准。每期仍须以真实交易凭证独立入账。'
   :row.kind==='consent'

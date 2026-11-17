@@ -44,6 +44,7 @@ import {goalPeriodArchiveRoute} from './goal-period-archive.js'
 import {portableRoute} from './portable.js'
 import {recycleRoute} from './recycle.js'
 import {json,sameOrigin,sessionFor,verifiedDatabase} from './security.js'
+import {ledgerOnly} from './approval-scope.js'
 import {notificationsRoute,purgeOldNotifications} from './notifications.js'
 import {pointsRoute} from './points.js'
 import {pointsHistoryRoute} from './points-history.js'
@@ -64,6 +65,12 @@ async function routeRequest(request,env,ctx,state){
       // Every API request fails closed on physical database mismatch or missing
       // migration baseline; full structural checks run on /api/health and Cron.
       if(!await verifiedDatabase(env,{quick:true}))return json({error:'environment_or_database_not_ready'},503)
+      // The legacy consent and monthly-plan review submissions were retired.
+      // Leave separate legitimate periodic receipts/reservations untouched.
+      if(ledgerOnly(env)&&[
+       '/api/internal/cross-member/consent-submit',
+       '/api/internal/recurring-finance/policy-submit'
+      ].includes(path))return json({error:'legacy_financial_approval_retired'},410)
       if(path==='/api/bridge/document-assistant')return documentAssistantBridge(request,env)
       // Backchannel-only signed read verification: no browser session or
       // same-origin cookie is accepted; never grants target write rights.
@@ -105,6 +112,10 @@ async function routeRequest(request,env,ctx,state){
         if(requiresLogin&&!session)return json({error:'not_authenticated'},401)
         if(!['GET','HEAD','OPTIONS'].includes(request.method)&&!['/api/oauth/token','/api/oauth/session-introspect'].includes(path)&&!sameOrigin(request))
           return json({error:'origin_forbidden'},403)
+        if(ledgerOnly(env)&&(
+         path==='/api/finance-cross-member/consents'||path.startsWith('/api/finance-cross-member/consents/')||
+         path==='/api/recurring-finance/policies'||path.startsWith('/api/recurring-finance/policies/')
+        ))return json({error:'legacy_financial_approval_retired'},410)
         // Completion push is best-effort and cannot invalidate a committed task.
         const onComplete=typeof ctx?.waitUntil==='function'
           ? event=>ctx.waitUntil(sendCompletionFeedback(env,session,event)
