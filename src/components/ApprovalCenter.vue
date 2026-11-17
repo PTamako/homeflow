@@ -39,9 +39,9 @@ let epoch=0
 let requestGeneration=0
 let inFlightQuery=''
 const statusNames:Record<State,string>={
- pending:'待审批',approved:'已批准 · 待执行',
+ pending:'待审批',approved:'已批准 · 自动入账中',
  rejected:'已拒绝',cancelled:'已取消',executing:'执行中',
- applied:'已生效',failed_retryable:'等待重试',
+ applied:'已生效',failed_retryable:'自动核对中',
  failed_final:'执行失败',expired:'已过期',conflict:'处理冲突'
 }
 const actionNames:Record<string,string>={
@@ -179,7 +179,7 @@ function canExecute(item:Approval){
 }
 function statusLabel(item:Approval){
  if(item.status==='approved')return isSupportedExecution(item)
-  ?'已批准 · 未入账':'已批准 · 待目标处理'
+  ?'已批准 · 自动核对中':'已批准 · 待目标处理'
  return statusNames[item.status]||'处理中'
 }
 
@@ -302,7 +302,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      message:'系统会再次核实批准记录，并由家計簿实际入账。同一审批只能入账一次。'}
   :kind==='approve'
    ?{title:'批准家庭申请',confirmLabel:'确认批准',
-     message:'批准后还需要单独执行，账本此时不会立即改变。'}
+     message:'批准后会自动尝试入账，失败时系统会使用原审批 ID 核对，无需再次批准。'}
    :kind==='cancel'
     ?{title:'撤回家庭申请',confirmLabel:'确认撤回',
       message:'只有待审批申请可以撤回，撤回后管理员不能再批准。'}
@@ -340,11 +340,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
        throw Error('入账回执尚未确认')
       message.value='已批准并成功入账，家計簿明细恢复正常'
      }catch(executionError){
-      message.value='已批准，但尚未入账；可在原申请上安全重试'
-      error.value=(executionError as Error).message
+      message.value='已批准，系统将自动核对原申请，无需重复批准'
+      error.value='家計簿入账结果尚未确认；系统会安全核对，不要新建重复账单。'
      }
     }
-   }else message.value=kind==='approve'?'已批准，尚未入账':
+   }else message.value=kind==='approve'?'已批准，正在核对入账':
     kind==='reject'?'已拒绝，不会入账':
     kind==='cancel'?'已撤回，无法再批准':
     result.applied===true?'已执行并入账':'执行结果待核对'
@@ -444,11 +444,11 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
      </div>
      <p v-if="item.status==='approved'" class="approval-note">
       {{ isSupportedExecution(item)
-       ?'已批准，账本尚未生效；仍需执行入账。'
+       ?'已批准，系统会自动核对入账；目前尚未确认正式入账。'
        :'已批准，但当前尚无此操作的安全执行器；目标应用未发生更改。' }}
      </p>
      <p v-else-if="item.status==='failed_retryable'" class="approval-note">
-      上次执行结果未确认；请仅通过原审批安全重试，不要再次创建账单。
+      入账结果尚未确认，系统会自动核对原审批 ID；请勿重复记账。
      </p>
      <div v-if="!isOwner&&item.requester_user_id===userId&&item.status==='pending'"
        class="approval-actions">
