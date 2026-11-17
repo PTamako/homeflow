@@ -4,6 +4,7 @@ import AppIcon from './AppIcon.vue'
 import {executeApprovedBatch} from '../approval-batch-execution.mjs'
 import ConfirmActionSheet from './ConfirmActionSheet.vue'
 import {useConfirmAction} from '../use-confirm-action'
+import {createConditionalApprovalPoller,needsApprovalReconciliation} from '../approval-reconciliation-polling.mjs'
 
 type State='pending'|'approved'|'rejected'|'cancelled'|'executing'|'applied'|
  'failed_retryable'|'failed_final'|'expired'|'conflict'
@@ -31,6 +32,8 @@ const unconfirmedBatch=ref<BatchRequest|null>(null)
 const filter=ref<Filter>('pending')
 const items=ref<Approval[]>([]),page=ref(0),hasMore=ref(false)
 const expanded=ref(false),loading=ref(false),busyId=ref('')
+// Track approvals hidden by the pending filter until their ledger receipt settles.
+const watchedApprovalIds=ref<string[]>([])
 const error=ref(''),message=ref('')
 const {request:confirmRequest,confirmAction,accept:acceptConfirm,cancel:cancelConfirm}=useConfirmAction()
 let epoch=0
@@ -77,6 +80,7 @@ async function getJson(url:string,options?:RequestInit){
 }
 async function discover(){
  const ticket=++epoch
+ watchedApprovalIds.value=[]
  requestGeneration++
  inFlightQuery=''
  loading.value=false
@@ -117,6 +121,9 @@ async function load(reset=true,preserveFeedback=false){
   if(ticket!==epoch||generation!==requestGeneration||!props.active||
    account!==props.userId||kind!==filter.value)return
   items.value=Array.isArray(result.items)?result.items:[]
+  const displayed=new Map(items.value.map(row=>[row.request_id,row.status]))
+  watchedApprovalIds.value=watchedApprovalIds.value.filter(id=>
+   !displayed.has(id)||['approved','executing','failed_retryable'].includes(displayed.get(id)||''))
   selectedIds.value=[]
   page.value=nextPage
   hasMore.value=result.has_more===true
@@ -134,16 +141,44 @@ async function toggle(){
  expanded.value=!expanded.value
  if(expanded.value)await load(true)
 }
-// Refresh once on foreground return, not via frequent D1 polling.
+// Read-only polling: never call an execution route while refreshing status.
+const reconciliationPoller=createConditionalApprovalPoller({
+ shouldPoll:()=>available.value&&expanded.value&&!!props.userId&&
+  document.visibilityState==='visible'&&!loading.value&&!busyId.value&&
+  (needsApprovalReconciliation(items.value,isSupportedExecution)||
+   watchedApprovalIds.value.length>0),
+ onRefresh:async()=>{
+  const ticket=epoch,account=props.userId
+  for(const id of watchedApprovalIds.value.slice(0,20)){
+   if(ticket!==epoch||account!==props.userId||!available.value||!expanded.value)return
+   try{
+    const result=await getJson('/api/approvals/'+encodeURIComponent(id))
+    if(ticket!==epoch||account!==props.userId)return
+    const status=result.request?.request_id===id?result.request.status:null
+    if(!status)continue
+    if(!['approved','executing','failed_retryable'].includes(status)){
+     watchedApprovalIds.value=watchedApprovalIds.value.filter(x=>x!==id)
+     if(status==='applied'){message.value='已核实正式入账';error.value=''}
+    }
+   }catch{/* A failed status read cannot change the original approval. */}
+  }
+  if(ticket===epoch&&account===props.userId&&available.value&&expanded.value)
+   await load(true,true)
+ }
+})
 function refreshOnReturn(){
- if(document.visibilityState==='visible'&&available.value&&expanded.value&&
-   !loading.value&&!busyId.value)void load(true)
+ if(document.visibilityState!=='visible'){reconciliationPoller.stop();return}
+ if(available.value&&expanded.value&&!loading.value&&!busyId.value)void load(true)
+ else reconciliationPoller.sync()
 }
+watch([items,watchedApprovalIds,loading,busyId,expanded,available,
+ ()=>props.active,()=>props.userId],()=>reconciliationPoller.sync(),{flush:'post'})
 onMounted(()=>{
  document.addEventListener('visibilitychange',refreshOnReturn)
  window.addEventListener('pageshow',refreshOnReturn)
 })
 onUnmounted(()=>{
+ reconciliationPoller.dispose()
  document.removeEventListener('visibilitychange',refreshOnReturn)
  window.removeEventListener('pageshow',refreshOnReturn)
 })
@@ -302,6 +337,8 @@ async function reviewBatch(decision:'approve'|'reject'){
    error.value='服务器回执不完整，请使用原批次 ID 核对。';return
   }
   unconfirmedBatch.value=null;selectedIds.value=[]
+  if(decision==='approve')
+   watchedApprovalIds.value=[...new Set([...watchedApprovalIds.value,...ids.map(x=>x.request_id)])]
   message.value='已批量'+label+' '+ids.length+' 笔'+
    (decision==='approve'?'，正使用原审批编号逐笔核对入账':'，不会入账')
   if(decision==='approve'){
@@ -315,6 +352,8 @@ async function reviewBatch(decision:'approve'|'reject'){
     message.value='审批已通过，已入账 '+execution.applied.length+
      ' 笔。其余将按原审批编号自动核对，不需要再次批准。'
    else message.value='已批准并入账 '+execution.applied.length+' 笔'
+   watchedApprovalIds.value=watchedApprovalIds.value.filter(x=>
+    !execution.applied.includes(x))
   }
  }catch{
   if(token===epoch&&props.userId===current)
@@ -374,6 +413,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
     // never call the ledger. A failed execute stays approved for safe retry.
     if(result.request?.request_id!==id||result.request?.status!=='approved')
      throw Error('承認状態を確認できません')
+    watchedApprovalIds.value=[...new Set([...watchedApprovalIds.value,id])]
     if(!executionEnabled.value||!sharedEntryExecutionEnabled.value){
      message.value='已批准，执行服务暂不可用；明细仍是灰色待入账'
     }else{
@@ -383,6 +423,7 @@ async function act(item:Approval,kind:'approve'|'reject'|'execute'|'cancel'){
       if(receipt.applied!==true||receipt.approval_id!==id)
        throw Error('入账回执尚未确认')
       message.value='已批准并成功入账，家計簿明细恢复正常'
+      watchedApprovalIds.value=watchedApprovalIds.value.filter(x=>x!==id)
      }catch(executionError){
       message.value='已批准，系统将自动核对原申请，无需重复批准'
       error.value='家計簿入账结果尚未确认；系统会安全核对，不要新建重复账单。'
