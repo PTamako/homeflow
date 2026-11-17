@@ -46,6 +46,8 @@ function fixture(){
  insert('INSERT INTO household_approval_requests VALUES(?,?,?,?,?,?,?,?,?,?)',
    'foreign-approval','foreign','foreign-owner','pending',now+99999,expires,1,
    'finance.entry.create','kakebo','finance_entry')
+ // The production approval table has this nullable last_error_code column.
+ sql.exec('ALTER TABLE household_approval_requests ADD COLUMN last_error_code TEXT')
  const db={prepare:q=>({bind(...v){return{
   first:async()=>sql.prepare(q).get(...v)||null,
   all:async()=>({results:sql.prepare(q).all(...v)})
@@ -123,5 +125,23 @@ test('expired pending family requests are retained for audit but never hide acti
   assert.ok(all.some(x=>x.id==='approval-0'))
   assert.ok(!all.some(x=>x.id==='policy-1'||x.id==='consent-1'))
   assert.deepEqual(pages.map(x=>x.data.has_more),[true,false,false])
+ }finally{f.close()}
+})
+
+
+test('cancelled duplicate retest is hidden without suppressing the newer pending request',async()=>{
+ const f=fixture()
+ try{
+  const request='approval-3'
+  f.sql.prepare("UPDATE household_approval_requests SET status='cancelled',last_error_code='duplicate_retest_superseded' WHERE request_id=?").run(request)
+  const pages=await Promise.all([f.call('0'),f.call('1')])
+  assert.equal(pages[0].status,200,JSON.stringify(pages[0].data))
+  assert.equal(pages[1].status,200,JSON.stringify(pages[1].data))
+  const visible=pages.flatMap(x=>x.data.items)
+  assert.equal(visible.length,8)
+  assert.equal(visible.some(x=>x.id===request),false)
+  assert.equal(visible.some(x=>x.id==='approval-0'),true)
+  assert.equal(f.sql.prepare('SELECT status FROM household_approval_requests WHERE request_id=?').get(request).status,'cancelled')
+  assert.deepEqual(pages.map(x=>x.data.items.length),[5,3])
  }finally{f.close()}
 })

@@ -11,6 +11,7 @@ const approval=`SELECT 'approval' AS kind,request_id AS id,requester_user_id AS 
  NULL AS end_month,NULL AS recipient_user_id,NULL AS owner_authorizer_user_id,
  CASE WHEN status='pending' AND expires_at>unixepoch('now')*1000 THEN 0 WHEN status IN ('approved','failed_retryable','executing') THEN 1 ELSE 2 END AS priority
  FROM household_approval_requests WHERE household_id=?1
+ AND NOT (status='cancelled' AND last_error_code='duplicate_retest_superseded')
  AND NOT EXISTS (SELECT 1 FROM household_approval_hidden_history h
  WHERE h.request_id=household_approval_requests.request_id
  AND h.household_id=household_approval_requests.household_id)`
