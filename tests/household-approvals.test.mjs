@@ -37,6 +37,7 @@ function fixture(){
  `)
  sql.exec(readFileSync(new URL('../migrations/0054_household_approval_core.sql',import.meta.url),'utf8'))
  sql.exec(readFileSync(new URL('../migrations/0055_household_approval_execution_lease.sql',import.meta.url),'utf8'))
+ sql.exec(readFileSync(new URL('../migrations/0061_hidden_deleted_shared_approval_history.sql',import.meta.url),'utf8'))
  const db={
   prepare(statement){
    return {bind(...params){return {
