@@ -1,4 +1,4 @@
-> **2026-11-12：HomeFlow Preview 已正式弃用。** Cloudflare `homeflow-preview` Worker 与同名 D1 已按用户要求退役，后续只部署 `homeflow` 生产 Worker 与同名生产 D1。开发验证使用本地测试、GitHub CI 和 Wrangler dry-run，**不得再执行 `wrangler deploy --env preview`、创建 Preview D1 或在生产库重放历史迁移**。以下较早的 Preview/Production 双环境流程仅是历史记录，均已失效。
+> **生产维护更新（2026-11-17）：** HomeFlow 不再部署 Preview；最新家庭账本审批整改 PR #349 已合并上线，D1 0061～0063 已核验。下面任何历史 Preview 部署、双环境迁移和一次性发布工作流指令都仅供追溯，不得照做。现有 `homeflow` Worker 和 D1 是唯一远程环境；生产发布必须先检查可恢复备份与当前迁移记录。\n\n> **2026-11-12：HomeFlow Preview 已正式弃用。** Cloudflare `homeflow-preview` Worker 与同名 D1 已按用户要求退役，后续只部署 `homeflow` 生产 Worker 与同名生产 D1。开发验证使用本地测试、GitHub CI 和 Wrangler dry-run，**不得再执行 `wrangler deploy --env preview`、创建 Preview D1 或在生产库重放历史迁移**。以下较早的 Preview/Production 双环境流程仅是历史记录，均已失效。
 
 > **2026-11-10 R2 私有相册发布前要求**：只存在一个 `homeflow-family-media` Bucket；其 managed r2.dev Domain 必须 disabled，自定义域名列表为空。生产 `[[r2_buckets]]` 绑定 `MEDIA`；Preview 不绑定（测试保持本机存储），不得公开 Bucket。对两个 D1 分别执行仅一次 `0051_private_media_cleanup.sql` 并登记，校验 media_assets.deleted_at 存在、所有外键有效、原有照片/积分不变，再合并部署。验证 300KiB 上传拒绝、私有与家庭读权限、单张删除与 R2 重试、回收站永久清除、ZIP 云端备份；真机相册与离线问题仍需验收。
 
