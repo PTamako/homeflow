@@ -80,7 +80,7 @@ test('signed HomeFlow SSO member can read own task picker without administrator 
   const DB={prepare(sql){return {bind(...args){return {
     async first(){assert.match(sql,/household_members/);assert.equal(args[0],member)
       return {household_id:'h1',user_id:member}},
-    async all(){assert.match(sql,/WHERE hm.household_id=\\?1/);
+    async all(){assert.ok(sql.includes('WHERE hm.household_id=?1'));
       return {results:[{id:member,label:'本人'},{id:actor,label:'家人'}]}},
     async run(){writes++;throw Error('no writes for member picker')}
   }}}}}
