@@ -1,0 +1,133 @@
+name: One-time four-app HomeFlow 30-day production rollout
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-homeflow-30day-prod-20261118.yml'
+permissions:
+  contents: read
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: 'true'
+    steps:
+      - name: Checkout reviewed HomeFlow production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/homeflow
+          ref: 84c12c683fe9eb135f935e69cd11a3cd3323b993
+          path: homeflow-src
+          persist-credentials: false
+      - name: Checkout reviewed Document Assistant production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 5ff590ddd9e7c34dd0064daef93842d3892b936d
+          path: document-src
+          persist-credentials: false
+      - name: Checkout reviewed Zhixue production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: 1611abaef65cc927eda5329e10ff131cfaf02af5
+          path: study-src
+          persist-credentials: false
+      - name: Checkout reviewed Kakeibo production source
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 8cb005f65092a35f0ba5c7448b73149d1069b292
+          path: kakeibo-src
+          persist-credentials: false
+      - name: Fail closed unless four exact reviewed sources and production credentials exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test "$(git -C homeflow-src rev-parse HEAD)" = "84c12c683fe9eb135f935e69cd11a3cd3323b993"
+          test "$(git -C document-src rev-parse HEAD)" = "5ff590ddd9e7c34dd0064daef93842d3892b936d"
+          test "$(git -C study-src rev-parse HEAD)" = "1611abaef65cc927eda5329e10ff131cfaf02af5"
+          test "$(git -C kakeibo-src rev-parse HEAD)" = "8cb005f65092a35f0ba5c7448b73149d1069b292"
+          grep -Fq 'MAX_SESSIONS_MS=30*86400000' homeflow-src/worker/auth.js
+          grep -Fq 'SESSION_ASSERTION_TTL_MS = 30 * 86400000' homeflow-src/worker/oauth.js
+          grep -Fq 'SESSION_MS=30*86400000' study-src/worker/homeflow-identity.ts
+          grep -Fq 'SESSION_MS=30*86400000' document-src/worker/homeflow-sso.js
+          grep -Fq 'SESSION_MS=30*86400000' kakeibo-src/functions/api/homeflow-sso/'[[path]].js'
+          echo 'All four exact production source snapshots verified; never create preview resources.'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test and build HomeFlow with original production PWA assets
+        working-directory: homeflow-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run check
+          python3 scripts/check_migrations.py
+          node scripts/stamp-pwa.mjs 84c12c683fe9eb135f935e69cd11a3cd3323b993
+          npm run build
+      - name: Deploy HomeFlow original-session 30-day authentication FIRST
+        working-directory: homeflow-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health |
+            node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const d=JSON.parse(s);if(!d.ok||d.environment!=='production'||d.database!=='ready')process.exit(1);console.log('HomeFlow production health verified')})"
+      - name: Build and verify Document Assistant without changing D1 or R2
+        working-directory: document-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run check:syntax
+          npm run build
+      - name: Deploy Document Assistant Worker and existing static assets
+        working-directory: document-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://jp-document-assistant.yupan6706.workers.dev/ > /dev/null
+          echo 'Document Assistant production URL responds'
+      - name: Rebuild exact Zhixue lesson assets and run local verification
+        working-directory: study-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check-local.sh
+      - name: Deploy Zhixue Worker and existing static assets
+        working-directory: study-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://it-study-platform.yupan6706.workers.dev/api/health > /dev/null
+          echo 'Zhixue production health verified'
+      - name: Build reviewed Kakeibo original member/owner UI
+        working-directory: kakeibo-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Deploy Kakeibo production Pages ONLY after other apps
+        working-directory: kakeibo-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=8cb005f65092a35f0ba5c7448b73149d1069b292 --commit-message="30-day HomeFlow session production release"
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://kakeibo-f17.pages.dev/api/homeflow-sso/status |
+            node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const d=JSON.parse(s);if(d.enabled!==true)process.exit(1);console.log('Ledger SSO production endpoint verified')})"
