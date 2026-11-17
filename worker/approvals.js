@@ -213,7 +213,6 @@ export async function approvalRoute(request,env,path,session){
    execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true',
    batch_review_enabled:env.APPROVALS_ENABLED==='true'&&env.APPROVAL_BATCH_REVIEW_ENABLED==='true',
-   owner_review_scope:ledgerOnly(env)?'household_ledger_only':'legacy',
    shared_entry_execution_enabled:env.APPROVALS_ENABLED==='true'&&
     env.APPROVAL_EXECUTION_ENABLED==='true'&&
     env.SHARED_ENTRY_APPROVAL_EXECUTION_ENABLED==='true'&&
