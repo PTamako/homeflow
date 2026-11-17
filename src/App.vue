@@ -25,7 +25,7 @@ import {usePageToast} from './page-toast'
 type User={id:string;loginName:string;role:'owner'|'member';householdId:string;householdName:string}
 type Profile={id:string;memberUserId:string|null;type:'person'|'pet';displayName:string;birthday:string|null;relation:string;adoptedOn:string|null;weightGrams:number|null;notes:string}
 type Member={id:string;loginName:string;role:'owner'|'member'}
-type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;secondAssigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string}
+type Task={id:string;title:string;notes:string;visibility:'private'|'household';dueOn:string|null;creatorUserId:string;subjectProfileId:string|null;assigneeUserId:string|null;secondAssigneeUserId:string|null;healthRecordType:string|null;completedAt:string|null;updatedAt:string;reminderOnly?:boolean|number}
 type Routine=Record<string,any>
 type PlanKind='shopping'|'wish'|'goal'|'trip'
 type TodayKind='task'|'routine'|PlanKind
@@ -75,7 +75,7 @@ async function refreshToLatest(){
 }
 const todayRows=ref<TodayEntry[]>([])
 const todayNextCursor=ref<string|null>(null)
-const todayTotal=ref(0),todayCompleted=ref(0)
+const todayTotal=ref(0),todayCompletionTotal=ref(0),todayCompleted=ref(0)
 const todayAvailableKinds=ref<TodayKind[]>([])
 const todayEntryKeys=ref<string[]>([])
 const todayMoreBusy=ref(false)
@@ -89,6 +89,7 @@ let syncBusy=false
 let syncInterval:number|undefined
 let lastVisibleRefresh=0
 let todayPageGeneration=0
+let midnightRefreshTimer:number|undefined
 const todayCategory=ref<'all'|TodayKind>('all')
 const listPageSize=5
 const pendingVisibleCount=ref(listPageSize)
@@ -300,6 +301,19 @@ const openPetId=ref<string|null>(null)
 const editProfileId=ref<string|null>(null),profileRevision=ref(0)
 const nav=[{id:'today',icon:'sun',label:'今天'},{id:'plans',icon:'clipboard-check',label:'计划'},{id:'memories',icon:'images',label:'时光轴'},{id:'family',icon:'house',label:'家庭'},{id:'manage',icon:'settings',label:'管理'}] as const
 function tokyoToday(){return new Date(Date.now()+9*3600000).toISOString().slice(0,10)}
+// A precise Japan-midnight rollover; foreground/sync checks cover iOS suspends.
+function scheduleJstMidnightRefresh(){
+ if(midnightRefreshTimer!==undefined)window.clearTimeout(midnightRefreshTimer)
+ const untilMidnight=86400000-((Date.now()+9*3600000)%86400000)
+ midnightRefreshTimer=window.setTimeout(()=>{
+  const date=tokyoToday()
+  if(currentJstDay.value!==date){
+   currentJstDay.value=date
+   if(user.value&&tab.value==='today')void reloadToday()
+  }
+  scheduleJstMidnightRefresh()
+ },untilMidnight+100)
+}
 const currentJstDay=ref(tokyoToday())
 const allToday=computed(()=>todayRows.value)
 const visibleTodayCategories=computed(()=>todayCategories.filter(category=>
@@ -309,6 +323,8 @@ watch(visibleTodayCategories,categories=>{
 })
 const unifiedToday=computed(()=>allToday.value)
 const completedTodayCount=computed(()=>todayCompleted.value)
+const isReminderOnlyToday=(row:TodayEntry)=>row.task?.reminderOnly===true||row.task?.reminderOnly===1||
+ row.routine?.reminder_only===1||row.routine?.reminder_only===true
 const visibleToday=computed(()=>unifiedToday.value)
 const visiblePendingTasks=computed(()=>pendingTasks.value.slice(0,pendingVisibleCount.value))
 function recurringLabel(r:Routine){
@@ -525,6 +541,7 @@ async function loadTodayPage(reset=true):Promise<boolean>{
    }
    todayNextCursor.value=data.nextCursor||null
    todayTotal.value=Number(data.total)||0
+    todayCompletionTotal.value=Number(data.completionTotal??data.total)||0
    todayCompleted.value=Number(data.completed)||0
    todayAvailableKinds.value=(data.categories||[]) as TodayKind[]
    if(reset)todayEntryKeys.value=data.entryKeys||[]
@@ -593,7 +610,7 @@ async function postponeToday(row:TodayEntry){
  finally{todayActionBusy.value=false}
 }
 function canFinishEntry(row:TodayEntry){
- if(!user.value)return false
+ if(!user.value||isReminderOnlyToday(row))return false
  if(row.task){
   const first=row.task.assigneeUserId,second=row.task.secondAssigneeUserId
   return !first||first===user.value.id||second===user.value.id
@@ -607,7 +624,7 @@ function canFinishEntry(row:TodayEntry){
 }
 async function toggleRoutine(r:Routine){
   // Completed occurrences can only be reopened from Plans history.
-  if(routineBusy.value||r.mark?.completed_at)return
+  if(routineBusy.value||r.mark?.completed_at||r.reminder_only===1)return
   routineBusy.value=true
   try{
     const status='completed'
@@ -722,7 +739,7 @@ function syncTick(){
 }
 async function toggleTask(t:Task){
   // A completed Today checkbox is locked: use 查看计划 to undo.
-  if(t.completedAt)return
+  if(t.completedAt||t.reminderOnly===true||t.reminderOnly===1)return
   try{
     await api('/tasks/'+t.id,'PATCH',{completed:true});await loadTodayPage(true)
     notify('任务已完成')
@@ -771,6 +788,7 @@ onMounted(async()=>{
   if(user.value&&navigator.onLine)void flushTasks()
   if(user.value)void checkRemoteChanges()
   syncInterval=window.setInterval(syncTick,SHARED_SYNC_MS)
+  scheduleJstMidnightRefresh()
   window.addEventListener('focus',onForeground)
 })
 onBeforeUnmount(()=>{
@@ -781,6 +799,7 @@ onBeforeUnmount(()=>{
   document.removeEventListener('visibilitychange',onForeground)
   window.removeEventListener('focus',onForeground)
   if(syncInterval!==undefined)window.clearInterval(syncInterval)
+  if(midnightRefreshTimer!==undefined)window.clearTimeout(midnightRefreshTimer)
 })
 </script>
 
@@ -852,7 +871,7 @@ onBeforeUnmount(()=>{
         <div class="section-title today-task-heading">
           <h2>今日待办</h2>
           <div class="today-task-actions">
-            <span>{{ completedTodayCount }} / {{ todayTotal }} 完成</span>
+            <span>{{ completedTodayCount }} / {{ todayCompletionTotal }} 完成</span>
             <button type="button" class="outline today-add-button" @click="openNewTaskInPlans">＋ 新增待办</button>
           </div>
         </div>
@@ -882,7 +901,8 @@ onBeforeUnmount(()=>{
               edit-label="延期" delete-label="跳过"
               @edit="openPostpone(row)" @delete="skipToday(row)">
               <div class="task-row today-unified-row">
-                <input v-if="row.task||row.routine" type="checkbox" :checked="row.done"
+                <AppIcon v-if="isReminderOnlyToday(row)" class="today-reminder-icon" name="bell" :size="19" />
+                <input v-else-if="row.task||row.routine" type="checkbox" :checked="row.done"
                   :disabled="row.done||!canFinishEntry(row)||!!row.routine&&routineBusy"
                   :aria-label="(row.done?'已完成，请到查看计划撤销：':'完成 ')+row.title"
                   @change="row.task?toggleTask(row.task):row.routine?toggleRoutine(row.routine):undefined"/>
@@ -892,7 +912,7 @@ onBeforeUnmount(()=>{
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
                     <span class="today-kind-label">{{ todayKindLabels[row.kind] }}</span>
-                    <StatusBadge v-if="row.task" :code="row.done?'completed':row.task.dueOn&&row.task.dueOn<tokyoToday()?'overdue':'pending'" :label="row.done?'已完成':row.task.dueOn&&row.task.dueOn<tokyoToday()?'逾期':'待处理'" />
+                    <StatusBadge v-if="row.task" :code="row.done?'completed':row.task.dueOn&&row.task.dueOn<tokyoToday()?'overdue':'pending'" :label="isReminderOnlyToday(row)?'仅提醒':row.done?'已完成':row.task.dueOn&&row.task.dueOn<tokyoToday()?'逾期':'待处理'" />
                     <template v-if="row.task">
                       <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
@@ -901,7 +921,7 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ [row.task.assigneeUserId,row.task.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.routine">
-                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
+                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="isReminderOnlyToday(row)?'仅提醒':row.routine.mark?.completed_at?'已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ [row.routine.currentAssignment?.assigneeUserId||row.routine.assigned_to,row.routine.currentAssignment?.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
@@ -918,7 +938,7 @@ onBeforeUnmount(()=>{
                 <button type="button" class="text-button today-plan-link"
                   :aria-label="'前往'+todayKindLabels[row.kind]+'计划处理：'+row.title"
                   @click="row.task?openPlans('task',row.task.id,'',row.done):row.routine?openPlans('routine',row.routine.id,row.routine.occurrenceOn||'',row.done):row.plan&&openPlans(row.plan.kind,row.plan.id,row.plan.periodKey||'',row.done)">
-                  {{ row.done?'查看计划':'去处理' }}</button>
+                  {{ row.done||isReminderOnlyToday(row)?'查看计划':'去处理' }}</button>
               </div>
               <EditBottomSheet v-if="!row.done&&!row.routine&&postponeKey===row.key" title="延期待办" :close-disabled="todayActionBusy" @close="closePostpone">
               <form class="today-postpone-form" @submit.prevent="postponeToday(row)">
