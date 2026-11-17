@@ -1,0 +1,61 @@
+name: Verify live HomeFlow SBI ledger + Kakeibo production (one shot)
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-homeflow-sbi-live-20261117.yml]
+permissions:
+  contents: read
+jobs:
+  read-only-production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Verify actual production versions, live health and private endpoints
+        run: |
+          node --input-type=module <<'JS'
+          const token=process.env.CLOUDFLARE_API_TOKEN,account=process.env.CLOUDFLARE_ACCOUNT_ID
+          if(!token||!account)throw Error('Cloudflare read-only credentials unavailable')
+          const root='https://api.cloudflare.com/client/v4/accounts/'+account
+          const auth={authorization:'Bearer '+token}
+          const api=async(path)=>{
+           const r=await fetch(root+path,{headers:auth,signal:AbortSignal.timeout(20000)})
+           if(!r.ok)throw Error('Cloudflare read failed HTTP '+r.status+' at '+path)
+           const d=await r.json();if(!d.success)throw Error('Cloudflare query not confirmed')
+           return d.result
+          }
+          const [deploy,project]=await Promise.all([
+           api('/workers/scripts/homeflow/deployments'),
+           api('/pages/projects/kakeibo')
+          ])
+          const active=deploy.deployments?.[0]?.versions?.find(x=>x.percentage===100)?.version_id
+          if(active!=='71f216f8-512e-4525-986e-b88eec9f81cb')
+           throw Error('HomeFlow activity mismatch')
+          if(project.canonical_deployment?.deployment_trigger?.metadata?.commit_hash!==
+             'bfa481ab9864a82be405e4e4522c3b388eb97209'||
+             project.canonical_deployment?.latest_stage?.status!=='success'||
+             project.source?.config?.production_deployments_enabled!==false||
+             project.source?.config?.preview_deployment_setting!=='none')
+           throw Error('Kakeibo canonical or Preview policy mismatch')
+          const origin='https://homeflow.yupan6706.workers.dev'
+          const health=await fetch(origin+'/api/health',{
+           cache:'no-store',signal:AbortSignal.timeout(15000)})
+          const h=await health.json()
+          if(!health.ok||h.ok!==true||h.environment!=='production'||h.database!=='ready')
+           throw Error('HomeFlow health not ready')
+          for(const path of ['/api/household-approvals?page=0','/api/my-confirmations?page=0']){
+           const response=await fetch(origin+path,{cache:'no-store',signal:AbortSignal.timeout(15000)})
+           if(response.status!==401)throw Error('Protected API not private: '+path)
+          }
+          const page=await fetch(origin+'/?_verify='+Date.now(),{
+           cache:'no-store',signal:AbortSignal.timeout(15000)})
+          const html=await page.text(),asset=html.match(/(?:src|href)="(\/assets\/[^"]+\.js)"/)
+          if(!page.ok||!asset)throw Error('HomeFlow PWA shell unavailable')
+          const js=await fetch(origin+asset[1],{cache:'no-store',signal:AbortSignal.timeout(15000)})
+          const bundle=await js.text()
+          if(!js.ok||!bundle.includes('management-personal-tab')||!bundle.includes('management-family-tab'))
+           throw Error('HomeFlow active PWA asset check failed')
+          console.log('PRODUCTION_OK: HomeFlow SBI entry scope, canonical Kakeibo, D1 health, private APIs and PWA shell')
+          JS
