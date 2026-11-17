@@ -4,6 +4,7 @@ import AppIcon from './AppIcon.vue'
 import BackupPanel from './BackupPanel.vue'
 import SecurityPanel from './SecurityPanel.vue'
 import MemberConfirmationInbox from './MemberConfirmationInbox.vue'
+import CrossMemberTransferConsents from './CrossMemberTransferConsents.vue'
 import FamilyApprovalFeed from './FamilyApprovalFeed.vue'
 import TrashPanel from './TrashPanel.vue'
 import PushPanel from './PushPanel.vue'
@@ -73,6 +74,8 @@ async function generateInvite(){
        <p class="management-account">当前账号：<b>{{ loginName }}</b></p>
        <SecurityPanel v-if="active" :login-name="loginName"/>
      </section>
+     <CrossMemberTransferConsents v-if="active&&isOwner" :active="active"
+       :user-id="userId" :is-owner="isOwner" :members="members" :profiles="profiles"/>
      <MemberConfirmationInbox v-if="active&&!isOwner" :active="active"
        :user-id="userId" :is-owner="isOwner" :members="members" :profiles="profiles"/>
      <section class="panel">

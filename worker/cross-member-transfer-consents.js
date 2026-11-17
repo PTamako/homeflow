@@ -138,6 +138,44 @@ async function decide(request,env,session,role,id,action){
  if(action==='cancel'&&!['awaiting_recipient','recipient_accepted'].includes(prior.status))
   return err('cross_transfer_cannot_cancel',409);
  if(prior.status!==prev)return err('cross_transfer_not_in_expected_state');
+ // When the recipient IS the owner, their single explicit receipt consent
+ // also records the separate owner authorization atomically. The original
+ // immutable two-event audit and the three-version signed proof remain intact.
+ // This does not approve or post any family ledger entry.
+ const ownerRecipient=action==='recipient'&&body.decision==='accept'&&
+  isRecipient&&role==='owner'&&
+  env.CROSS_MEMBER_RECIPIENT_AUTO_AUTHORIZE_ENABLED==='true';
+ if(ownerRecipient){
+  const firstAt=nowMs(),secondAt=firstAt+1;
+  if(secondAt>=prior.expires_at)return err('cross_transfer_consent_expired');
+  if(typeof env.DB.batch!=='function')return err('cross_transfer_atomic_batch_unavailable',503);
+  try{
+   const updates=await env.DB.batch([
+    env.DB.prepare(
+     "UPDATE household_cross_member_transfer_consents SET status='recipient_accepted',"+
+     'last_actor_user_id=?,recipient_decided_at=?,version=version+1,updated_at=? '+
+     "WHERE consent_id=? AND household_id=? AND recipient_user_id=? AND status='awaiting_recipient' "+
+     'AND version=? AND expires_at>?')
+     .bind(session.user_id,firstAt,firstAt,id,session.household_id,
+      session.user_id,body.expected_version,firstAt),
+    env.DB.prepare(
+     "UPDATE household_cross_member_transfer_consents SET status='owner_authorized',"+
+     'last_actor_user_id=?,owner_authorizer_user_id=?,owner_authorized_at=?,version=version+1,updated_at=? '+
+     "WHERE consent_id=? AND household_id=? AND recipient_user_id=? AND status='recipient_accepted' "+
+     'AND version=? AND expires_at>? AND changes()=1')
+     .bind(session.user_id,session.user_id,secondAt,secondAt,id,
+      session.household_id,session.user_id,body.expected_version+1,secondAt)
+   ]);
+   if(updates?.length!==2||updates.some(r=>r?.meta?.changes!==1))
+    return err('cross_transfer_atomic_consent_unconfirmed',503);
+   const confirmed=await read(env.DB,session,id);
+   return confirmed?.status==='owner_authorized'&&
+    confirmed.version===body.expected_version+2&&
+    confirmed.owner_authorizer_user_id===session.user_id?
+    json({ok:true,consent:expose(confirmed),replayed:false}):
+    err('cross_transfer_atomic_consent_unconfirmed',503);
+  }catch{return err('cross_transfer_consent_conflict');}
+ }
  const stamp=nowMs();
  if(['recipient','authorize'].includes(action)&&stamp>=prior.expires_at)
   return err('cross_transfer_consent_expired');

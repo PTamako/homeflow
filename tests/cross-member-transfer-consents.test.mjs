@@ -37,8 +37,13 @@ function fixture(){
  const db={prepare(q){return {bind(...args){return {
   first:async()=>sql.prepare(q).get(...args)||null,
   all:async()=>({results:sql.prepare(q).all(...args)}),
-  run:async()=>({meta:{changes:Number(sql.prepare(q).run(...args).changes)}})
- }}}}};
+  run:async()=>({meta:{changes:Number(sql.prepare(q).run(...args).changes)}}),
+  executeSync:()=>({meta:{changes:Number(sql.prepare(q).run(...args).changes)}})
+ }}}},async batch(statements){
+  sql.exec('BEGIN IMMEDIATE');
+  try{const records=statements.map(x=>x.executeSync());sql.exec('COMMIT');return records}
+  catch(e){sql.exec('ROLLBACK');throw e}
+ }};
  const env={APP_ENV:'production',DB:db,APPROVALS_ENABLED:'true',
   CROSS_MEMBER_TRANSFER_CONSENTS_ENABLED:'true'};
  async function call(user,path,body,method='POST',origin='https://homeflow.example.test'){
@@ -273,5 +278,45 @@ test('signed cross-member proof rejects inactive recipient even after full autho
   assert.equal(result.status,409);
   assert.equal((await result.json()).consent_verified,false);
   assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
+ }finally{f.close()}
+});
+
+
+test('recipient owner confirms once, two immutable consent audit events commit atomically without a third click',async()=>{
+ const f=fixture();f.env.CROSS_MEMBER_RECIPIENT_AUTO_AUTHORIZE_ENABLED='true';
+ try{
+  const made=await f.create();assert.equal(made.status,201);
+  const id=made.data.consent.consent_id;
+  const accepted=await f.call(recipient,f.root+'/'+id+'/recipient',
+   {expected_user_id:'owner',expected_version:1,decision:'accept'});
+  assert.equal(accepted.status,200,JSON.stringify(accepted));
+  assert.equal(accepted.data.consent.status,'owner_authorized');
+  assert.equal(accepted.data.consent.version,3);
+  assert.equal(accepted.data.consent.owner_authorizer_user_id,'owner');
+  assert.equal(accepted.data.consent.ledger_applied,false);
+  assert.equal(accepted.data.consent.execution_permitted,false);
+  const audit=f.sql.prepare('SELECT action,actor_user_id,old_version,new_version FROM '+
+   'household_cross_member_transfer_events ORDER BY new_version').all();
+  assert.deepEqual(audit.map(r=>r.action),['source_consented','recipient_accepted','owner_authorized']);
+  assert.deepEqual(audit.map(r=>r.new_version),[1,2,3]);
+  assert.ok(audit.every(r=>r.actor_user_id==='owner'||r.actor_user_id==='member'));
+  const replay=await f.call(recipient,f.root+'/'+id+'/recipient',
+   {expected_user_id:'owner',expected_version:1,decision:'accept'});
+  assert.equal(replay.status,409);
+  assert.equal(count(f.sql,'household_cross_member_transfer_events'),3);
+ }finally{f.close()}
+});
+
+test('single recipient tap fails atomically when second owner authorization audit fails',async()=>{
+ const f=fixture();f.env.CROSS_MEMBER_RECIPIENT_AUTO_AUTHORIZE_ENABLED='true';
+ try{
+  const created=await f.create(),id=created.data.consent.consent_id;
+  f.sql.exec("CREATE TRIGGER fail_second_cross_audit BEFORE INSERT ON household_cross_member_transfer_events "+
+   "WHEN NEW.action='owner_authorized' BEGIN SELECT RAISE(ABORT,'CROSS_SECOND_AUDIT_DENIED'); END;");
+  const result=await f.call(recipient,f.root+'/'+id+'/recipient',
+   {expected_user_id:'owner',expected_version:1,decision:'accept'});
+  assert.equal(result.status,409);
+  assert.equal(f.sql.prepare('SELECT status FROM household_cross_member_transfer_consents').get().status,'awaiting_recipient');
+  assert.equal(count(f.sql,'household_cross_member_transfer_events'),1);
  }finally{f.close()}
 });

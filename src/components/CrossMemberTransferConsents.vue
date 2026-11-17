@@ -29,8 +29,8 @@ function person(id:string){
 function label(state:ConsentState){
  return {
   awaiting_recipient:'待收款人独立确认',
-  recipient_accepted:'双方已确认 · 待管理员另行授权',
-  owner_authorized:'已完成三方授权 · 尚未记账',
+  recipient_accepted:'历史申请 · 待补全确认',
+  owner_authorized:'双方已确认 · 可提交家庭账本明细审核',
   recipient_rejected:'收款人拒绝',
   cancelled:'已撤回',
   revoked:'已撤销授权'
@@ -74,7 +74,7 @@ function actions(x:Consent){
  return [] as const
 }
 const names:Record<string,string>={
- accept:'确认接收',reject:'拒绝',authorize:'管理员单独授权',revoke:'撤销授权',cancel:'撤回申请'
+ accept:'确认接收并授权',reject:'拒绝',authorize:'补全旧申请确认',revoke:'撤销授权',cancel:'撤回申请'
 }
 async function act(x:Consent,kind:string){
  if(!props.active||busy.value||loading.value||!actions(x).includes(kind as never))return
@@ -84,7 +84,7 @@ async function act(x:Consent,kind:string){
   message:kind==='authorize'?
    '双方已经各自确认，但管理员授权仍不会自动汇款或记账；后续需单独核对真实转账证据。':
    kind==='accept'?
-   '这是你本人同意接收该笔申请，尚不表示银行实际到账，也不授权自动入账。':
+   '作为收款人确认后，将同时记录本人授权。仍需单独核对银行到账，且家庭账本明细必须通过审核；不会自动汇款。':
    '此决定会记录不可变审计，且不能通过重复提交同一申请改变结果。',
   ...(kind==='reject'||kind==='revoke'?{danger:true}:{})
  }))return
@@ -130,7 +130,7 @@ onUnmounted(()=>{cleanup();document.removeEventListener('visibilitychange',foreg
     @click="expanded=!expanded">{{expanded?'收起':'查看'}}</button>
   </header>
   <div v-if="expanded" class="cross-content">
-   <p class="hint">这是转出人、收款人与家庭管理员的独立同意记录。即使三项完成，也不会自动转账或计入家計簿。</p>
+   <p class="hint">转出人与收款人分别确认；收款人是管理员时一次确认即完成本人授权。不会自动银行汇款，家庭明细仍按原审核规则处理。</p>
    <p v-if="error" class="error" role="alert">{{error}}</p>
    <p v-if="message" class="hint" role="status">{{message}}</p>
    <div class="cross-actions">
