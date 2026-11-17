@@ -124,5 +124,8 @@ test('both HomeFlow approval screens use conditional timer and read-only fetch o
  assert.match(family,/onRefresh:\(\)=>load\(page.value,true\)/)
  assert.match(center,/watchedApprovalIds\.value\.length>0/)
  assert.match(center,/getJson\('\/api\/approvals\/'\+encodeURIComponent\(id\)\)/)
- assert.doesNotMatch(center,/onRefresh:[\s\S]*?getJson\('\/api\/approvals\/'\+id\+'\/execute'/)
+ const statusOnly=center.slice(center.indexOf('onRefresh:async()=>{'),
+  center.indexOf('function refreshOnReturn(){'))
+ assert(statusOnly.includes("getJson('/api/approvals/'+encodeURIComponent(id))"))
+ assert.doesNotMatch(statusOnly,/\/execute|method:'POST'/)
 })
