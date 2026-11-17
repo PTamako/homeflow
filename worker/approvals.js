@@ -211,9 +211,7 @@ async function dismissAppliedHistory(db,id,session,role){
  const row=await readOne(db,id,session,role)
  if(!row)return reject('not_found',404)
  if(row.status!=='applied'||row.approver_user_id!==session.user_id||
-  row.source_app!=='kakebo'||row.target_app!=='kakebo'||
-  row.resource_type!=='shared_entry_mutation'||
-  !['finance.entry.create','finance.entry.update','finance.entry.delete','finance.entry.restore'].includes(row.operation))
+  !ownerReviewAllowed(row))
   return reject('only_applied_shared_ledger_history_can_be_dismissed',409)
  try{
   await db.prepare(`INSERT OR IGNORE INTO household_approval_dismissed_history
