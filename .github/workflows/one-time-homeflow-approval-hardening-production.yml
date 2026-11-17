@@ -103,7 +103,7 @@ jobs:
       - name: Verify existing production bindings and secrets (read-only)
         run: node scripts/release-g8-binding-preflight.mjs
       - name: Apply only pending additive migrations to production HomeFlow D1
-        run: npx wrangler d1 migrations apply homeflow --remote --yes
+        run: npx wrangler d1 migrations apply homeflow --remote
       - name: Verify 0063 migration and updated owner-only dismissal trigger
         shell: bash
         run: |
