@@ -1,4 +1,6 @@
-> **2026-11-17 生产状态提醒：** 本文件早期的「Draft、未合并、未执行」只代表 2026-11-13 历史设计阶段，**不再代表已上线系统**。正式代码以 `main` 的 `worker/approval-scope.js`、`worker/approvals.js` 和 `docs/approval-hardening-2026-11-17.md` 为准；只有家庭账本明细变更需管理员审核，个人资产操作免审，旧金融同意和周期审批入口已停用。请勿据旧说明重新迁移或创建 Preview。\n\n# HomeFlow 家庭审批核心（阶段 D Draft：仅申请/审核，**未执行账本**）
+> **2026-11-17 生产状态提醒：** 本文件早期的「Draft、未合并、未执行」只代表 2026-11-13 历史设计阶段，**不再代表已上线系统**。正式代码以 `main` 的 `worker/approval-scope.js`、`worker/approvals.js` 和 `docs/approval-hardening-2026-11-17.md` 为准；只有家庭账本明细变更需管理员审核，个人资产操作免审，旧金融同意和周期审批入口已停用。请勿据旧说明重新迁移或创建 Preview。
+
+# HomeFlow 家庭审批核心（阶段 D Draft：仅申请/审核，**未执行账本**）
 
 > 依赖 HomeFlow Draft [#305](https://github.com/PTamako/homeflow/pull/305) 的迁移 0053；本 Draft [#306](https://github.com/PTamako/homeflow/pull/306) 追加 0054。两者**都未合并、未应用到生产 D1、未开启**。唯一进度日志仍为 `homeflow/docs/four-app-development-handoff.md`（main）。
 
