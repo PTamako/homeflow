@@ -1,4 +1,4 @@
-name: One-time HomeFlow Approval Detail UI Production
+name: One-time HomeFlow Conditional Approval Polling Production
 on:
   push:
     branches: [main]
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: "${{ github.event.head_commit.message == 'deploy(homeflow): publish approval detail bottom sheet UI' }}"
+    if: "${{ github.event.head_commit.message == 'deploy(homeflow): publish conditional approval status polling' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PTamako/kakebo_jp
-          ref: 2a4374bea91865a984444fb95e05928399e1d0f8
+          ref: 78b399ffc7f7da0c6e2fbff59625faf7042ae9e0
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout reviewed Document Assistant for integration tests
@@ -56,6 +56,18 @@ jobs:
           test -f tests/family-approval-bottom-sheet.test.mjs
           grep -q 'class="feed-text-button feed-detail-trigger"' src/components/FamilyApprovalFeed.vue
           grep -q '<EditBottomSheet v-if="detailSheetRow"' src/components/FamilyApprovalFeed.vue
+      - name: Confirm reviewed linked production revisions without mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r repo pinned; do
+            latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+            test -n "$latest" && test "$latest" = "$pinned" || { echo "::error::stale reviewed contract: $repo"; exit 1; }
+          done <<'REVIEWED_HEADS'
+          kakebo_jp 78b399ffc7f7da0c6e2fbff59625faf7042ae9e0
+          jp-document-assistant 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
+          it-study-platform dea0a9607a2cde2b66f328696954750748f67f42
+          REVIEWED_HEADS
       - name: Stamp production PWA cache with the deploy commit
         run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
       - name: Run full regression tests and typechecked production build
