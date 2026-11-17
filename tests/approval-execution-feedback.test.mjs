@@ -22,7 +22,7 @@ function fixture(reply){
   available:ref(true),busyId:ref(''),loading:ref(false),selectedIds:ref([]),
   error:ref(''),message:ref(''),expanded:ref(true),
   filter:ref('approved'),page:ref(0),hasMore:ref(false),items:ref([]),
-  epoch:0,requestGeneration:0,inFlightQuery:'',
+  epoch:0,requestGeneration:0,inFlightQuery:'',watchedApprovalIds:ref([]),
   canExecute:item=>item.status==='approved'||item.status==='failed_retryable',
   confirmAction:async()=>true,
   getJson:async(path,options)=>{
