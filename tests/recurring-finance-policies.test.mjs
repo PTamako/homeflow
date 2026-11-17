@@ -45,7 +45,7 @@ function fixture(){
   run:async()=>({meta:{changes:Number(sql.prepare(q).run(...a).changes)}})
  }}}}};
  const env={APP_ENV:'production',DB:db,APPROVALS_ENABLED:'true',
-  RECURRING_FINANCE_AUTH_ENABLED:'true',
+  RECURRING_FINANCE_AUTH_ENABLED:'true',RECURRING_LEGACY_OWNER_REVIEW_ENABLED:'true',
   RECURRING_FINANCE_RESERVATIONS_ENABLED:'true',
   RECURRING_FINANCE_RESERVATION_SECRET:'a'.repeat(64)};
  async function policy(user,path,b,method='POST',origin='https://homeflow.example.test'){
@@ -191,3 +191,14 @@ test('owner cannot create member policy, replay must match immutable terms, revo
   assert.equal(count(f.sql,'household_recurring_finance_events'),2);
  }finally{f.close()}
 });
+
+test('new owner review is retired by default while historical records remain readable',async()=>{
+ const f=fixture()
+ try{
+  f.env.RECURRING_LEGACY_OWNER_REVIEW_ENABLED='false'
+  const res=await f.create()
+  assert.equal(res.status,410)
+  assert.equal(res.data.code,'recurring_plan_owner_review_retired')
+  assert.equal(count(f.sql,'household_recurring_finance_policies'),0)
+ }finally{f.close()}
+})

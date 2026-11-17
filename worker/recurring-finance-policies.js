@@ -159,6 +159,11 @@ export async function recurringFinancePoliciesRoute(req,e,path,session){
   return p?json({ok:true,policy:view(p)}):invalid('not_found',404);
  }
  if(req.method!=='POST'||!sameOrigin(req))return invalid('recurring_policy_origin_or_method',403);
+ // Personal fixed-cost and tsumitate plans never need new owner approval.
+ // Keep historical readback and cancellation/revocation available.
+ if(e.RECURRING_LEGACY_OWNER_REVIEW_ENABLED!=='true'&&
+  (path===root||path.endsWith('/review')))
+  return invalid('recurring_plan_owner_review_retired',410);
  if(path===root)return create(req,e,session,r);
  const m=new RegExp('^'+root+'/([a-f0-9-]{36})/(review|cancel|revoke)$','i').exec(path);
  return m&&uuid.test(m[1])?decide(req,e,session,r,m[1],m[2]):

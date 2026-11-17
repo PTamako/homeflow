@@ -30,7 +30,8 @@ function fixture(){
   run:async()=>({meta:{changes:sql.prepare(q).run(...args).changes}})
  }}}}}
  const env={APP_ENV:'production',APPROVALS_ENABLED:'true',DB:db,
-  RECURRING_FINANCE_AUTH_ENABLED:'true',RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED:'true',
+  RECURRING_FINANCE_AUTH_ENABLED:'true',RECURRING_LEGACY_OWNER_REVIEW_ENABLED:'true',
+ RECURRING_FINANCE_POLICY_SUBMISSION_ENABLED:'true',
   RECURRING_FINANCE_POLICY_SUBMISSION_SECRET:secret}
  async function submit(input=body(),{wrong=false,origin=false}={}){
   const raw=JSON.stringify(input),stamp=String(Date.now())
