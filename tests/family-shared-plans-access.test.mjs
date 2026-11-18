@@ -60,7 +60,8 @@ test('household member may read the shared goal progress without seeing other le
    '&start=2026-11-01&end=2026-11-06'),env(db),'/api/finance/goal/net',member)
  assert.equal(read.status,200)
  const net=await read.json()
- assert.equal(net.net,60000)
+ assert.equal(net.net,0)
+ assert.equal(net.calculationBasis,'personal_manual_estimate')
  assert.equal(net.income,undefined)
  assert.equal(net.expense,undefined)
  const blocked=await financeRoute(request('/api/finance/candidates?start=2026-11-01&end=2026-11-06'),
@@ -101,5 +102,5 @@ test('shared history actions are available to both users; private edits and sett
  assert.match(life,/<button type="button" class="goal-finance-action"/)
  assert.match(finance,/<section v-if="owner\|\|embeddedKind==='goal'\|\|embeddedKind==='trip'"/)
  assert.match(finance,/v-if="canModify" type="button" :disabled="busy" @click="saveSettings"/)
- assert.match(finance,/v-if="kind==='goal'&&owner" class="goal-completion-panel"/)
+ assert.match(finance,/v-if="kind==='goal'&&canModify" class="goal-completion-panel"/)
 })
