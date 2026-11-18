@@ -9,7 +9,7 @@ test('HomeFlow production release requires explicit confirmation; main push is f
  assert.match(workflow,/^\s+workflow_dispatch:/m);
  assert.doesNotMatch(workflow,/^\s+push\s*:/m);
  assert.match(workflow,/release_confirmation/);
- assert.match(workflow,/inputs\.release_confirmation == 'FOUR_APP_RELEASE_APPROVED'/);
+ assert.match(workflow,/inputs\.release_confirmation == 'HOMEFLOW_RELEASE_APPROVED'/);
  assert.match(workflow,/wrangler deploy/);
  assert.doesNotMatch(workflow,/wrangler pages deploy/,'a HomeFlow release must not replace Kakeibo Pages');
  assert.doesNotMatch(workflow,/preview_urls\s*:\s*true/i);
