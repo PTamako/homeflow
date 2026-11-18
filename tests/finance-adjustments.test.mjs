@@ -20,7 +20,7 @@ function database(){
       async first(){
         if(sql.includes('FROM finance_target_settings'))return {adjustment_amount:-10000,period_start:'2026-11-01',period_end:'2026-11-04'}
         if(sql.includes('FROM shopping_items'))return {id:shoppingId,ledger_entry_id:null}
-        if(sql.includes('FROM goals'))return {id:goalId,reserved_amount:50000}
+        if(sql.includes('FROM goals'))return {id:goalId,reserved_amount:50000,created_by:'owner'}
         return {id:goalId}
       },
       async run(){events.push({sql,values:this.values});return {success:true}}
