@@ -52,7 +52,7 @@ jobs:
           git merge-base --is-ancestor 59055a6df992aed9713d2ccc3002aafc2925dd93 HEAD
           test -f migrations/0065_extend_active_sessions_to_30_days.sql
           grep -Fq '0065_extend_active_sessions_to_30_days.sql' scripts/check_migrations.py
-          grep -Fq 'reminder_only,reminder' worker/portable.js
+          grep -Fq 'bonus_points,second_assignee_user_id,reminder_only' worker/portable.js
           ! grep -q 'homeflow-preview' wrangler.toml || grep -Fq 'Preview Worker and D1 retired' wrangler.toml
       - uses: actions/setup-node@v5
         with:
