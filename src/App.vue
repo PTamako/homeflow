@@ -653,8 +653,9 @@ async function discardPending(id:string){
   if(user.value)pendingTasks.value=await listPending(user.value.id)
   if(tab.value==='today')notify('已取消待同步任务')
 }
-// One cheap D1 read every 25 seconds while a PWA is visible.
-const SHARED_SYNC_MS=25000
+// Poll revision state only while visible; foreground and push still refresh immediately.
+// Sixty-second idle checks reduce regular D1 revision reads by about 58%.
+const SHARED_SYNC_MS=60000
 async function checkRemoteChanges(){
  if(syncBusy||!user.value||document.visibilityState!=='visible'||!navigator.onLine||isPhotoPickerOpen())return
  const id=user.value.id
