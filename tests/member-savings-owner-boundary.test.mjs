@@ -19,7 +19,10 @@ function fixture(g=goal){
     prepare(sql){
       const stmt={sql,bind(...params){this.params=params;return this},
         async first(){
-          if(sql.includes('FROM goals'))return g
+          if(sql.includes('FROM goals')){
+            if(g.visibility==='private'&&this.params?.[2]!==g.created_by)return null
+            return g
+          }
           if(sql.includes('FROM goal_period_adjustments'))return {adjustment_amount:20000}
           if(sql.includes('FROM finance_target_settings'))return {adjustment_amount:20000}
           if(sql.includes('FROM goal_period_settlements'))return null
@@ -60,7 +63,7 @@ test('member can inspect own personal goal estimate, other members cannot',async
   assert.equal(f.calls.length,0)
   const blocked=await financeRoute(req(path),f.env,'/api/finance/goal/net',
     {...member,user_id:'other-member'})
-  assert.equal(blocked.status,403)
+  assert.equal(blocked.status,404)
 })
 test('personal monthly settlement works without owner and never reads household ledger',async()=>{
   const f=fixture()
