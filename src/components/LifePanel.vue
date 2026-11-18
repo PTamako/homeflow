@@ -61,12 +61,17 @@ function assignedMembers(a:Row|null|undefined,primary:string|null|undefined){
 function canCompleteAssigned(first?:string|null,second?:string|null){
  return !first||first===props.userId||second===props.userId
 }
+function isReminderOnlyPlan(row:Row){
+ return row.reminder_only===1||row.reminder_only===true||row.reminder_only==='1'||
+   row.reminderOnly===1||row.reminderOnly===true||row.reminderOnly==='1'
+}
 function routineCompletable(r:Row){
+ if(isReminderOnlyPlan(r))return false
  const a=r.currentAssignment||r.nextAssignment
  return canCompleteAssigned(a?.assigneeUserId||r.assigned_to,a?.secondAssigneeUserId)
 }
 function taskCompletable(t:Row){
- return canCompleteAssigned(t.assigneeUserId,t.secondAssigneeUserId)
+ return !isReminderOnlyPlan(t)&&canCompleteAssigned(t.assigneeUserId,t.secondAssigneeUserId)
 }
 function shoppingCompletable(s:Row){
  return canCompleteAssigned(s.assigned_to,s.second_assignee_user_id)
