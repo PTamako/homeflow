@@ -12,7 +12,7 @@ const req=(path,method='GET',payload)=>new Request('https://homeflow.invalid'+pa
 })
 function goalDb(){
  const writes=[],reads=[]
- const goal={id:goalId,goal_mode:'monthly',start_on:'2026-07-10',
+ const goal={id:goalId,created_by:'owner',goal_mode:'monthly',start_on:'2026-07-10',
    target_on:null,reserved_amount:55000,target_amount:50000}
  return {writes,reads,goal,prepare(sql){
   const item={bind(...values){this.values=values;return this},

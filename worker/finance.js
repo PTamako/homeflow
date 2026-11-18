@@ -55,8 +55,11 @@ async function ledger(env,params){
 // Verify savings against the same read-only ledger calculation shown in
 // FinancePanel. Called only on an explicit completion attempt, never when
 // rendering Today: zero extra ledger calls during ordinary page views.
-export async function verifiedGoalProgress(env,goal,periodKey,today){
-  if(!ready(env))return {ok:false,error:'ledger_verification_unavailable'}
+export async function verifiedGoalProgress(env,goal,periodKey,today,options={}){
+  // A non-owner's savings use only their own recorded amounts. Never infer
+  // their savings from the household owner's Kakeibo income and expenses.
+  const personal=options.personalOnly===true||goal.creator_role==='member'
+  if(!personal&&!ready(env))return {ok:false,error:'ledger_verification_unavailable'}
   const mode=goal.goal_mode||'once'
   let start,end,adjustment=0,opening=0
   if(mode==='once'){
@@ -78,7 +81,7 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
     adjustment=Number(saved?.adjustment_amount||0)
   }
   if(!validPeriod(start,end)||end>today)return {ok:false,error:'invalid_goal_period'}
-  const data=await ledger(env,{summary:'net',start,end})
+  const data=personal?{net:0}:await ledger(env,{summary:'net',start,end})
   const rewardCreditYen=mode==='once'?
     await goalRewardCreditAmount(env.DB,goal.household_id,goal.id):0
   // Virtual reward allowance counts toward the household's wish goal, but is
@@ -88,7 +91,8 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
   // A verified household cash-flow estimate is NOT a bank balance or proof of
   // earmarked savings. Keep the calculation basis explicit for future modes.
   return {ok:amount>=goal.target_amount,amount,target:goal.target_amount,start,end,
-    calculationBasis:rewardCreditYen>0?'household_net_cashflow_estimate_plus_reward_allowance':
+    calculationBasis:personal?'personal_manual_estimate':
+      rewardCreditYen>0?'household_net_cashflow_estimate_plus_reward_allowance':
       'household_net_cashflow_estimate',rewardCreditYen,
     error:amount>=goal.target_amount?null:'goal_not_funded'}
 }
@@ -96,7 +100,9 @@ export async function verifiedGoalProgress(env,goal,periodKey,today){
 async function target(db,householdId,userId,kind,id){
   if(!['trip','goal'].includes(kind)||!idOk(id))return null
   const table=kind==='trip'?'trips':'goals'
-  return db.prepare('SELECT '+(kind==='goal'?'id,created_by,reserved_amount,target_amount,goal_mode,start_on,target_on':'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
+  return db.prepare('SELECT '+(kind==='goal'?`id,created_by,reserved_amount,target_amount,goal_mode,start_on,target_on,
+      (SELECT role FROM household_members m WHERE m.household_id=goals.household_id
+       AND m.user_id=goals.created_by) AS creator_role`:'id')+' FROM '+table+" WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL AND (visibility='household' OR created_by=?3)")
     .bind(id,householdId,userId).first()
 }
 // Per-target adjustments are optional and do not alter the ledger.
@@ -132,14 +138,18 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     return json({error:'forbidden'},403)
   const db=env.DB
   if(path==='/api/finance/status'&&request.method==='GET'){
-    return json({connected:ready(env),readOnly:true,ownerOnly:owner})
+    return json({connected:owner?ready(env):true,readOnly:true,ownerOnly:owner})
   }
-  if(!ready(env))return json({error:'integration_not_configured'},503)
+  if(!ready(env)&&!['/api/finance/goal/net','/api/finance/settings'].includes(path))
+    return json({error:'integration_not_configured'},503)
   const url=new URL(request.url),user=session.user_id,h=session.household_id
   if(path==='/api/finance/goal/net'&&request.method==='GET'){
     const id=url.searchParams.get('targetId')
     const goal=await financeTarget(db,h,user,'goal',id)
     if(!goal)return json({error:'not_found'},404)
+    // A shared owner-created goal may show the sanitized family net, but a
+    // member-created goal is always evaluated from the creator's own records.
+    const personal=goal.creator_role==='member'||(!owner&&goal.created_by===user)
     let start=url.searchParams.get('start'),end=url.searchParams.get('end')
     const cadence=goal.goal_mode||'once'
     const key=url.searchParams.get('periodKey')
@@ -154,14 +164,16 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     }else if(goal.start_on&&start<goal.start_on)return json({error:'invalid_range'},400)
     if(!validPeriod(start,end))return json({error:'invalid_range'},400)
     try{
-      const data=await ledger(env,{summary:'net',start,end})
+      const data=personal?{income:0,expense:0,net:0}:await ledger(env,{summary:'net',start,end})
       if(!Number.isSafeInteger(data.income)||!Number.isSafeInteger(data.expense)||
          !Number.isSafeInteger(data.net)||data.income-data.expense!==data.net)
         return json({error:'ledger_invalid_response'},502)
       // Shared goals show the net progress, not the underlying income and
       // expense totals or individual Kakebo entries of another family member.
-      return json(owner?{start,end,income:data.income,expense:data.expense,net:data.net,readOnly:true}:
-        {start,end,net:data.net,readOnly:true})
+      return json(personal?{start,end,net:0,calculationBasis:'personal_manual_estimate',readOnly:true}:
+        owner?{start,end,income:data.income,expense:data.expense,net:data.net,
+          calculationBasis:'household_net_cashflow_estimate',readOnly:true}:
+          {start,end,net:data.net,calculationBasis:'household_net_cashflow_estimate',readOnly:true})
     }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/settings'&&request.method==='PUT'){
@@ -170,8 +182,7 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     if(!owner&&kind!=='goal')return json({error:'forbidden'},403)
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
-    if(!owner&&(kind!=='goal'||item.created_by!==user))
-      return json({error:'forbidden'},403)
+    if(kind==='goal'&&item.created_by!==user)return json({error:'forbidden'},403)
     if(kind==='goal'&&(item.goal_mode||'once')!=='once'){
       const window=goalPeriod(item,body?.periodKey)
       if(!window||!validAdjustment(amount))return json({error:'invalid_input'},400)
