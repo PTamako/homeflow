@@ -22,6 +22,6 @@ test('production deployment fails rather than reporting success when Cloudflare 
  assert.match(workflow,/Cloudflare production credentials missing; deployment aborted/)
  assert.doesNotMatch(workflow,/Deployment skipped until Cloudflare repository secrets/)
  assert.doesNotMatch(workflow,/if:.*env.CLOUDFLARE_API_TOKEN != ''/)
- assert.match(workflow,/Fail closed if any checked-out cross-app main changed/)
+ assert.match(workflow,/Revalidate live counterpart heads when other apps change during release/)
  assert.match(wrangler,/^preview_urls = false$/m)
 })
