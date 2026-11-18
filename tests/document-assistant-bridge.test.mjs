@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { webcrypto } from 'node:crypto'
 import { documentAssistantBridge } from '../worker/document-assistant-bridge.js'
+import { validated } from '../worker/tasks.js'
+import { readFileSync } from 'node:fs'
 if (!globalThis.crypto) globalThis.crypto = webcrypto
 
 const secret = 'fixture_bridge_secret_with_40_randomish_chars_12345'
@@ -96,3 +98,29 @@ test('signed HomeFlow SSO member can read own task picker without administrator 
     body:JSON.stringify(payload)})
   assert.equal((await documentAssistantBridge(unsigned,env({DB}))).status,401)
 })
+
+test('document-only reminders are zero-point tasks, including delegated reminders',async()=>{
+  const delegated=body({assignee:'another_user_456',bonusPoints:0,reminderOnly:true});
+  const validatedTask=validated({
+    title:delegated.payload.title,visibility:delegated.payload.visibility,
+    dueOn:delegated.payload.dueOn,assigneeUserId:delegated.payload.assignee,
+    bonusPoints:0,remindEnabled:true,reminderOnly:true
+  },{user_id:actor});
+  assert.equal(validatedTask?.reminderOnly,true);
+  assert.equal(validatedTask?.bonus,0);
+  assert.equal(validated({...delegated.payload,title:'仅提醒',assigneeUserId:actor,
+    reminderOnly:true,bonusPoints:1},{user_id:actor}),null);
+  // Fail before touching DB when an attempt would award points or disable the bell.
+  const credited=await documentAssistantBridge(
+    await signed(body({assignee:'another_user_456',bonusPoints:5,reminderOnly:true})),env());
+  assert.equal(credited.status,422);
+  assert.equal((await credited.json()).error,'reminder_only_requires_notification_and_zero_bonus');
+  const silent=await documentAssistantBridge(
+    await signed(body({assignee:actor,bonusPoints:0,remindEnabled:false,reminderOnly:true})),env());
+  assert.equal(silent.status,422);
+  const malformed=await documentAssistantBridge(
+    await signed(body({assignee:actor,reminderOnly:'yes'})),env());
+  assert.equal(malformed.status,400);
+  const source=readFileSync(new URL('../worker/document-assistant-bridge.js',import.meta.url),'utf8');
+  assert.match(source,/remindEnabled:p\.remindEnabled,reminderOnly,clientRequestId:id/);
+});
