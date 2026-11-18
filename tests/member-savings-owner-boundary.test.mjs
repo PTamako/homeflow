@@ -58,8 +58,9 @@ test('member can inspect own personal goal estimate, other members cannot',async
   assert.equal(data.net,0)
   assert.equal(data.calculationBasis,'personal_manual_estimate')
   assert.equal(f.calls.length,0)
-  const blocked=await financeRoute(req(path),f.env,'/api/finance/goal/net',owner)
-  assert.equal(blocked.status,404) // member-owned PRIVATE goal is inaccessible through the DB's visibility filter
+  const blocked=await financeRoute(req(path),f.env,'/api/finance/goal/net',
+    {...member,user_id:'other-member'})
+  assert.equal(blocked.status,403)
 })
 test('personal monthly settlement works without owner and never reads household ledger',async()=>{
   const f=fixture()
