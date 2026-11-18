@@ -111,11 +111,11 @@ test('Today consolidates missing settlement periods into one reminder and no ove
  assert.equal(data.goalReviews[0].pendingCount,2)
  assert.equal(data.goalReviews[0].periodKey,'2026-09')
 })
-test('settlement API rejects non-owner and does not settle current month',async()=>{
+test('settlement API rejects non-creator and does not settle current month',async()=>{
  const {env,outgoing}=fixture(90000)
  const endpoint='/api/goals/'+ID+'/periods/settle'
  const member=await goalPeriodsRoute(req(endpoint,'POST',{periodKey:'2026-10'}),
-   env,endpoint,{...owner,role:'member'})
+   env,endpoint,{...owner,role:'member',user_id:'other'})
  assert.equal(member.status,403)
  const current=await goalPeriodsRoute(req(endpoint,'POST',{periodKey:'2026-11'}),env,endpoint,owner)
  assert.equal(current.status,409)
