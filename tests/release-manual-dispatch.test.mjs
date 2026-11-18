@@ -9,8 +9,9 @@ test('HomeFlow production release requires explicit confirmation; main push is f
  assert.match(workflow,/^\s+workflow_dispatch:/m);
  assert.doesNotMatch(workflow,/^\s+push\s*:/m);
  assert.match(workflow,/release_confirmation/);
- assert.match(workflow,/inputs\.release_confirmation == 'FOUR_APP_RELEASE_APPROVED'/);
+ assert.match(workflow,/inputs\.release_confirmation == 'HOMEFLOW_RELEASE_APPROVED'/);
  assert.match(workflow,/wrangler deploy/);
+ assert.doesNotMatch(workflow,/wrangler pages deploy/,'a HomeFlow release must not replace Kakeibo Pages');
  assert.doesNotMatch(workflow,/preview_urls\s*:\s*true/i);
 });
 
@@ -21,6 +22,6 @@ test('production deployment fails rather than reporting success when Cloudflare 
  assert.match(workflow,/Cloudflare production credentials missing; deployment aborted/)
  assert.doesNotMatch(workflow,/Deployment skipped until Cloudflare repository secrets/)
  assert.doesNotMatch(workflow,/if:.*env.CLOUDFLARE_API_TOKEN != ''/)
- assert.match(workflow,/Reject stale cross-app main heads before production deploy/)
+ assert.match(workflow,/Fail closed if any checked-out cross-app main changed/)
  assert.match(wrangler,/^preview_urls = false$/m)
 })

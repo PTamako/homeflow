@@ -9,27 +9,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # Reviewed contract counterpart. Update the pinned commit with the
-      # cross-app contract whenever the target execution protocol changes.
+      # Validate current cross-app main checkouts. The release repeats all
+      # checks and rejects contract-head drift before publishing HomeFlow.
       - name: Checkout Kakeibo contract counterpart
         uses: actions/checkout@v5
         with:
           repository: PTamako/kakebo_jp
-          ref: 3b84b7265c7c6940d81132f6378b600f14fe4028
+          ref: main
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
-          ref: cbeda805e6b65b313af9b805e6394538113700be
+          ref: main
           path: .contract-document
           persist-credentials: false
-      - name: Checkout Study execution counterpart (immutable reviewed SHA)
+      - name: Checkout Study execution counterpart (current main snapshot)
         uses: actions/checkout@v5
         with:
           repository: PTamako/it-study-platform
-          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          ref: main
           path: .contract-study
           persist-credentials: false
       - uses: actions/setup-node@v5

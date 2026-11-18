@@ -196,3 +196,10 @@ test('recipient unread badge returns after a NEW completion even though 06:00 re
   assert.equal(await badge(B),0,'same completion replay never reopens the badge')
  }finally{sqlite.close()}
 })
+
+test('silent self-completion keeps the original scheduled Push semantically distinct',()=>{
+ const ui=readFileSync(new URL('../src/components/TodayNotifications.vue',import.meta.url),'utf8')
+ assert.match(ui,/item\.lastCompletionKey&&item\.dedupeKey\?\.startsWith\('scheduled:'\)&&!item\.senderUserId/)
+ assert.match(ui,/本人完成已同步（不另发推送）/)
+ assert.match(ui,/原提醒推送已受理 · 本人完成仅应用内同步/)
+})

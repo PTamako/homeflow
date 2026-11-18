@@ -46,6 +46,10 @@ function readStateLabel(item:Notice){
  return view.value==='sent'?'对方未读':'未读'
 }
 function deliveryDetail(item:Notice){
+ // Own completion replaces the morning reminder in the inbox without sending
+ // a second Push. The original reminder's status is not a completion delivery.
+ if(item.lastCompletionKey&&item.dedupeKey?.startsWith('scheduled:')&&!item.senderUserId)
+  return item.sentDevices>0?'原提醒推送已受理 · 本人完成仅应用内同步':'本人完成 · 仅应用内同步（不另发推送）'
  if(item.sentDevices>0)return item.failedDevices>0?'部分推送已受理':'推送服务已受理'
  if(item.deliveryStatus==='quiet')return '安静时段 · 暂不推送'
  if(item.deliveryStatus==='failed')return '推送失败 · 已保留站内'
@@ -314,7 +318,7 @@ defineExpose({refresh:()=>load(true)})
      <template v-else>{{ item.message }}</template>
     </p>
     <div class="notice-bottom">
-     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
+     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template><template v-else-if="item.lastCompletionKey&&item.dedupeKey?.startsWith('scheduled:')&&!item.senderUserId"> · 本人完成已同步（不另发推送）</template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
