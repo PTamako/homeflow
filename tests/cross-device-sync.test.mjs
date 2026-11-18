@@ -84,7 +84,7 @@ test('PWA refreshes when returning on the same day and when another family membe
  const app=readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
  const panel=readFileSync(new URL('../src/components/LifePanel.vue',import.meta.url),'utf8')
  const worker=readFileSync(new URL('../worker/index.js',import.meta.url),'utf8')
- assert.match(app,/SHARED_SYNC_MS=25000/)
+ assert.match(app,/SHARED_SYNC_MS=60000/)
  assert.match(app,/window\.addEventListener\('focus',onForeground\)/)
  assert.match(app,/window\.setInterval\(syncTick,SHARED_SYNC_MS\)/)
  assert.match(app,/if\(tab\.value==='today'\)\{\s*void loadTodayPage\(true\)/)
