@@ -1134,6 +1134,20 @@ async function uploadPhoto(memoryId:string,blob:Blob,restoreKey?:string){
   }
   return await response.json() as {id:string;byteSize?:number;reused?:boolean}
 }
+// An HTTP upload receipt alone is not enough to discard the only old iPhone
+// copy: fetch the private R2 object and compare the uploaded compressed bytes.
+async function verifyMigratedPhoto(id:string,blob:Blob){
+  const response=await fetch('/api/media/'+encodeURIComponent(id),{
+    credentials:'same-origin',cache:'no-store'
+  })
+  if(!response.ok)throw Error('R2照片读取核验失败；本机原图已保留')
+  const actual=await response.arrayBuffer()
+  const expected=await blob.arrayBuffer()
+  const sha=async(bytes:ArrayBuffer)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),
+    b=>b.toString(16).padStart(2,'0')).join('')
+  if(actual.byteLength!==expected.byteLength||await sha(actual)!==await sha(expected))
+    throw Error('R2照片校验不一致；本机原图已保留')
+}
 function previewCloudPhoto(remote:{id:string;uploadedBy:string},memoryId:string,title:string,url:string){
   openPhoto.value={kind:'cloud',id:remote.id,uploadedBy:remote.uploadedBy,
     memoryId,title,src:url}
@@ -1238,12 +1252,16 @@ async function syncLocalPhotos(memoryId:string){
   let count=0
   try{
     const originals=await listLocalPhotos(props.userId,memoryId)
+    const actor=props.userId
     for(const blob of originals){
+      if(props.userId!==actor||props.mode!=='memories')
+        throw Error('登录身份或页面已变化，已停止旧照片迁移')
       const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))
       const marker=Array.from(digest,x=>x.toString(16).padStart(2,'0')).join('')
       const compressed=await compressPhoto(new File([blob],memoryId+'.jpg',{type:'image/jpeg'}))
-      await uploadPhoto(memoryId,compressed,marker)
-      // Only a confirmed R2 upload permits deleting the legacy device copy.
+      const remote=await uploadPhoto(memoryId,compressed,marker)
+      await verifyMigratedPhoto(remote.id,compressed)
+      // The old device copy is removed only after the exact R2 bytes match.
       await deleteLocalPhoto(props.userId,memoryId,0)
       count++
     }
@@ -1326,6 +1344,26 @@ async function loadPhotos(requestId=activeFetch,force=false){
       photos.value[m.id]=list.map(b=>{const url=URL.createObjectURL(b);photoUrls.push(url);return url})
     }catch{ /* Old device-only albums may be unavailable in Safari private mode. */ }
   }
+  // Read only legacy keys on this user's phone. New photos are cloud-only.
+  // No network migration work happens if this memory page has no old photos.
+  if(props.mode==='memories'&&cloudEnabled.value&&navigator.onLine)
+    void autoSyncVisibleLegacyPhotos(requestId)
+}
+let legacyPhotoAutoSyncing=false
+async function autoSyncVisibleLegacyPhotos(requestId:number){
+  if(legacyPhotoAutoSyncing||busy.value||props.mode!=='memories'||!cloudEnabled.value)return
+  const actor=props.userId
+  const targets=items.value.filter(m=>m.created_by===actor&&localPhotoBlobs.value[m.id]?.length)
+    .map(m=>m.id)
+  if(!targets.length)return
+  legacyPhotoAutoSyncing=true
+  try{
+    for(const memoryId of targets){
+      if(requestId!==activeFetch||props.userId!==actor||
+         props.mode!=='memories'||!navigator.onLine)break
+      await syncLocalPhotos(memoryId)
+    }
+  }finally{legacyPhotoAutoSyncing=false}
 }
 
 onMounted(()=>document.addEventListener('visibilitychange',refreshOnResume))
