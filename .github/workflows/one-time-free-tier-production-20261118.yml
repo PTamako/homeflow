@@ -1,0 +1,124 @@
+name: One-time Cloudflare free-tier optimization production rollout
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/one-time-free-tier-production-20261118.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: four-app-coordinated-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy-optimized-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CI: "true"
+    steps:
+      - name: Checkout HomeFlow verified main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout approved document assistant commit (read-only source)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: 0e2c1944a12ba1b7932140de0d2c78132cd7593f
+          path: .production-document
+          persist-credentials: false
+      - name: Checkout HomeFlow CI contract fixtures
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: 3b84b7265c7c6940d81132f6378b600f14fe4028
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: cbeda805e6b65b313af9b805e6394538113700be
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          path: .contract-study
+          persist-credentials: false
+      - name: Fail closed on unreviewed source or wrong Cloudflare account
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test "$CLOUDFLARE_ACCOUNT_ID" = "fb4f558f6c71bd0e7f1c6a0734bf6171"
+          test "$(git rev-parse "$GITHUB_SHA^")" = "9b6b32c139b16fe04727bdb43cab4b81f8e7a219"
+          test "$(git diff --name-only 9b6b32c139b16fe04727bdb43cab4b81f8e7a219 "$GITHUB_SHA")" = ".github/workflows/one-time-free-tier-production-20261118.yml"
+          test "$(git -C .production-document rev-parse HEAD)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+          test "$(git ls-remote https://github.com/PTamako/homeflow.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+          grep -Fq 'SHARED_SYNC_MS = 60000' src/App.vue
+          grep -Fq 'Most runs are idle: check indexed due/stale work' .production-document/worker/ai-jobs.js
+          grep -Fq '"*/15 * * * *"' .production-document/wrangler.jsonc
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test HomeFlow, verify database schema and build production assets
+        shell: bash
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run check
+          node scripts/release-g8-source-plan.mjs
+          python3 scripts/check_migrations.py
+          node scripts/release-g8-binding-preflight.mjs
+          npx wrangler deploy --dry-run --outdir .wrangler/dryrun
+      - name: Test and build document assistant without any DB migration
+        shell: bash
+        working-directory: .production-document
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run check:syntax
+          npm test
+          npm run build
+      - name: Revalidate both main heads before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote https://github.com/PTamako/homeflow.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+      - name: Deploy HomeFlow production Worker and PWA only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+          npm run build
+          npx wrangler deploy
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health |
+            node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const d=JSON.parse(s);if(d.ok!==true||d.environment!=='production'||d.database!=='ready')throw Error('HOMEFLOW_PRODUCTION_HEALTH_FAILED');console.log('HomeFlow verified')})"
+      - name: Deploy document assistant production Worker and PWA only
+        shell: bash
+        working-directory: .production-document
+        run: |
+          set -euo pipefail
+          npx wrangler deploy
+          curl --retry 5 --retry-delay 3 --fail --silent --show-error https://jp-document-assistant.yupan6706.workers.dev/api/health |
+            node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{const d=JSON.parse(s);if(d.ok!==true||d.service!=='document-assistant')throw Error('DOC_PRODUCTION_HEALTH_FAILED');console.log('Document assistant verified')})"
+      - name: Final read-only cross-app production smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://kakeibo-f17.pages.dev/api/homeflow-sso/status > /dev/null
+          curl --fail --silent --show-error https://it-study-platform.yupan6706.workers.dev/api/health > /dev/null
+          echo "Production health complete; no preview, D1 migration, R2 mutation, or Pages rebuild."
