@@ -147,8 +147,9 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     const id=url.searchParams.get('targetId')
     const goal=await financeTarget(db,h,user,'goal',id)
     if(!goal)return json({error:'not_found'},404)
-    if(!owner&&goal.created_by!==user)return json({error:'forbidden'},403)
-    const personal=goal.creator_role==='member'||!owner
+    // A shared owner-created goal may show the sanitized family net, but a
+    // member-created goal is always evaluated from the creator's own records.
+    const personal=goal.creator_role==='member'||(!owner&&goal.created_by===user)
     let start=url.searchParams.get('start'),end=url.searchParams.get('end')
     const cadence=goal.goal_mode||'once'
     const key=url.searchParams.get('periodKey')
@@ -170,8 +171,9 @@ export async function financeRoute(request,env,path,session,onComplete=null){
       // Shared goals show the net progress, not the underlying income and
       // expense totals or individual Kakebo entries of another family member.
       return json(personal?{start,end,net:0,calculationBasis:'personal_manual_estimate',readOnly:true}:
-        {start,end,income:data.income,expense:data.expense,net:data.net,
-          calculationBasis:'household_net_cashflow_estimate',readOnly:true})
+        owner?{start,end,income:data.income,expense:data.expense,net:data.net,
+          calculationBasis:'household_net_cashflow_estimate',readOnly:true}:
+          {start,end,net:data.net,calculationBasis:'household_net_cashflow_estimate',readOnly:true})
     }catch(error){return financeError(error)}
   }
   if(path==='/api/finance/settings'&&request.method==='PUT'){
@@ -213,7 +215,6 @@ export async function financeRoute(request,env,path,session,onComplete=null){
     if(!owner&&kind!=='goal'&&kind!=='trip')return json({error:'forbidden'},403)
     const item=await financeTarget(db,h,user,kind,id)
     if(!item)return json({error:'not_found'},404)
-    if(kind==='goal'&&!owner&&item.created_by!==user)return json({error:'forbidden'},403)
     if(!owner&&kind==='trip'){
       const shared=await db.prepare("SELECT 1 AS ok FROM trips WHERE id=?1 AND household_id=?2 AND visibility='household' AND deleted_at IS NULL")
         .bind(id,h).first()
