@@ -86,7 +86,7 @@ export async function settleGoalPeriod(env,goal,periodKey,today=tokyoDay(),force
   return {ok:true,status,periodKey,actualAmount:progress.amount,
     targetAmount:progress.target,differenceAmount:difference,
     periodStart:progress.start,periodEnd:progress.end,settledAt,settlementOrigin,
-    calculationBasis:'household_net_cashflow_estimate'}
+    calculationBasis:progress.calculationBasis}
 }
 
 // One short history page is generated from the calendar, then annotated with
@@ -96,17 +96,20 @@ export async function goalPeriodsRoute(request,env,path,session){
   const match=path.match(/^\/api\/goals\/([0-9a-f-]{36})\/periods(?:\/(settle))?$/i)
   if(!match||!uuid(match[1]))return json({error:'not_found'},404)
   const db=env.DB,h=session.household_id,u=session.user_id
-  const goal=await db.prepare(`SELECT * FROM goals WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL
+  const goal=await db.prepare(`SELECT goals.*,
+    (SELECT role FROM household_members m WHERE m.household_id=goals.household_id
+     AND m.user_id=goals.created_by) AS creator_role
+    FROM goals WHERE id=?1 AND household_id=?2 AND deleted_at IS NULL
     AND (visibility='household' OR created_by=?3)`).bind(match[1],h,u).first()
   if(!goal)return json({error:'not_found'},404)
-  // History exposes net-cashflow estimates; do not bypass the owner-only ledger boundary.
-  if(session.role!=='owner')return json({error:'forbidden'},403)
+  // Savings adjustments, period checks and completion belong to the creator.
+  // The household owner cannot settle another member's personal plan.
+  if(goal.created_by!==u)return json({error:'forbidden'},403)
   if(!['monthly','yearly'].includes(goal.goal_mode))
     return json({error:'not_recurring'},409)
   const today=tokyoDay()
   if(match[2]==='settle'){
     if(request.method!=='POST')return json({error:'method_not_allowed'},405)
-    if(session.role!=='owner')return json({error:'forbidden'},403)
     const body=await readBody(request)
     const key=body?.periodKey
     const window=goalPeriod(goal,key,today)
@@ -149,7 +152,8 @@ export async function goalPeriodsRoute(request,env,path,session){
       actualAmount:s?.actual_amount??null,differenceAmount:s?.difference_amount??null,
       settledAt:s?.settled_at||s?.legacy_completed_at||null,
       legacy:!s?.status&&!!s?.legacy_completed_at,
-      calculationBasis:'household_net_cashflow_estimate'}
+      calculationBasis:goal.creator_role==='member'?'personal_manual_estimate':
+         'household_net_cashflow_estimate'}
   }),nextCursor:hasMore?shown.at(-1).periodKey:null})
 }
 
@@ -167,9 +171,10 @@ export async function runGoalSettlementSchedule(env){
   if(env.APP_ENV!=='production'||typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')
     return {skipped:'ledger_or_production_unavailable'}
   const today=tokyoDay()
-  const {results}=await env.DB.prepare(`SELECT * FROM goals
-    WHERE deleted_at IS NULL AND goal_mode IN ('monthly','yearly') AND start_on<?1
-    ORDER BY created_at DESC LIMIT 60`).bind(today).all()
+  const {results}=await env.DB.prepare(`SELECT g.*, m.role AS creator_role FROM goals g
+    JOIN household_members m ON m.household_id=g.household_id AND m.user_id=g.created_by
+    WHERE g.deleted_at IS NULL AND g.goal_mode IN ('monthly','yearly') AND g.start_on<?1
+    ORDER BY g.created_at DESC LIMIT 60`).bind(today).all()
   let processed=0,settled=0,failed=0
   const changedHouseholds=new Set()
   const failures={}
