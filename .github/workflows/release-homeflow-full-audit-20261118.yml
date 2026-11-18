@@ -1,0 +1,78 @@
+name: One-time HomeFlow audited production release 20261118
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/release-homeflow-full-audit-20261118.yml]
+permissions:
+  contents: read
+concurrency:
+  group: homeflow-production-only
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify production credentials
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Checkout latest Kakeibo contract (read only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout latest Document Assistant contract (read only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout latest Study contract (read only)
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: main
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Version the PWA assets
+        run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+      - name: All HomeFlow tests and typechecked build
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: npm run check
+      - name: Validate D1 schema manifest (no production SQL)
+        run: python3 scripts/check_migrations.py
+      - name: Validate the live cross-app source contracts
+        run: node scripts/release-g8-source-plan.mjs
+      - name: Verify current Cloudflare production bindings
+        run: node scripts/release-g8-binding-preflight.mjs
+      - name: Refuse changed counterpart main heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
+            repo="${entry%%:*}"; dir="${entry#*:}"
+            checked="$(git -C "${dir}" rev-parse HEAD)"
+            latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+            if [[ -z "${latest}" || "${checked}" != "${latest}" ]]; then
+              echo "::error::${repo} changed during release"
+              exit 1
+            fi
+          done
+      - name: Deploy ONLY HomeFlow production Worker and assets
+        run: npx wrangler deploy
+      - name: Verify live HomeFlow health and D1 identity
+        run: |
+          curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"

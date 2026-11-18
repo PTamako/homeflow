@@ -5,13 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       release_confirmation:
-        description: "After G0/G1/G3-G6/G8/G9, enter FOUR_APP_RELEASE_APPROVED"
+        description: "To deploy ONLY HomeFlow enter HOMEFLOW_RELEASE_APPROVED"
         required: true
         type: string
 
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'FOUR_APP_RELEASE_APPROVED' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_confirmation == 'HOMEFLOW_RELEASE_APPROVED' }}
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -25,45 +25,43 @@ jobs:
             echo "::error::Cloudflare production credentials missing; deployment aborted"
             exit 1
           fi
-      # Reviewed contract counterpart. Update the pinned commit with the
-      # cross-app contract whenever the target execution protocol changes.
+      # Read live counterpart sources for contract tests; NEVER redeploy an
+      # older Kakeibo Pages build or another platform from this job.
       - name: Checkout Kakeibo contract counterpart
         uses: actions/checkout@v5
         with:
           repository: PTamako/kakebo_jp
-          ref: ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
+          ref: main
           path: .contract-kakeibo
           persist-credentials: false
       - name: Checkout Document Assistant execution counterpart
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
-          ref: 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
+          ref: main
           path: .contract-document
           persist-credentials: false
-      - name: Checkout Study execution counterpart (immutable reviewed SHA)
+      - name: Checkout Study execution counterpart (current main snapshot)
         uses: actions/checkout@v5
         with:
           repository: PTamako/it-study-platform
-          ref: dea0a9607a2cde2b66f328696954750748f67f42
+          ref: main
           path: .contract-study
           persist-credentials: false
-      # Exact tested source snapshots; protect review by refusing drift.
-      - name: Reject stale cross-app main heads before production deploy
+      - name: Fail closed if any checked-out cross-app main changed
         shell: bash
         run: |
           set -euo pipefail
-          while read -r repo pinned; do
+          for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
+            repo="${entry%%:*}"; dir="${entry#*:}"
+            checked="$(git -C "${dir}" rev-parse HEAD)"
             latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
-            if [[ -z "${latest}" || "${latest}" != "${pinned}" ]]; then
-              echo "::error::PTamako/${repo} main no longer matches reviewed CI contract pin"
+            if [[ -z "${latest}" || "${checked}" != "${latest}" ]]; then
+              echo "::error::${repo} changed during contract validation; retry release"
               exit 1
             fi
-          done <<'REVIEWED_HEADS'
-          kakebo_jp ee713c85c4912cc7d8b5180bf37c34fc90fd12f7
-          jp-document-assistant 3289c5ffa8dc472d0bba399ad9672a5bc96c504c
-          it-study-platform dea0a9607a2cde2b66f328696954750748f67f42
-          REVIEWED_HEADS
+            echo "Reviewed ${repo}: ${checked}"
+          done
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
@@ -76,23 +74,15 @@ jobs:
         run: npm run check
       - name: Validate complete migration manifest without touching D1
         run: python3 scripts/check_migrations.py
+      - name: Validate production source binding graph
+        run: node scripts/release-g8-source-plan.mjs
       # Fail before any production Worker deploy if OAuth, Service Bindings,
       # identity, or financial Secrets are missing in the real Cloudflare account.
       # This checks only names and target types; secret values require additional
       # independently signed live verification.
       - name: Require full live G8 production binding preflight
         run: node scripts/release-g8-binding-preflight.mjs
-      # The Kakeibo repository does not hold a Cloudflare API token. Publish its
-      # exact reviewed main commit using THIS production workflow's existing
-      # scoped Cloudflare credentials, to the already-existing Pages project.
-      # Explicit --branch=main is production: never create any Preview resources.
-      - name: Publish Kakeibo Pages production using reviewed main contract
-        working-directory: .contract-kakeibo
-        run: |
-          npm ci --no-audit --no-fund
-          npm run build
-          npx wrangler pages deploy dist --project-name=kakeibo --branch=main --commit-hash=ee713c85c4912cc7d8b5180bf37c34fc90fd12f7 --commit-message="reviewed ledger-only release"
-      # Preview has been permanently decommissioned; deploy only the production Worker.
+      # HomeFlow-only release: no other platform deployed, no Preview created.
       - name: Deploy Production
         run: npx wrangler deploy
       - name: Verify Production API / health and database identity

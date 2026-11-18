@@ -96,3 +96,12 @@ test('both creation and editing show only text, without icon or bonus for remind
   assert.doesNotMatch(source,/>🔔/,file)
  }
 })
+
+test('direct and legacy clients cannot complete reminder-only items through an API',()=>{
+ const tasks=readFileSync(new URL('worker/tasks.js',root),'utf8')
+ const life=readFileSync(new URL('worker/life.js',root),'utf8')
+ assert.match(tasks,/if\(b\.completed&&task\.reminder_only===1\)/)
+ assert.match(life,/if\(rule\.reminder_only===1&&body\.status==='completed'\)/)
+ assert.match(tasks,/reminder_only_cannot_complete/)
+ assert.match(life,/reminder_only_cannot_complete/)
+})

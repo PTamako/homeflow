@@ -252,6 +252,10 @@ export async function lifeRoute(request,db,path,session,onComplete=null,options=
     if(!rule)return json({error:'not_found'},404)
     if(rule.visibility==='private'&&rule.created_by!==session.user_id)
       return json({error:'forbidden'},403)
+    // Reopening or correcting old marks is allowed, but reminder-only rules
+    // never accept a new completion from an old client or direct API call.
+    if(rule.reminder_only===1&&body.status==='completed')
+      return json({error:'reminder_only_cannot_complete'},409)
     const actual=body.date,scheduled=currentRoutinePeriod(rule,actual)
     const current=scheduled===actual?scheduled:null
     const earlyOn=nextEarlyPeriod(rule,actual)

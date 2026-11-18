@@ -277,6 +277,10 @@ export async function tasksRoute(request,db,path,session,onComplete=null,options
     // Only named assignees may complete; unassigned shared work belongs to the clicker.
     if(Object.prototype.hasOwnProperty.call(b,'completed')){
       if(typeof b.completed!=='boolean')return json({error:'invalid_input'},400)
+      // Reminder-only items are notices, not completable work. Old clients and
+      // direct API calls must obey the same rule as the checkbox-free UI.
+      if(b.completed&&task.reminder_only===1)
+        return json({error:'reminder_only_cannot_complete'},409)
       // Only a state transition creates or archives a record. Replays and
       // multi-device taps are idempotent, and writes share one D1 transaction.
       if(task.assignee_user_id&&who!==task.assignee_user_id&&
