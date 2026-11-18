@@ -33,6 +33,20 @@ jobs:
           ref: ed9ac21d1d6c2b2e749e35211efbb3e469957677
           path: .contract-kakeibo
           persist-credentials: false
+      - name: Checkout reviewed Study contract for HomeFlow cross-app tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/it-study-platform
+          ref: 3623587872906f96f522e63c7e95927707726477
+          path: .contract-study
+          persist-credentials: false
+      - name: Checkout reviewed Document Assistant contract for HomeFlow cross-app tests
+        uses: actions/checkout@v4
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: a10094cd6717a5cf77f83f8f784ab013b9cd6409
+          path: .contract-document
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
