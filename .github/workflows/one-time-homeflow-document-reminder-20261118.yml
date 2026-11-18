@@ -16,7 +16,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      DOCUMENT_SHA: 49b826f6d09a832a2c3a549e9586d9f80f5afe80
+      DOCUMENT_SHA: 70b96960485327b063d843d2b9d96894c5491368
       CI: 'true'
     steps:
       - name: Checkout reviewed HomeFlow main
@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
-          ref: 49b826f6d09a832a2c3a549e9586d9f80f5afe80
+          ref: 70b96960485327b063d843d2b9d96894c5491368
           path: document-src
           persist-credentials: false
       - name: Refuse stale main, missing credentials, Preview resources or mismatched contracts
@@ -73,7 +73,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run check:syntax
-          node --test tests/document-task-reminder-bridge.test.js tests/document-audit-sync.test.js tests/document-production-hardening.test.js tests/homeflow-sso.test.js
+          node --test tests/document-task-reminder-bridge.test.js tests/document-audit-sync.test.js tests/document-production-hardening.test.js tests/homeflow-sso.test.js tests/document-auth-loss-ui.test.js
           npm run build
           node --input-type=module -e "import {writeFileSync} from 'node:fs'; writeFileSync('dist/integration-release.json', JSON.stringify({app:'document-assistant',sha:process.env.DOCUMENT_SHA,homeflow:process.env.GITHUB_SHA}))"
       - name: Deploy existing Document Assistant PRODUCTION Worker second
