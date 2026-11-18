@@ -48,20 +48,6 @@ jobs:
           ref: main
           path: .contract-study
           persist-credentials: false
-      - name: Fail closed if any checked-out cross-app main changed
-        shell: bash
-        run: |
-          set -euo pipefail
-          for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
-            repo="${entry%%:*}"; dir="${entry#*:}"
-            checked="$(git -C "${dir}" rev-parse HEAD)"
-            latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
-            if [[ -z "${latest}" || "${checked}" != "${latest}" ]]; then
-              echo "::error::${repo} changed during contract validation; retry release"
-              exit 1
-            fi
-            echo "Reviewed ${repo}: ${checked}"
-          done
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
@@ -82,6 +68,46 @@ jobs:
       # independently signed live verification.
       - name: Require full live G8 production binding preflight
         run: node scripts/release-g8-binding-preflight.mjs
+      - name: Revalidate live counterpart heads when other apps change during release
+        shell: bash
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: |
+          set -euo pipefail
+          # Recheck *after* the first full tests. A concurrent app commit is
+          # re-fetched and all cross-app tests rerun instead of deploying stale
+          # contracts or repeatedly blocking safe HomeFlow-only releases.
+          for round in 1 2 3; do
+            changed=0
+            for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
+              repo="${entry%%:*}"; dir="${entry#*:}"
+              checked="$(git -C "${dir}" rev-parse HEAD)"
+              latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+              test -n "${latest}" || { echo "::error::Cannot verify ${repo} main"; exit 1; }
+              if [[ "${checked}" != "${latest}" ]]; then
+                git -C "${dir}" fetch --no-tags --depth=1 origin main
+                git -C "${dir}" checkout --detach FETCH_HEAD
+                changed=1
+              fi
+            done
+            if [[ "${changed}" == 0 ]]; then
+              echo "All reviewed counterpart sources still match current main"
+              exit 0
+            fi
+            echo "Cross-app head advanced: repeat complete contract tests (round ${round}/3)"
+            npm run check
+            node scripts/release-g8-source-plan.mjs
+          done
+          # Last validation must never silently accept a late untested commit.
+          for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
+            repo="${entry%%:*}"; dir="${entry#*:}"
+            checked="$(git -C "${dir}" rev-parse HEAD)"
+            latest="$(git ls-remote "https://github.com/PTamako/${repo}.git" refs/heads/main | cut -f1)"
+            if [[ -z "${latest}" || "${checked}" != "${latest}" ]]; then
+              echo "::error::${repo} changed after three validation passes"
+              exit 1
+            fi
+          done
       # HomeFlow-only release: no other platform deployed, no Preview created.
       - name: Deploy Production
         run: npx wrangler deploy
