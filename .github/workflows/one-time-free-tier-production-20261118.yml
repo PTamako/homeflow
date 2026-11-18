@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
-          ref: 0e2c1944a12ba1b7932140de0d2c78132cd7593f
+          ref: af0a31caba77a33965eeeca88aec817acaead61c
           path: .production-document
           persist-credentials: false
       - name: Checkout HomeFlow CI contract fixtures
@@ -59,9 +59,9 @@ jobs:
           test "$CLOUDFLARE_ACCOUNT_ID" = "fb4f558f6c71bd0e7f1c6a0734bf6171"
           git merge-base --is-ancestor 9b6b32c139b16fe04727bdb43cab4b81f8e7a219 "$GITHUB_SHA"
           test "$(git diff --name-only 9b6b32c139b16fe04727bdb43cab4b81f8e7a219 "$GITHUB_SHA")" = ".github/workflows/one-time-free-tier-production-20261118.yml"
-          test "$(git -C .production-document rev-parse HEAD)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+          test "$(git -C .production-document rev-parse HEAD)" = "af0a31caba77a33965eeeca88aec817acaead61c"
           test "$(git ls-remote https://github.com/PTamako/homeflow.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
-          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "af0a31caba77a33965eeeca88aec817acaead61c"
           grep -Fq 'SHARED_SYNC_MS=60000' src/App.vue
           grep -Fq 'Most runs are idle: check indexed due/stale work' .production-document/worker/ai-jobs.js
           grep -Fq '"*/15 * * * *"' .production-document/wrangler.jsonc
@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git ls-remote https://github.com/PTamako/homeflow.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
-          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "0e2c1944a12ba1b7932140de0d2c78132cd7593f"
+          test "$(git ls-remote https://github.com/PTamako/jp-document-assistant.git refs/heads/main | cut -f1)" = "af0a31caba77a33965eeeca88aec817acaead61c"
       - name: Deploy HomeFlow production Worker and PWA only
         shell: bash
         run: |
