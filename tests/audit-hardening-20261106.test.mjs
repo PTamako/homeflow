@@ -40,7 +40,7 @@ test('same-day recurring goal cannot settle via legacy route and returns 409',as
  const db={prepare(){return {bind(){return {first:async()=>target}}}}}
  const path='/api/plans/complete'
  const r=await todayPlansRoute(post(path,{kind:'goal',id:goalId,
-   periodKey:now,completed:true}),db,{...member,role:'owner'},path,{DB:db})
+   periodKey:now,completed:true}),db,{...member,role:'owner',user_id:recipient},path,{DB:db})
  assert.equal(r.status,409)
  assert.equal((await r.json()).error,'not_due')
 })
