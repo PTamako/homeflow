@@ -21,8 +21,9 @@ async function completePlan(request,db,session,env){
     AND (visibility='household' OR created_by=?3)`)
     .bind(id,session.household_id,session.user_id).first()
   if(!row)return json({error:'not_found'},404)
-  // All savings completion and undo paths are finance operations, including the legacy endpoint.
-  if(kind==='goal'&&session.role!=='owner')return json({error:'forbidden'},403)
+  // The savings creator, including a non-owner member, may complete their
+  // own plan. Shared visibility does not authorize another member to edit it.
+  if(kind==='goal'&&row.created_by!==session.user_id)return json({error:'forbidden'},403)
   const today=tokyoToday(),stamp=iso()
   let periodKey='once'
   if(kind==='wish'){
@@ -42,7 +43,7 @@ async function completePlan(request,db,session,env){
     // Route them through the same verified period settlement and never allow
     // an unchecked acknowledgement to bypass the stored snapshot.
     if(!body.completed)return json({error:'use_period_recheck'},409)
-    const result=await settleGoalPeriod(env,row,periodKey,today,true)
+    const result=await settleGoalPeriod(env,{...row,creator_role:session.role},periodKey,today,true)
     return json(result,result.ok?200:result.error==='not_due'?409:503)
   }
   const found=await db.prepare(`SELECT completed_at,prior_status FROM plan_completion_marks
@@ -52,7 +53,8 @@ async function completePlan(request,db,session,env){
   if(body.completed&&found)return json({ok:true,kind,id,periodKey,completed:true,unchanged:true})
   if(body.completed&&!found){
     // Money is never marked as saved just because the user clicked a button.
-    // Verify against the real Kakebo read-only ledger on each completion.
+    // Owner goals use the read-only family ledger; members use only their own
+    // recorded savings estimate, never another member's Kakeibo transactions.
     if(kind==='goal'||kind==='wish'){
       let linked=[]
       if(kind==='wish'){
@@ -62,12 +64,14 @@ async function completePlan(request,db,session,env){
       }
       const goals=kind==='goal'?[row]:linked
       if(goals.length){
-        if(session.role!=='owner')return json({error:'owner_required_for_ledger_verification'},403)
+        if(goals.some(goal=>goal.created_by!==session.user_id))
+          return json({error:'goal_creator_required'},403)
         for(const goal of goals){
           const key=(goal.goal_mode||'once')==='once'?'once':
             goal.goal_mode==='yearly'?today.slice(0,4):today.slice(0,7)
           try{
-            const amount=await verifiedGoalProgress(env,goal,kind==='goal'?periodKey:key,today)
+            const amount=await verifiedGoalProgress(env,goal,kind==='goal'?periodKey:key,today,
+              {personalOnly:session.role!=='owner'})
             if(!amount.ok)return json({error:amount.error,current:amount.amount,target:amount.target},
               amount.error==='goal_not_funded'?409:503)
           }catch{return json({error:'ledger_verification_unavailable'},503)}
