@@ -164,22 +164,25 @@ function normalized(key,r,h,u) {
     case 'tasks': {
       if(!str(r.title,150)||str(r.notes||'',1000)===null||!optionalDate(r.due_on))return null
       const bonus=r.bonus_points??0,first=id(r.assignee_user_id)?r.assignee_user_id:null
+      const reminder=(r.reminder_only===1||r.reminder_only===true)?1:0
+      if(r.reminder_only!=null&&![0,1,true,false].includes(r.reminder_only))return null
       const second=id(r.second_assignee_user_id)?r.second_assignee_user_id:null
       const doneBy=restoredActor(r,u)
       if((r.completed_at&&!doneBy)||(v==='private'&&doneBy&&doneBy!==u))return null
       if(!Number.isSafeInteger(bonus)||bonus<0||bonus>10000||
          (second&&(!first||second===first||v!=='household'||bonus!==0))||
-         (bonus>0&&(!first||first===u||v!=='household')))return null
+         (bonus>0&&(!first||first===u||v!=='household'))||
+         (reminder===1&&bonus!==0))return null
       return ["INSERT OR IGNORE INTO tasks(id,household_id,creator_user_id,visibility,title,notes,due_on,completed_at,"+
-         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id,deleted_at,bonus_points,second_assignee_user_id) "+
+         "completed_by,subject_profile_id,client_request_id,health_record_type,remind_enabled,assignee_user_id,deleted_at,bonus_points,second_assignee_user_id,reminder_only) "+
          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,"+
          "(SELECT id FROM family_profiles WHERE id=?10 AND household_id=?2),?11,?12,?13,"+
          "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15,?16,"+
-         "(SELECT user_id FROM household_members WHERE user_id=?17 AND household_id=?2))",
+         "(SELECT user_id FROM household_members WHERE user_id=?17 AND household_id=?2),?18)",
         [r.id,h,u,v,r.title,r.notes||'',r.due_on||null,r.completed_at||null,doneBy,
          id(r.subject_profile_id)?r.subject_profile_id:null,id(r.client_request_id)?r.client_request_id:null,
          ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
-         r.remind_enabled===0?0:1,first,r.deleted_at||null,bonus,second]]
+         r.remind_enabled===0?0:1,first,r.deleted_at||null,bonus,second,reminder]]
     }
     case 'anniversaries':
       if(!str(r.title,150)||!date(r.event_date)||!['once','yearly','monthly'].includes(r.repeat_mode))return null
@@ -191,14 +194,16 @@ function normalized(key,r,h,u) {
     case 'routines':
       if(!str(r.title,150)||!date(r.anchor_date)||
          !['daily','weekly','monthly','interval'].includes(r.repeat_type)||
-         str(r.repeat_config,1200)===null||(r.next_due_on&&!date(r.next_due_on)))return null
-      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id,health_record_type,remind_enabled,assigned_to,deleted_at) "+
+         str(r.repeat_config,1200)===null||(r.next_due_on&&!date(r.next_due_on))||
+         (r.reminder_only!=null&&![0,1,true,false].includes(r.reminder_only)))return null
+      return ["INSERT OR IGNORE INTO routines(id,household_id,created_by,visibility,title,repeat_type,repeat_config,anchor_date,enabled,next_due_on,subject_profile_id,health_record_type,remind_enabled,assigned_to,deleted_at,reminder_only) "+
          "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,(SELECT id FROM family_profiles WHERE id=?11 AND household_id=?2),?12,?13,"+
-         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15)",
+         "(SELECT user_id FROM household_members WHERE user_id=?14 AND household_id=?2),?15,?16)",
          [r.id,h,u,v,r.title,r.repeat_type,r.repeat_config,r.anchor_date,r.enabled===0?0:1,
           r.next_due_on||null,id(r.subject_profile_id)?r.subject_profile_id:null,
           ['deworm','vaccination','vet','medication','grooming','other'].includes(r.health_record_type)?r.health_record_type:null,
-          r.remind_enabled===0?0:1,id(r.assigned_to)?r.assigned_to:null,r.deleted_at||null]]
+          r.remind_enabled===0?0:1,id(r.assigned_to)?r.assigned_to:null,r.deleted_at||null,
+         (r.reminder_only===1||r.reminder_only===true)?1:0]]
     case 'shopping':
       if(!str(r.title,150)||!Number.isInteger(r.quantity)||r.quantity<1||r.quantity>9999||!optionalDate(r.due_on)||
          (r.ledger_entry_id!=null&&!/^[1-9]\d{0,11}$/.test(String(r.ledger_entry_id))))return null
