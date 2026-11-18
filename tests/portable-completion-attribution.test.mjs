@@ -17,7 +17,7 @@ function fixture(){
     title TEXT,notes TEXT,due_on TEXT,completed_at TEXT,completed_by TEXT,
     subject_profile_id TEXT,client_request_id TEXT,health_record_type TEXT,
     remind_enabled INTEGER,assignee_user_id TEXT,deleted_at TEXT,
-    bonus_points INTEGER,second_assignee_user_id TEXT);
+    bonus_points INTEGER,second_assignee_user_id TEXT,reminder_only INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE shopping_items(
     id TEXT PRIMARY KEY,household_id TEXT,created_by TEXT,visibility TEXT,title TEXT,
     quantity INTEGER,completed_at TEXT,completed_by TEXT,due_on TEXT,ledger_entry_id TEXT,
