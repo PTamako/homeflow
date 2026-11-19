@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {verifiedDatabase} from '../worker/security.js'
 
-const extra={finance_migrations_ready:8,recent_migrations_ready:5,
+const extra={finance_migrations_ready:8,recent_migrations_ready:5,prepaid_alert_migrations_ready:2,
  reminder_columns_ready:2,reminder_guard_triggers_ready:3,
  finance_tables_ready:15,finance_indexes_ready:8,finance_triggers_ready:8,
  coupon_tables_ready:2,coupon_triggers_ready:5,travel_triggers_ready:2,
