@@ -1,0 +1,35 @@
+name: Bill confirmation scoped production validation
+on:
+  push:
+    branches: [feature/kakeibo-bill-confirmations-20261119]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - name: Full HomeFlow regression except tests requiring unavailable private Study source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t suites < <(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'document-study-three-real-apps.test.mjs' | sort)
+          KAKEBO_CONTRACT_ROOT="$GITHUB_WORKSPACE/.contract-kakeibo" node --test --test-skip-pattern="G0 cross-app CI can locate every Stage F migration in its pinned checkout" "${suites[@]}"
+      - run: npm run build
+      - run: python3 scripts/check_migrations.py
+      - run: python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - run: npx wrangler deploy --dry-run --outdir .wrangler/dryrun
