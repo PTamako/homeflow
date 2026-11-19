@@ -1,6 +1,7 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
 import {jstNotificationDay,saveNotification,ensureScheduledNotification,existingScheduledDedupeKeys,findScheduledNotification} from './notifications.js'
+import {loadPrepaidOwnerAlertEvents} from './prepaid-alerts.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -442,10 +443,15 @@ export async function runPushSchedule(env,now=Date.now()){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
     const couponEvents=await expiringCouponReminders(db,member,day).catch(()=>[])
-    if(!response.ok&&!annualExpiry&&!couponEvents.length)continue
+    // Read-only private Kakeibo projection; errors must never disrupt regular reminders.
+    const walletEvents=await loadPrepaidOwnerAlertEvents(env,member,day).catch(()=>{
+      console.warn('homeflow_personal_wallet_alerts_unavailable')
+      return []
+    })
+    if(!response.ok&&!annualExpiry&&!couponEvents.length&&!walletEvents.length)continue
     const data=response.ok?await response.json():{items:[],quietHours:null}
     const scheduledData={...data,items:[
-      ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...(data.items||[])]}
+      ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...walletEvents,...(data.items||[])]}
     remindersCache.set(member.user_id,scheduledData)
     // Only one indexed lookup per member in the hourly catch-up phase.
     // If lookup fails, the idempotent INSERT remains a safe fallback.

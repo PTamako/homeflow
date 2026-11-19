@@ -203,8 +203,14 @@ async function readClicked(item:Notice,markAsRead:boolean){
 }
 async function markRead(item:Notice){await readClicked(item,true)}
 async function markUnread(item:Notice){await readClicked(item,false)}
+const isPrepaidAlert=(item:Notice)=>item.kind==='system'&&
+  item.dedupeKey?.startsWith('scheduled:system:prepaid-low-balance-')
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
+ if(isPrepaidAlert(item)){
+  window.open('https://kakeibo-f17.pages.dev/','_blank','noopener,noreferrer')
+  return
+ }
  if(item.sourceId&&['task','routine','shopping'].includes(item.kind)){
    const done=item.message.startsWith('已完成 · ')
    const period=done&&item.kind==='routine'
@@ -325,7 +331,7 @@ defineExpose({refresh:()=>load(true)})
       <button v-if="view==='received'&&item.readAt"
         type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markUnread(item)">标记未读</button>
       <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item))"
-        type="button" @click="open(item)">{{ savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
+        type="button" @click="open(item)">{{ isPrepaidAlert(item)?'打开记账本':savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
      </div>
     </div>
    </div>
