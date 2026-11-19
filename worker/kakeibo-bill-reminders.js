@@ -1,4 +1,4 @@
-// HomeFlow hourly Cron consumes only the private, read-only Kakeibo Service
+// HomeFlow two-hour Cron consumes only the private, read-only Kakeibo Service
 // Binding and strictly targets the linked owner of each fee. No Pages API calls.
 // A fixed cost is due tomorrow; a variable invoice is due TODAY.
 const civilDate=d=>typeof d==='string'&&/^20\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d)&&
@@ -32,8 +32,7 @@ export function projectKakeiboBillReminderEvents(result,member,day){
  return events
 }
 // Bill-confirmation notifications start at 06:00 JST and are checked every
-// two hours until 22:00. Keep the shared hourly Cron unchanged: other
-// reminders still need quiet-hour catch-up at odd hours.
+// two hours until 22:00. Other reminders share the same two-hour catch-up.
 export function shouldCheckKakeiboBillsAtHour(jstHour){
  return Number.isInteger(jstHour)&&jstHour>=6&&jstHour<=22&&(jstHour-6)%2===0
 }
@@ -45,8 +44,14 @@ export async function kakeiboBillReminderEvents(env,member,day){
  try{
   const request=new Request('https://private-ledger.invalid/api/internal/bill-confirmation-reminders?'+query)
   const response=await env.KAKEBO_LEDGER_SERVICE.fetch(request)
-  if(!response?.ok)return []
+  if(!response?.ok){console.warn('homeflow_bill_confirmation_projection_unavailable');return []}
   const data=await response.json()
+  if(!data||data.recipientId!==member.user_id||data.householdId!==member.household_id||!Array.isArray(data.items)){
+   console.warn('homeflow_bill_confirmation_scope_invalid');return []
+  }
   return projectKakeiboBillReminderEvents(data,member,day)
- }catch{return []}
+ }catch{
+  // Never log card names, bill amounts, user identifiers or response bodies.
+  console.warn('homeflow_bill_confirmation_projection_unavailable');return []
+ }
 }
