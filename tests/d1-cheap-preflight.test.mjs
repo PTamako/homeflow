@@ -10,7 +10,7 @@ const envFor=({name='homeflow',baseline=1,throwError=false}={})=>{
    return {first:async()=>{
      if(throwError)throw Error('D1 unavailable')
      if(/sqlite_master|pragma_table_info/.test(sql))return null
-     return {database_name:name,baseline_ready:baseline,finance_migrations_ready:8,recent_migrations_ready:5}
+     return {database_name:name,baseline_ready:baseline,finance_migrations_ready:8,recent_migrations_ready:5,prepaid_alert_migrations_ready:2}
    }}
  }}
  return {env:{APP_ENV:'production',DB:db},queries}
