@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {kakeiboBillReminderEvents,projectKakeiboBillReminderEvents} from '../worker/kakeibo-bill-reminders.js'
+import {kakeiboBillReminderEvents,projectKakeiboBillReminderEvents,shouldCheckKakeiboBillsAtHour} from '../worker/kakeibo-bill-reminders.js'
 const A='11111111-1111-4111-8111-111111111111',B='22222222-2222-4222-8222-222222222222'
 const member={user_id:A,household_id:'household-1'}
 const F='33333333-3333-4333-8333-333333333333'
@@ -42,4 +42,21 @@ test('one existing daily inbox and Push pipeline serves bill reminders',()=>{
  assert.match(code,/\.\.\.billEvents/)
  assert.match(code,/ensureScheduledNotification\(db,notice\)/)
  assert.match(code,/INSERT INTO notification_deliveries/)
+})
+
+test('bill checks happen at 06:00 JST and every two hours through 22:00 only',()=>{
+ const allowed=[6,8,10,12,14,16,18,20,22]
+ const actual=Array.from({length:24},(_,hour)=>hour).filter(shouldCheckKakeiboBillsAtHour)
+ assert.deepEqual(actual,allowed)
+ for(const invalid of [NaN,undefined,-1,6.5,24,'6',null])
+  assert.equal(shouldCheckKakeiboBillsAtHour(invalid),false)
+})
+test('only bill checks are throttled; daily Today reminders and wallet alerts remain on hourly Cron',()=>{
+ const code=readFileSync(new URL('../worker/webpush.js',import.meta.url),'utf8')
+ assert.match(code,/const billEvents=shouldCheckKakeiboBillsAtHour\(hour\)/)
+ assert.match(code,/\?await kakeiboBillReminderEvents\(env,member,day\):\[\]/)
+ assert.match(code,/const walletEvents=await loadPrepaidOwnerAlertEvents\(env,member,day\)/)
+ assert.match(code,/const response=await remindersRoute\(/)
+ const config=readFileSync(new URL('../wrangler.toml',import.meta.url),'utf8')
+ assert.match(config,/crons = \["0 \* \* \* \*"\]/)
 })

@@ -31,6 +31,12 @@ export function projectKakeiboBillReminderEvents(result,member,day){
  }
  return events
 }
+// Bill-confirmation notifications start at 06:00 JST and are checked every
+// two hours until 22:00. Keep the shared hourly Cron unchanged: other
+// reminders still need quiet-hour catch-up at odd hours.
+export function shouldCheckKakeiboBillsAtHour(jstHour){
+ return Number.isInteger(jstHour)&&jstHour>=6&&jstHour<=22&&(jstHour-6)%2===0
+}
 export async function kakeiboBillReminderEvents(env,member,day){
  if(!env?.KAKEBO_LEDGER_SERVICE?.fetch||!uuid.test(member?.user_id||'')||
    typeof member?.household_id!=='string'||!civilDate(day))return []

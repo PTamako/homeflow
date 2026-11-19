@@ -1,7 +1,7 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
 import {jstNotificationDay,saveNotification,ensureScheduledNotification,existingScheduledDedupeKeys,findScheduledNotification} from './notifications.js'
-import {kakeiboBillReminderEvents} from './kakeibo-bill-reminders.js'
+import {kakeiboBillReminderEvents,shouldCheckKakeiboBillsAtHour} from './kakeibo-bill-reminders.js'
 import {loadPrepaidOwnerAlertEvents} from './prepaid-alerts.js'
 
 const encoder=new TextEncoder()
@@ -444,7 +444,10 @@ export async function runPushSchedule(env,now=Date.now()){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
     const couponEvents=await expiringCouponReminders(db,member,day).catch(()=>[])
-    const billEvents=await kakeiboBillReminderEvents(env,member,day)
+    // Only Kakeibo's fixed/variable confirmation checks use the 2-hour cadence.
+    // Other household and wallet reminders retain their existing hourly checks.
+    const billEvents=shouldCheckKakeiboBillsAtHour(hour)
+      ?await kakeiboBillReminderEvents(env,member,day):[]
     // Read-only private Kakeibo projection; errors must never disrupt regular reminders.
     const walletEvents=await loadPrepaidOwnerAlertEvents(env,member,day).catch(()=>{
       console.warn('homeflow_personal_wallet_alerts_unavailable')
