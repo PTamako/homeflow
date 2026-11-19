@@ -71,7 +71,8 @@ MIGRATIONS=[
     "0063_expand_applied_ledger_approval_dismissal.sql",
     "0064_reminder_only_no_points.sql",
     "0065_extend_active_sessions_to_30_days.sql",
-    "0066_prepaid_owner_alert_observations.sql"
+    "0066_prepaid_owner_alert_observations.sql",
+    "0067_prepaid_upper_alert_observations.sql"
 ]
 files={p.name for p in (ROOT/"migrations").glob("*.sql")}
 assert files==set(MIGRATIONS),f"Unregistered migration files: {files-set(MIGRATIONS)}, missing: {set(MIGRATIONS)-files}"
