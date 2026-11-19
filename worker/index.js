@@ -233,7 +233,7 @@ export default {
     try{env=withFourAppFinanceEnv(env)}
     catch{console.error('homeflow_finance_configuration_invalid');return}
     // A single two-hour Cron delivers reminders at 06:00,08:00,...,22:00 JST.
-    // 00:00,02:00,04:00 fires skip without database reads. Catch-up from 08:00
+    // No 00:00/02:00/04:00 triggers. Catch-up from 08:00
     // retries unsent deliveries. Settlements and cleanup remain once/day.
     const phase=scheduledRunPhase(controller)
     if(phase==='skip'||!await verifiedDatabase(env))return
