@@ -913,7 +913,7 @@ onBeforeUnmount(()=>{
                   <div :class="{done:row.done}">{{ row.title }}</div>
                   <small class="task-meta">
                     <span class="today-kind-label">{{ todayKindLabels[row.kind] }}</span>
-                    <StatusBadge v-if="row.task" :code="row.done?'completed':row.task.dueOn&&row.task.dueOn<tokyoToday()?'overdue':'pending'" :label="isReminderOnlyToday(row)?'仅提醒':row.done?'已完成':row.task.dueOn&&row.task.dueOn<tokyoToday()?'逾期':'待处理'" />
+                    <StatusBadge v-if="row.task&&!isReminderOnlyToday(row)" :code="row.done?'completed':row.task.dueOn&&row.task.dueOn<tokyoToday()?'overdue':'pending'" :label="row.done?'已完成':row.task.dueOn&&row.task.dueOn<tokyoToday()?'逾期':'待处理'" />
                     <template v-if="row.task">
                       <AppIcon :name="row.task.visibility==='private'?'shield':'house'" :size="14" />
                       {{ row.task.visibility==='private'?'仅自己':'家庭共享' }} · {{ row.task.dueOn||'无截止日' }}
@@ -922,7 +922,7 @@ onBeforeUnmount(()=>{
                       <span> · 发起人：{{ memberName(row.task.creatorUserId) }} · 处理人：{{ [row.task.assigneeUserId,row.task.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
                     </template>
                     <template v-else-if="row.routine">
-                      <StatusBadge :code="row.routine.mark?.completed_at?'completed':'pending'" :label="isReminderOnlyToday(row)?'仅提醒':row.routine.mark?.completed_at?'已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
+                      <StatusBadge v-if="!isReminderOnlyToday(row)" :code="row.routine.mark?.completed_at?'completed':'pending'" :label="row.routine.mark?.completed_at?'已完成':'今天到期'" /> · {{ row.routine.occurrenceOn||tokyoToday() }} · {{ recurringLabel(row.routine) }}
                       <template v-if="nameForProfile(row.routine.subject_profile_id)"> · {{ nameForProfile(row.routine.subject_profile_id) }}</template>
                       <template v-if="row.routine.health_record_type"> · 完成后记护理</template>
                       <span> · 发起人：{{ memberName(row.routine.created_by) }} · 处理人：{{ [row.routine.currentAssignment?.assigneeUserId||row.routine.assigned_to,row.routine.currentAssignment?.secondAssigneeUserId].filter(Boolean).map(memberName).join('、')||'未指派' }}</span>
