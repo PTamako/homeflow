@@ -31,8 +31,8 @@ test('quick preflight requires ALL 0061–0065 production migrations',async()=>{
 test('health check fails closed on missing reminder-only columns or scoring guards',async()=>{
  const live=dbFor()
  assert.equal(await verifiedDatabase({APP_ENV:'production',DB:live.db}),true)
- assert.match(live.statements[0],/pragma_table_info\\('tasks'\\)/)
- assert.match(live.statements[0],/instr\\(sql,'reminder_only'\\)/)
+ assert.ok(live.statements[0].includes("pragma_table_info('tasks')"))
+ assert.ok(live.statements[0].includes("instr(sql,'reminder_only')"))
  for(const missingField of ['recent_migrations_ready','reminder_columns_ready','reminder_guard_triggers_ready']){
   const broken=dbFor({[missingField]:0})
   assert.equal(await verifiedDatabase({APP_ENV:'production',DB:broken.db}),false,missingField)

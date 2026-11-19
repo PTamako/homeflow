@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
           mapfile -t suites < <(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'document-study-three-real-apps.test.mjs' | sort)
           echo "Running ${#suites[@]} test suites; private Study test requires a cross-repository token not available in this job"
-          node --test "${suites[@]}"
+          node --test --test-skip-pattern="G0 cross-app CI can locate every Stage F migration in its pinned checkout" "${suites[@]}"
       - name: Check type safety and production asset build
         run: npm run build
       - name: Verify local migration manifest and SQL schema

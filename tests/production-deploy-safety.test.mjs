@@ -15,9 +15,9 @@ test('large savings populations rotate across all 60-item pages in JST days',()=
 test('normal-size daily settlements remain one bounded D1 read',()=>{
  const code=readFileSync(new URL('../worker/goal-settlements.js',import.meta.url),'utf8')
  assert.match(code,/LIMIT 61/)
- assert.match(code,/if\\(firstPage\\.length>60\\)/)
+ assert.ok(code.includes('if(firstPage.length>60)'))
  assert.match(code,/LIMIT 60 OFFSET \\?2/)
- assert.match(code,/for\\(const goal of rotateGoalsForDate\\(goals,today\\)\\)/)
+ assert.ok(code.includes('for(const goal of rotateGoalsForDate(goals,today))'))
 })
 test('obsolete production write entrypoints are removed, manual HomeFlow deploy remains',()=>{
  for(const file of [
