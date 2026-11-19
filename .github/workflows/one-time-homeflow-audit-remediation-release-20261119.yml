@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "2e867a1839217e221d828b7cea77693706e3d51b"
+          test "$(git rev-parse HEAD^)" = "65311f0527176e05e9c82468736b6762e48e40f8"
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           grep -F 'preview_urls = false' wrangler.toml
