@@ -9,7 +9,7 @@ const icons=readFileSync(new URL('../src/components/AppIcon.vue',import.meta.url
 test('Today reminder-only rows render the same system bell SVG instead of a checkbox',()=>{
  assert.match(app,/<AppIcon v-if="isReminderOnlyToday\(row\)"[^>]*name="bell"/)
  assert.match(app,/<input v-else-if="row.task\|\|row.routine" type="checkbox"/)
- assert.match(app,/isReminderOnlyToday\(row\)\?'仅提醒'/)
+ assert.match(app,/v-if="row.task&&!isReminderOnlyToday\(row\)"/)
  assert.match(app,/row.done\|\|isReminderOnlyToday\(row\)\?'查看计划':'去处理'/)
  assert.match(icons,/<template v-else-if="name==='bell'">/)
 })
