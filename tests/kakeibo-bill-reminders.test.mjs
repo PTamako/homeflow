@@ -58,5 +58,5 @@ test('bill checks and shared Today reminders use the same two-hour Cron; wallet 
  assert.match(code,/const walletEvents=await loadPrepaidOwnerAlertEvents\(env,member,day\)/)
  assert.match(code,/const response=await remindersRoute\(/)
  const config=readFileSync(new URL('../wrangler.toml',import.meta.url),'utf8')
- assert.match(config,/crons = \["0 1-23\/2 \* \* \*"\]/)
+ assert.match(config,/crons = \["0 1-13\/2,21,23 \* \* \*"\]/)
 })
