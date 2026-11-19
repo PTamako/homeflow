@@ -19,7 +19,7 @@ binding = "MEDIA"
 bucket_name = "homeflow-family-media"
 
 [triggers]
-crons = ["0 * * * *"] # One free-tier trigger: hourly; daily at 06:00 JST, quiet-hour catch-up through 23:00 JST
+crons = ["0 1-23/2 * * *"] # Single UTC 2-hour Cron, JST 06:00/08:00/.../22:00 active; 00:00/02:00/04:00 are skipped
 
 [vars]
 OAUTH_ENABLED = "true"
