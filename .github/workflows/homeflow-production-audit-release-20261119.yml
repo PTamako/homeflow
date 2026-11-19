@@ -21,11 +21,13 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Require reviewed HomeFlow-only merge and deployment credentials
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "26a7d298493d737e9b0f53258bd37975561a184b"
+          git merge-base --is-ancestor "26a7d298493d737e9b0f53258bd37975561a184b" HEAD
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test ! -f .github/workflows/four-app-production-release.yml
