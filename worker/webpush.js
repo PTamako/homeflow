@@ -1,6 +1,7 @@
 import {json,readBody,sha256} from './security.js'
 import {remindersRoute,reminderDeliveryKey} from './reminders.js'
 import {jstNotificationDay,saveNotification,ensureScheduledNotification,existingScheduledDedupeKeys,findScheduledNotification} from './notifications.js'
+import {kakeiboBillReminderEvents} from './kakeibo-bill-reminders.js'
 
 const encoder=new TextEncoder()
 const bytes=(...parts)=> {
@@ -442,10 +443,11 @@ export async function runPushSchedule(env,now=Date.now()){
     const response=await remindersRoute(new Request('https://homeflow.invalid/api/reminders?date='+day+'&goals=1'),
       db,{user_id:member.user_id,household_id:member.household_id})
     const couponEvents=await expiringCouponReminders(db,member,day).catch(()=>[])
-    if(!response.ok&&!annualExpiry&&!couponEvents.length)continue
+    const billEvents=await kakeiboBillReminderEvents(env,member,day)
+    if(!response.ok&&!annualExpiry&&!couponEvents.length&&!billEvents.length)continue
     const data=response.ok?await response.json():{items:[],quietHours:null}
     const scheduledData={...data,items:[
-      ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...(data.items||[])]}
+      ...(annualExpiry?[annualExpiry]:[]),...couponEvents,...billEvents,...(data.items||[])]}
     remindersCache.set(member.user_id,scheduledData)
     // Only one indexed lookup per member in the hourly catch-up phase.
     // If lookup fails, the idempotent INSERT remains a safe fallback.
