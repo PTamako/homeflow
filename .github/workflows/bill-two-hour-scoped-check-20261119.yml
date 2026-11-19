@@ -1,0 +1,39 @@
+name: Validate two-hour Kakeibo bill reminder cadence
+on:
+  push:
+    branches: [fix/kakeibo-bill-check-every-2h-20261119]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Run all accessible HomeFlow regression suites, including 2-hour cadence test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t suites < <(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'document-study-three-real-apps.test.mjs' | sort)
+          KAKEBO_CONTRACT_ROOT="$GITHUB_WORKSPACE/.contract-kakeibo" node --test --test-skip-pattern="G0 cross-app CI can locate every Stage F migration in its pinned checkout" "${suites[@]}"
+      - name: Check Vue type safety and production assets
+        run: npm run build
+      - name: Verify immutable local migration baseline
+        run: python3 scripts/check_migrations.py
+      - name: Rehearse SQLite migrations and rollbacks (synthetic only)
+        run: python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - name: Dry-run Worker without triggering Pages deployment or D1 writes
+        run: npx wrangler deploy --dry-run --outdir .wrangler/two-hour-dryrun
