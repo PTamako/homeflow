@@ -4,17 +4,18 @@ import {scheduledRunPhase} from '../worker/schedule-policy.js'
 import {quietAtHour} from '../worker/webpush.js'
 import {readFileSync} from 'node:fs'
 
-const controller=(jstHour,cron='0 * * * *')=>({
+const controller=(jstHour,cron='0 1-23/2 * * *')=>({
  cron, scheduledTime:Date.UTC(2026,10,10,jstHour-9)
 })
 
-test('hourly trigger runs daily work exactly once, only from 06:00 JST',()=>{
+test('two-hour trigger runs daily settlement at 06:00 and reminders through 22:00 JST',()=>{
  for(let hour=0;hour<24;hour++){
   const phase=scheduledRunPhase(controller(hour))
-  assert.equal(phase,hour<6?'skip':hour===6?'daily':'catchup',String(hour))
+  assert.equal(phase,hour===6?'daily':hour>=8&&hour<=22&&hour%2===0?'catchup':'skip',String(hour))
  }
  assert.equal(scheduledRunPhase({}),'daily','legacy manual invocation remains compatible')
- assert.equal(scheduledRunPhase({cron:'0 * * * *'}),'skip','unknown fire time cannot trigger settlements')
+ assert.equal(scheduledRunPhase({cron:'0 1-23/2 * * *'}),'skip','unknown fire time cannot trigger settlements')
+ assert.equal(scheduledRunPhase(controller(7,'0 * * * *')),'skip','old hourly event at odd JST hour is dropped')
  assert.equal(scheduledRunPhase({cron:'9 * * * *',scheduledTime:Date.now()}),'skip')
  assert.equal(scheduledRunPhase(controller(8,'0 21,23 * * *')),'catchup','in-flight old cron never re-runs settlement')
 })
