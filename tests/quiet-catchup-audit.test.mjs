@@ -16,7 +16,7 @@ test('06:00 and 08:00 respect both members quiet-hour preferences',()=>{
  assert.match(read('worker/index.js'),/const phase=scheduledRunPhase\(controller\)/)
  assert.match(read('worker/index.js'),/catchUp=phase==='catchup'/)
  assert.match(read('worker/index.js'),/catchUp\?\s*\[runPushSchedule\(env\)\]/)
- assert.match(read('src/components/ImportantReminders.vue'),/10:00 补发/)
+ assert.match(read('src/components/ImportantReminders.vue'),/下一个检查时段补发/)
 })
 
 test('new delivery states preserve existing inbox read/dedupe and correctly record quiet hours',async()=>{
