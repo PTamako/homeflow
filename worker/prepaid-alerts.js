@@ -57,8 +57,8 @@ export async function loadPrepaidOwnerAlertEvents(env,member,day){
    kind:'system',
    id:'prepaid-low-balance-'+item.scope+'-'+hash+'-'+state.cycle,
    dueOn:day,daysBefore:0,
-   title:item.name+' · 残高不足',
-   message:'残高 '+money(item.balance)+' / 通知ライン '+money(item.thresholdJpy)+'。チャージをご確認ください。',
+   title:item.name+' · 余额不足',
+   message:'当前余额 '+money(item.balance)+'，预警金额 '+money(item.thresholdJpy)+'。请检查是否需要充值。',
    priority:'normal'
   })
  }
