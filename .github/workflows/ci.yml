@@ -3,49 +3,83 @@ on:
   pull_request:
   push:
     branches: [main]
-
+  workflow_dispatch:
+    inputs:
+      full_study_contract:
+        description: "Run private Study contract integration with configured repository-read token"
+        type: boolean
+        default: false
+permissions:
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # Validate current cross-app main checkouts. The release repeats all
-      # checks and rejects contract-head drift before publishing HomeFlow.
-      - name: Checkout Kakeibo contract counterpart
+      - name: Checkout public Kakeibo contract
         uses: actions/checkout@v5
         with:
           repository: PTamako/kakebo_jp
           ref: main
           path: .contract-kakeibo
           persist-credentials: false
-      - name: Checkout Document Assistant execution counterpart
+      - name: Checkout public Document Assistant contract
         uses: actions/checkout@v5
         with:
           repository: PTamako/jp-document-assistant
           ref: main
           path: .contract-document
           persist-credentials: false
-      - name: Checkout Study execution counterpart (current main snapshot)
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - name: Scoped accessible regressions (private Study integration explicitly excluded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t suites < <(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'document-study-three-real-apps.test.mjs' | sort)
+          KAKEBO_CONTRACT_ROOT="$GITHUB_WORKSPACE/.contract-kakeibo" node --test --test-skip-pattern="G0 cross-app CI can locate every Stage F migration in its pinned checkout" "${suites[@]}"
+      - name: Typecheck and build PWA
+        run: npm run build
+      - name: Verify migration manifest and isolated rollback
+        run: |
+          python3 scripts/check_migrations.py
+          python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - name: Verify Worker dry-run bundle
+        run: npx wrangler deploy --dry-run --outdir .wrangler/scoped-core-ci
+      - name: Identify private-contract coverage boundary
+        run: echo "Accessible CI passed; full private Study integration requires workflow_dispatch full_study_contract with HOMEFLOW_STUDY_REPO_READ_TOKEN."
+  private-study-contract:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_study_contract }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout private Study with explicitly scoped token
         uses: actions/checkout@v5
         with:
           repository: PTamako/it-study-platform
           ref: main
           path: .contract-study
+          token: ${{ secrets.HOMEFLOW_STUDY_REPO_READ_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Run tests and typechecked build
-        env:
-          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
-        run: npm run check
-      - name: Validate exact pre-deployment OAuth redirects, D1/R2 IDs and five-service binding graph
-        run: node scripts/release-g8-source-plan.mjs
-      - name: Verify D1 migrations and schema
-        run: python3 scripts/check_migrations.py
-      - name: Exercise fail-closed isolated SQLite data migrations and rollback (synthetic only)
-        run: python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
-      - name: Verify Worker bundle
-        run: npx wrangler deploy --dry-run --outdir .wrangler/dryrun
+      - run: npm ci --no-audit --no-fund
+      - name: Full three-application integration and pre-deploy source plan
+        run: |
+          npm run check
+          node scripts/release-g8-source-plan.mjs
