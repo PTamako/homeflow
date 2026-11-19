@@ -103,15 +103,22 @@ export async function verifiedDatabase(env,{quick=false}={}) {
       const identity=await env.DB.prepare(`SELECT database_name,
         EXISTS(SELECT 1 FROM d1_migrations
           WHERE name='0052_achievement_thresholds.sql') AS baseline_ready,
-        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready
+        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready,
+        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0061_hidden_deleted_shared_approval_history.sql','0062_dismissed_applied_approval_history.sql','0063_expand_applied_ledger_approval_dismissal.sql','0064_reminder_only_no_points.sql','0065_extend_active_sessions_to_30_days.sql')) AS recent_migrations_ready
         FROM environment_identity WHERE key='current' LIMIT 1`).first()
-      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1 && Number(identity.finance_migrations_ready)===8
+      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1 && Number(identity.finance_migrations_ready)===8 && Number(identity.recent_migrations_ready)===5
       if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS,deep:false})
       else dbIdentityCache.delete(env.DB)
       return valid
     }
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0061_hidden_deleted_shared_approval_history.sql','0062_dismissed_applied_approval_history.sql','0063_expand_applied_ledger_approval_dismissal.sql','0064_reminder_only_no_points.sql','0065_extend_active_sessions_to_30_days.sql')) AS recent_migrations_ready,
+      (SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='reminder_only') +
+      (SELECT COUNT(*) FROM pragma_table_info('routines') WHERE name='reminder_only') AS reminder_columns_ready,
+      (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'
+        AND name IN ('points_task_completed','points_routine_completed_insert','points_routine_completed_update')
+        AND instr(sql,'reminder_only')>0) AS reminder_guard_triggers_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('oauth_authorization_codes','oauth_access_tokens','oauth_security_events','oauth_session_assertions','household_approval_requests','household_approval_events','document_task_applied_actions','household_approval_review_batches','household_cross_member_transfer_consents','household_cross_member_transfer_events','household_recurring_finance_policies','household_recurring_finance_events','household_recurring_finance_reservations','household_recurring_execution_receipts','household_recurring_execution_events')) AS finance_tables_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_oauth_access_tokens_expiry','idx_household_approvals_pending','idx_household_approval_exec_leases','idx_document_task_applied_household','idx_review_batch_owner','idx_cross_transfer_consent_status','idx_recurring_policy_status','idx_recurring_execution_applied_household')) AS finance_indexes_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('trg_household_approval_owner_review','trg_approval_execution_claim_requires_nonce','trg_document_task_record_applied','trg_review_batch_full_preflight','trg_cross_transfer_consent_status_guard','trg_recurring_policy_transition','trg_recurring_execution_receipt_guard','trg_recurring_execution_auto_audit')) AS finance_triggers_ready,
@@ -183,6 +190,9 @@ export async function verifiedDatabase(env,{quick=false}={}) {
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.finance_migrations_ready)===8 &&
+      Number(identity.recent_migrations_ready)===5 &&
+      Number(identity.reminder_columns_ready)===2 &&
+      Number(identity.reminder_guard_triggers_ready)===3 &&
       Number(identity.finance_tables_ready)===15 &&
       Number(identity.finance_indexes_ready)===8 &&
       Number(identity.finance_triggers_ready)===8 &&

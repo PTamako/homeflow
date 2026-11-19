@@ -167,18 +167,38 @@ export function rotateGoalsForDate(goals,date){
  const offset=((days%goals.length)+goals.length)%goals.length
  return [...goals.slice(offset),...goals.slice(0,offset)]
 }
+// Deterministic JST-day page rotation; prevents permanent starvation above 60 goals.
+export function scheduledGoalPage(date,total,pageSize=60){
+  if(!Number.isInteger(total)||total<=0||!Number.isInteger(pageSize)||pageSize<=0)return 0
+  const days=Math.floor(Date.parse(date+'T00:00:00Z')/86400000)
+  if(!Number.isFinite(days))return 0
+  const pages=Math.ceil(total/pageSize)
+  return ((days%pages)+pages)%pages
+}
 export async function runGoalSettlementSchedule(env){
   if(env.APP_ENV!=='production'||typeof env.KAKEBO_LEDGER_SERVICE?.fetch!=='function')
     return {skipped:'ledger_or_production_unavailable'}
   const today=tokyoDay()
-  const {results}=await env.DB.prepare(`SELECT g.*, m.role AS creator_role FROM goals g
+  // One cheap bounded read for normal households. Once the list exceeds 60,
+  // rotate stable 60-row pages by JST day so older goals are never starved.
+  // Extra COUNT/OFFSET queries occur only for households above this threshold.
+  const activeGoalsSql=`FROM goals g
     JOIN household_members m ON m.household_id=g.household_id AND m.user_id=g.created_by
-    WHERE g.deleted_at IS NULL AND g.goal_mode IN ('monthly','yearly') AND g.start_on<?1
-    ORDER BY g.created_at DESC LIMIT 60`).bind(today).all()
+    WHERE g.deleted_at IS NULL AND g.goal_mode IN ('monthly','yearly') AND g.start_on<?1`
+  const {results:firstPage=[]}=await env.DB.prepare(`SELECT g.*, m.role AS creator_role ${activeGoalsSql}
+    ORDER BY g.created_at DESC,g.id DESC LIMIT 61`).bind(today).all()
+  let goals=firstPage
+  if(firstPage.length>60){
+    const total=await env.DB.prepare(`SELECT COUNT(*) AS count ${activeGoalsSql}`).bind(today).first()
+    const page=scheduledGoalPage(today,Number(total?.count||0))
+    const {results:pageRows=[]}=await env.DB.prepare(`SELECT g.*, m.role AS creator_role ${activeGoalsSql}
+      ORDER BY g.created_at DESC,g.id DESC LIMIT 60 OFFSET ?2`).bind(today,page*60).all()
+    goals=pageRows
+  }
   let processed=0,settled=0,failed=0
   const changedHouseholds=new Set()
   const failures={}
-  for(const goal of rotateGoalsForDate(results||[],today)){
+  for(const goal of rotateGoalsForDate(goals,today)){
     if(processed>=8)break
     const windows=closedGoalPeriods(goal,today,12).reverse()
     if(!windows.length)continue
