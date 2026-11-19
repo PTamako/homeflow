@@ -1,0 +1,24 @@
+name: Wallet Owner Alert Unit and Build
+on:
+  pull_request:
+    paths:
+      - 'worker/prepaid-alerts.js'
+      - 'worker/webpush.js'
+      - 'migrations/0066_prepaid_owner_alert_observations.sql'
+      - 'src/components/TodayNotifications.vue'
+      - 'tests/prepaid-owner-alerts.test.mjs'
+      - '.github/workflows/prepaid-owner-alerts.yml'
+  workflow_dispatch:
+jobs:
+  wallet-owner-alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/prepaid-owner-alerts.test.mjs
+      - run: npm run build
