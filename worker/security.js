@@ -104,9 +104,10 @@ export async function verifiedDatabase(env,{quick=false}={}) {
         EXISTS(SELECT 1 FROM d1_migrations
           WHERE name='0052_achievement_thresholds.sql') AS baseline_ready,
         (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready,
-        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0061_hidden_deleted_shared_approval_history.sql','0062_dismissed_applied_approval_history.sql','0063_expand_applied_ledger_approval_dismissal.sql','0064_reminder_only_no_points.sql','0065_extend_active_sessions_to_30_days.sql')) AS recent_migrations_ready
+        (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0061_hidden_deleted_shared_approval_history.sql','0062_dismissed_applied_approval_history.sql','0063_expand_applied_ledger_approval_dismissal.sql','0064_reminder_only_no_points.sql','0065_extend_active_sessions_to_30_days.sql')) AS recent_migrations_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0066_prepaid_owner_alert_observations.sql','0067_prepaid_upper_alert_observations.sql')) AS prepaid_alert_migrations_ready
         FROM environment_identity WHERE key='current' LIMIT 1`).first()
-      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1 && Number(identity.finance_migrations_ready)===8 && Number(identity.recent_migrations_ready)===5
+      const valid=identity?.database_name===expected && Number(identity.baseline_ready)===1 && Number(identity.finance_migrations_ready)===8 && Number(identity.recent_migrations_ready)===5 && Number(identity.prepaid_alert_migrations_ready)===2
       if(valid)dbIdentityCache.set(env.DB,{name:expected,expiresAt:now+DB_IDENTITY_TTL_MS,deep:false})
       else dbIdentityCache.delete(env.DB)
       return valid
@@ -114,6 +115,7 @@ export async function verifiedDatabase(env,{quick=false}={}) {
     const identity=await env.DB.prepare(`SELECT database_name,
       (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0053_oauth_code_exchange.sql','0054_household_approval_core.sql','0055_household_approval_execution_lease.sql','0056_document_task_apply.sql','0057_household_batch_reviews.sql','0058_cross_member_transfer_consents.sql','0059_recurring_financial_authorizations.sql','0060_recurring_execution_receipts.sql')) AS finance_migrations_ready,
       (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0061_hidden_deleted_shared_approval_history.sql','0062_dismissed_applied_approval_history.sql','0063_expand_applied_ledger_approval_dismissal.sql','0064_reminder_only_no_points.sql','0065_extend_active_sessions_to_30_days.sql')) AS recent_migrations_ready,
+      (SELECT COUNT(*) FROM d1_migrations WHERE name IN ('0066_prepaid_owner_alert_observations.sql','0067_prepaid_upper_alert_observations.sql')) AS prepaid_alert_migrations_ready,
       (SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='reminder_only') +
       (SELECT COUNT(*) FROM pragma_table_info('routines') WHERE name='reminder_only') AS reminder_columns_ready,
       (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'
@@ -190,7 +192,7 @@ export async function verifiedDatabase(env,{quick=false}={}) {
       FROM environment_identity WHERE key='current' LIMIT 1`).first()
     const valid=identity?.database_name===expected &&
       Number(identity.finance_migrations_ready)===8 &&
-      Number(identity.recent_migrations_ready)===5 &&
+      Number(identity.recent_migrations_ready)===5 && Number(identity.prepaid_alert_migrations_ready)===2 &&
       Number(identity.reminder_columns_ready)===2 &&
       Number(identity.reminder_guard_triggers_ready)===3 &&
       Number(identity.finance_tables_ready)===15 &&
