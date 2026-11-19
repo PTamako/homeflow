@@ -204,7 +204,8 @@ async function readClicked(item:Notice,markAsRead:boolean){
 async function markRead(item:Notice){await readClicked(item,true)}
 async function markUnread(item:Notice){await readClicked(item,false)}
 const isPrepaidAlert=(item:Notice)=>item.kind==='system'&&
-  item.dedupeKey?.startsWith('scheduled:system:prepaid-low-balance-')
+  (item.dedupeKey?.startsWith('scheduled:system:prepaid-low-balance-')||
+  item.dedupeKey?.startsWith('scheduled:system:prepaid-high-balance-'))
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
  if(isPrepaidAlert(item)){
