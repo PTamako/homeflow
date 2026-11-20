@@ -121,3 +121,7 @@ binding = "DOCUMENT_STUDY_EXECUTION_SERVICE"
 service = "jp-document-assistant"
 
 # Preview Worker and D1 retired on 2026-11-12. Production is the only remote environment.
+
+# Explicit opt-out: Cloudflare Observability ingestion is not authorized.
+[observability]
+enabled = false
