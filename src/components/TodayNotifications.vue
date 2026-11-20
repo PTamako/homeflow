@@ -48,8 +48,6 @@ function readStateLabel(item:Notice){
 function deliveryDetail(item:Notice){
  // Own completion replaces the morning reminder in the inbox without sending
  // a second Push. The original reminder's status is not a completion delivery.
- if(item.lastCompletionKey&&item.dedupeKey?.startsWith('scheduled:')&&!item.senderUserId)
-  return item.sentDevices>0?'原提醒推送已受理 · 本人完成仅应用内同步':'本人完成 · 仅应用内同步（不另发推送）'
  if(item.sentDevices>0)return item.failedDevices>0?'部分推送已受理':'推送服务已受理'
  if(item.deliveryStatus==='quiet')return '安静时段 · 暂不推送'
  if(item.deliveryStatus==='failed')return '推送失败 · 已保留站内'
@@ -206,6 +204,17 @@ async function markUnread(item:Notice){await readClicked(item,false)}
 const isPrepaidAlert=(item:Notice)=>item.kind==='system'&&
   (item.dedupeKey?.startsWith('scheduled:system:prepaid-low-balance-')||
   item.dedupeKey?.startsWith('scheduled:system:prepaid-high-balance-'))
+const isKakeiboBill=(item:Notice)=>item.kind==='system'&&
+  !!item.dedupeKey?.startsWith('scheduled:system:kakeibo:')
+function ledgerNoticeLabel(item:Notice){
+ if(isPrepaidAlert(item))
+  return item.dedupeKey?.startsWith('scheduled:system:prepaid-low-')
+    ?'记账本 · 余额不足预警':'记账本 · 余额上限预警'
+ if(isKakeiboBill(item))
+  return item.dedupeKey?.startsWith('scheduled:system:kakeibo:fixed:')
+    ?'记账本 · 固定费待确认':'记账本 · 变动金额待入账'
+ return ''
+}
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
  if(isPrepaidAlert(item)){
@@ -304,10 +313,13 @@ defineExpose({refresh:()=>load(true)})
    <p v-else-if="!visibleNotices.length" class="notice-empty">今天暂无通知</p>
    <div v-for="item in visibleNotices" :id="'today-notification-'+item.id" :key="item.id"
      :class="['notice-item',{'notice-focused':highlightedId===item.id,
-        'notice-item--annual':item.dedupeKey?.startsWith('scheduled:system:annual-points-expiry:')}]">
+        'notice-item--annual':item.dedupeKey?.startsWith('scheduled:system:annual-points-expiry:'),
+        'notice-item--ledger':!!ledgerNoticeLabel(item),
+        'notice-item--ledger-alert':isPrepaidAlert(item)}]">
     <div class="notice-item-top">
      <div class="notice-item-heading">
       <b>{{ notificationTitle(item) }}</b>
+      <span v-if="ledgerNoticeLabel(item)" class="notice-ledger-badge">{{ ledgerNoticeLabel(item) }}</span>
       <span v-if="notificationStatus(item)"
         :class="['notice-task-status','notice-task-status-'+notificationStatus(item)?.tone]">
        {{ notificationStatus(item)?.label }}
@@ -325,7 +337,7 @@ defineExpose({refresh:()=>load(true)})
      <template v-else>{{ item.message }}</template>
     </p>
     <div class="notice-bottom">
-     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template><template v-else-if="item.lastCompletionKey&&item.dedupeKey?.startsWith('scheduled:')&&!item.senderUserId"> · 本人完成已同步（不另发推送）</template></small>
+     <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
      <div class="notice-item-actions">
       <button v-if="view==='received'&&!item.readAt"
         type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
@@ -365,6 +377,16 @@ defineExpose({refresh:()=>load(true)})
 .notice-tabs .notice-read-all:disabled{opacity:.5;cursor:default}
 .notice-item{padding:12px 0;border-top:1px solid #edf1ec;scroll-margin-top:24px}
 .notice-item.notice-focused{background:#f2f8f2;border-radius:9px;padding:12px 9px}
+.notice-item.notice-item--ledger{margin:6px 0;padding:13px 12px;border:1px solid #ebdcc1;
+  border-left:4px solid #c58c38;border-radius:11px;background:#fff9ef}
+.notice-item.notice-item--ledger-alert{border-color:#eed4d2;border-left-color:#c4524a;background:#fff5f3}
+.notice-item--ledger .notice-item-heading b{font-size:15px;font-weight:800;color:#86561e}
+.notice-item--ledger-alert .notice-item-heading b{color:#ae3934}
+.notice-item--ledger p{font-size:13px;line-height:1.6;font-weight:650;color:#694e30}
+.notice-item--ledger-alert p{color:#86443e}
+.notice-ledger-badge{display:inline-flex;align-items:center;border-radius:6px;
+  padding:3px 7px;background:#f4e2c2;color:#835013;font-size:11px;font-weight:750;line-height:1.35}
+.notice-item--ledger-alert .notice-ledger-badge{background:#f8dedb;color:#a93f37}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .notice-item-heading{display:flex;align-items:center;gap:6px;min-width:0;flex:1;flex-wrap:wrap}
 .notice-item-heading b{font-size:13px;overflow-wrap:anywhere}
