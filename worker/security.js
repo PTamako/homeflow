@@ -53,11 +53,33 @@ export function rejectMethod(request) {
   return json({error:'method_not_allowed'},405,{allow:'GET, POST, PATCH, DELETE'})
 }
 export async function readBody(request) {
-  const length = Number(request.headers.get('content-length')||'0')
-  if (length>16000) return null
-  const s = await request.text()
-  if (s.length>16000) return null
-  try { const val=JSON.parse(s); return val && typeof val==='object' && !Array.isArray(val) ? val:null } catch {return null}
+  const maxBytes=16000
+  const declared=request.headers.get('content-length')
+  if(declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>maxBytes))return null
+  if(!request.body)return null
+  // Content-Length may be absent or false: reject excessive bytes while
+  // streaming, before allocating an unbounded request body.
+  const reader=request.body.getReader()
+  const chunks=[]
+  let size=0
+  try{
+    while(true){
+      const {done,value}=await reader.read()
+      if(done)break
+      size+=value.byteLength
+      if(size>maxBytes){
+        await reader.cancel().catch(()=>{})
+        return null
+      }
+      chunks.push(value)
+    }
+    const bytes=new Uint8Array(size)
+    let offset=0
+    for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength}
+    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))
+    return value&&typeof value==='object'&&!Array.isArray(value)?value:null
+  }catch{return null}
+  finally{reader.releaseLock()}
 }
 export function sameOrigin(request) {
   const origin = request.headers.get('origin')

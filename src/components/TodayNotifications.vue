@@ -217,14 +217,17 @@ function noticeSummary(item:Notice){
  if(!isPrepaidAlert(item))return item.message
  const m=/^当前余额\s*(¥[\d,]+)，(下限|上限)\s*(¥[\d,]+)\s*(以下|以上)。请检查(?:是否需要充值|余额)。$/.exec(item.message)
  if(!m)return item.message
- return '余额 '+m[1]+'，'+(m[2]==='下限'?'低于下限 ':'达到上限 ')+m[3]
+ return '余额 '+m[1]+'，'+(m[2]==='下限'?'达到或低于下限 ':'达到上限 ')+m[3]
 }
 async function open(item:Notice){
- if(view.value==='received')await markRead(item)
- if(isPrepaidAlert(item)){
+ // Open immediately while the user gesture is active (iOS may block popups
+ // opened only after the asynchronous mark-read request).
+ if(isPrepaidAlert(item)||isKakeiboBill(item)){
   window.open('https://kakeibo-f17.pages.dev/','_blank','noopener,noreferrer')
+  if(view.value==='received')await markRead(item)
   return
  }
+ if(view.value==='received')await markRead(item)
  if(item.sourceId&&['task','routine','shopping'].includes(item.kind)){
    const done=item.message.startsWith('已完成 · ')
    const period=done&&item.kind==='routine'
@@ -347,8 +350,8 @@ defineExpose({refresh:()=>load(true)})
         type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markRead(item)">标记已读</button>
       <button v-if="view==='received'&&item.readAt"
         type="button" :disabled="!!reading||bulkReading" @pointerdown="pressedReadId=item.id" @click="markUnread(item)">标记未读</button>
-      <button v-if="item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item))"
-        type="button" @click="open(item)">{{ isPrepaidAlert(item)?'打开记账本':savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
+      <button v-if="isPrepaidAlert(item)||isKakeiboBill(item)||(item.sourceId&&(['task','routine','shopping'].includes(item.kind)||savingsTarget(item)||wishTarget(item)))"
+        type="button" @click="open(item)">{{ (isPrepaidAlert(item)||isKakeiboBill(item))?'打开记账本':savingsTarget(item)?'查看储值':wishTarget(item)?'查看心愿':'查看计划' }}</button>
      </div>
     </div>
    </div>
