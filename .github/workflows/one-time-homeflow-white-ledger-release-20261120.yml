@@ -1,0 +1,76 @@
+name: One-time HomeFlow white finance cards production release 20261120
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-time-homeflow-white-ledger-release-20261120.yml
+permissions:
+  contents: read
+concurrency:
+  group: homeflow-production-white-ledger-release-20261120
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify reviewed source parent and production-only configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "b8679d5580a693f156d78a70d1386b3020c92cd3"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          grep -F 'preview_urls = false' wrangler.toml
+          grep -F 'crons = ["0 1-13/2,21,23 * * *"]' wrangler.toml
+          grep -F 'service = "kakeibo-homeflow-bridge"' wrangler.toml
+      - name: Checkout live Kakeibo contract counterpart
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout live Document Assistant contract counterpart
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Stamp PWA cache with exact release commit
+        run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+      - name: Run all accessible production regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t suites < <(find tests -maxdepth 1 -name '*.test.mjs' ! -name 'document-study-three-real-apps.test.mjs' | sort)
+          KAKEBO_CONTRACT_ROOT="$GITHUB_WORKSPACE/.contract-kakeibo" node --test --test-skip-pattern="G0 cross-app CI can locate every Stage F migration in its pinned checkout" "${suites[@]}"
+      - name: Typecheck and build production Vue
+        run: npm run build
+      - name: Verify production D1 migration manifest using synthetic databases only
+        run: |
+          python3 scripts/check_migrations.py
+          python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - name: Check current production Service Bindings without mutation
+        run: node scripts/release-g8-binding-preflight.mjs
+      - name: Verify production Worker dry-run
+        run: npx wrangler deploy --dry-run --outdir .wrangler/audit-remediation-dryrun
+      - name: Require healthy existing production before deployment
+        run: |
+          curl --retry 3 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json;d=json.load(sys.stdin);assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
+      - name: Deploy only HomeFlow production Worker (no D1 migrations)
+        run: npx wrangler deploy
+      - name: Verify live production health after deploy
+        run: |
+          curl --retry 4 --retry-delay 2 --fail --silent --show-error https://homeflow.yupan6706.workers.dev/api/health | python3 -c "import sys,json;d=json.load(sys.stdin);assert d.get('ok') and d.get('environment')=='production' and d.get('database')=='ready',d"
