@@ -1,0 +1,98 @@
+name: One-time HomeFlow stability release 20261120 (no Observability)
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-time-homeflow-stability-20261120.yml
+permissions:
+  contents: read
+concurrency:
+  group: homeflow-production-stability-20261120
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Fail closed on wrong target, missing credentials, Preview or Observability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          grep -Fx 'preview_urls = false' wrangler.toml
+          grep -Fx 'enabled = false' wrangler.toml
+          grep -Fx 'crons = ["0 1-13/2,21,23 * * *"] # Nine UTC fires daily = JST 06:00/08:00/.../22:00, no overnight no-ops' wrangler.toml
+      - name: Checkout Kakeibo current main
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/kakebo_jp
+          ref: main
+          path: .contract-kakeibo
+          persist-credentials: false
+      - name: Checkout Document Assistant current main
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/jp-document-assistant
+          ref: main
+          path: .contract-document
+          persist-credentials: false
+      - name: Checkout Study current main
+        uses: actions/checkout@v5
+        with:
+          repository: PTamako/it-study-platform
+          ref: main
+          path: .contract-study
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: npm ci --no-audit --no-fund
+      - name: Stamp exact production PWA version
+        run: node scripts/stamp-pwa.mjs "$GITHUB_SHA"
+      - name: Full tests and typechecked build across four actual repositories
+        env:
+          KAKEBO_CONTRACT_ROOT: ${{ github.workspace }}/.contract-kakeibo
+        run: npm run check
+      - name: Migration manifest and offline rollback tests (no remote writes)
+        run: |
+          python3 scripts/check_migrations.py
+          python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+      - name: Verify live Cloudflare service bindings
+        run: |
+          node scripts/release-g8-source-plan.mjs
+          node scripts/release-g8-binding-preflight.mjs
+      - name: Read-only four-app production D1 export and isolated recovery rehearsal
+        run: node scripts/release-current-production-rehearsal.mjs
+      - name: Verify production bundle without changing remote Worker
+        run: npx wrangler deploy --dry-run --outdir .wrangler/production-stability-check
+      - name: Verify no counterpart source changed since tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in 'kakebo_jp:.contract-kakeibo' 'jp-document-assistant:.contract-document' 'it-study-platform:.contract-study'; do
+            repo="${entry%%:*}"; dir="${entry#*:}"
+            tested="$(git -C "$dir" rev-parse HEAD)"
+            current="$(git ls-remote "https://github.com/PTamako/$repo.git" refs/heads/main | cut -f1)"
+            test -n "$current" && test "$tested" = "$current" || { echo "::error::$repo changed during release"; exit 1; }
+          done
+      - name: Require healthy existing production
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 https://homeflow.yupan6706.workers.dev/api/health |
+          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") and x.get("environment")=="production" and x.get("database")=="ready"'
+      - name: Deploy ONLY HomeFlow production (no D1 migrations or Preview)
+        run: npx wrangler deploy
+      - name: Verify newly deployed production health
+        run: |
+          curl --fail --silent --show-error --retry 4 --retry-delay 2 https://homeflow.yupan6706.workers.dev/api/health |
+          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") and x.get("environment")=="production" and x.get("database")=="ready"'

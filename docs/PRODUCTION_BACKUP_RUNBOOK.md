@@ -35,3 +35,9 @@ https://developers.cloudflare.com/d1/best-practices/import-export-data/
 ## 验收
 
 真实 iPhone/iPad 的两账号登录、推送到达、点击跳转、离线同步、图片编辑，以及双方 ZIP 导出/恢复，继续记录在 Issue #4。代码 CI 通过不能代替真机签收。
+
+## 2026-11-20 发布前只读恢复演练
+
+生产发布使用 GitHub Actions 单次运行 `scripts/release-current-production-rehearsal.mjs`，只对当前四个正式 D1 执行只读快照导出，在隔离临时 SQLite 文件中执行完整性和回滚演练，运行结束删除临时副本。**这不是留存备份**，也不会读取、下载或恢复私有 R2 对象，绝不能代替可用的加密 D1 + R2 长期备份。
+
+低成本生产健康检查使用 GitHub Actions 定时访问公开 `/api/health`，不读取账号、照片、交易或 OAuth 内容。失败由 GitHub Actions 作业显示，通知取决于仓库订阅设置。Cloudflare Observability 明确保持禁用，不启用收费日志采集、Logpush、Preview 或新的 D1/R2。

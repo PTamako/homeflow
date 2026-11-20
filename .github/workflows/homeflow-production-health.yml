@@ -1,0 +1,21 @@
+name: HomeFlow production read-only health
+on:
+  schedule:
+    - cron: "17 0,6,12,18 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: homeflow-health-readonly
+  cancel-in-progress: true
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production health without secrets, logs or database writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 25 --retry 2 --retry-delay 2 --fail --silent --show-error 'https://homeflow.yupan6706.workers.dev/api/health' |
+          python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("app")=="homeflow" and x.get("environment")=="production" and x.get("database")=="ready", "production health check failed"'
