@@ -16,9 +16,15 @@ APPS = ("homeflow", "kakebo", "it-study-platform", "jp-document-assistant")
 REQUIRED = {
     "homeflow": {"d1_migrations", "household_members",
                  "notification_inbox", "household_approval_requests"},
-    "kakebo": {"d1_migrations"},
+    "kakebo": {"schema_migrations", "homeflow_identity_links"},
     "it-study-platform": {"d1_migrations", "homeflow_identity_links"},
     "jp-document-assistant": {"d1_migrations", "homeflow_identity_links"},
+}
+MIGRATION_TRACKERS = {
+    "homeflow": ("d1_migrations", "name"),
+    "kakebo": ("schema_migrations", "version"),
+    "it-study-platform": ("d1_migrations", "name"),
+    "jp-document-assistant": ("d1_migrations", "name"),
 }
 
 
@@ -48,8 +54,9 @@ def verify_current_database(app: str, database_path: str) -> dict:
             "SELECT name FROM sqlite_master WHERE type='table'")}
         if not REQUIRED[app].issubset(tables):
             raise ValueError("CURRENT_SCHEMA_MISSING:" + app)
+        tracker, column = MIGRATION_TRACKERS[app]
         tracked = {row[0] for row in db.execute(
-            "SELECT name FROM d1_migrations")}
+            f"SELECT {column} FROM {tracker}")}
         if not tracked:
             raise ValueError("MIGRATION_TRACKING_EMPTY:" + app)
         if app == "homeflow" and tracked != expected_homeflow_migrations():
