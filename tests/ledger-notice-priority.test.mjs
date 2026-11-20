@@ -57,7 +57,7 @@ test('Kakeibo alert and bill confirmation rows remain first through server-side 
    cursor=body.nextCursor
    if(!cursor)break
   }
-  assert.match(firstCursor,/^0\\|/)
+  assert.match(firstCursor,/^0\|/)
   assert.equal(all.length,11)
   assert.equal(new Set(all.map(n=>n.id)).size,11)
   assert.deepEqual(all.slice(0,7).map(n=>n.kind),Array(7).fill('system'))
