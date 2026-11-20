@@ -197,9 +197,10 @@ test('recipient unread badge returns after a NEW completion even though 06:00 re
  }finally{sqlite.close()}
 })
 
-test('silent self-completion keeps the original scheduled Push semantically distinct',()=>{
+test('silent self-completion retains revision guards but does not show redundant sync copy',()=>{
  const ui=readFileSync(new URL('../src/components/TodayNotifications.vue',import.meta.url),'utf8')
- assert.match(ui,/item\.lastCompletionKey&&item\.dedupeKey\?\.startsWith\('scheduled:'\)&&!item\.senderUserId/)
- assert.match(ui,/本人完成已同步（不另发推送）/)
- assert.match(ui,/原提醒推送已受理 · 本人完成仅应用内同步/)
+ assert.match(ui,/const id=item.id,revision=item.lastCompletionKey\?\?null/)
+ assert.match(ui,/expectedCompletionKey:revision/)
+ assert.doesNotMatch(ui,/本人完成已同步（不另发推送）/)
+ assert.doesNotMatch(ui,/原提醒推送已受理 · 本人完成仅应用内同步/)
 })
