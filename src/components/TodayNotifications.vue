@@ -207,13 +207,17 @@ const isPrepaidAlert=(item:Notice)=>item.kind==='system'&&
 const isKakeiboBill=(item:Notice)=>item.kind==='system'&&
   !!item.dedupeKey?.startsWith('scheduled:system:kakeibo:')
 function ledgerNoticeLabel(item:Notice){
- if(isPrepaidAlert(item))
-  return item.dedupeKey?.startsWith('scheduled:system:prepaid-low-')
-    ?'记账本 · 余额不足预警':'记账本 · 余额上限预警'
- if(isKakeiboBill(item))
-  return item.dedupeKey?.startsWith('scheduled:system:kakeibo:fixed:')
-    ?'记账本 · 固定费待确认':'记账本 · 变动金额待入账'
+ if(isPrepaidAlert(item))return '记账本预警'
+ if(isKakeiboBill(item))return '记账本'
  return ''
+}
+// Keep notification content intact in D1 / Push; shorten only the wallet
+// description in the Today UI. Unexpected message formats pass through.
+function noticeSummary(item:Notice){
+ if(!isPrepaidAlert(item))return item.message
+ const m=/^当前余额\s*(¥[\d,]+)，(下限|上限)\s*(¥[\d,]+)\s*(以下|以上)。请检查(?:是否需要充值|余额)。$/.exec(item.message)
+ if(!m)return item.message
+ return '余额 '+m[1]+'，'+(m[2]==='下限'?'低于下限 ':'达到上限 ')+m[3]
 }
 async function open(item:Notice){
  if(view.value==='received')await markRead(item)
@@ -334,7 +338,7 @@ defineExpose({refresh:()=>load(true)})
      <template v-if="notificationStatus(item)">
       <strong :class="['notice-message-status','notice-message-status-'+notificationStatus(item)?.tone]">{{ notificationStatus(item)?.label }}</strong>{{ notificationMessageRemainder(item) }}
      </template>
-     <template v-else>{{ item.message }}</template>
+     <template v-else>{{ noticeSummary(item) }}</template>
     </p>
     <div class="notice-bottom">
      <small>{{ view==='sent'?'发送给：'+memberDisplayName(item.recipientUserId):'来自：'+memberDisplayName(item.senderUserId) }} · {{ timeOf(item.createdAt) }}<template v-if="view==='sent'"> · <span :class="['notice-delivery','notice-delivery-'+deliveryTone(item)]">{{ deliveryDetail(item) }}</span></template></small>
@@ -377,16 +381,19 @@ defineExpose({refresh:()=>load(true)})
 .notice-tabs .notice-read-all:disabled{opacity:.5;cursor:default}
 .notice-item{padding:12px 0;border-top:1px solid #edf1ec;scroll-margin-top:24px}
 .notice-item.notice-focused{background:#f2f8f2;border-radius:9px;padding:12px 9px}
-.notice-item.notice-item--ledger{margin:6px 0;padding:13px 12px;border:1px solid #ebdcc1;
-  border-left:4px solid #c58c38;border-radius:11px;background:#fff9ef}
-.notice-item.notice-item--ledger-alert{border-color:#eed4d2;border-left-color:#c4524a;background:#fff5f3}
-.notice-item--ledger .notice-item-heading b{font-size:15px;font-weight:800;color:#86561e}
-.notice-item--ledger-alert .notice-item-heading b{color:#ae3934}
-.notice-item--ledger p{font-size:13px;line-height:1.6;font-weight:650;color:#694e30}
-.notice-item--ledger-alert p{color:#86443e}
-.notice-ledger-badge{display:inline-flex;align-items:center;border-radius:6px;
-  padding:3px 7px;background:#f4e2c2;color:#835013;font-size:11px;font-weight:750;line-height:1.35}
-.notice-item--ledger-alert .notice-ledger-badge{background:#f8dedb;color:#a93f37}
+.notice-item.notice-item--ledger{margin:6px 0;padding:11px 12px;border:1px solid #dfe8e2;
+  border-left:3px solid #8cae9a;border-radius:10px;background:#fff}
+.notice-item.notice-item--ledger-alert{border-color:#dfe8e2;border-left-color:#c4524a;background:#fff}
+.notice-item--ledger .notice-item-heading{flex-wrap:nowrap}
+.notice-item--ledger .notice-item-heading b{font-size:14px;font-weight:750;color:#30483c;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
+.notice-item--ledger-alert .notice-item-heading b{color:#a5413a}
+.notice-item--ledger p{font-size:12px;line-height:1.5;font-weight:550;color:#56695d}
+.notice-item--ledger-alert p{color:#56695d}
+.notice-ledger-badge{display:inline-flex;align-items:center;flex:none;white-space:nowrap;
+  border-radius:0;padding:0;background:transparent;color:#6a8977;
+  font-size:11px;font-weight:650;line-height:1.35}
+.notice-item--ledger-alert .notice-ledger-badge{background:transparent;color:#a5413a}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .notice-item-heading{display:flex;align-items:center;gap:6px;min-width:0;flex:1;flex-wrap:wrap}
 .notice-item-heading b{font-size:13px;overflow-wrap:anywhere}
