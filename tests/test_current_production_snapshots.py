@@ -25,12 +25,15 @@ class CurrentSnapshotTests(unittest.TestCase):
         for table in sorted(tables):
             if table == "d1_migrations":
                 db.execute("CREATE TABLE d1_migrations(name TEXT PRIMARY KEY)")
+            elif table == "schema_migrations":
+                db.execute("CREATE TABLE schema_migrations(version TEXT PRIMARY KEY)")
             else:
                 db.execute(f"CREATE TABLE {table}(id TEXT PRIMARY KEY)")
-        if "d1_migrations" in tables:
+        tracker, column = module.MIGRATION_TRACKERS[app]
+        if tracker in tables:
             names = (module.expected_homeflow_migrations()
                      if app == "homeflow" else {"0001_initial.sql"})
-            db.executemany("INSERT INTO d1_migrations(name) VALUES (?)",
+            db.executemany(f"INSERT INTO {tracker}({column}) VALUES (?)",
                            [(name,) for name in sorted(names)])
         db.commit()
         db.close()
