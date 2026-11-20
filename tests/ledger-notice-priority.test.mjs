@@ -87,5 +87,7 @@ test('ledger cards are compact white cards with an inline label and short wallet
  assert.match(ui,/return '余额 '\+m\[1\]/)
  assert.match(ui,/noticeSummary\(item\)/)
  assert.doesNotMatch(ui,/background:#fff5f3/)
- assert.doesNotMatch(ui,/background:#f8dedb/)
+ assert.match(ui,/\.notice-ledger-badge\{[^}]*background:#f4e2c2/s)
+ assert.match(ui,/\.notice-item--ledger-alert \.notice-ledger-badge\{background:#f8dedb/)
+ assert.doesNotMatch(ui,/\.notice-ledger-badge\{[^}]*background:transparent/s)
 })
