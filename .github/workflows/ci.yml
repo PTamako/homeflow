@@ -47,5 +47,6 @@ jobs:
         run: |
           python3 scripts/check_migrations.py
           python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+          python3 -m unittest discover -s tests -p 'test_current_production_snapshots.py'
       - name: Verify Worker dry-run bundle without deploying
         run: npx wrangler deploy --dry-run --outdir .wrangler/scoped-core-ci

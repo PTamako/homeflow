@@ -101,20 +101,29 @@ async function main(){
    console.log(JSON.stringify({database:p.db,export_bytes:meta.bytes,
     exported_sha256:meta.sha256.slice(0,16),restored_to_temporary_runner:true}));
   }
-  const command=['scripts/release-local-data-rehearsal.py',
-    '--db-homeflow',dbPaths.homeflow,
+  const verifyCurrent=process.argv.includes('--verify-current');
+  const common=['--db-homeflow',dbPaths.homeflow,
     '--db-kakebo',dbPaths.kakebo,
     '--db-it-study-platform',dbPaths['it-study-platform'],
-    '--db-jp-document-assistant',dbPaths['jp-document-assistant'],
-    '--repo-kakebo',resolve('.contract-kakeibo'),
-    '--repo-it-study-platform',resolve('.contract-study'),
-    '--repo-jp-document-assistant',resolve('.contract-document')];
+    '--db-jp-document-assistant',dbPaths['jp-document-assistant']];
+  // Historical Stage F migration simulations are still available by default.
+  // For already-migrated production, NEVER replay earlier SQL, even in the
+  // temporary copy: verify the CURRENT exported schema and restored rows.
+  const command=verifyCurrent?
+    ['scripts/verify-current-production-snapshots.py',...common]:
+    ['scripts/release-local-data-rehearsal.py',...common,
+      '--repo-kakeibo',resolve('.contract-kakeibo'),
+      '--repo-it-study-platform',resolve('.contract-study'),
+      '--repo-jp-document-assistant',resolve('.contract-document')];
   const result=spawnSync('python3',command,{
    cwd:resolve('.'),stdio:'inherit',timeout:12*60*1000});
-  if(result.status!==0)fail('REAL_DATA_MIGRATION_OR_ROLLBACK_REHEARSAL_FAILED');
+  if(result.status!==0)fail(verifyCurrent?
+    'CURRENT_PRODUCTION_RESTORE_INTEGRITY_FAILED':
+    'REAL_DATA_MIGRATION_OR_ROLLBACK_REHEARSAL_FAILED');
   console.log(JSON.stringify({ok:true,source:'current_cloudflare_D1_snapshots',
    production_writes:false,private_data_uploaded_as_artifacts:false,
-   real_data_migration_and_local_rollback_passed:true,
+   current_production_restore_verified:verifyCurrent,
+   historical_migration_simulation_passed:!verifyCurrent,
    production_release_authorized:false}));
  }finally{
   await rm(root,{recursive:true,force:true,maxRetries:4,retryDelay:250});
