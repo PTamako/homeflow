@@ -41,3 +41,7 @@ https://developers.cloudflare.com/d1/best-practices/import-export-data/
 生产发布使用 GitHub Actions 单次运行 `scripts/release-current-production-rehearsal.mjs`，只对当前四个正式 D1 执行只读快照导出，在隔离临时 SQLite 文件中执行完整性和回滚演练，运行结束删除临时副本。**这不是留存备份**，也不会读取、下载或恢复私有 R2 对象，绝不能代替可用的加密 D1 + R2 长期备份。
 
 低成本生产健康检查使用 GitHub Actions 定时访问公开 `/api/health`，不读取账号、照片、交易或 OAuth 内容。失败由 GitHub Actions 作业显示，通知取决于仓库订阅设置。Cloudflare Observability 明确保持禁用，不启用收费日志采集、Logpush、Preview 或新的 D1/R2。
+
+### 当前生产版快照核验（补充说明）
+
+四库当前均已迁移，不能把旧 Stage F SQL **再次应用** 到当前正式库的副本来判定数据库是否安全。发布门禁现执行 `node scripts/release-current-production-rehearsal.mjs --verify-current`：受控导出四库，逐一恢复到临时 SQLite，检查 `PRAGMA integrity_check`、`PRAGMA foreign_key_check`、必要的身份表、迁移追踪，且 HomeFlow 要逐项匹配 69 项源码迁移清单；完成后销毁临时文件。历史新增迁移/回滚模拟仅保留给特定迁移发布场景，不应用于已升级完成的生产库。该核验不创建长期备份，R2 对象应由既有加密备份机制独立保护。

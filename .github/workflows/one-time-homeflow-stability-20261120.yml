@@ -68,12 +68,13 @@ jobs:
         run: |
           python3 scripts/check_migrations.py
           python3 -m unittest discover -s tests -p 'test_release_local_data_rehearsal.py'
+          python3 -m unittest discover -s tests -p 'test_current_production_snapshots.py'
       - name: Verify live Cloudflare service bindings
         run: |
           node scripts/release-g8-source-plan.mjs
           node scripts/release-g8-binding-preflight.mjs
-      - name: Read-only four-app production D1 export and isolated recovery rehearsal
-        run: node scripts/release-current-production-rehearsal.mjs
+      - name: Read-only four-app CURRENT D1 snapshot integrity and isolated restore check
+        run: node scripts/release-current-production-rehearsal.mjs --verify-current
       - name: Verify production bundle without changing remote Worker
         run: npx wrangler deploy --dry-run --outdir .wrangler/production-stability-check
       - name: Verify no counterpart source changed since tests
