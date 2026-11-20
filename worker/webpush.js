@@ -125,6 +125,10 @@ export const quietAtHour=(quiet,hour)=>{
   if(!Number.isInteger(start)||!Number.isInteger(end)||start===end)return false
   return start<end?hour>=start&&hour<end:hour>=start||hour<end
 }
+// All scheduled OS pushes respect the recipient's quiet hours. The scheduled
+// inbox still records the reminder so it can catch up at an allowed hour.
+export const pushEventsForHour=(items,quietHours,hour)=>
+  quietAtHour(quietHours,hour)?[]:(items||[])
 async function deliver(sub,env,data){
   const body=await encrypt(data,sub)
   const jwtValue=await jwt(sub.endpoint,env)
@@ -498,15 +502,10 @@ export async function runPushSchedule(env,now=Date.now()){
     if(!endpointAllowed(sub.endpoint)||!validKeys({p256dh:sub.p256dh,auth:sub.auth_secret}))continue
     if(!remindersCache.has(sub.user_id))continue
     const data=remindersCache.get(sub.user_id)
-    // No push during user quiet hours. In-app reminders remain visible.
-    // The default is disabled so the requested 06:00 JST push is delivered.
-    const muted=quietAtHour(data.quietHours,hour)
-    // Expiring points are time-critical; quiet hours still silence ordinary reminders.
-    // Attempt at most 20 NEW deliveries per device per hourly run. Previously
-    // attempted events are skipped by the atomic claim below, so the backlog
-    // advances at the next eligible hour instead of losing items beyond #20.
-    const events=(data.items||[]).filter(event=>!muted||
-      event.id==='annual-points-expiry')
+    // Respect quiet hours for every push, including year-end points alerts.
+    // Inbox rows are still persisted; unsent pushes catch up on the next
+    // eligible Cron run, subject to the existing per-device 20-event limit.
+    const events=pushEventsForHour(data.items,data.quietHours,hour)
     let attemptsForDevice=0
     for(const event of events){
       if(attemptsForDevice>=20)break
