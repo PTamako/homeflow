@@ -5,7 +5,11 @@ export const jstNotificationDay=(now=Date.now())=>
 
 const PAGE_SIZE=5
 const UUID=/^[0-9a-f-]{36}$/i
-const CURSOR=/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\|[0-9a-f-]{36}$/i
+const CURSOR=/^(?:[01]\|)?\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\|[0-9a-f-]{36}$/i
+// Financial reminders lead the received inbox across pages, not just within
+// the first five visible items. Household/recipient filters stay unchanged.
+const LEDGER_KEY=/^scheduled:system:(?:kakeibo:|prepaid-(?:low|high)-balance-)/
+const noticePriority=item=>item.kind==='system'&&LEDGER_KEY.test(item.dedupeKey||'')?0:1
 
 // One record per *logical* push, not per subscribed device.
 export async function saveNotification(db,item){
@@ -131,8 +135,23 @@ export async function notificationsRoute(request,db,path,session){
     if(before&&!CURSOR.test(before))return json({error:'invalid_input'},400)
     const focus=params.get('focus')
     if(focus&&(view!=='received'||!UUID.test(focus)))return json({error:'invalid_input'},400)
-    const [beforeAt,beforeId]=before?before.split('|'):[null,null]
+    const cursorParts=before?.split('|')||[]
+    const beforeRank=cursorParts.length===3?Number(cursorParts[0]):1
+    const beforeAt=cursorParts.length===3?cursorParts[1]:cursorParts[0]||null
+    const beforeId=cursorParts.length===3?cursorParts[2]:cursorParts[1]||null
     const column=view==='sent'?'n.sender_user_id':'n.recipient_user_id'
+    const prioritySql=`CASE WHEN n.kind='system' AND (
+      n.dedupe_key LIKE 'scheduled:system:kakeibo:%'
+      OR n.dedupe_key LIKE 'scheduled:system:prepaid-low-balance-%'
+      OR n.dedupe_key LIKE 'scheduled:system:prepaid-high-balance-%'
+      ) THEN 0 ELSE 1 END`
+    const beforeWhere=view==='received'
+      ?`AND (${prioritySql}>?4 OR (${prioritySql}=?4 AND
+          (n.created_at<?5 OR (n.created_at=?5 AND n.id<?6))))`
+      :'AND (n.created_at<?4 OR (n.created_at=?4 AND n.id<?5))'
+    const orderBy=view==='received'
+      ?`${prioritySql} ASC,n.created_at DESC,n.id DESC`
+      :'n.created_at DESC,n.id DESC'
     const select=`SELECT n.id,n.kind,n.source_id AS sourceId,n.dedupe_key AS dedupeKey,n.title,n.message,
        n.delivery_status AS deliveryStatus,n.sent_devices AS sentDevices,
        n.failed_devices AS failedDevices,n.created_at AS createdAt,
@@ -146,10 +165,12 @@ export async function notificationsRoute(request,db,path,session){
     const sql=`${select}
        WHERE n.household_id=?1 AND n.local_day=?2 AND ${column}=?3
        ${view==='sent'?"AND (n.dedupe_key IS NULL OR n.dedupe_key NOT LIKE 'lottery:%' OR n.recipient_user_id<>n.sender_user_id)":''}
-       ${before?'AND (n.created_at<?4 OR (n.created_at=?4 AND n.id<?5))':''}
-       ORDER BY n.created_at DESC,n.id DESC LIMIT 6`
+       ${before?beforeWhere:''}
+       ORDER BY ${orderBy} LIMIT 6`
     const query=db.prepare(sql).bind(...(before?
-      [session.household_id,day,session.user_id,beforeAt,beforeId]:
+      view==='received'
+        ?[session.household_id,day,session.user_id,beforeRank,beforeAt,beforeId]
+        :[session.household_id,day,session.user_id,beforeAt,beforeId]:
       [session.household_id,day,session.user_id]))
     const unread=db.prepare(`SELECT COUNT(*) AS count FROM notification_inbox
       WHERE household_id=?1 AND recipient_user_id=?2 AND local_day=?3
@@ -165,7 +186,8 @@ export async function notificationsRoute(request,db,path,session){
     const last=items[items.length-1]
     return json({day,view,items,unreadCount:Number(summary.results?.[0]?.count||0),
       focusItem:focusResult?.results?.[0]||null,
-      nextCursor:rows.length>PAGE_SIZE&&last?last.createdAt+'|'+last.id:null})
+      nextCursor:rows.length>PAGE_SIZE&&last?
+         (view==='received'?noticePriority(last)+'|':'')+last.createdAt+'|'+last.id:null})
   }
   const match=path.match(/^\/api\/notifications\/([0-9a-f-]{36})\/(read|unread)$/i)
   if(match&&request.method==='POST'){
