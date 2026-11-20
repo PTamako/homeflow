@@ -77,3 +77,15 @@ test('Kakeibo card highlights remove verbose self-completion footnote without ch
  assert.doesNotMatch(ui,/本人完成已同步（不另发推送）/)
  assert.doesNotMatch(ui,/本人完成仅应用内同步/)
 })
+
+test('ledger cards are compact white cards with an inline label and short wallet amounts',()=>{
+ const ui=readFileSync(new URL('../src/components/TodayNotifications.vue',import.meta.url),'utf8')
+ assert.match(ui,/\.notice-item\.notice-item--ledger\{[^}]*background:#fff\}/s)
+ assert.match(ui,/\.notice-item\.notice-item--ledger-alert\{[^}]*background:#fff\}/s)
+ assert.match(ui,/\.notice-item--ledger \.notice-item-heading\{flex-wrap:nowrap\}/)
+ assert.match(ui,/return '记账本预警'/)
+ assert.match(ui,/return '余额 '\+m\[1\]/)
+ assert.match(ui,/noticeSummary\(item\)/)
+ assert.doesNotMatch(ui,/background:#fff5f3/)
+ assert.doesNotMatch(ui,/background:#f8dedb/)
+})
