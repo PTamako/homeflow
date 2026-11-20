@@ -391,9 +391,9 @@ defineExpose({refresh:()=>load(true)})
 .notice-item--ledger p{font-size:12px;line-height:1.5;font-weight:550;color:#56695d}
 .notice-item--ledger-alert p{color:#56695d}
 .notice-ledger-badge{display:inline-flex;align-items:center;flex:none;white-space:nowrap;
-  border-radius:0;padding:0;background:transparent;color:#6a8977;
-  font-size:11px;font-weight:650;line-height:1.35}
-.notice-item--ledger-alert .notice-ledger-badge{background:transparent;color:#a5413a}
+  border-radius:5px;padding:2px 6px;background:#f4e2c2;color:#835013;
+  font-size:11px;font-weight:700;line-height:1.35}
+.notice-item--ledger-alert .notice-ledger-badge{background:#f8dedb;color:#a5413a}
 .notice-item-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .notice-item-heading{display:flex;align-items:center;gap:6px;min-width:0;flex:1;flex-wrap:wrap}
 .notice-item-heading b{font-size:13px;overflow-wrap:anywhere}
